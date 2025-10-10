@@ -52,7 +52,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
 
         $primary_type = sanitize_text_field($_POST['primary_type'] ?? '');
         $primary_color_input = sanitize_text_field($_POST['primary_color'] ?? '');
-        $defaults = array('type' => '', 'color' => '');
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
         if ($primary_type !== '') {
             foreach ($selected as $prod) {
                 if ($prod['key'] === $primary_type) {

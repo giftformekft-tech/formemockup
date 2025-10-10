@@ -31,7 +31,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         }
 
         $creator = new MG_Product_Creator();
-        $defaults = array('type' => '', 'color' => '');
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
             if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }

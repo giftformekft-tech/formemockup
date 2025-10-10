@@ -47,7 +47,7 @@ add_action('admin_post_mg_upload_design_multi', function() {
 
         $creator = new MG_Product_Creator();
         $assign_cats = array('main'=>$main_cat, 'sub'=>$sub_cat);
-        $defaults = array('type' => '', 'color' => '');
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
             if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }

@@ -23,7 +23,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         if (!file_exists($gen_path) || !file_exists($creator_path)) throw new Exception('Hiányzó rendszerfájlok.');
         require_once $gen_path; require_once $creator_path;
         $creator = new MG_Product_Creator();
-        $defaults = array('type' => '', 'color' => '');
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
             if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }

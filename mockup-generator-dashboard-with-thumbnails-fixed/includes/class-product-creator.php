@@ -3,9 +3,10 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
-    private function resolve_default_combo($selected_products, $requested_type, $requested_color) {
+    private function resolve_default_combo($selected_products, $requested_type, $requested_color, $requested_size = '') {
         $requested_type = sanitize_title($requested_type ?? '');
         $requested_color = sanitize_title($requested_color ?? '');
+        $requested_size = is_string($requested_size) ? sanitize_text_field($requested_size) : '';
         $candidate = null;
         if (is_array($selected_products)) {
             foreach ($selected_products as $prod) {
@@ -32,7 +33,7 @@ class MG_Product_Creator {
             }
         }
         if (!$candidate) {
-            return array('type' => '', 'color' => '');
+            return array('type' => '', 'color' => '', 'size' => '');
         }
         $resolved_type = sanitize_title($candidate['key']);
         $color_slugs = array();
@@ -41,6 +42,16 @@ class MG_Product_Creator {
                 if (is_array($c) && isset($c['slug'])) {
                     $color_slugs[] = sanitize_title($c['slug']);
                 }
+            }
+        }
+        $resolved_size = '';
+        $sizes = array();
+        if (!empty($candidate['sizes']) && is_array($candidate['sizes'])) {
+            foreach ($candidate['sizes'] as $size_value) {
+                if (!is_string($size_value)) { continue; }
+                $size_value = trim($size_value);
+                if ($size_value === '') { continue; }
+                $sizes[] = $size_value;
             }
         }
         $resolved_color = '';
@@ -54,7 +65,25 @@ class MG_Product_Creator {
                 $resolved_color = $color_slugs[0];
             }
         }
-        return array('type' => $resolved_type, 'color' => $resolved_color);
+        if ($requested_size && in_array($requested_size, $sizes, true)) {
+            $resolved_size = $requested_size;
+        } elseif (!empty($candidate['primary_size']) && in_array($candidate['primary_size'], $sizes, true)) {
+            $resolved_size = $candidate['primary_size'];
+        } elseif (!empty($sizes)) {
+            $resolved_size = $sizes[0];
+        }
+        return array('type' => $resolved_type, 'color' => $resolved_color, 'size' => $resolved_size);
+    }
+
+    private function attributes_match_required($required, $candidate) {
+        if (!is_array($required) || empty($required)) { return false; }
+        if (!is_array($candidate) || empty($candidate)) { return false; }
+        foreach ($required as $key => $value) {
+            if ($value === '' || $value === null) { continue; }
+            if (!array_key_exists($key, $candidate)) { return false; }
+            if ($candidate[$key] !== $value) { return false; }
+        }
+        return true;
     }
 
     private function assign_tags($product_id, $tags = array()){
@@ -120,8 +149,10 @@ class MG_Product_Creator {
 
     public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
-        $default_type = isset($defaults['type']) ? sanitize_title($defaults['type']) : '';
-        $default_color = isset($defaults['color']) ? sanitize_title($defaults['color']) : '';
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
+        $default_type = $resolved_defaults['type'];
+        $default_color = $resolved_defaults['color'];
+        $default_size = $resolved_defaults['size'];
 
         $attr_type_id  = $this->ensure_attribute_taxonomy('Terméktípus','termektipus');
         $attr_color_id = $this->ensure_attribute_taxonomy('Szín','szin');
@@ -185,6 +216,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $parent_id=$product->save();
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
+        $created_variations = array();
         foreach ($selected_products as $p) {
             $type_slug=$p['key']; $valid_sizes=$p['sizes']; $colors=array_map(function($c){return $c['slug'];}, $p['colors']);
             $base_price=intval($price_map[$type_slug]??0); $size_map=$size_surcharge_map[$type_slug]??array(); $color_map_local=$color_surcharge_map[$type_slug]??array(); $prefix=$sku_prefix_map[$type_slug]??strtoupper($type_slug);
@@ -198,6 +230,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
                     $variation->save();
+                    $created_variations[] = array('pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size);
                 }
             }
         }
@@ -213,20 +246,41 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if ($default_color && in_array($default_color, $available_color_slugs, true)) {
             $default_attrs['pa_szin'] = $default_color;
         }
-        if (!empty($default_attrs)) {
-            $existing_defaults = $product->get_default_attributes();
-            if (!is_array($existing_defaults)) { $existing_defaults = array(); }
-            $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
-            $needs_save = true;
+        if ($default_size && in_array($default_size, $all_sizes, true)) {
+            $default_attrs['méret'] = $default_size;
         }
-        if ($needs_save) { $product->save(); }
+        $applied_defaults = array();
+        if (!empty($default_attrs)) {
+            $default_attrs = array_filter($default_attrs, function($value){ return $value !== '' && $value !== null; });
+            $matched = null;
+            foreach ($created_variations as $attrs) {
+                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $attrs; break; }
+            }
+            if (!$matched && !empty($created_variations)) { $matched = $created_variations[0]; }
+            if ($matched) {
+                $default_attrs = array_merge($matched, $default_attrs);
+                $existing_defaults = $product->get_default_attributes();
+                if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+                $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
+                $needs_save = true;
+                $applied_defaults = $product->get_default_attributes();
+            }
+        }
+        if ($needs_save) { $product->save(); $applied_defaults = $product->get_default_attributes(); }
+        if (!empty($applied_defaults)) {
+            update_post_meta($parent_id, '_default_attributes', $applied_defaults);
+            if (function_exists('wc_delete_product_transients')) { wc_delete_product_transients($parent_id); }
+            if (function_exists('wc_update_product_lookup_tables')) { wc_update_product_lookup_tables($parent_id); }
+        }
         return $parent_id;
     }
 
     public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
-        $default_type = isset($defaults['type']) ? sanitize_title($defaults['type']) : '';
-        $default_color = isset($defaults['color']) ? sanitize_title($defaults['color']) : '';
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
+        $default_type = $resolved_defaults['type'];
+        $default_color = $resolved_defaults['color'];
+        $default_size = $resolved_defaults['size'];
 
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
@@ -297,6 +351,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $existing[$k]=true;
         }
         $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
+        $created_variations = array();
         foreach ($selected_products as $p) {
             $type_slug=$p['key']; $valid_sizes=$p['sizes']; $colors=array_map(function($c){return $c['slug'];}, $p['colors']);
             $base_price=intval($price_map[$type_slug]??0); $size_map=$size_surcharge_map[$type_slug]??array(); $color_map_local=$color_surcharge_map[$type_slug]??array(); $prefix=$sku_prefix_map[$type_slug]??strtoupper($type_slug);
@@ -311,6 +366,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
                     $variation->save();
+                    $created_variations[] = array('pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size);
                 }
             }
         }
@@ -321,11 +377,38 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if ($default_color && in_array($default_color, $available_color_slugs, true)) {
             $default_attrs['pa_szin'] = $default_color;
         }
+        $existing_sizes = $attr_size->get_options();
+        $existing_sizes = is_array($existing_sizes) ? array_values(array_unique(array_filter($existing_sizes))) : array();
+        if ($default_size && in_array($default_size, $existing_sizes, true)) {
+            $default_attrs['méret'] = $default_size;
+        }
+        $applied_defaults = array();
         if (!empty($default_attrs)) {
-            $existing_defaults = $product->get_default_attributes();
-            if (!is_array($existing_defaults)) { $existing_defaults = array(); }
-            $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
-            $product->save();
+            $default_attrs = array_filter($default_attrs, function($value){ return $value !== '' && $value !== null; });
+            $variation_candidates = array();
+            foreach ($product->get_children() as $vid) {
+                $v = wc_get_product($vid);
+                if ($v && $v->get_id()) { $variation_candidates[] = $v->get_attributes(); }
+            }
+            foreach ($created_variations as $attrs) { $variation_candidates[] = $attrs; }
+            $matched = null;
+            foreach ($variation_candidates as $attrs) {
+                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $attrs; break; }
+            }
+            if (!$matched && !empty($variation_candidates)) { $matched = $variation_candidates[0]; }
+            if ($matched) {
+                $default_attrs = array_merge($matched, $default_attrs);
+                $existing_defaults = $product->get_default_attributes();
+                if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+                $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
+                $product->save();
+                $applied_defaults = $product->get_default_attributes();
+            }
+        }
+        if (!empty($applied_defaults)) {
+            update_post_meta($product->get_id(), '_default_attributes', $applied_defaults);
+            if (function_exists('wc_delete_product_transients')) { wc_delete_product_transients($product->get_id()); }
+            if (function_exists('wc_update_product_lookup_tables')) { wc_update_product_lookup_tables($product->get_id()); }
         }
         return $product->get_id();
     }
