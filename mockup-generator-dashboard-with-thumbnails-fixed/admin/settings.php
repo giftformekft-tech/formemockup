@@ -36,17 +36,23 @@ function mgstp_read_products(){
             if ($primary_color && !array_filter($colors, function($c) use ($primary_color){ return $c['slug'] === $primary_color; })) {
                 $primary_color = '';
             }
+            $sizes = isset($p['sizes']) && is_array($p['sizes']) ? array_values(array_filter(array_map('trim', $p['sizes']), function($s){ return $s !== ''; })) : array();
+            $primary_size = isset($p['primary_size']) ? sanitize_text_field($p['primary_size']) : '';
+            if ($primary_size && !in_array($primary_size, $sizes, true)) {
+                $primary_size = '';
+            }
             $out[$key] = array(
                 'key'=>$key,
                 'label'=> isset($p['label']) ? wp_kses_post($p['label']) : $key,
                 'sku_prefix'=> isset($p['sku_prefix']) ? sanitize_text_field($p['sku_prefix']) : strtoupper($key),
                 'price'=> isset($p['price']) ? intval($p['price']) : 0,
-                'sizes'=> isset($p['sizes']) && is_array($p['sizes']) ? array_values($p['sizes']) : array(),
+                'sizes'=> $sizes,
                 'colors'=> $colors,
                 // ÚJ
                 'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
                 'is_primary' => $is_primary ? 1 : 0,
                 'primary_color' => $primary_color,
+                'primary_size' => $primary_size,
             );
         }
     }
@@ -85,17 +91,23 @@ function mgstp_save_products($products){
                 );
             }
         }
+        $sizes = is_array($p['sizes']) ? array_values(array_filter(array_map('trim', $p['sizes']), function($s){ return $s !== ''; })) : array();
+        $primary_size = isset($p['primary_size']) ? sanitize_text_field($p['primary_size']) : '';
+        if ($primary_size && !in_array($primary_size, $sizes, true)) {
+            $primary_size = '';
+        }
         $norm[] = array(
             'key'=>$p['key'],
             'label'=>$p['label'],
             'sku_prefix'=>$p['sku_prefix'],
             'price'=> intval($p['price']),
-            'sizes'=> is_array($p['sizes']) ? array_values($p['sizes']) : array(),
+            'sizes'=> $sizes,
             'colors'=> $colors,
             // ÚJ
             'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
             'is_primary' => !empty($p['is_primary']) ? 1 : 0,
             'primary_color' => isset($p['primary_color']) ? sanitize_title($p['primary_color']) : '',
+            'primary_size' => $primary_size,
         );
     }
     update_option('mg_products', $norm);
@@ -114,7 +126,7 @@ function mgstp_render_settings(){
             $products[$new_key] = array(
                 'key'=>$new_key, 'label'=>$new_label, 'sku_prefix'=>strtoupper($new_key),
                 'price'=>0, 'sizes'=>array(), 'colors'=>array(), 'type_description'=>'',
-                'is_primary'=>0, 'primary_color'=>''
+                'is_primary'=>0, 'primary_color'=>'', 'primary_size'=>''
             );
             mgstp_save_products($products);
             wp_safe_redirect( admin_url('admin.php?page=mockup-generator-settings&product='.$new_key) );
@@ -146,6 +158,7 @@ function mgstp_render_settings(){
 
         $is_primary = !empty($row['is_primary']);
         $primary_color = isset($row['primary_color']) ? sanitize_title($row['primary_color']) : ($products[$current_key]['primary_color'] ?? '');
+        $primary_size = isset($row['primary_size']) ? sanitize_text_field($row['primary_size']) : ($products[$current_key]['primary_size'] ?? '');
         $color_slugs = array();
         if (is_array($colors)) {
             foreach ($colors as $c) {
@@ -157,8 +170,14 @@ function mgstp_render_settings(){
         if ($primary_color && !in_array($primary_color, $color_slugs, true)) {
             $primary_color = '';
         }
+        if ($primary_size && !in_array($primary_size, $sizes, true)) {
+            $primary_size = '';
+        }
         if ($is_primary && !$primary_color && !empty($color_slugs)) {
             $primary_color = $color_slugs[0];
+        }
+        if ($is_primary && !$primary_size && !empty($sizes)) {
+            $primary_size = $sizes[0];
         }
         if ($is_primary) {
             foreach ($products as $key => $existing) {
@@ -173,6 +192,7 @@ function mgstp_render_settings(){
             'type_description'=>$type_desc,
             'is_primary'=> $is_primary ? 1 : 0,
             'primary_color'=> $primary_color,
+            'primary_size' => $primary_size,
         );
         mgstp_save_products($products);
         echo '<div class="notice notice-success is-dismissible"><p>'.esc_html__('Mentve.','mgstp').'</p></div>';
@@ -235,6 +255,7 @@ function mgstp_render_settings(){
 
     $is_primary_checked = !empty($p['is_primary']);
     $selected_primary_color = isset($p['primary_color']) ? $p['primary_color'] : '';
+    $selected_primary_size = isset($p['primary_size']) ? $p['primary_size'] : '';
     $color_select = '<select name="mg[primary_color]" style="min-width:220px">';
     $color_select .= '<option value="">— '.esc_html__('Válassz színt','mgstp').' —</option>';
     if (!empty($p['colors']) && is_array($p['colors'])) {
@@ -244,10 +265,21 @@ function mgstp_render_settings(){
         }
     }
     $color_select .= '</select>';
+    $size_select = '<select name="mg[primary_size]" style="min-width:220px">';
+    $size_select .= '<option value="">— '.esc_html__('Válassz méretet','mgstp').' —</option>';
+    if (!empty($p['sizes']) && is_array($p['sizes'])) {
+        foreach ($p['sizes'] as $size_label) {
+            if (!is_string($size_label) || $size_label === '') continue;
+            $size_select .= '<option value="'.esc_attr($size_label).'"'.selected($selected_primary_size, $size_label, false).'>'.esc_html($size_label).'</option>';
+        }
+    }
+    $size_select .= '</select>';
     echo '<tr><th>'.esc_html__('Elsődleges beállítás','mgstp').'</th><td>';
     echo '<label><input type="checkbox" name="mg[is_primary]" value="1"'.checked($is_primary_checked, true, false).'> '.esc_html__('Ez legyen az alapértelmezett terméktípus','mgstp').'</label>';
     echo '<div style="margin-top:8px"><label>'.esc_html__('Elsődleges szín','mgstp').'<br>'.$color_select.'</label>';
     echo '<p class="description">'.esc_html__('Csak az itt felsorolt színek közül választhatsz. A kiválasztott szín jelenik meg alapértelmezetten a bulk feltöltésnél.','mgstp').'</p></div>';
+    echo '<div style="margin-top:8px"><label>'.esc_html__('Elsődleges méret','mgstp').'<br>'.$size_select.'</label>';
+    echo '<p class="description">'.esc_html__('A kiválasztott méret jelenik meg alapértelmezettként a bulk feltöltéskor.','mgstp').'</p></div>';
     echo '</td></tr>';
 
     echo '</tbody></table>';

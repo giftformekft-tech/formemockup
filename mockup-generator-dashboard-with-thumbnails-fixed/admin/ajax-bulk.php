@@ -52,15 +52,25 @@ add_action('wp_ajax_mg_bulk_process', function(){
 
         $primary_type = sanitize_text_field($_POST['primary_type'] ?? '');
         $primary_color_input = sanitize_text_field($_POST['primary_color'] ?? '');
+        $primary_size_input = sanitize_text_field($_POST['primary_size'] ?? '');
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         if ($primary_type !== '') {
             foreach ($selected as $prod) {
                 if ($prod['key'] === $primary_type) {
                     $defaults['type'] = $primary_type;
                     $color_slugs = array();
+                    $size_values = array();
                     if (!empty($prod['colors']) && is_array($prod['colors'])) {
                         foreach ($prod['colors'] as $c) {
                             if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
+                        }
+                    }
+                    if (!empty($prod['sizes']) && is_array($prod['sizes'])) {
+                        foreach ($prod['sizes'] as $size_value) {
+                            $size_value = is_string($size_value) ? trim($size_value) : '';
+                            if ($size_value !== '') {
+                                $size_values[] = $size_value;
+                            }
                         }
                     }
                     if ($primary_color_input && in_array($primary_color_input, $color_slugs, true)) {
@@ -69,6 +79,13 @@ add_action('wp_ajax_mg_bulk_process', function(){
                         $defaults['color'] = $prod['primary_color'];
                     } elseif (!empty($color_slugs)) {
                         $defaults['color'] = $color_slugs[0];
+                    }
+                    if ($primary_size_input && in_array($primary_size_input, $size_values, true)) {
+                        $defaults['size'] = $primary_size_input;
+                    } elseif (!empty($prod['primary_size']) && in_array($prod['primary_size'], $size_values, true)) {
+                        $defaults['size'] = $prod['primary_size'];
+                    } elseif (!empty($size_values)) {
+                        $defaults['size'] = $size_values[0];
                     }
                     break;
                 }

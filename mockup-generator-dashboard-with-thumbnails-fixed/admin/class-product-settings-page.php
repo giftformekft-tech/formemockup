@@ -60,20 +60,29 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
 
             $is_primary = !empty($_POST['is_primary']) ? 1 : 0;
             $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
+            $chosen_size = isset($_POST['primary_size']) ? sanitize_text_field($_POST['primary_size']) : ($prod['primary_size'] ?? '');
             $color_slugs = array();
             if (!empty($prod['colors']) && is_array($prod['colors'])) {
                 foreach ($prod['colors'] as $c) {
                     if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
                 }
             }
+            $size_values = isset($prod['sizes']) && is_array($prod['sizes']) ? array_values(array_filter(array_map('trim', $prod['sizes']), function($s){ return $s !== ''; })) : array();
             if ($chosen_color && !in_array($chosen_color, $color_slugs, true)) {
                 $chosen_color = '';
+            }
+            if ($chosen_size && !in_array($chosen_size, $size_values, true)) {
+                $chosen_size = '';
             }
             if ($is_primary && !$chosen_color && !empty($color_slugs)) {
                 $chosen_color = $color_slugs[0];
             }
+            if ($is_primary && !$chosen_size && !empty($size_values)) {
+                $chosen_size = $size_values[0];
+            }
             $prod['is_primary'] = $is_primary;
             $prod['primary_color'] = $chosen_color;
+            $prod['primary_size'] = $chosen_size;
 
             $views_json = stripslashes($_POST['views'] ?? '');
             $views = json_decode($views_json, true);
@@ -139,6 +148,7 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
         $colors_text = implode(PHP_EOL, array_map(function($c){ return $c['name'].':'.$c['slug']; }, $colors));
         $is_primary = !empty($prod['is_primary']);
         $primary_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
+        $primary_size = isset($prod['primary_size']) ? $prod['primary_size'] : '';
 
         // Helper: path -> URL in uploads
         $uploads = wp_upload_dir();
@@ -171,6 +181,17 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
                         </select>
                     </label>
                     <span class="description" style="display:block;margin-top:4px;">Csak az aktuális terméktípus színei választhatók. A kiválasztott páros jelenik meg alapértelmezettként a bulk feltöltésben.</span>
+                </p>
+                <p>
+                    <label>Elsődleges méret<br>
+                        <select name="primary_size" style="min-width:220px">
+                            <option value="">— Válassz méretet —</option>
+                            <?php foreach ($sizes as $size_option): if (!is_string($size_option) || $size_option === '') continue; ?>
+                                <option value="<?php echo esc_attr($size_option); ?>" <?php selected($primary_size, $size_option); ?>><?php echo esc_html($size_option); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <span class="description" style="display:block;margin-top:4px;">A kiválasztott méret jelenik meg alapértelmezésként a WooCommerce termékvariációknál.</span>
                 </p>
 
                 <h2>Méretek</h2>
