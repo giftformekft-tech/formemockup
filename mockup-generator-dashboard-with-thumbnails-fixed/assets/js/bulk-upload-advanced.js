@@ -17,6 +17,13 @@
     html += '</select>';
     return $(html);
   }
+  function refreshSubSelect($row, parentId){
+    var $current = $row.find('select.mg-subs');
+    var $new = buildSubMulti(parentId);
+    if ($current.length){ $current.replaceWith($new); }
+    else { $row.find('td').eq(4).append($new); }
+    return $new;
+  }
   function collectSubValues($sel){ var out=[]; $sel.find('option:selected').each(function(){ out.push($(this).val()); }); return out; }
 
   function mgEnsureHeader(){
@@ -63,9 +70,7 @@
       /* V8: bind main->subs change */
       $mainSel.on('change', function(){
         var pid = parseInt($(this).val(),10) || 0;
-        var $new = buildSubMulti(pid);
-        $subsSel.replaceWith($new);
-        $subsSel = $new;
+        $subsSel = refreshSubSelect($tr, pid);
       });
       $tr.append('<td><input type="text" class="mg-name" value="'+basename(file.name||'')+'"></td>');
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
@@ -106,6 +111,35 @@
   }
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
+
+  $(document).on('click', '#mg-bulk-apply-first', function(e){
+    e.preventDefault();
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var $first = $rows.first();
+    var mainVal = $first.find('select.mg-main').val() || '0';
+    var subVals = $first.find('select.mg-subs').val() || [];
+    if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
+    var parentId = $first.find('.mg-parent-id').val() || '0';
+    var parentHtml = $first.find('.mg-parent-results').html();
+    var tagsVal = ($first.find('.mg-tags-input').val()||'').trim();
+
+    $rows.slice(1).each(function(){
+      var $row = $(this);
+      var $mainSel = $row.find('select.mg-main');
+      $mainSel.val(mainVal);
+      var pid = parseInt(mainVal,10) || 0;
+      var $subsSel = refreshSubSelect($row, pid);
+      if (subVals.length){
+        $subsSel.find('option').each(function(){
+          if (subVals.indexOf($(this).val()) !== -1){ $(this).prop('selected', true); }
+        });
+      }
+      $row.find('.mg-parent-id').val(parentId);
+      $row.find('.mg-parent-results').html(parentHtml);
+      $row.find('.mg-tags-input').val(tagsVal);
+    });
+  });
 
   function getSelectedProductKeys(){
     var keys=[]; $('.mg-type-cb:checked').each(function(){ keys.push($(this).val()); }); return keys;
