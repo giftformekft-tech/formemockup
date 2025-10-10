@@ -3,6 +3,60 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    private function resolve_default_combo($selected_products, $requested_type, $requested_color) {
+        $requested_type = sanitize_title($requested_type ?? '');
+        $requested_color = sanitize_title($requested_color ?? '');
+        $candidate = null;
+        if (is_array($selected_products)) {
+            foreach ($selected_products as $prod) {
+                if (!is_array($prod) || empty($prod['key'])) { continue; }
+                $prod_key = sanitize_title($prod['key']);
+                if ($requested_type && $prod_key === $requested_type) {
+                    $candidate = $prod;
+                    break;
+                }
+            }
+            if (!$candidate) {
+                foreach ($selected_products as $prod) {
+                    if (!is_array($prod) || empty($prod['key'])) { continue; }
+                    if (!empty($prod['is_primary'])) {
+                        $candidate = $prod;
+                        break;
+                    }
+                }
+            }
+            if (!$candidate && !empty($selected_products)) {
+                foreach ($selected_products as $prod) {
+                    if (is_array($prod) && !empty($prod['key'])) { $candidate = $prod; break; }
+                }
+            }
+        }
+        if (!$candidate) {
+            return array('type' => '', 'color' => '');
+        }
+        $resolved_type = sanitize_title($candidate['key']);
+        $color_slugs = array();
+        if (!empty($candidate['colors']) && is_array($candidate['colors'])) {
+            foreach ($candidate['colors'] as $c) {
+                if (is_array($c) && isset($c['slug'])) {
+                    $color_slugs[] = sanitize_title($c['slug']);
+                }
+            }
+        }
+        $resolved_color = '';
+        if ($requested_color && in_array($requested_color, $color_slugs, true)) {
+            $resolved_color = $requested_color;
+        } else {
+            $preferred = isset($candidate['primary_color']) ? sanitize_title($candidate['primary_color']) : '';
+            if ($preferred && in_array($preferred, $color_slugs, true)) {
+                $resolved_color = $preferred;
+            } elseif (!empty($color_slugs)) {
+                $resolved_color = $color_slugs[0];
+            }
+        }
+        return array('type' => $resolved_type, 'color' => $resolved_color);
+    }
+
     private function assign_tags($product_id, $tags = array()){
         if (empty($tags) || !is_array($tags)) return;
         $names = array();
