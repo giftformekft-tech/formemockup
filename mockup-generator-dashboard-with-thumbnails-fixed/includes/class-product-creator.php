@@ -3,6 +3,60 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    private function resolve_default_combo($selected_products, $requested_type, $requested_color) {
+        $requested_type = sanitize_title($requested_type ?? '');
+        $requested_color = sanitize_title($requested_color ?? '');
+        $candidate = null;
+        if (is_array($selected_products)) {
+            foreach ($selected_products as $prod) {
+                if (!is_array($prod) || empty($prod['key'])) { continue; }
+                $prod_key = sanitize_title($prod['key']);
+                if ($requested_type && $prod_key === $requested_type) {
+                    $candidate = $prod;
+                    break;
+                }
+            }
+            if (!$candidate) {
+                foreach ($selected_products as $prod) {
+                    if (!is_array($prod) || empty($prod['key'])) { continue; }
+                    if (!empty($prod['is_primary'])) {
+                        $candidate = $prod;
+                        break;
+                    }
+                }
+            }
+            if (!$candidate && !empty($selected_products)) {
+                foreach ($selected_products as $prod) {
+                    if (is_array($prod) && !empty($prod['key'])) { $candidate = $prod; break; }
+                }
+            }
+        }
+        if (!$candidate) {
+            return array('type' => '', 'color' => '');
+        }
+        $resolved_type = sanitize_title($candidate['key']);
+        $color_slugs = array();
+        if (!empty($candidate['colors']) && is_array($candidate['colors'])) {
+            foreach ($candidate['colors'] as $c) {
+                if (is_array($c) && isset($c['slug'])) {
+                    $color_slugs[] = sanitize_title($c['slug']);
+                }
+            }
+        }
+        $resolved_color = '';
+        if ($requested_color && in_array($requested_color, $color_slugs, true)) {
+            $resolved_color = $requested_color;
+        } else {
+            $preferred = isset($candidate['primary_color']) ? sanitize_title($candidate['primary_color']) : '';
+            if ($preferred && in_array($preferred, $color_slugs, true)) {
+                $resolved_color = $preferred;
+            } elseif (!empty($color_slugs)) {
+                $resolved_color = $color_slugs[0];
+            }
+        }
+        return array('type' => $resolved_type, 'color' => $resolved_color);
+    }
+
     private function assign_tags($product_id, $tags = array()){
         if (empty($tags) || !is_array($tags)) return;
         $names = array();
@@ -64,7 +118,12 @@ class MG_Product_Creator {
         }
     }
 
-    public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array()) {
+    public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array()) {
+        $defaults = is_array($defaults) ? $defaults : array();
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '');
+        $default_type = $resolved_defaults['type'];
+        $default_color = $resolved_defaults['color'];
+
         $attr_type_id  = $this->ensure_attribute_taxonomy('Terméktípus','termektipus');
         $attr_color_id = $this->ensure_attribute_taxonomy('Szín','szin');
         $tax_type  = 'pa_termektipus'; $tax_color='pa_szin';
@@ -86,6 +145,8 @@ class MG_Product_Creator {
         }
         $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
         $color_pairs = array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
+        $available_type_slugs = array_map(function($t){ return isset($t['slug']) ? $t['slug'] : ''; }, $type_terms);
+        $available_color_slugs = array_map(function($pair){ return isset($pair['slug']) ? $pair['slug'] : ''; }, $color_pairs);
         $type_term_ids  = $this->ensure_terms_and_get_ids($tax_type,  $type_terms);
         $color_term_ids = $this->ensure_terms_and_get_ids($tax_color, $color_pairs);
         $image_ids=array(); $gallery=array();
@@ -141,11 +202,34 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                 }
             }
         }
-        if (!empty($gallery)) { $product->set_gallery_image_ids(array_values(array_unique($gallery))); $product->save(); }
+        $needs_save = false;
+        if (!empty($gallery)) {
+            $product->set_gallery_image_ids(array_values(array_unique($gallery)));
+            $needs_save = true;
+        }
+        $default_attrs = array();
+        if ($default_type && in_array($default_type, $available_type_slugs, true)) {
+            $default_attrs['pa_termektipus'] = $default_type;
+        }
+        if ($default_color && in_array($default_color, $available_color_slugs, true)) {
+            $default_attrs['pa_szin'] = $default_color;
+        }
+        if (!empty($default_attrs)) {
+            $existing_defaults = $product->get_default_attributes();
+            if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+            $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
+            $needs_save = true;
+        }
+        if ($needs_save) { $product->save(); }
         return $parent_id;
     }
 
-    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array()) {
+    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array()) {
+        $defaults = is_array($defaults) ? $defaults : array();
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '');
+        $default_type = $resolved_defaults['type'];
+        $default_color = $resolved_defaults['color'];
+
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
         if (!$product->is_type('variable')) { $p = new WC_Product_Variable($parent_id); $parent_id = $p->save(); $product = wc_get_product($parent_id); }
@@ -165,6 +249,8 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         }
         $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
         $color_pairs=array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
+        $available_type_slugs = array_map(function($t){ return isset($t['slug']) ? $t['slug'] : ''; }, $type_terms);
+        $available_color_slugs = array_map(function($pair){ return isset($pair['slug']) ? $pair['slug'] : ''; }, $color_pairs);
         $type_term_ids=$this->ensure_terms_and_get_ids($tax_type,$type_terms);
         $color_term_ids=$this->ensure_terms_and_get_ids($tax_color,$color_pairs);
         $attrs=$product->get_attributes();
@@ -229,6 +315,19 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $variation->save();
                 }
             }
+        }
+        $default_attrs = array();
+        if ($default_type && in_array($default_type, $available_type_slugs, true)) {
+            $default_attrs['pa_termektipus'] = $default_type;
+        }
+        if ($default_color && in_array($default_color, $available_color_slugs, true)) {
+            $default_attrs['pa_szin'] = $default_color;
+        }
+        if (!empty($default_attrs)) {
+            $existing_defaults = $product->get_default_attributes();
+            if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+            $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
+            $product->save();
         }
         return $product->get_id();
     }
