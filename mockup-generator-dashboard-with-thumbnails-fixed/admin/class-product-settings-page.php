@@ -23,7 +23,15 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
     }
     private static function save_product($prod) {
         $products = get_option('mg_products', array());
-        foreach ($products as $i=>$p) if ($p['key']===$prod['key']) $products[$i]=$prod;
+        $is_primary = !empty($prod['is_primary']);
+        foreach ($products as $i=>$p) {
+            if (!is_array($p) || !isset($p['key'])) continue;
+            if ($p['key']===$prod['key']) {
+                $products[$i]=$prod;
+            } elseif ($is_primary) {
+                $products[$i]['is_primary'] = 0;
+            }
+        }
         update_option('mg_products',$products);
     }
     public static function render_product() {
@@ -49,6 +57,32 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
                 }
             }
             if (!empty($colors)) $prod['colors']=$colors;
+
+            $is_primary = !empty($_POST['is_primary']) ? 1 : 0;
+            $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
+            $chosen_size = isset($_POST['primary_size']) ? sanitize_text_field($_POST['primary_size']) : ($prod['primary_size'] ?? '');
+            $color_slugs = array();
+            if (!empty($prod['colors']) && is_array($prod['colors'])) {
+                foreach ($prod['colors'] as $c) {
+                    if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
+                }
+            }
+            $size_values = isset($prod['sizes']) && is_array($prod['sizes']) ? array_values(array_filter(array_map('trim', $prod['sizes']), function($s){ return $s !== ''; })) : array();
+            if ($chosen_color && !in_array($chosen_color, $color_slugs, true)) {
+                $chosen_color = '';
+            }
+            if ($chosen_size && !in_array($chosen_size, $size_values, true)) {
+                $chosen_size = '';
+            }
+            if ($is_primary && !$chosen_color && !empty($color_slugs)) {
+                $chosen_color = $color_slugs[0];
+            }
+            if ($is_primary && !$chosen_size && !empty($size_values)) {
+                $chosen_size = $size_values[0];
+            }
+            $prod['is_primary'] = $is_primary;
+            $prod['primary_color'] = $chosen_color;
+            $prod['primary_size'] = $chosen_size;
 
             $views_json = stripslashes($_POST['views'] ?? '');
             $views = json_decode($views_json, true);
@@ -112,6 +146,9 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
         $over = isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides']) ? $prod['mockup_overrides'] : array();
 
         $colors_text = implode(PHP_EOL, array_map(function($c){ return $c['name'].':'.$c['slug']; }, $colors));
+        $is_primary = !empty($prod['is_primary']);
+        $primary_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
+        $primary_size = isset($prod['primary_size']) ? $prod['primary_size'] : '';
 
         // Helper: path -> URL in uploads
         $uploads = wp_upload_dir();
@@ -131,6 +168,31 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
+
+                <h2>Elsődleges beállítások</h2>
+                <p><label><input type="checkbox" name="is_primary" value="1" <?php checked($is_primary); ?> /> Ez legyen az alapértelmezett terméktípus</label></p>
+                <p>
+                    <label>Elsődleges szín<br>
+                        <select name="primary_color" style="min-width:220px">
+                            <option value="">— Válassz színt —</option>
+                            <?php foreach ($colors as $c): if (!isset($c['slug'], $c['name'])) continue; ?>
+                                <option value="<?php echo esc_attr($c['slug']); ?>" <?php selected($primary_color, $c['slug']); ?>><?php echo esc_html($c['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <span class="description" style="display:block;margin-top:4px;">Csak az aktuális terméktípus színei választhatók. A kiválasztott páros jelenik meg alapértelmezettként a bulk feltöltésben.</span>
+                </p>
+                <p>
+                    <label>Elsődleges méret<br>
+                        <select name="primary_size" style="min-width:220px">
+                            <option value="">— Válassz méretet —</option>
+                            <?php foreach ($sizes as $size_option): if (!is_string($size_option) || $size_option === '') continue; ?>
+                                <option value="<?php echo esc_attr($size_option); ?>" <?php selected($primary_size, $size_option); ?>><?php echo esc_html($size_option); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <span class="description" style="display:block;margin-top:4px;">A kiválasztott méret jelenik meg alapértelmezésként a WooCommerce termékvariációknál.</span>
+                </p>
 
                 <h2>Méretek</h2>
                 <p><input type="text" name="sizes" class="regular-text" value="<?php echo esc_attr(implode(',', $sizes)); ?>" /></p>

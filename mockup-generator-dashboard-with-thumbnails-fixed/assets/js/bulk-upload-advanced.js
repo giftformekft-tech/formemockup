@@ -26,6 +26,123 @@
   }
   function collectSubValues($sel){ var out=[]; $sel.find('option:selected').each(function(){ out.push($(this).val()); }); return out; }
 
+  function getProductByKey(key){
+    var list = (MG_BULK_ADV.products || []);
+    for (var i=0; i<list.length; i++){
+      if (list[i] && list[i].key === key){ return list[i]; }
+    }
+    return null;
+  }
+
+  function renderDefaultColorOptions($select, typeKey, preferredColor){
+    var product = getProductByKey(typeKey || '');
+    var colors = (product && Array.isArray(product.colors)) ? product.colors : [];
+    var targetColor = preferredColor;
+    if ((!targetColor || typeof targetColor !== 'string' || targetColor === '') && product && product.primary_color){
+      targetColor = product.primary_color;
+    }
+    var activeColor = '';
+    $select.empty();
+    if (!colors.length){
+      $select.append($('<option>', { value: '', text: '— Ehhez a típushoz nincs szín —' }));
+      return '';
+    }
+    colors.forEach(function(c, idx){
+      if (!c || !c.slug) { return; }
+      var name = c.name || c.slug;
+      var selectThis = false;
+      if (targetColor && c.slug === targetColor){ selectThis = true; }
+      else if (!targetColor && idx === 0){ selectThis = true; }
+      var $opt = $('<option>', { value: c.slug, text: name });
+      if (selectThis){
+        $opt.prop('selected', true);
+        activeColor = c.slug;
+      }
+      $select.append($opt);
+    });
+    if (!activeColor && colors.length){
+      activeColor = colors[0].slug;
+      $select.val(activeColor);
+    }
+    return activeColor;
+  }
+
+  function renderDefaultSizeOptions($select, typeKey, preferredSize){
+    var product = getProductByKey(typeKey || '');
+    var sizes = (product && Array.isArray(product.sizes)) ? product.sizes : [];
+    var targetSize = preferredSize;
+    if ((!targetSize || typeof targetSize !== 'string' || targetSize === '') && product && typeof product.primary_size === 'string') {
+      targetSize = product.primary_size;
+    }
+    var activeSize = '';
+    if (!$select || !$select.length) { return targetSize || ''; }
+    $select.empty();
+    if (!sizes.length){
+      $select.append($('<option>', { value: '', text: '— Ehhez a típushoz nincs méret —' }));
+      return '';
+    }
+    sizes.forEach(function(sizeLabel, idx){
+      if (typeof sizeLabel !== 'string' || sizeLabel.trim() === '') { return; }
+      var name = sizeLabel.trim();
+      var selectThis = false;
+      if (targetSize && name === targetSize){ selectThis = true; }
+      else if (!targetSize && idx === 0){ selectThis = true; }
+      var $opt = $('<option>', { value: name, text: name });
+      if (selectThis){
+        $opt.prop('selected', true);
+        activeSize = name;
+      }
+      $select.append($opt);
+    });
+    if (!activeSize && sizes.length){
+      activeSize = (typeof sizes[0] === 'string') ? sizes[0] : '';
+      if (activeSize) { $select.val(activeSize); }
+    }
+    return activeSize;
+  }
+
+  function initDefaultSelectors(){
+    var $type = $('#mg-default-type');
+    var $color = $('#mg-default-color');
+    var $size = $('#mg-default-size');
+    if (!$type.length){ return; }
+    var initialType = (MG_BULK_ADV.default_type && typeof MG_BULK_ADV.default_type === 'string') ? MG_BULK_ADV.default_type : ($type.val() || '');
+    if (initialType){ $type.val(initialType); }
+    var initialColorPref = (MG_BULK_ADV.default_color && typeof MG_BULK_ADV.default_color === 'string' && MG_BULK_ADV.default_color !== '') ? MG_BULK_ADV.default_color : null;
+    var initialSizePref = (MG_BULK_ADV.default_size && typeof MG_BULK_ADV.default_size === 'string' && MG_BULK_ADV.default_size !== '') ? MG_BULK_ADV.default_size : null;
+    var resolvedColor = $color.length ? renderDefaultColorOptions($color, $type.val(), initialColorPref) : '';
+    var resolvedSize = $size.length ? renderDefaultSizeOptions($size, $type.val(), initialSizePref) : '';
+    MG_BULK_ADV.activeDefaults = {
+      type: $type.val() || '',
+      color: resolvedColor || '',
+      size: resolvedSize || ''
+    };
+    $type.on('change', function(){
+      var selectedType = $(this).val();
+      var updatedColor = $color.length ? renderDefaultColorOptions($color, selectedType, null) : '';
+      var updatedSize = $size.length ? renderDefaultSizeOptions($size, selectedType, null) : '';
+      MG_BULK_ADV.activeDefaults = {
+        type: selectedType || '',
+        color: updatedColor || '',
+        size: updatedSize || ''
+      };
+    });
+    if ($color.length){
+      $color.on('change', function(){
+        if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
+        MG_BULK_ADV.activeDefaults.type = $type.val() || '';
+        MG_BULK_ADV.activeDefaults.color = $(this).val() || '';
+      });
+    }
+    if ($size.length){
+      $size.on('change', function(){
+        if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
+        MG_BULK_ADV.activeDefaults.type = $type.val() || '';
+        MG_BULK_ADV.activeDefaults.size = $(this).val() || '';
+      });
+    }
+  }
+
   function mgEnsureHeader(){
     var $thead = $('.mg-bulk-table thead tr');
     if ($thead.length) {
@@ -45,7 +162,7 @@
   function renderRows(files){
     var $tbody = $('#mg-bulk-rows').empty();
     if (!files || !files.length){
-      $tbody.append('<tr class="no-items"><td colspan="8">Válassz fájlokat fent.</td></tr>');
+      $tbody.append('<tr class="no-items"><td colspan="9">Válassz fájlokat fent.</td></tr>');
       return;
     }
     mgEnsureHeader();
@@ -112,33 +229,106 @@
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
 
-  $(document).on('click', '#mg-bulk-apply-first', function(e){
-    e.preventDefault();
+  function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
     if ($rows.length <= 1){ return; }
     var $first = $rows.first();
     var mainVal = $first.find('select.mg-main').val() || '0';
-    var subVals = $first.find('select.mg-subs').val() || [];
-    if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
-    var parentId = $first.find('.mg-parent-id').val() || '0';
-    var parentHtml = $first.find('.mg-parent-results').html();
-    var tagsVal = ($first.find('.mg-tags-input').val()||'').trim();
-
     $rows.slice(1).each(function(){
       var $row = $(this);
       var $mainSel = $row.find('select.mg-main');
-      $mainSel.val(mainVal);
-      var pid = parseInt(mainVal,10) || 0;
-      var $subsSel = refreshSubSelect($row, pid);
-      if (subVals.length){
-        $subsSel.find('option').each(function(){
-          if (subVals.indexOf($(this).val()) !== -1){ $(this).prop('selected', true); }
-        });
+      if ($mainSel.val() !== mainVal){
+        $mainSel.val(mainVal);
+        var pid = parseInt(mainVal,10) || 0;
+        refreshSubSelect($row, pid);
       }
+    });
+  }
+
+  function copySubsFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var $first = $rows.first();
+    var subVals = $first.find('select.mg-subs').val() || [];
+    if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
+    $rows.slice(1).each(function(){
+      var $row = $(this);
+      var $subsSel = $row.find('select.mg-subs');
+      if (!$subsSel.length){
+        var pid = parseInt($row.find('select.mg-main').val(),10) || 0;
+        $subsSel = refreshSubSelect($row, pid);
+      }
+      if (!subVals.length){
+        $subsSel.val([]);
+        return;
+      }
+      $subsSel.find('option').each(function(){
+        var $opt = $(this);
+        $opt.prop('selected', subVals.indexOf($opt.val()) !== -1);
+      });
+    });
+  }
+
+  function copyParentFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var $first = $rows.first();
+    var parentId = $first.find('.mg-parent-id').val() || '0';
+    var parentHtml = $first.find('.mg-parent-results').html();
+    $rows.slice(1).each(function(){
+      var $row = $(this);
       $row.find('.mg-parent-id').val(parentId);
       $row.find('.mg-parent-results').html(parentHtml);
-      $row.find('.mg-tags-input').val(tagsVal);
     });
+  }
+
+  function copyTagsFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var tagsVal = ($rows.first().find('.mg-tags-input').val()||'').trim();
+    $rows.slice(1).each(function(){
+      $(this).find('.mg-tags-input').val(tagsVal);
+    });
+  }
+
+  function setupCopyButtons(){
+    var $legacy = $('#mg-bulk-apply-first');
+    if (!$legacy.length || $legacy.data('mgSplitReady')){ return; }
+    $legacy.data('mgSplitReady', true);
+    var $wrapper = $legacy.parent();
+    if ($wrapper.length){ $wrapper.addClass('mg-copy-actions'); }
+    var $mainBtn = $('<button type="button" class="button" id="mg-bulk-copy-main">Főkategória másolása az első sorból</button>');
+    var $subsBtn = $('<button type="button" class="button" id="mg-bulk-copy-subs">Alkategóriák másolása az első sorból</button>');
+    var $tagsBtn = $('<button type="button" class="button" id="mg-bulk-copy-tags">Tag-ek másolása az első sorból</button>');
+    $legacy.after($tagsBtn).after($subsBtn).after($mainBtn);
+  }
+
+  $(setupCopyButtons);
+  $(initDefaultSelectors);
+
+  $(document).on('click', '#mg-bulk-copy-main', function(e){
+    e.preventDefault();
+    copyMainFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-copy-subs', function(e){
+    e.preventDefault();
+    copySubsFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-copy-tags', function(e){
+    e.preventDefault();
+    copyTagsFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-apply-first', function(e){
+    e.preventDefault();
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    copyMainFromFirst();
+    copySubsFromFirst();
+    copyParentFromFirst();
+    copyTagsFromFirst();
   });
 
   function getSelectedProductKeys(){
@@ -188,6 +378,10 @@
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
       form.append('tags', tags);
+      var defaults = MG_BULK_ADV.activeDefaults || {};
+      form.append('primary_type', defaults.type || '');
+      form.append('primary_color', defaults.color || '');
+      form.append('primary_size', defaults.size || '');
 
       $row.find('.mg-state').text('Feldolgozás...');
       $.ajax({
