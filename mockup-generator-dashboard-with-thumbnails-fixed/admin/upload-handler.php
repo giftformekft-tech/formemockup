@@ -47,12 +47,30 @@ add_action('admin_post_mg_upload_design_multi', function() {
 
         $creator = new MG_Product_Creator();
         $assign_cats = array('main'=>$main_cat, 'sub'=>$sub_cat);
+        $defaults = array('type' => '', 'color' => '');
+        $primary_candidate = null;
+        foreach ($selected as $prod) {
+            if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }
+        }
+        if (!$primary_candidate && !empty($selected)) { $primary_candidate = $selected[0]; }
+        if ($primary_candidate) {
+            $defaults['type'] = $primary_candidate['key'];
+            $color_slugs = array();
+            if (!empty($primary_candidate['colors']) && is_array($primary_candidate['colors'])) {
+                foreach ($primary_candidate['colors'] as $c) { if (isset($c['slug'])) { $color_slugs[] = $c['slug']; } }
+            }
+            if (!empty($primary_candidate['primary_color']) && in_array($primary_candidate['primary_color'], $color_slugs, true)) {
+                $defaults['color'] = $primary_candidate['primary_color'];
+            } elseif (!empty($color_slugs)) {
+                $defaults['color'] = $color_slugs[0];
+            }
+        }
 
         if ($parent_id > 0) {
-            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $assign_cats);
+            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $assign_cats, $defaults);
             if (is_wp_error($result)) throw new Exception($result->get_error_message());
         } else {
-            $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $assign_cats);
+            $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $assign_cats, $defaults);
             if (is_wp_error($product_id)) throw new Exception($product_id->get_error_message());
         }
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;

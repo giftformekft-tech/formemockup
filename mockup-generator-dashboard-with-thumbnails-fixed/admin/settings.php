@@ -31,6 +31,11 @@ function mgstp_read_products(){
                     );
                 }
             }
+            $is_primary = !empty($p['is_primary']);
+            $primary_color = isset($p['primary_color']) ? sanitize_title($p['primary_color']) : '';
+            if ($primary_color && !array_filter($colors, function($c) use ($primary_color){ return $c['slug'] === $primary_color; })) {
+                $primary_color = '';
+            }
             $out[$key] = array(
                 'key'=>$key,
                 'label'=> isset($p['label']) ? wp_kses_post($p['label']) : $key,
@@ -40,6 +45,8 @@ function mgstp_read_products(){
                 'colors'=> $colors,
                 // ÚJ
                 'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
+                'is_primary' => $is_primary ? 1 : 0,
+                'primary_color' => $primary_color,
             );
         }
     }
@@ -87,6 +94,8 @@ function mgstp_save_products($products){
             'colors'=> $colors,
             // ÚJ
             'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
+            'is_primary' => !empty($p['is_primary']) ? 1 : 0,
+            'primary_color' => isset($p['primary_color']) ? sanitize_title($p['primary_color']) : '',
         );
     }
     update_option('mg_products', $norm);
@@ -104,7 +113,8 @@ function mgstp_render_settings(){
         if ($new_key && $new_label) {
             $products[$new_key] = array(
                 'key'=>$new_key, 'label'=>$new_label, 'sku_prefix'=>strtoupper($new_key),
-                'price'=>0, 'sizes'=>array(), 'colors'=>array(), 'type_description'=>''
+                'price'=>0, 'sizes'=>array(), 'colors'=>array(), 'type_description'=>'',
+                'is_primary'=>0, 'primary_color'=>''
             );
             mgstp_save_products($products);
             wp_safe_redirect( admin_url('admin.php?page=mockup-generator-settings&product='.$new_key) );
@@ -134,10 +144,35 @@ function mgstp_render_settings(){
         // Színek mockup/print_area: változatlanul hagyva
         $colors = isset($row['colors']) && is_array($row['colors']) ? $row['colors'] : $products[$current_key]['colors'];
 
+        $is_primary = !empty($row['is_primary']);
+        $primary_color = isset($row['primary_color']) ? sanitize_title($row['primary_color']) : ($products[$current_key]['primary_color'] ?? '');
+        $color_slugs = array();
+        if (is_array($colors)) {
+            foreach ($colors as $c) {
+                if (is_array($c) && isset($c['slug'])) {
+                    $color_slugs[] = $c['slug'];
+                }
+            }
+        }
+        if ($primary_color && !in_array($primary_color, $color_slugs, true)) {
+            $primary_color = '';
+        }
+        if ($is_primary && !$primary_color && !empty($color_slugs)) {
+            $primary_color = $color_slugs[0];
+        }
+        if ($is_primary) {
+            foreach ($products as $key => $existing) {
+                if ($key !== $current_key) {
+                    $products[$key]['is_primary'] = 0;
+                }
+            }
+        }
         $products[$current_key] = array(
             'key'=>$current_key,'label'=>$label,'sku_prefix'=>$sku,'price'=>$price,
             'sizes'=>$sizes,'colors'=>$colors,
-            'type_description'=>$type_desc
+            'type_description'=>$type_desc,
+            'is_primary'=> $is_primary ? 1 : 0,
+            'primary_color'=> $primary_color,
         );
         mgstp_save_products($products);
         echo '<div class="notice notice-success is-dismissible"><p>'.esc_html__('Mentve.','mgstp').'</p></div>';
@@ -196,6 +231,23 @@ function mgstp_render_settings(){
         echo '<textarea name="mg[type_description]" rows="10" style="width:100%">'.esc_textarea($p['type_description']).'</textarea>';
     }
     echo '<p class="description">'.esc_html__('Ez a típushoz tartozó szülő termék leírása lesz.','mgstp').'</p>';
+    echo '</td></tr>';
+
+    $is_primary_checked = !empty($p['is_primary']);
+    $selected_primary_color = isset($p['primary_color']) ? $p['primary_color'] : '';
+    $color_select = '<select name="mg[primary_color]" style="min-width:220px">';
+    $color_select .= '<option value="">— '.esc_html__('Válassz színt','mgstp').' —</option>';
+    if (!empty($p['colors']) && is_array($p['colors'])) {
+        foreach ($p['colors'] as $c) {
+            if (!isset($c['slug']) || !isset($c['name'])) continue;
+            $color_select .= '<option value="'.esc_attr($c['slug']).'"'.selected($selected_primary_color, $c['slug'], false).'>'.esc_html($c['name']).'</option>';
+        }
+    }
+    $color_select .= '</select>';
+    echo '<tr><th>'.esc_html__('Elsődleges beállítás','mgstp').'</th><td>';
+    echo '<label><input type="checkbox" name="mg[is_primary]" value="1"'.checked($is_primary_checked, true, false).'> '.esc_html__('Ez legyen az alapértelmezett terméktípus','mgstp').'</label>';
+    echo '<div style="margin-top:8px"><label>'.esc_html__('Elsődleges szín','mgstp').'<br>'.$color_select.'</label>';
+    echo '<p class="description">'.esc_html__('Csak az itt felsorolt színek közül választhatsz. A kiválasztott szín jelenik meg alapértelmezetten a bulk feltöltésnél.','mgstp').'</p></div>';
     echo '</td></tr>';
 
     echo '</tbody></table>';
