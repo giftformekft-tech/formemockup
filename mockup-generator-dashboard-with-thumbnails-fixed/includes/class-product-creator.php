@@ -3,6 +3,76 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    private function sanitize_size_list($product) {
+        $sizes = array();
+        if (is_array($product)) {
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) { continue; }
+                    $size_value = trim($size_value);
+                    if ($size_value === '') { continue; }
+                    $sizes[] = $size_value;
+                }
+            }
+            if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+                foreach ($product['size_color_matrix'] as $size_label => $colors) {
+                    if (!is_string($size_label)) { continue; }
+                    $size_label = trim($size_label);
+                    if ($size_label === '') { continue; }
+                    $sizes[] = $size_label;
+                }
+            }
+        }
+        return array_values(array_unique($sizes));
+    }
+
+    private function normalize_size_color_matrix($product) {
+        $matrix = array();
+        $has_entries = false;
+        if (is_array($product) && !empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+            foreach ($product['size_color_matrix'] as $size_label => $colors) {
+                if (!is_string($size_label)) { continue; }
+                $size_label = trim($size_label);
+                if ($size_label === '') { continue; }
+                $clean_colors = array();
+                if (is_array($colors)) {
+                    foreach ($colors as $slug) {
+                        $slug = sanitize_title($slug);
+                        if ($slug === '') { continue; }
+                        if (!in_array($slug, $clean_colors, true)) {
+                            $clean_colors[] = $slug;
+                        }
+                    }
+                }
+                $matrix[$size_label] = $clean_colors;
+                if (!empty($clean_colors) || array_key_exists($size_label, $product['size_color_matrix'])) {
+                    $has_entries = true;
+                }
+            }
+        }
+        return array($matrix, $has_entries);
+    }
+
+    private function get_allowed_sizes_for_color($product, $color_slug) {
+        $color_slug = sanitize_title($color_slug ?? '');
+        $base_sizes = $this->sanitize_size_list($product);
+        list($matrix, $has_entries) = $this->normalize_size_color_matrix($product);
+        if (!$has_entries) {
+            return $base_sizes;
+        }
+        if ($color_slug === '') {
+            return $base_sizes;
+        }
+        $allowed = array();
+        foreach ($matrix as $size_label => $colors) {
+            if (in_array($color_slug, $colors, true)) {
+                $allowed[] = $size_label;
+            }
+        }
+        $allowed = array_values(array_unique($allowed));
+        return $allowed;
+    }
+
     private function resolve_default_combo($selected_products, $requested_type, $requested_color, $requested_size = '') {
         $requested_type = sanitize_title($requested_type ?? '');
         $requested_color = sanitize_title($requested_color ?? '');
@@ -45,15 +115,7 @@ class MG_Product_Creator {
             }
         }
         $resolved_size = '';
-        $sizes = array();
-        if (!empty($candidate['sizes']) && is_array($candidate['sizes'])) {
-            foreach ($candidate['sizes'] as $size_value) {
-                if (!is_string($size_value)) { continue; }
-                $size_value = trim($size_value);
-                if ($size_value === '') { continue; }
-                $sizes[] = $size_value;
-            }
-        }
+        $sizes = $this->sanitize_size_list($candidate);
         $resolved_color = '';
         if ($requested_color && in_array($requested_color, $color_slugs, true)) {
             $resolved_color = $requested_color;
@@ -65,12 +127,28 @@ class MG_Product_Creator {
                 $resolved_color = $color_slugs[0];
             }
         }
-        if ($requested_size && in_array($requested_size, $sizes, true)) {
+        $allowed_sizes = $this->get_allowed_sizes_for_color($candidate, $resolved_color);
+        if ($resolved_color && empty($allowed_sizes) && !empty($color_slugs)) {
+            foreach ($color_slugs as $slug_option) {
+                $candidate_allowed = $this->get_allowed_sizes_for_color($candidate, $slug_option);
+                if (!empty($candidate_allowed)) {
+                    $resolved_color = $slug_option;
+                    $allowed_sizes = $candidate_allowed;
+                    break;
+                }
+            }
+        }
+        if (empty($allowed_sizes)) {
+            $allowed_sizes = $sizes;
+        }
+        $primary_size = isset($candidate['primary_size']) ? $candidate['primary_size'] : '';
+        if (!is_string($primary_size)) { $primary_size = ''; }
+        if ($requested_size && in_array($requested_size, $allowed_sizes, true)) {
             $resolved_size = $requested_size;
-        } elseif (!empty($candidate['primary_size']) && in_array($candidate['primary_size'], $sizes, true)) {
-            $resolved_size = $candidate['primary_size'];
-        } elseif (!empty($sizes)) {
-            $resolved_size = $sizes[0];
+        } elseif ($primary_size && in_array($primary_size, $allowed_sizes, true)) {
+            $resolved_size = $primary_size;
+        } elseif (!empty($allowed_sizes)) {
+            $resolved_size = $allowed_sizes[0];
         }
         return array('type' => $resolved_type, 'color' => $resolved_color, 'size' => $resolved_size);
     }
@@ -202,7 +280,8 @@ class MG_Product_Creator {
             $tags_map[$p['key']] = isset($p['tags']) && is_array($p['tags']) ? $p['tags'] : array();
             $type_terms[] = array('slug'=>$p['key'], 'name'=>$p['label']);
             foreach ($p['colors'] as $c) $color_terms[$c['slug']] = $c['name'];
-            $all_sizes = array_values(array_unique(array_merge($all_sizes, $p['sizes'])));
+            $sanitized_sizes = $this->sanitize_size_list($p);
+            $all_sizes = array_values(array_unique(array_merge($all_sizes, $sanitized_sizes)));
             $price_map[$p['key']] = intval($p['price'] ?? 0);
             $size_surcharge_map[$p['key']]  = is_array($p['size_surcharges'] ?? null) ? $p['size_surcharges'] : array();
             $color_surcharge_map[$p['key']] = is_array($p['color_surcharges'] ?? null) ? $p['color_surcharges'] : array();
@@ -253,11 +332,22 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         $created_variations = array();
         foreach ($selected_products as $p) {
-            $type_slug=$p['key']; $valid_sizes=$p['sizes']; $colors=array_map(function($c){return $c['slug'];}, $p['colors']);
+            $type_slug = isset($p['key']) ? sanitize_title($p['key']) : '';
+            if ($type_slug === '') { continue; }
+            $colors = array();
+            if (!empty($p['colors']) && is_array($p['colors'])) {
+                foreach ($p['colors'] as $c) {
+                    if (is_array($c) && isset($c['slug'])) {
+                        $colors[] = sanitize_title($c['slug']);
+                    }
+                }
+            }
             $base_price=intval($price_map[$type_slug]??0); $size_map=$size_surcharge_map[$type_slug]??array(); $color_map_local=$color_surcharge_map[$type_slug]??array(); $prefix=$sku_prefix_map[$type_slug]??strtoupper($type_slug);
             foreach ($colors as $color_slug) {
+                $allowed_sizes = $this->get_allowed_sizes_for_color($p, $color_slug);
+                if (empty($allowed_sizes)) { continue; }
                 $imgs=$image_ids[$type_slug][$color_slug]??array(); $img_id=!empty($imgs)?$imgs[0]:0;
-                foreach ($valid_sizes as $size) {
+                foreach ($allowed_sizes as $size) {
                     $price=max(0, $base_price+intval($size_map[$size]??0)+intval($color_map_local[$color_slug]??0));
                     $variation=new WC_Product_Variation(); $variation->set_parent_id($parent_id);
                     $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'meret'=>$size]);
@@ -331,7 +421,8 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         foreach ($selected_products as $p) {
             $type_terms[] = array('slug'=>$p['key'], 'name'=>$p['label']);
             foreach ($p['colors'] as $c) $color_terms[$c['slug']]=$c['name'];
-            $all_sizes = array_values(array_unique(array_merge($all_sizes, $p['sizes'])));
+            $sanitized_sizes = $this->sanitize_size_list($p);
+            $all_sizes = array_values(array_unique(array_merge($all_sizes, $sanitized_sizes)));
             $price_map[$p['key']] = intval($p['price'] ?? 0);
             $size_surcharge_map[$p['key']]  = is_array($p['size_surcharges'] ?? null) ? $p['size_surcharges'] : array();
             $color_surcharge_map[$p['key']] = is_array($p['color_surcharges'] ?? null) ? $p['color_surcharges'] : array();
@@ -392,10 +483,22 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $created_variations = array();
         foreach ($selected_products as $p) {
-            $type_slug=$p['key']; $valid_sizes=$p['sizes']; $colors=array_map(function($c){return $c['slug'];}, $p['colors']);
+            $type_slug = isset($p['key']) ? sanitize_title($p['key']) : '';
+            if ($type_slug === '') { continue; }
+            $colors = array();
+            if (!empty($p['colors']) && is_array($p['colors'])) {
+                foreach ($p['colors'] as $c) {
+                    if (is_array($c) && isset($c['slug'])) {
+                        $colors[] = sanitize_title($c['slug']);
+                    }
+                }
+            }
             $base_price=intval($price_map[$type_slug]??0); $size_map=$size_surcharge_map[$type_slug]??array(); $color_map_local=$color_surcharge_map[$type_slug]??array(); $prefix=$sku_prefix_map[$type_slug]??strtoupper($type_slug);
-            foreach ($colors as $color_slug) { $imgs=$image_ids[$type_slug][$color_slug]??array(); $img_id=!empty($imgs)?$imgs[0]:0;
-                foreach ($valid_sizes as $size) {
+            foreach ($colors as $color_slug) {
+                $allowed_sizes = $this->get_allowed_sizes_for_color($p, $color_slug);
+                if (empty($allowed_sizes)) { continue; }
+                $imgs=$image_ids[$type_slug][$color_slug]??array(); $img_id=!empty($imgs)?$imgs[0]:0;
+                foreach ($allowed_sizes as $size) {
                     $key=$type_slug.'|'.$color_slug.'|'.$size; if (isset($existing[$key])) continue;
                     $price=max(0,$base_price+intval($size_map[$size]??0)+intval($color_map_local[$color_slug]??0));
                     $variation=new WC_Product_Variation();

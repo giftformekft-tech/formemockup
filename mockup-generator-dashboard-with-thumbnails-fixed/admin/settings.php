@@ -41,6 +41,7 @@ function mgstp_read_products(){
             if ($primary_size && !in_array($primary_size, $sizes, true)) {
                 $primary_size = '';
             }
+            $matrix = mgstp_normalize_size_color_matrix($sizes, $colors, isset($p['size_color_matrix']) ? $p['size_color_matrix'] : array());
             $out[$key] = array(
                 'key'=>$key,
                 'label'=> isset($p['label']) ? wp_kses_post($p['label']) : $key,
@@ -53,10 +54,53 @@ function mgstp_read_products(){
                 'is_primary' => $is_primary ? 1 : 0,
                 'primary_color' => $primary_color,
                 'primary_size' => $primary_size,
+                'size_color_matrix' => $matrix,
             );
         }
     }
     return $out;
+}
+
+function mgstp_normalize_size_color_matrix($sizes, $colors, $matrix){
+    $size_values = array();
+    if (is_array($sizes)) {
+        foreach ($sizes as $size_label) {
+            if (!is_string($size_label)) { continue; }
+            $size_label = trim($size_label);
+            if ($size_label === '') { continue; }
+            $size_values[] = $size_label;
+        }
+    }
+    $size_values = array_values(array_unique($size_values));
+    $color_slugs = array();
+    if (is_array($colors)) {
+        foreach ($colors as $c) {
+            if (is_array($c) && isset($c['slug'])) {
+                $slug = sanitize_title($c['slug']);
+                if ($slug !== '' && !in_array($slug, $color_slugs, true)) {
+                    $color_slugs[] = $slug;
+                }
+            }
+        }
+    }
+    $normalized = array();
+    if (is_array($matrix)) {
+        foreach ($matrix as $size_key => $color_list) {
+            if (!is_string($size_key)) { continue; }
+            $size_key = trim($size_key);
+            if ($size_key === '' || !in_array($size_key, $size_values, true)) { continue; }
+            $clean = array();
+            if (is_array($color_list)) {
+                foreach ($color_list as $slug) {
+                    $slug = sanitize_title($slug);
+                    if ($slug === '' || !in_array($slug, $color_slugs, true)) { continue; }
+                    if (!in_array($slug, $clean, true)) { $clean[] = $slug; }
+                }
+            }
+            $normalized[$size_key] = $clean;
+        }
+    }
+    return $normalized;
 }
 
 function mgstp_save_products($products){
@@ -96,6 +140,7 @@ function mgstp_save_products($products){
         if ($primary_size && !in_array($primary_size, $sizes, true)) {
             $primary_size = '';
         }
+        $matrix = mgstp_normalize_size_color_matrix($sizes, $colors, isset($p['size_color_matrix']) ? $p['size_color_matrix'] : array());
         $norm[] = array(
             'key'=>$p['key'],
             'label'=>$p['label'],
@@ -108,6 +153,7 @@ function mgstp_save_products($products){
             'is_primary' => !empty($p['is_primary']) ? 1 : 0,
             'primary_color' => isset($p['primary_color']) ? sanitize_title($p['primary_color']) : '',
             'primary_size' => $primary_size,
+            'size_color_matrix' => $matrix,
         );
     }
     update_option('mg_products', $norm);
@@ -126,7 +172,7 @@ function mgstp_render_settings(){
             $products[$new_key] = array(
                 'key'=>$new_key, 'label'=>$new_label, 'sku_prefix'=>strtoupper($new_key),
                 'price'=>0, 'sizes'=>array(), 'colors'=>array(), 'type_description'=>'',
-                'is_primary'=>0, 'primary_color'=>'', 'primary_size'=>''
+                'is_primary'=>0, 'primary_color'=>'', 'primary_size'=>'', 'size_color_matrix'=>array()
             );
             mgstp_save_products($products);
             wp_safe_redirect( admin_url('admin.php?page=mockup-generator-settings&product='.$new_key) );
@@ -179,6 +225,9 @@ function mgstp_render_settings(){
         if ($is_primary && !$primary_size && !empty($sizes)) {
             $primary_size = $sizes[0];
         }
+        $existing_matrix = isset($products[$current_key]['size_color_matrix']) ? $products[$current_key]['size_color_matrix'] : array();
+        $matrix_input = isset($row['size_color_matrix']) ? $row['size_color_matrix'] : $existing_matrix;
+        $matrix = mgstp_normalize_size_color_matrix($sizes, $colors, $matrix_input);
         if ($is_primary) {
             foreach ($products as $key => $existing) {
                 if ($key !== $current_key) {
@@ -193,6 +242,7 @@ function mgstp_render_settings(){
             'is_primary'=> $is_primary ? 1 : 0,
             'primary_color'=> $primary_color,
             'primary_size' => $primary_size,
+            'size_color_matrix' => $matrix,
         );
         mgstp_save_products($products);
         echo '<div class="notice notice-success is-dismissible"><p>'.esc_html__('Mentve.','mgstp').'</p></div>';

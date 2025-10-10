@@ -64,39 +64,87 @@
       activeColor = colors[0].slug;
       $select.val(activeColor);
     }
+    if (product && product.color_sizes) {
+      var needsSwitch = false;
+      if (!activeColor) {
+        needsSwitch = true;
+      } else if (Object.prototype.hasOwnProperty.call(product.color_sizes, activeColor)) {
+        var list = product.color_sizes[activeColor];
+        if (Array.isArray(list) && list.length === 0) {
+          needsSwitch = true;
+        }
+      }
+      if (needsSwitch) {
+        for (var i = 0; i < colors.length; i++) {
+          var slugCandidate = colors[i] && colors[i].slug ? colors[i].slug : '';
+          if (!slugCandidate) { continue; }
+          var candidateList = product.color_sizes[slugCandidate];
+          if (Array.isArray(candidateList) && candidateList.length === 0) { continue; }
+          activeColor = slugCandidate;
+          $select.val(activeColor);
+          break;
+        }
+      }
+    }
     return activeColor;
   }
 
-  function renderDefaultSizeOptions($select, typeKey, preferredSize){
+  function renderDefaultSizeOptions($select, typeKey, colorSlug, preferredSize){
+    if (!$select || !$select.length) { return ''; }
     var product = getProductByKey(typeKey || '');
-    var sizes = (product && Array.isArray(product.sizes)) ? product.sizes : [];
+    var sizes = [];
+    if (product) {
+      var map = (product && product.color_sizes) ? product.color_sizes : null;
+      if (colorSlug && map && Object.prototype.hasOwnProperty.call(map, colorSlug)) {
+        var fromMap = map[colorSlug];
+        if (Array.isArray(fromMap)) {
+          sizes = fromMap.slice();
+        } else {
+          sizes = [];
+        }
+      } else if (Array.isArray(product.sizes)) {
+        sizes = product.sizes.slice();
+      }
+    }
+    if ((!sizes || !sizes.length) && product && Array.isArray(product.sizes)) {
+      sizes = product.sizes.slice();
+    }
+    if (!Array.isArray(sizes)) { sizes = []; }
+    sizes = sizes
+      .map(function(item){ return (typeof item === 'string') ? item.trim() : ''; })
+      .filter(function(item){ return item !== ''; });
+    var unique = [];
+    sizes.forEach(function(item){ if (unique.indexOf(item) === -1) { unique.push(item); } });
+    sizes = unique;
     var targetSize = preferredSize;
     if ((!targetSize || typeof targetSize !== 'string' || targetSize === '') && product && typeof product.primary_size === 'string') {
       targetSize = product.primary_size;
     }
-    var activeSize = '';
-    if (!$select || !$select.length) { return targetSize || ''; }
+    if (targetSize && sizes.indexOf(targetSize) === -1) {
+      targetSize = '';
+    }
     $select.empty();
     if (!sizes.length){
-      $select.append($('<option>', { value: '', text: '— Ehhez a típushoz nincs méret —' }));
+      $select.append($('<option>', { value: '', text: '— Ehhez a színhez nincs méret —' }));
+      $select.prop('disabled', true);
       return '';
     }
+    $select.prop('disabled', false);
+    var activeSize = '';
     sizes.forEach(function(sizeLabel, idx){
-      if (typeof sizeLabel !== 'string' || sizeLabel.trim() === '') { return; }
-      var name = sizeLabel.trim();
       var selectThis = false;
-      if (targetSize && name === targetSize){ selectThis = true; }
+      if (targetSize && sizeLabel === targetSize){ selectThis = true; }
       else if (!targetSize && idx === 0){ selectThis = true; }
-      var $opt = $('<option>', { value: name, text: name });
+      var $opt = $('<option>', { value: sizeLabel, text: sizeLabel });
       if (selectThis){
         $opt.prop('selected', true);
-        activeSize = name;
+        activeSize = sizeLabel;
       }
       $select.append($opt);
     });
     if (!activeSize && sizes.length){
-      activeSize = (typeof sizes[0] === 'string') ? sizes[0] : '';
-      if (activeSize) { $select.val(activeSize); }
+      activeSize = sizes[0];
+      $select.val(activeSize);
     }
     return activeSize;
   }
@@ -111,7 +159,7 @@
     var initialColorPref = (MG_BULK_ADV.default_color && typeof MG_BULK_ADV.default_color === 'string' && MG_BULK_ADV.default_color !== '') ? MG_BULK_ADV.default_color : null;
     var initialSizePref = (MG_BULK_ADV.default_size && typeof MG_BULK_ADV.default_size === 'string' && MG_BULK_ADV.default_size !== '') ? MG_BULK_ADV.default_size : null;
     var resolvedColor = $color.length ? renderDefaultColorOptions($color, $type.val(), initialColorPref) : '';
-    var resolvedSize = $size.length ? renderDefaultSizeOptions($size, $type.val(), initialSizePref) : '';
+    var resolvedSize = $size.length ? renderDefaultSizeOptions($size, $type.val(), resolvedColor, initialSizePref) : '';
     MG_BULK_ADV.activeDefaults = {
       type: $type.val() || '',
       color: resolvedColor || '',
@@ -120,7 +168,7 @@
     $type.on('change', function(){
       var selectedType = $(this).val();
       var updatedColor = $color.length ? renderDefaultColorOptions($color, selectedType, null) : '';
-      var updatedSize = $size.length ? renderDefaultSizeOptions($size, selectedType, null) : '';
+      var updatedSize = $size.length ? renderDefaultSizeOptions($size, selectedType, updatedColor, null) : '';
       MG_BULK_ADV.activeDefaults = {
         type: selectedType || '',
         color: updatedColor || '',
@@ -131,7 +179,11 @@
       $color.on('change', function(){
         if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
         MG_BULK_ADV.activeDefaults.type = $type.val() || '';
-        MG_BULK_ADV.activeDefaults.color = $(this).val() || '';
+        var activeColor = $(this).val() || '';
+        MG_BULK_ADV.activeDefaults.color = activeColor;
+        var retainedSize = MG_BULK_ADV.activeDefaults.size || '';
+        var resolved = $size.length ? renderDefaultSizeOptions($size, MG_BULK_ADV.activeDefaults.type, activeColor, retainedSize) : '';
+        MG_BULK_ADV.activeDefaults.size = resolved || '';
       });
     }
     if ($size.length){
