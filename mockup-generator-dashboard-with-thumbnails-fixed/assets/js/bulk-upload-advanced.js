@@ -123,6 +123,8 @@
     var parentId = $first.find('.mg-parent-id').val() || '0';
     var parentHtml = $first.find('.mg-parent-results').html();
     var tagsVal = ($first.find('.mg-tags-input').val()||'').trim();
+    var nameVal = $first.find('.mg-name').val() || '';
+    var parentSearchVal = $first.find('.mg-parent-search').val() || '';
 
     $rows.slice(1).each(function(){
       var $row = $(this);
@@ -138,6 +140,8 @@
       $row.find('.mg-parent-id').val(parentId);
       $row.find('.mg-parent-results').html(parentHtml);
       $row.find('.mg-tags-input').val(tagsVal);
+      $row.find('.mg-name').val(nameVal);
+      $row.find('.mg-parent-search').val(parentSearchVal);
     });
   });
 
