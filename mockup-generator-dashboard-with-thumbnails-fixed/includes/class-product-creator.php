@@ -260,7 +260,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                 foreach ($valid_sizes as $size) {
                     $price=max(0, $base_price+intval($size_map[$size]??0)+intval($color_map_local[$color_slug]??0));
                     $variation=new WC_Product_Variation(); $variation->set_parent_id($parent_id);
-                    $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size]);
+                    $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'meret'=>$size]);
                     if ($price>0) $variation->set_regular_price($price);
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
@@ -268,7 +268,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $created_variations[] = $this->normalize_attributes(array(
                         'pa_termektipus'=>$type_slug,
                         'pa_szin'=>$color_slug,
-                        'méret'=>$size,
+                        'meret'=>$size,
                     ));
                 }
             }
@@ -400,7 +400,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $price=max(0,$base_price+intval($size_map[$size]??0)+intval($color_map_local[$color_slug]??0));
                     $variation=new WC_Product_Variation();
                     $variation->set_parent_id($product->get_id());
-                    $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size]);
+                    $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'meret'=>$size]);
                     if ($price>0) $variation->set_regular_price($price);
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
@@ -408,7 +408,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $created_variations[] = $this->normalize_attributes(array(
                         'pa_termektipus'=>$type_slug,
                         'pa_szin'=>$color_slug,
-                        'méret'=>$size,
+                        'meret'=>$size,
                     ));
                 }
             }
