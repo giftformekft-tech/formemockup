@@ -120,9 +120,8 @@ class MG_Product_Creator {
 
     public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
-        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '');
-        $default_type = $resolved_defaults['type'];
-        $default_color = $resolved_defaults['color'];
+        $default_type = isset($defaults['type']) ? sanitize_title($defaults['type']) : '';
+        $default_color = isset($defaults['color']) ? sanitize_title($defaults['color']) : '';
 
         $attr_type_id  = $this->ensure_attribute_taxonomy('Terméktípus','termektipus');
         $attr_color_id = $this->ensure_attribute_taxonomy('Szín','szin');
@@ -226,9 +225,8 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
 
     public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
-        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '');
-        $default_type = $resolved_defaults['type'];
-        $default_color = $resolved_defaults['color'];
+        $default_type = isset($defaults['type']) ? sanitize_title($defaults['type']) : '';
+        $default_color = isset($defaults['color']) ? sanitize_title($defaults['color']) : '';
 
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
