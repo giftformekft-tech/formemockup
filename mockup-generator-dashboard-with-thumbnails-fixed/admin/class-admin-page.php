@@ -1,0 +1,152 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+// Always load AJAX handlers so admin-ajax.php has the hooks
+$ajax_bulk = plugin_dir_path(__FILE__).'ajax-bulk.php';
+if (file_exists($ajax_bulk)) { require_once $ajax_bulk; }
+
+// Keep product search if present
+$ajax_search = plugin_dir_path(__FILE__).'ajax-product-search.php';
+if (file_exists($ajax_search)) { require_once $ajax_search; }
+
+require_once plugin_dir_path(__FILE__).'class-dashboard-page.php';
+
+class MG_Admin_Page {
+    public static function add_menu_page() {
+        add_menu_page('Mockup Generator','Mockup Generator','edit_products','mockup-generator',[ 'MG_Dashboard_Page','render_page' ],'dashicons-art');
+
+        add_submenu_page('mockup-generator','Dashboard','Dashboard','edit_products','mockup-generator-dashboard',[ 'MG_Dashboard_Page','render_page' ]);
+        add_submenu_page('mockup-generator','Bulk feltöltés','Bulk feltöltés','edit_products','mockup-generator-bulk',[ self::class,'render_page' ]);
+
+
+}
+
+    public static function render_page() {
+        if (isset($_GET['status'])) {
+            if ($_GET['status'] === 'success') {
+                echo '<div class="notice notice-success is-dismissible"><p>Sikeres generálás.</p></div>';
+            } elseif ($_GET['status'] === 'error') {
+                $msg = isset($_GET['mg_error']) ? sanitize_text_field(wp_unslash($_GET['mg_error'])) : 'Ismeretlen hiba.';
+                echo '<div class="notice notice-error"><p><strong>Hiba:</strong> '.esc_html($msg).'</p></div>';
+            }
+        }
+
+        // Enqueue assets
+        wp_enqueue_style('mg-bulk-css', plugin_dir_url(__FILE__).'../assets/css/bulk-upload.css', array(), filemtime(plugin_dir_path(__FILE__).'../assets/css/bulk-upload.css'));
+if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
+            wp_enqueue_script('mg-product-search', plugin_dir_url(__FILE__).'../assets/js/product-search.js', array('jquery'), '1.0.1', true);
+            wp_localize_script('mg-product-search', 'MG_SEARCH', array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => wp_create_nonce('mg_search_nonce'),
+            ));
+        }
+
+        // Data for categories
+        $mains = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));
+        $subs_map = array();
+        if (!is_wp_error($mains)) {
+            foreach ($mains as $c) {
+                $subs = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>$c->term_id));
+                $subs_map[$c->term_id] = !is_wp_error($subs) ? array_map(function($t){
+                    return array('id'=>$t->term_id,'name'=>$t->name);
+                }, $subs) : array();
+            }
+        }
+        $products = get_option('mg_products', array());
+
+        wp_enqueue_script('mg-bulk-advanced', plugin_dir_url(__FILE__).'../assets/js/bulk-upload-advanced.js', array('jquery'), filemtime(plugin_dir_path(__FILE__).'../assets/js/bulk-upload-advanced.js'), true);
+wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce'    => wp_create_nonce('mg_bulk_nonce'),
+            'mains'    => !is_wp_error($mains) ? array_map(function($t){ return array('id'=>$t->term_id,'name'=>$t->name); }, $mains) : array(),
+            'subs'     => $subs_map,
+        ));
+
+        ?>
+        <div class="wrap">
+          <h1>Mockup Generator</h1>
+          <p><a href="<?php echo admin_url('admin.php?page=mockup-generator-settings'); ?>" class="button">Beállítások</a></p>
+
+          <h2>Bulk feltöltés – kényelmes mód</h2>
+          <div class="card">
+            <p>Több mintát tölthetsz fel egyszerre, és <strong>soronként</strong> beállíthatod a főkategóriát, több alkategóriát, terméknevet, és a (meglévő) szülő terméket is.</p>
+            <div class="mg-row">
+              <label><strong>Mintafájlok</strong></label>
+              <div id="mg-drop-zone" class="mg-drop-zone"><div class="mg-drop-inner">Húzd ide a mintákat vagy <button type="button" class="button-link">válaszd ki</button></div><input type="file" id="mg-bulk-files-adv" accept=".png,.jpg,.jpeg,.webp" multiple style="display:none"></div>
+            </div>
+            <div class="mg-row">
+              <label><strong>Terméktípusok (globális)</strong></label>
+              <div class="mg-types">
+              <?php if (empty($products)): ?>
+                  <em>Még nincs felvéve terméktípus. Menj a Beállítások oldalra.</em>
+              <?php else: foreach ($products as $p): ?>
+                  <label class="mg-type"><input type="checkbox" class="mg-type-cb" value="<?php echo esc_attr($p['key']); ?>" checked="checked"> <?php echo esc_html($p['label']); ?></label>
+              <?php endforeach; endif; ?>
+              </div>
+            </div>
+
+            <h3>Tételek</h3>
+            <div class="mg-table-wrap">
+              <table class="widefat fixed striped mg-bulk-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Előnézet</th>
+                    <th>Fájlnév</th>
+                    <th>Főkategória</th>
+                    <th>Alkategóriák</th>
+                    <th>Terméknév</th>
+                    <th>Szülő keresése</th>
+                    <th>Állapot</th>
+                  </tr>
+                </thead>
+                <tbody id="mg-bulk-rows">
+                  <tr class="no-items"><td colspan="8">Válassz fájlokat fent.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="mg-actions">
+              <button class="button button-primary" id="mg-bulk-start">Bulk generálás indítása</button>
+              <div class="mg-progress"><div class="mg-bar" id="mg-bulk-bar" style="width:0%"></div></div>
+              <span id="mg-bulk-status">0%</span>
+            </div>
+          </div>
+        </div>
+        <?php
+    }
+}
+
+add_action('admin_menu', ['MG_Dashboard_Page','add_menu_page']);
+
+// Cleanup: remove auto mirror submenu that points to 'mockup-generator'
+add_action('admin_menu', function(){
+    global $submenu;
+    if (isset($submenu['mockup-generator'])){
+        foreach ($submenu['mockup-generator'] as $i => $item){
+            if (isset($item[2]) && $item[2] === 'mockup-generator'){
+                unset($submenu['mockup-generator'][$i]);
+                break;
+            }
+        }
+    }
+}, 999);
+
+// Final cleanup: remove duplicated first 'Dashboard' submenu automatically created by WP
+add_action('admin_menu', function(){
+    global $submenu;
+    if (isset($submenu['mockup-generator'])){
+        $seen_dashboard = false;
+        foreach ($submenu['mockup-generator'] as $i => $item){
+            if (isset($item[2]) && ($item[2] === 'mockup-generator' || stripos($item[0],'dashboard') !== false)){
+                if ($seen_dashboard){
+                    unset($submenu['mockup-generator'][$i]);
+                } else {
+                    $seen_dashboard = true;
+                }
+            }
+        }
+        // Reindex
+        $submenu['mockup-generator'] = array_values($submenu['mockup-generator']);
+    }
+}, 999);
