@@ -75,13 +75,48 @@ class MG_Product_Creator {
         return array('type' => $resolved_type, 'color' => $resolved_color, 'size' => $resolved_size);
     }
 
+    private function normalize_attributes($attributes) {
+        $normalized = array();
+        if (!is_array($attributes)) { return $normalized; }
+        foreach ($attributes as $key => $value) {
+            if ($value === '' || $value === null) { continue; }
+            if (!is_string($key) || $key === '') { continue; }
+            $normalized_key = $key;
+            if (strpos($normalized_key, 'attribute_') === 0) {
+                $normalized_key = substr($normalized_key, 10);
+            }
+            $lower_key = strtolower($normalized_key);
+            if ($lower_key === 'méret' || $lower_key === 'meret') {
+                $normalized_key = 'meret';
+            } elseif ($lower_key === 'attribute_méret' || $lower_key === 'attribute_meret') {
+                $normalized_key = 'meret';
+            } elseif ($lower_key === 'pa_termektipus') {
+                $normalized_key = 'pa_termektipus';
+            } elseif ($lower_key === 'pa_szin') {
+                $normalized_key = 'pa_szin';
+            } elseif ($lower_key === 'pa_meret') {
+                $normalized_key = 'meret';
+            } elseif (strpos($lower_key, 'pa_') === 0) {
+                $normalized_key = $lower_key;
+            } else {
+                $normalized_key = sanitize_title($normalized_key);
+            }
+            $normalized[$normalized_key] = $value;
+        }
+        return $normalized;
+    }
+
     private function attributes_match_required($required, $candidate) {
         if (!is_array($required) || empty($required)) { return false; }
         if (!is_array($candidate) || empty($candidate)) { return false; }
-        foreach ($required as $key => $value) {
+        $required_normalized = $this->normalize_attributes($required);
+        if (empty($required_normalized)) { return false; }
+        $candidate_normalized = $this->normalize_attributes($candidate);
+        if (empty($candidate_normalized)) { return false; }
+        foreach ($required_normalized as $key => $value) {
             if ($value === '' || $value === null) { continue; }
-            if (!array_key_exists($key, $candidate)) { return false; }
-            if ($candidate[$key] !== $value) { return false; }
+            if (!array_key_exists($key, $candidate_normalized)) { return false; }
+            if ((string)$candidate_normalized[$key] !== (string)$value) { return false; }
         }
         return true;
     }
@@ -230,7 +265,11 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
                     $variation->save();
-                    $created_variations[] = array('pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size);
+                    $created_variations[] = $this->normalize_attributes(array(
+                        'pa_termektipus'=>$type_slug,
+                        'pa_szin'=>$color_slug,
+                        'méret'=>$size,
+                    ));
                 }
             }
         }
@@ -247,26 +286,25 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $default_attrs['pa_szin'] = $default_color;
         }
         if ($default_size && in_array($default_size, $all_sizes, true)) {
-            $default_attrs['méret'] = $default_size;
+            $default_attrs['meret'] = $default_size;
         }
         $applied_defaults = array();
         if (!empty($default_attrs)) {
             $default_attrs = array_filter($default_attrs, function($value){ return $value !== '' && $value !== null; });
-            $matched = null;
+            $matched = array();
             foreach ($created_variations as $attrs) {
-                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $attrs; break; }
+                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $this->normalize_attributes($attrs); break; }
             }
-            if (!$matched && !empty($created_variations)) { $matched = $created_variations[0]; }
-            if ($matched) {
+            if (empty($matched) && !empty($created_variations)) { $matched = $this->normalize_attributes($created_variations[0]); }
+            if (!empty($matched)) {
                 $default_attrs = array_merge($matched, $default_attrs);
-                $existing_defaults = $product->get_default_attributes();
-                if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+                $existing_defaults = $this->normalize_attributes($product->get_default_attributes());
                 $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
                 $needs_save = true;
-                $applied_defaults = $product->get_default_attributes();
+                $applied_defaults = $this->normalize_attributes($product->get_default_attributes());
             }
         }
-        if ($needs_save) { $product->save(); $applied_defaults = $product->get_default_attributes(); }
+        if ($needs_save) { $product->save(); $applied_defaults = $this->normalize_attributes($product->get_default_attributes()); }
         if (!empty($applied_defaults)) {
             update_post_meta($parent_id, '_default_attributes', $applied_defaults);
             if (function_exists('wc_delete_product_transients')) { wc_delete_product_transients($parent_id); }
@@ -346,9 +384,10 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         }
         $existing=array();
         foreach ($product->get_children() as $vid){
-            $v=wc_get_product($vid); $atts=$v->get_attributes();
-            $k = ($atts[$tax_type] ?? '').'|'.($atts[$tax_color] ?? '').'|'.($atts['méret'] ?? $atts['Méret'] ?? '');
-            $existing[$k]=true;
+            $v=wc_get_product($vid); $atts=$v ? $v->get_attributes() : array();
+            $norm=$this->normalize_attributes($atts);
+            $k = ($norm['pa_termektipus'] ?? '').'|'.($norm['pa_szin'] ?? '').'|'.($norm['meret'] ?? '');
+            if ($k !== '||') { $existing[$k]=true; }
         }
         $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $created_variations = array();
@@ -366,7 +405,11 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
                     $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
                     $variation->save();
-                    $created_variations[] = array('pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'méret'=>$size);
+                    $created_variations[] = $this->normalize_attributes(array(
+                        'pa_termektipus'=>$type_slug,
+                        'pa_szin'=>$color_slug,
+                        'méret'=>$size,
+                    ));
                 }
             }
         }
@@ -380,7 +423,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $existing_sizes = $attr_size->get_options();
         $existing_sizes = is_array($existing_sizes) ? array_values(array_unique(array_filter($existing_sizes))) : array();
         if ($default_size && in_array($default_size, $existing_sizes, true)) {
-            $default_attrs['méret'] = $default_size;
+            $default_attrs['meret'] = $default_size;
         }
         $applied_defaults = array();
         if (!empty($default_attrs)) {
@@ -388,21 +431,20 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $variation_candidates = array();
             foreach ($product->get_children() as $vid) {
                 $v = wc_get_product($vid);
-                if ($v && $v->get_id()) { $variation_candidates[] = $v->get_attributes(); }
+                if ($v && $v->get_id()) { $variation_candidates[] = $this->normalize_attributes($v->get_attributes()); }
             }
             foreach ($created_variations as $attrs) { $variation_candidates[] = $attrs; }
             $matched = null;
             foreach ($variation_candidates as $attrs) {
-                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $attrs; break; }
+                if ($this->attributes_match_required($default_attrs, $attrs)) { $matched = $this->normalize_attributes($attrs); break; }
             }
-            if (!$matched && !empty($variation_candidates)) { $matched = $variation_candidates[0]; }
-            if ($matched) {
+            if (!$matched && !empty($variation_candidates)) { $matched = $this->normalize_attributes($variation_candidates[0]); }
+            if (!empty($matched)) {
                 $default_attrs = array_merge($matched, $default_attrs);
-                $existing_defaults = $product->get_default_attributes();
-                if (!is_array($existing_defaults)) { $existing_defaults = array(); }
+                $existing_defaults = $this->normalize_attributes($product->get_default_attributes());
                 $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
                 $product->save();
-                $applied_defaults = $product->get_default_attributes();
+                $applied_defaults = $this->normalize_attributes($product->get_default_attributes());
             }
         }
         if (!empty($applied_defaults)) {

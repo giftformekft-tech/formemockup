@@ -162,7 +162,7 @@
   function renderRows(files){
     var $tbody = $('#mg-bulk-rows').empty();
     if (!files || !files.length){
-      $tbody.append('<tr class="no-items"><td colspan="8">Válassz fájlokat fent.</td></tr>');
+      $tbody.append('<tr class="no-items"><td colspan="9">Válassz fájlokat fent.</td></tr>');
       return;
     }
     mgEnsureHeader();
