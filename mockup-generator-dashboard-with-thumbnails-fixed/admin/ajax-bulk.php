@@ -50,14 +50,39 @@ add_action('wp_ajax_mg_bulk_process', function(){
             $images_by_type_color[$prod['key']] = $res;
         }
 
+        $primary_type = sanitize_text_field($_POST['primary_type'] ?? '');
+        $primary_color_input = sanitize_text_field($_POST['primary_color'] ?? '');
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
+        if ($primary_type !== '') {
+            foreach ($selected as $prod) {
+                if ($prod['key'] === $primary_type) {
+                    $defaults['type'] = $primary_type;
+                    $color_slugs = array();
+                    if (!empty($prod['colors']) && is_array($prod['colors'])) {
+                        foreach ($prod['colors'] as $c) {
+                            if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
+                        }
+                    }
+                    if ($primary_color_input && in_array($primary_color_input, $color_slugs, true)) {
+                        $defaults['color'] = $primary_color_input;
+                    } elseif (!empty($prod['primary_color']) && in_array($prod['primary_color'], $color_slugs, true)) {
+                        $defaults['color'] = $prod['primary_color'];
+                    } elseif (!empty($color_slugs)) {
+                        $defaults['color'] = $color_slugs[0];
+                    }
+                    break;
+                }
+            }
+        }
+
         $creator = new MG_Product_Creator();
         $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
         if ($parent_id > 0) {
-            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats);
+            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
-            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats);
+            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
             wp_send_json_success(array('product_id'=>$pid));
         }

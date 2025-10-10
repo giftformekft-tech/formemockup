@@ -31,7 +31,25 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         }
 
         $creator = new MG_Product_Creator();
-        $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color);
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
+        $primary_candidate = null;
+        foreach ($selected as $prod) {
+            if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }
+        }
+        if (!$primary_candidate && !empty($selected)) { $primary_candidate = $selected[0]; }
+        if ($primary_candidate) {
+            $defaults['type'] = $primary_candidate['key'];
+            $color_slugs = array();
+            if (!empty($primary_candidate['colors']) && is_array($primary_candidate['colors'])) {
+                foreach ($primary_candidate['colors'] as $c) { if (isset($c['slug'])) { $color_slugs[] = $c['slug']; } }
+            }
+            if (!empty($primary_candidate['primary_color']) && in_array($primary_candidate['primary_color'], $color_slugs, true)) {
+                $defaults['color'] = $primary_candidate['primary_color'];
+            } elseif (!empty($color_slugs)) {
+                $defaults['color'] = $color_slugs[0];
+            }
+        }
+        $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults);
         if (is_wp_error($product_id)) wp_send_json_error(array('message'=>$product_id->get_error_message()), 500);
 
         wp_send_json_success(array('product_id'=>$product_id, 'name'=>$parent_name));

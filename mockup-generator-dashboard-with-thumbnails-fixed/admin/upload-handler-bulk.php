@@ -23,6 +23,24 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         if (!file_exists($gen_path) || !file_exists($creator_path)) throw new Exception('Hiányzó rendszerfájlok.');
         require_once $gen_path; require_once $creator_path;
         $creator = new MG_Product_Creator();
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
+        $primary_candidate = null;
+        foreach ($selected as $prod) {
+            if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }
+        }
+        if (!$primary_candidate && !empty($selected)) { $primary_candidate = $selected[0]; }
+        if ($primary_candidate) {
+            $defaults['type'] = $primary_candidate['key'];
+            $color_slugs = array();
+            if (!empty($primary_candidate['colors']) && is_array($primary_candidate['colors'])) {
+                foreach ($primary_candidate['colors'] as $c) { if (isset($c['slug'])) { $color_slugs[] = $c['slug']; } }
+            }
+            if (!empty($primary_candidate['primary_color']) && in_array($primary_candidate['primary_color'], $color_slugs, true)) {
+                $defaults['color'] = $primary_candidate['primary_color'];
+            } elseif (!empty($color_slugs)) {
+                $defaults['color'] = $color_slugs[0];
+            }
+        }
         for ($i=0; $i < $count; $i++) {
             if (!isset($files['tmp_name'][$i]) || empty($files['tmp_name'][$i])) continue;
             if (!empty($files['error'][$i])) continue;
@@ -42,7 +60,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             }
             if (empty($images_by_type_color)) continue;
             $cats = array('main'=> intval($main[$i] ?? 0), 'sub'=> intval($sub[$i] ?? 0));
-            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats);
+            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults);
         }
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;
     } catch (Throwable $e) {
