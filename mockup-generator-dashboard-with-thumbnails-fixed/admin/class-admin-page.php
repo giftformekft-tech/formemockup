@@ -53,14 +53,86 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
             }
         }
         $products = get_option('mg_products', array());
+        $products = is_array($products) ? array_values(array_filter($products, function($p){ return is_array($p) && !empty($p['key']); })) : array();
+        $default_type = '';
+        $default_color = '';
+        foreach ($products as &$prod) {
+            if (!isset($prod['colors']) || !is_array($prod['colors'])) { $prod['colors'] = array(); }
+            if (!isset($prod['label'])) { $prod['label'] = $prod['key']; }
+            if (!$default_type && !empty($prod['is_primary'])) {
+                $default_type = $prod['key'];
+                $default_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
+            }
+        }
+        unset($prod);
+        if (!$default_type && !empty($products)) {
+            $default_type = $products[0]['key'];
+            $default_color = isset($products[0]['primary_color']) ? $products[0]['primary_color'] : '';
+        }
+        $default_color = is_string($default_color) ? $default_color : '';
+        $default_colors_available = array();
+        foreach ($products as $prod) {
+            if ($prod['key'] === $default_type) {
+                foreach ($prod['colors'] as $c) {
+                    if (isset($c['slug'])) { $default_colors_available[] = $c['slug']; }
+                }
+                break;
+            }
+        }
+        if ($default_color && !in_array($default_color, $default_colors_available, true)) {
+            $default_color = !empty($default_colors_available) ? $default_colors_available[0] : '';
+        } elseif (!$default_color && !empty($default_colors_available)) {
+            $default_color = $default_colors_available[0];
+        }
+        if ($default_type) {
+            $primary_index = null;
+            foreach ($products as $idx => $prod) {
+                if ($prod['key'] === $default_type) { $primary_index = $idx; break; }
+            }
+            if ($primary_index !== null && $primary_index > 0) {
+                $primary_item = $products[$primary_index];
+                array_splice($products, $primary_index, 1);
+                array_unshift($products, $primary_item);
+            }
+        }
+        $products_for_js = array_map(function($p){
+            $colors = array();
+            if (!empty($p['colors']) && is_array($p['colors'])) {
+                foreach ($p['colors'] as $c) {
+                    if (!isset($c['slug'])) continue;
+                    $colors[] = array(
+                        'slug' => $c['slug'],
+                        'name' => isset($c['name']) ? $c['name'] : $c['slug'],
+                    );
+                }
+            }
+            return array(
+                'key' => $p['key'],
+                'label' => isset($p['label']) ? $p['label'] : $p['key'],
+                'colors' => $colors,
+                'primary_color' => isset($p['primary_color']) ? $p['primary_color'] : '',
+                'is_primary' => !empty($p['is_primary']) ? 1 : 0,
+            );
+        }, $products);
 
         wp_enqueue_script('mg-bulk-advanced', plugin_dir_url(__FILE__).'../assets/js/bulk-upload-advanced.js', array('jquery'), filemtime(plugin_dir_path(__FILE__).'../assets/js/bulk-upload-advanced.js'), true);
-wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
+        wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce'    => wp_create_nonce('mg_bulk_nonce'),
             'mains'    => !is_wp_error($mains) ? array_map(function($t){ return array('id'=>$t->term_id,'name'=>$t->name); }, $mains) : array(),
             'subs'     => $subs_map,
+            'products' => $products_for_js,
+            'default_type' => $default_type,
+            'default_color' => $default_color,
         ));
+
+        $default_colors_render = array();
+        foreach ($products as $prod) {
+            if ($prod['key'] === $default_type) {
+                $default_colors_render = is_array($prod['colors']) ? $prod['colors'] : array();
+                break;
+            }
+        }
 
         ?>
         <div class="wrap">
@@ -83,6 +155,29 @@ wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
                   <label class="mg-type"><input type="checkbox" class="mg-type-cb" value="<?php echo esc_attr($p['key']); ?>" checked="checked"> <?php echo esc_html($p['label']); ?></label>
               <?php endforeach; endif; ?>
               </div>
+              <?php if (!empty($products)): ?>
+              <div class="mg-default-selects">
+                <label><strong>Alapértelmezett terméktípus</strong></label>
+                <select id="mg-default-type">
+                  <?php foreach ($products as $p): ?>
+                    <option value="<?php echo esc_attr($p['key']); ?>" <?php selected($default_type, $p['key']); ?>><?php echo esc_html($p['label']); ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="mg-default-selects">
+                <label><strong>Alapértelmezett szín</strong></label>
+                <select id="mg-default-color">
+                  <?php if (!empty($default_colors_render)): ?>
+                    <?php foreach ($default_colors_render as $color): if (!isset($color['slug'], $color['name'])) continue; ?>
+                      <option value="<?php echo esc_attr($color['slug']); ?>" <?php selected($default_color, $color['slug']); ?>><?php echo esc_html($color['name']); ?></option>
+                    <?php endforeach; ?>
+                  <?php else: ?>
+                    <option value="">— Ehhez a típushoz nincs szín —</option>
+                  <?php endif; ?>
+                </select>
+              </div>
+              <p class="description" style="margin-top:8px;">Az itt megadott páros lesz előre kiválasztva a bulk feltöltés elindításakor.</p>
+              <?php endif; ?>
             </div>
 
             <h3>Tételek</h3>

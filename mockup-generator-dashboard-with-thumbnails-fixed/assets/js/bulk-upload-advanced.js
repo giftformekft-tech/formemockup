@@ -26,6 +26,74 @@
   }
   function collectSubValues($sel){ var out=[]; $sel.find('option:selected').each(function(){ out.push($(this).val()); }); return out; }
 
+  function getProductByKey(key){
+    var list = (MG_BULK_ADV.products || []);
+    for (var i=0; i<list.length; i++){
+      if (list[i] && list[i].key === key){ return list[i]; }
+    }
+    return null;
+  }
+
+  function renderDefaultColorOptions($select, typeKey, preferredColor){
+    var product = getProductByKey(typeKey || '');
+    var colors = (product && Array.isArray(product.colors)) ? product.colors : [];
+    var targetColor = preferredColor;
+    if ((!targetColor || typeof targetColor !== 'string' || targetColor === '') && product && product.primary_color){
+      targetColor = product.primary_color;
+    }
+    var activeColor = '';
+    $select.empty();
+    if (!colors.length){
+      $select.append($('<option>', { value: '', text: '— Ehhez a típushoz nincs szín —' }));
+      return '';
+    }
+    colors.forEach(function(c, idx){
+      if (!c || !c.slug) { return; }
+      var name = c.name || c.slug;
+      var selectThis = false;
+      if (targetColor && c.slug === targetColor){ selectThis = true; }
+      else if (!targetColor && idx === 0){ selectThis = true; }
+      var $opt = $('<option>', { value: c.slug, text: name });
+      if (selectThis){
+        $opt.prop('selected', true);
+        activeColor = c.slug;
+      }
+      $select.append($opt);
+    });
+    if (!activeColor && colors.length){
+      activeColor = colors[0].slug;
+      $select.val(activeColor);
+    }
+    return activeColor;
+  }
+
+  function initDefaultSelectors(){
+    var $type = $('#mg-default-type');
+    var $color = $('#mg-default-color');
+    if (!$type.length || !$color.length){ return; }
+    var initialType = (MG_BULK_ADV.default_type && typeof MG_BULK_ADV.default_type === 'string') ? MG_BULK_ADV.default_type : ($type.val() || '');
+    if (initialType){ $type.val(initialType); }
+    var initialColorPref = (MG_BULK_ADV.default_color && typeof MG_BULK_ADV.default_color === 'string' && MG_BULK_ADV.default_color !== '') ? MG_BULK_ADV.default_color : null;
+    var resolvedColor = renderDefaultColorOptions($color, $type.val(), initialColorPref);
+    MG_BULK_ADV.activeDefaults = {
+      type: $type.val() || '',
+      color: resolvedColor || ''
+    };
+    $type.on('change', function(){
+      var selectedType = $(this).val();
+      var updatedColor = renderDefaultColorOptions($color, selectedType, null);
+      MG_BULK_ADV.activeDefaults = {
+        type: selectedType || '',
+        color: updatedColor || ''
+      };
+    });
+    $color.on('change', function(){
+      if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
+      MG_BULK_ADV.activeDefaults.type = $type.val() || '';
+      MG_BULK_ADV.activeDefaults.color = $(this).val() || '';
+    });
+  }
+
   function mgEnsureHeader(){
     var $thead = $('.mg-bulk-table thead tr');
     if ($thead.length) {
@@ -267,6 +335,9 @@
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
       form.append('tags', tags);
+      var defaults = MG_BULK_ADV.activeDefaults || {};
+      form.append('primary_type', defaults.type || '');
+      form.append('primary_color', defaults.color || '');
 
       $row.find('.mg-state').text('Feldolgozás...');
       $.ajax({
