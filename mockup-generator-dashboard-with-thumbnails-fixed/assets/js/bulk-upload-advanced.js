@@ -110,35 +110,87 @@
     });
   }
 
-  $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
-
-  $(document).on('click', '#mg-bulk-apply-first', function(e){
-    e.preventDefault();
+  function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
     if ($rows.length <= 1){ return; }
-    var $first = $rows.first();
-    var mainVal = $first.find('select.mg-main').val() || '0';
-    var subVals = $first.find('select.mg-subs').val() || [];
-    if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
-    var parentId = $first.find('.mg-parent-id').val() || '0';
-    var parentHtml = $first.find('.mg-parent-results').html();
-    var tagsVal = ($first.find('.mg-tags-input').val()||'').trim();
-
+    var mainVal = $rows.first().find('select.mg-main').val() || '0';
+    var pid = parseInt(mainVal, 10) || 0;
     $rows.slice(1).each(function(){
       var $row = $(this);
       var $mainSel = $row.find('select.mg-main');
-      $mainSel.val(mainVal);
-      var pid = parseInt(mainVal,10) || 0;
-      var $subsSel = refreshSubSelect($row, pid);
-      if (subVals.length){
-        $subsSel.find('option').each(function(){
-          if (subVals.indexOf($(this).val()) !== -1){ $(this).prop('selected', true); }
-        });
+      if ($mainSel.val() !== mainVal){
+        $mainSel.val(mainVal);
       }
-      $row.find('.mg-parent-id').val(parentId);
-      $row.find('.mg-parent-results').html(parentHtml);
-      $row.find('.mg-tags-input').val(tagsVal);
+      refreshSubSelect($row, pid);
     });
+  }
+
+  function copySubsFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var $first = $rows.first();
+    var subVals = $first.find('select.mg-subs').val() || [];
+    if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
+    $rows.slice(1).each(function(){
+      var $row = $(this);
+      var $mainSel = $row.find('select.mg-main');
+      var pid = parseInt($mainSel.val(), 10) || 0;
+      var $subsSel = refreshSubSelect($row, pid);
+      if (!subVals.length){
+        $subsSel.val([]);
+        return;
+      }
+      $subsSel.find('option').each(function(){
+        var $opt = $(this);
+        $opt.prop('selected', subVals.indexOf($opt.val()) !== -1);
+      });
+    });
+  }
+
+  function copyTagsFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var tagsVal = ($rows.first().find('.mg-tags-input').val()||'').trim();
+    $rows.slice(1).each(function(){
+      $(this).find('.mg-tags-input').val(tagsVal);
+    });
+  }
+
+  function setupCopyButtons(){
+    var $legacy = $('#mg-bulk-apply-first');
+    if (!$legacy.length || $legacy.data('mgSplitReady')){ return; }
+    $legacy.data('mgSplitReady', true);
+    var $wrapper = $legacy.parent();
+    if ($wrapper.length){ $wrapper.addClass('mg-copy-actions'); }
+    var $mainBtn = $('<button type="button" class="button" id="mg-bulk-copy-main">Főkategória másolása az első sorból</button>');
+    var $subsBtn = $('<button type="button" class="button" id="mg-bulk-copy-subs">Alkategóriák másolása az első sorból</button>');
+    var $tagsBtn = $('<button type="button" class="button" id="mg-bulk-copy-tags">Tag-ek másolása az első sorból</button>');
+    $legacy.after($tagsBtn).after($subsBtn).after($mainBtn);
+  }
+
+  $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
+  $(setupCopyButtons);
+
+  $(document).on('click', '#mg-bulk-copy-main', function(e){
+    e.preventDefault();
+    copyMainFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-copy-subs', function(e){
+    e.preventDefault();
+    copySubsFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-copy-tags', function(e){
+    e.preventDefault();
+    copyTagsFromFirst();
+  });
+
+  $(document).on('click', '#mg-bulk-apply-first', function(e){
+    e.preventDefault();
+    copyMainFromFirst();
+    copySubsFromFirst();
+    copyTagsFromFirst();
   });
 
   function getSelectedProductKeys(){
