@@ -36,7 +36,7 @@ class MG_Product_Creator {
         return $ids;
     }
     private function attach_image($path) {
-        add_filter('intermediate_image_sizes_advanced', function($s){ return []; }, 99);
+        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) $filetype['type'] = 'image/webp';
@@ -46,8 +46,8 @@ class MG_Product_Creator {
         require_once(ABSPATH.'wp-admin/includes/image.php');
         $attach_data = ['file'=>_wp_relative_upload_path($path)];
         wp_update_attachment_metadata($attach_id, $attach_data);
-        remove_all_filters('intermediate_image_sizes_advanced', 99);
-        remove_all_filters('big_image_size_threshold', 99);
+        remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
+        remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
     }
     private function assign_categories($product_id, $cats = array()) {
@@ -187,24 +187,21 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $product->save();
         // assign categories merge
         $this->assign_categories($product->get_id(), $cats);
-        
-            
-            $tags_map = array();
-            foreach ($selected_products as $p) {
-                $tags_map[$p['key']] = isset($p['tags']) && is_array($p['tags']) ? $p['tags'] : array();
+
+        $tags_map = array();
+        foreach ($selected_products as $p) {
+            $tags_map[$p['key']] = is_array($p['tags'] ?? null) ? $p['tags'] : array();
+        }
+        $all_tags = array();
+        foreach ($selected_products as $p) {
+            if (!empty($tags_map[$p['key']])) {
+                $all_tags = array_merge($all_tags, $tags_map[$p['key']]);
             }
-            $all_tags = array();
-            foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]);
-            if (!empty($all_tags) && method_exists($this,'assign_tags')) $this->assign_tags($product->get_id(), array_values(array_unique($all_tags)));
-        if (isset($selected_products)) {
-                $tags_map = array();
-                foreach ($selected_products as $p) {
-                    $tags_map[$p['key']] = is_array($p['tags'] ?? null) ? $p['tags'] : array();
-                }
-                $all_tags = array();
-                foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]);
-                if (!empty($all_tags)) $this->assign_tags($product->get_id(), array_values(array_unique($all_tags)));
-            }
+        }
+        if (!empty($all_tags)) {
+            $this->assign_tags($product->get_id(), array_values(array_unique($all_tags)));
+        }
+
         $image_ids=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
             $id=$this->attach_image($file); $image_ids[$type_slug][$color_slug][]=$id;
