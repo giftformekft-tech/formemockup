@@ -387,7 +387,9 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             }
             if (empty($matched) && !empty($created_variations)) { $matched = $this->normalize_attributes($created_variations[0]); }
             if (!empty($matched)) {
-                $default_attrs = array_merge($matched, $default_attrs);
+                $matched = $this->normalize_attributes($matched);
+                $default_attrs = $this->normalize_attributes($default_attrs);
+                $default_attrs = $matched + $default_attrs;
                 $existing_defaults = $this->normalize_attributes($product->get_default_attributes());
                 $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
                 $needs_save = true;
@@ -543,7 +545,9 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             }
             if (!$matched && !empty($variation_candidates)) { $matched = $this->normalize_attributes($variation_candidates[0]); }
             if (!empty($matched)) {
-                $default_attrs = array_merge($matched, $default_attrs);
+                $matched = $this->normalize_attributes($matched);
+                $default_attrs = $this->normalize_attributes($default_attrs);
+                $default_attrs = $matched + $default_attrs;
                 $existing_defaults = $this->normalize_attributes($product->get_default_attributes());
                 $product->set_default_attributes(array_merge($existing_defaults, $default_attrs));
                 $product->save();
