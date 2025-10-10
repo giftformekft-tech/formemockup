@@ -86,8 +86,10 @@ wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
             </div>
 
             <h3>Tételek</h3>
-            <p>
-              <button type="button" class="button" id="mg-bulk-apply-first">Első sor beállításainak másolása a többire</button>
+            <p class="mg-copy-actions">
+              <button type="button" class="button" id="mg-bulk-copy-main">Főkategória másolása az első sorból</button>
+              <button type="button" class="button" id="mg-bulk-copy-subs">Alkategóriák másolása az első sorból</button>
+              <button type="button" class="button" id="mg-bulk-copy-tags">Tag-ek másolása az első sorból</button>
             </p>
             <div class="mg-table-wrap">
               <table class="widefat fixed striped mg-bulk-table">
