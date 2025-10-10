@@ -110,18 +110,21 @@
     });
   }
 
+  $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
+
   function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
     if ($rows.length <= 1){ return; }
-    var mainVal = $rows.first().find('select.mg-main').val() || '0';
-    var pid = parseInt(mainVal, 10) || 0;
+    var $first = $rows.first();
+    var mainVal = $first.find('select.mg-main').val() || '0';
     $rows.slice(1).each(function(){
       var $row = $(this);
       var $mainSel = $row.find('select.mg-main');
       if ($mainSel.val() !== mainVal){
         $mainSel.val(mainVal);
+        var pid = parseInt(mainVal,10) || 0;
+        refreshSubSelect($row, pid);
       }
-      refreshSubSelect($row, pid);
     });
   }
 
@@ -133,9 +136,11 @@
     if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
     $rows.slice(1).each(function(){
       var $row = $(this);
-      var $mainSel = $row.find('select.mg-main');
-      var pid = parseInt($mainSel.val(), 10) || 0;
-      var $subsSel = refreshSubSelect($row, pid);
+      var $subsSel = $row.find('select.mg-subs');
+      if (!$subsSel.length){
+        var pid = parseInt($row.find('select.mg-main').val(),10) || 0;
+        $subsSel = refreshSubSelect($row, pid);
+      }
       if (!subVals.length){
         $subsSel.val([]);
         return;
@@ -144,6 +149,19 @@
         var $opt = $(this);
         $opt.prop('selected', subVals.indexOf($opt.val()) !== -1);
       });
+    });
+  }
+
+  function copyParentFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var $first = $rows.first();
+    var parentId = $first.find('.mg-parent-id').val() || '0';
+    var parentHtml = $first.find('.mg-parent-results').html();
+    $rows.slice(1).each(function(){
+      var $row = $(this);
+      $row.find('.mg-parent-id').val(parentId);
+      $row.find('.mg-parent-results').html(parentHtml);
     });
   }
 
@@ -168,7 +186,6 @@
     $legacy.after($tagsBtn).after($subsBtn).after($mainBtn);
   }
 
-  $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
   $(setupCopyButtons);
 
   $(document).on('click', '#mg-bulk-copy-main', function(e){
@@ -188,8 +205,11 @@
 
   $(document).on('click', '#mg-bulk-apply-first', function(e){
     e.preventDefault();
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
     copyMainFromFirst();
     copySubsFromFirst();
+    copyParentFromFirst();
     copyTagsFromFirst();
   });
 
