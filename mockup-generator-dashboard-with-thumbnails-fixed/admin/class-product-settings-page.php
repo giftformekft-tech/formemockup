@@ -1,6 +1,47 @@
 <?php
 if (!defined('ABSPATH')) exit;
 class MG_Product_Settings_Page {
+    private static function normalize_size_color_matrix_for_product($sizes, $colors, $input) {
+        $size_values = array();
+        if (is_array($sizes)) {
+            foreach ($sizes as $size_label) {
+                if (!is_string($size_label)) { continue; }
+                $size_label = trim($size_label);
+                if ($size_label === '') { continue; }
+                $size_values[] = $size_label;
+            }
+        }
+        $size_values = array_values(array_unique($size_values));
+        $color_slugs = array();
+        if (is_array($colors)) {
+            foreach ($colors as $c) {
+                if (is_array($c) && isset($c['slug'])) {
+                    $slug = sanitize_title($c['slug']);
+                    if ($slug !== '' && !in_array($slug, $color_slugs, true)) {
+                        $color_slugs[] = $slug;
+                    }
+                }
+            }
+        }
+        $normalized = array();
+        if (is_array($input)) {
+            foreach ($input as $size_key => $color_list) {
+                if (!is_string($size_key)) { continue; }
+                $size_key = trim($size_key);
+                if ($size_key === '' || !in_array($size_key, $size_values, true)) { continue; }
+                $clean = array();
+                if (is_array($color_list)) {
+                    foreach ($color_list as $slug) {
+                        $slug = sanitize_title($slug);
+                        if ($slug === '' || !in_array($slug, $color_slugs, true)) { continue; }
+                        if (!in_array($slug, $clean, true)) { $clean[] = $slug; }
+                    }
+                }
+                $normalized[$size_key] = $clean;
+            }
+        }
+        return $normalized;
+    }
     public static function register_dynamic_product_submenus() {
         add_submenu_page('mockup-generator','Termék – szerkesztés','Termék: szerkesztés','manage_options','mockup-generator-product',[self::class,'render_product'],20);
     }
@@ -23,7 +64,15 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
     }
     private static function save_product($prod) {
         $products = get_option('mg_products', array());
-        foreach ($products as $i=>$p) if ($p['key']===$prod['key']) $products[$i]=$prod;
+        $is_primary = !empty($prod['is_primary']);
+        foreach ($products as $i=>$p) {
+            if (!is_array($p) || !isset($p['key'])) continue;
+            if ($p['key']===$prod['key']) {
+                $products[$i]=$prod;
+            } elseif ($is_primary) {
+                $products[$i]['is_primary'] = 0;
+            }
+        }
         update_option('mg_products',$products);
     }
     public static function render_product() {
@@ -34,6 +83,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $key = sanitize_text_field($_GET['product'] ?? '');
         $prod = self::get_product_by_key($key);
         if (!$prod) { echo '<div class="notice notice-error"><p>Ismeretlen termék.</p></div>'; return; }
+        if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
 
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
             $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
@@ -49,6 +99,35 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
                 }
             }
             if (!empty($colors)) $prod['colors']=$colors;
+
+            $is_primary = !empty($_POST['is_primary']) ? 1 : 0;
+            $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
+            $chosen_size = isset($_POST['primary_size']) ? sanitize_text_field($_POST['primary_size']) : ($prod['primary_size'] ?? '');
+            $color_slugs = array();
+            if (!empty($prod['colors']) && is_array($prod['colors'])) {
+                foreach ($prod['colors'] as $c) {
+                    if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
+                }
+            }
+            $size_values = isset($prod['sizes']) && is_array($prod['sizes']) ? array_values(array_filter(array_map('trim', $prod['sizes']), function($s){ return $s !== ''; })) : array();
+            if ($chosen_color && !in_array($chosen_color, $color_slugs, true)) {
+                $chosen_color = '';
+            }
+            if ($chosen_size && !in_array($chosen_size, $size_values, true)) {
+                $chosen_size = '';
+            }
+            if ($is_primary && !$chosen_color && !empty($color_slugs)) {
+                $chosen_color = $color_slugs[0];
+            }
+            if ($is_primary && !$chosen_size && !empty($size_values)) {
+                $chosen_size = $size_values[0];
+            }
+            $prod['is_primary'] = $is_primary;
+            $prod['primary_color'] = $chosen_color;
+            $prod['primary_size'] = $chosen_size;
+
+            $matrix_input = isset($_POST['size_color_matrix']) ? $_POST['size_color_matrix'] : array();
+            $prod['size_color_matrix'] = self::normalize_size_color_matrix_for_product($prod['sizes'], $prod['colors'], $matrix_input);
 
             $views_json = stripslashes($_POST['views'] ?? '');
             $views = json_decode($views_json, true);
@@ -105,6 +184,7 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
 
         $sizes = $prod['sizes'];
         $colors = $prod['colors'];
+        $size_color_matrix = self::normalize_size_color_matrix_for_product($sizes, $colors, $prod['size_color_matrix']);
         $views  = $prod['views'];
         $template_base = $prod['template_base'];
         $sku_prefix = $prod['sku_prefix'] ?? '';
@@ -112,6 +192,9 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
         $over = isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides']) ? $prod['mockup_overrides'] : array();
 
         $colors_text = implode(PHP_EOL, array_map(function($c){ return $c['name'].':'.$c['slug']; }, $colors));
+        $is_primary = !empty($prod['is_primary']);
+        $primary_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
+        $primary_size = isset($prod['primary_size']) ? $prod['primary_size'] : '';
 
         // Helper: path -> URL in uploads
         $uploads = wp_upload_dir();
@@ -132,10 +215,71 @@ if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
 
+                <h2>Elsődleges beállítások</h2>
+                <p><label><input type="checkbox" name="is_primary" value="1" <?php checked($is_primary); ?> /> Ez legyen az alapértelmezett terméktípus</label></p>
+                <p>
+                    <label>Elsődleges szín<br>
+                        <select name="primary_color" style="min-width:220px">
+                            <option value="">— Válassz színt —</option>
+                            <?php foreach ($colors as $c): if (!isset($c['slug'], $c['name'])) continue; ?>
+                                <option value="<?php echo esc_attr($c['slug']); ?>" <?php selected($primary_color, $c['slug']); ?>><?php echo esc_html($c['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <span class="description" style="display:block;margin-top:4px;">Csak az aktuális terméktípus színei választhatók. A kiválasztott páros jelenik meg alapértelmezettként a bulk feltöltésben.</span>
+                </p>
+                <p>
+                    <label>Elsődleges méret<br>
+                        <select name="primary_size" style="min-width:220px">
+                            <option value="">— Válassz méretet —</option>
+                            <?php foreach ($sizes as $size_option): if (!is_string($size_option) || $size_option === '') continue; ?>
+                                <option value="<?php echo esc_attr($size_option); ?>" <?php selected($primary_size, $size_option); ?>><?php echo esc_html($size_option); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <span class="description" style="display:block;margin-top:4px;">A kiválasztott méret jelenik meg alapértelmezésként a WooCommerce termékvariációknál.</span>
+                </p>
+
                 <h2>Méretek</h2>
                 <p><input type="text" name="sizes" class="regular-text" value="<?php echo esc_attr(implode(',', $sizes)); ?>" /></p>
 
-                
+                <h2>Méret elérhetőség színenként</h2>
+                <?php
+                $available_sizes = is_array($sizes) ? array_values(array_filter(array_map('trim', $sizes), function($s){ return $s !== ''; })) : array();
+                $available_colors = array();
+                if (is_array($colors)) {
+                    foreach ($colors as $c) {
+                        if (isset($c['slug'], $c['name'])) {
+                            $available_colors[] = array('slug'=>sanitize_title($c['slug']), 'name'=>$c['name']);
+                        }
+                    }
+                }
+                if (empty($available_sizes) || empty($available_colors)) {
+                    echo '<p class="description">Adj meg legalább egy méretet és színt, hogy korlátozni tudd a kombinációkat.</p>';
+                } else {
+                    echo '<table class="widefat striped" style="max-width:100%;width:auto">';
+                    echo '<thead><tr><th>Méret</th>';
+                    foreach ($available_colors as $color) {
+                        echo '<th>'.esc_html($color['name']).'<br><code>'.esc_html($color['slug']).'</code></th>';
+                    }
+                    echo '</tr></thead><tbody>';
+                    $has_matrix = !empty($size_color_matrix);
+                    foreach ($available_sizes as $size_label) {
+                        $current = isset($size_color_matrix[$size_label]) ? $size_color_matrix[$size_label] : array();
+                        $row_checked = $has_matrix ? $current : wp_list_pluck($available_colors, 'slug');
+                        echo '<tr><td><strong>'.esc_html($size_label).'</strong></td>';
+                        foreach ($available_colors as $color) {
+                            $checked = in_array($color['slug'], $row_checked, true) ? ' checked' : '';
+                            echo '<td><label><input type="checkbox" name="size_color_matrix['.esc_attr($size_label).'][]" value="'.esc_attr($color['slug']).'"'.$checked.'> '.esc_html($color['name']).'</label></td>';
+                        }
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table>';
+                    echo '<p class="description">Csak a kijelölt szín–méret párosokból készülnek WooCommerce variációk. Ha mindent üresen hagysz, minden kombináció engedélyezett.</p>';
+                }
+                ?>
+
+
 <h2>Méret felárak</h2>
 <p class="description">Pozitív vagy negatív érték (HUF). Végső variáns ár = Alap ár + Méret felár.</p>
 <table class="widefat striped">

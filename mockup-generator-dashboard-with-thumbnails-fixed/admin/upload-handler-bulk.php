@@ -1,5 +1,68 @@
 <?php
 if (!defined('ABSPATH')) exit;
+if (!function_exists('mg_bulk_sanitize_size_list')) {
+    function mg_bulk_sanitize_size_list($product) {
+        $sizes = array();
+        if (is_array($product)) {
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) { continue; }
+                    $size_value = trim($size_value);
+                    if ($size_value === '') { continue; }
+                    $sizes[] = $size_value;
+                }
+            }
+            if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+                foreach ($product['size_color_matrix'] as $size_label => $colors) {
+                    if (!is_string($size_label)) { continue; }
+                    $size_label = trim($size_label);
+                    if ($size_label === '') { continue; }
+                    $sizes[] = $size_label;
+                }
+            }
+        }
+        return array_values(array_unique($sizes));
+    }
+}
+
+if (!function_exists('mg_bulk_allowed_sizes_for_color')) {
+    function mg_bulk_allowed_sizes_for_color($product, $color_slug) {
+        $color_slug = sanitize_title($color_slug ?? '');
+        $base_sizes = mg_bulk_sanitize_size_list($product);
+        $matrix = array();
+        $has_entries = false;
+        if (is_array($product) && !empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+            foreach ($product['size_color_matrix'] as $size_label => $colors) {
+                if (!is_string($size_label)) { continue; }
+                $size_label = trim($size_label);
+                if ($size_label === '') { continue; }
+                $clean = array();
+                if (is_array($colors)) {
+                    foreach ($colors as $slug) {
+                        $slug = sanitize_title($slug);
+                        if ($slug === '') { continue; }
+                        if (!in_array($slug, $clean, true)) { $clean[] = $slug; }
+                    }
+                }
+                $matrix[$size_label] = $clean;
+                $has_entries = true;
+            }
+        }
+        if (!$has_entries) {
+            return $base_sizes;
+        }
+        if ($color_slug === '') {
+            return $base_sizes;
+        }
+        $allowed = array();
+        foreach ($matrix as $size_label => $colors) {
+            if (in_array($color_slug, $colors, true)) {
+                $allowed[] = $size_label;
+            }
+        }
+        return array_values(array_unique($allowed));
+    }
+}
 add_action('admin_post_mg_upload_design_bulk', function(){
     try {
         if (!current_user_can('edit_products')) { throw new Exception('Jogosultság hiányzik.'); }
@@ -23,6 +86,47 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         if (!file_exists($gen_path) || !file_exists($creator_path)) throw new Exception('Hiányzó rendszerfájlok.');
         require_once $gen_path; require_once $creator_path;
         $creator = new MG_Product_Creator();
+        $defaults = array('type' => '', 'color' => '', 'size' => '');
+        $primary_candidate = null;
+        foreach ($selected as $prod) {
+            if (!empty($prod['is_primary'])) { $primary_candidate = $prod; break; }
+        }
+        if (!$primary_candidate && !empty($selected)) { $primary_candidate = $selected[0]; }
+        if ($primary_candidate) {
+            $defaults['type'] = $primary_candidate['key'];
+            $color_slugs = array();
+            if (!empty($primary_candidate['colors']) && is_array($primary_candidate['colors'])) {
+                foreach ($primary_candidate['colors'] as $c) { if (isset($c['slug'])) { $color_slugs[] = sanitize_title($c['slug']); } }
+            }
+            $resolved_color = '';
+            if (!empty($primary_candidate['primary_color']) && in_array($primary_candidate['primary_color'], $color_slugs, true)) {
+                $resolved_color = sanitize_title($primary_candidate['primary_color']);
+            } elseif (!empty($color_slugs)) {
+                $resolved_color = $color_slugs[0];
+            }
+            $allowed_sizes = mg_bulk_allowed_sizes_for_color($primary_candidate, $resolved_color);
+            if ($resolved_color && empty($allowed_sizes) && !empty($color_slugs)) {
+                foreach ($color_slugs as $candidate_color) {
+                    $candidate_sizes = mg_bulk_allowed_sizes_for_color($primary_candidate, $candidate_color);
+                    if (!empty($candidate_sizes)) {
+                        $resolved_color = $candidate_color;
+                        $allowed_sizes = $candidate_sizes;
+                        break;
+                    }
+                }
+            }
+            if (empty($allowed_sizes)) {
+                $allowed_sizes = mg_bulk_sanitize_size_list($primary_candidate);
+            }
+            $resolved_size = '';
+            if (!empty($primary_candidate['primary_size']) && in_array($primary_candidate['primary_size'], $allowed_sizes, true)) {
+                $resolved_size = $primary_candidate['primary_size'];
+            } elseif (!empty($allowed_sizes)) {
+                $resolved_size = $allowed_sizes[0];
+            }
+            $defaults['color'] = $resolved_color;
+            $defaults['size'] = $resolved_size;
+        }
         for ($i=0; $i < $count; $i++) {
             if (!isset($files['tmp_name'][$i]) || empty($files['tmp_name'][$i])) continue;
             if (!empty($files['error'][$i])) continue;
@@ -42,7 +146,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             }
             if (empty($images_by_type_color)) continue;
             $cats = array('main'=> intval($main[$i] ?? 0), 'sub'=> intval($sub[$i] ?? 0));
-            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats);
+            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults);
         }
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;
     } catch (Throwable $e) {

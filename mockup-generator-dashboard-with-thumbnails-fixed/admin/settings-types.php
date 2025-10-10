@@ -62,10 +62,53 @@ function mgstp_read_products(){
                 'size_surcharges'=> $norm_size_surch, // ÚJ
                 'colors'=> $colors,
                 'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
+                'size_color_matrix' => mgstp_normalize_size_color_matrix($sizes, $colors, isset($p['size_color_matrix']) ? $p['size_color_matrix'] : array()),
             );
         }
     }
     return $out;
+}
+
+function mgstp_normalize_size_color_matrix($sizes, $colors, $matrix){
+    $size_values = array();
+    if (is_array($sizes)) {
+        foreach ($sizes as $size_label) {
+            if (!is_string($size_label)) { continue; }
+            $size_label = trim($size_label);
+            if ($size_label === '') { continue; }
+            $size_values[] = $size_label;
+        }
+    }
+    $size_values = array_values(array_unique($size_values));
+    $color_slugs = array();
+    if (is_array($colors)) {
+        foreach ($colors as $c) {
+            if (is_array($c) && isset($c['slug'])) {
+                $slug = sanitize_title($c['slug']);
+                if ($slug !== '' && !in_array($slug, $color_slugs, true)) {
+                    $color_slugs[] = $slug;
+                }
+            }
+        }
+    }
+    $normalized = array();
+    if (is_array($matrix)) {
+        foreach ($matrix as $size_key => $color_list) {
+            if (!is_string($size_key)) { continue; }
+            $size_key = trim($size_key);
+            if ($size_key === '' || !in_array($size_key, $size_values, true)) { continue; }
+            $clean = array();
+            if (is_array($color_list)) {
+                foreach ($color_list as $slug) {
+                    $slug = sanitize_title($slug);
+                    if ($slug === '' || !in_array($slug, $color_slugs, true)) { continue; }
+                    if (!in_array($slug, $clean, true)) { $clean[] = $slug; }
+                }
+            }
+            $normalized[$size_key] = $clean;
+        }
+    }
+    return $normalized;
 }
 
 function mgstp_save_products($products){
@@ -122,6 +165,7 @@ function mgstp_save_products($products){
             'size_surcharges'=> $size_surch, // ÚJ
             'colors'=> $colors,
             'type_description'=> isset($p['type_description']) ? wp_kses_post($p['type_description']) : '',
+            'size_color_matrix' => mgstp_normalize_size_color_matrix($sizes, $colors, isset($p['size_color_matrix']) ? $p['size_color_matrix'] : array()),
         );
     }
     update_option('mg_products', $norm);
@@ -141,7 +185,8 @@ function mgstp_render_settings(){
         if ($new_key && $new_label) {
             $products[$new_key] = array(
                 'key'=>$new_key, 'label'=>$new_label, 'sku_prefix'=>strtoupper($new_key),
-                'price'=>0, 'sizes'=>array(), 'size_surcharges'=>array(), 'colors'=>array(), 'type_description'=>''
+                'price'=>0, 'sizes'=>array(), 'size_surcharges'=>array(), 'colors'=>array(), 'type_description'=>'',
+                'size_color_matrix'=>array()
             );
             mgstp_save_products($products);
             wp_safe_redirect( admin_url('admin.php?page=mockup-generator-settings&product='.$new_key) );
