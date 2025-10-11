@@ -135,6 +135,367 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function sanitize_single_product_snapshot($product) {
+        if (!is_array($product) || empty($product['key'])) {
+            return null;
+        }
+        $key = sanitize_title($product['key']);
+        if ($key === '') {
+            return null;
+        }
+        $sanitized = [
+            'key'             => $key,
+            'label'           => isset($product['label']) ? sanitize_text_field($product['label']) : $key,
+            'is_primary'      => !empty($product['is_primary']) ? 1 : 0,
+            'primary_color'   => isset($product['primary_color']) ? sanitize_title($product['primary_color']) : '',
+            'primary_size'    => isset($product['primary_size']) ? sanitize_text_field($product['primary_size']) : '',
+            'price'           => isset($product['price']) ? (int) $product['price'] : 0,
+            'sku_prefix'      => isset($product['sku_prefix']) ? sanitize_text_field($product['sku_prefix']) : '',
+            'type_description'=> isset($product['type_description']) ? wp_kses_post($product['type_description']) : '',
+            'colors'          => [],
+            'sizes'           => [],
+            'size_color_matrix' => [],
+            'size_surcharges' => [],
+            'color_surcharges'=> [],
+            'tags'            => [],
+        ];
+        if (!empty($product['colors']) && is_array($product['colors'])) {
+            foreach ($product['colors'] as $color) {
+                if (!is_array($color)) {
+                    continue;
+                }
+                $slug = sanitize_title($color['slug'] ?? '');
+                if ($slug === '') {
+                    continue;
+                }
+                $name = isset($color['name']) ? sanitize_text_field($color['name']) : $slug;
+                $sanitized['colors'][] = [
+                    'slug' => $slug,
+                    'name' => $name,
+                ];
+            }
+        }
+        if (!empty($product['sizes']) && is_array($product['sizes'])) {
+            foreach ($product['sizes'] as $size_label) {
+                if (!is_string($size_label)) {
+                    continue;
+                }
+                $size_label = sanitize_text_field($size_label);
+                if ($size_label === '') {
+                    continue;
+                }
+                if (!in_array($size_label, $sanitized['sizes'], true)) {
+                    $sanitized['sizes'][] = $size_label;
+                }
+            }
+        }
+        if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+            foreach ($product['size_color_matrix'] as $size_key => $colors) {
+                if (!is_string($size_key)) {
+                    continue;
+                }
+                $size_key = sanitize_text_field($size_key);
+                if ($size_key === '') {
+                    continue;
+                }
+                $clean = [];
+                if (is_array($colors)) {
+                    foreach ($colors as $slug) {
+                        $slug = sanitize_title($slug);
+                        if ($slug === '' || in_array($slug, $clean, true)) {
+                            continue;
+                        }
+                        $clean[] = $slug;
+                    }
+                }
+                $sanitized['size_color_matrix'][$size_key] = $clean;
+            }
+        }
+        if (!empty($product['size_surcharges']) && is_array($product['size_surcharges'])) {
+            foreach ($product['size_surcharges'] as $size_label => $amount) {
+                if (!is_string($size_label)) {
+                    continue;
+                }
+                $size_label = sanitize_text_field($size_label);
+                if ($size_label === '') {
+                    continue;
+                }
+                $sanitized['size_surcharges'][$size_label] = (int) $amount;
+            }
+        }
+        if (!empty($product['color_surcharges']) && is_array($product['color_surcharges'])) {
+            foreach ($product['color_surcharges'] as $slug => $amount) {
+                $slug = sanitize_title($slug);
+                if ($slug === '') {
+                    continue;
+                }
+                $sanitized['color_surcharges'][$slug] = (int) $amount;
+            }
+        }
+        if (!empty($product['tags']) && is_array($product['tags'])) {
+            foreach ($product['tags'] as $tag) {
+                if (!is_string($tag)) {
+                    continue;
+                }
+                $tag = sanitize_text_field($tag);
+                if ($tag === '') {
+                    continue;
+                }
+                $sanitized['tags'][] = $tag;
+            }
+        }
+        return $sanitized;
+    }
+
+    private static function sanitize_selected_products($selected_products) {
+        $result = [];
+        if (!is_array($selected_products)) {
+            return $result;
+        }
+        foreach ($selected_products as $product) {
+            $sanitized = self::sanitize_single_product_snapshot($product);
+            if ($sanitized) {
+                $result[] = $sanitized;
+            }
+        }
+        return $result;
+    }
+
+    private static function sanitize_default_attributes($defaults) {
+        $normalized = [];
+        if (!is_array($defaults)) {
+            return $normalized;
+        }
+        foreach ($defaults as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+            if (is_array($value)) {
+                $value = reset($value);
+            }
+            if (!is_scalar($value)) {
+                continue;
+            }
+            $value = (string) $value;
+            if ($value === '') {
+                continue;
+            }
+            $key_lower = strtolower($key);
+            if ($key_lower === 'pa_termektipus' || $key_lower === 'termektipus') {
+                $normalized['pa_termektipus'] = sanitize_title($value);
+            } elseif ($key_lower === 'pa_szin' || $key_lower === 'szin') {
+                $normalized['pa_szin'] = sanitize_title($value);
+            } elseif ($key_lower === 'pa_meret' || $key_lower === 'meret' || $key_lower === 'méret') {
+                $normalized['meret'] = sanitize_text_field($value);
+            }
+        }
+        return $normalized;
+    }
+
+    private static function merge_size_color_matrix($existing, $catalog) {
+        $existing = is_array($existing) ? $existing : [];
+        $catalog = is_array($catalog) ? $catalog : [];
+        if (empty($catalog)) {
+            return $existing;
+        }
+        foreach ($catalog as $size_label => $colors) {
+            if (!is_string($size_label)) {
+                continue;
+            }
+            $size_label = sanitize_text_field($size_label);
+            if ($size_label === '') {
+                continue;
+            }
+            $catalog_colors = [];
+            if (is_array($colors)) {
+                foreach ($colors as $slug) {
+                    $slug = sanitize_title($slug);
+                    if ($slug === '' || in_array($slug, $catalog_colors, true)) {
+                        continue;
+                    }
+                    $catalog_colors[] = $slug;
+                }
+            }
+            $existing_colors = isset($existing[$size_label]) && is_array($existing[$size_label]) ? $existing[$size_label] : [];
+            foreach ($catalog_colors as $slug) {
+                if (!in_array($slug, $existing_colors, true)) {
+                    $existing_colors[] = $slug;
+                }
+            }
+            $existing[$size_label] = $existing_colors;
+        }
+        return $existing;
+    }
+
+    private static function ensure_color_allowed_for_sizes($matrix, $color_slug, $catalog_matrix, $sizes) {
+        $matrix = is_array($matrix) ? $matrix : [];
+        $color_slug = sanitize_title($color_slug);
+        $catalog_matrix = is_array($catalog_matrix) ? $catalog_matrix : [];
+        $sizes = is_array($sizes) ? $sizes : [];
+        if (!empty($catalog_matrix)) {
+            foreach ($catalog_matrix as $size_label => $colors) {
+                if (!is_string($size_label)) {
+                    continue;
+                }
+                $size_label = sanitize_text_field($size_label);
+                if ($size_label === '') {
+                    continue;
+                }
+                $normalized_colors = [];
+                if (is_array($colors)) {
+                    foreach ($colors as $slug) {
+                        $slug = sanitize_title($slug);
+                        if ($slug === '' || in_array($slug, $normalized_colors, true)) {
+                            continue;
+                        }
+                        $normalized_colors[] = $slug;
+                    }
+                }
+                if (!in_array($color_slug, $normalized_colors, true)) {
+                    continue;
+                }
+                if (!isset($matrix[$size_label]) || !is_array($matrix[$size_label])) {
+                    $matrix[$size_label] = [];
+                }
+                if (!in_array($color_slug, $matrix[$size_label], true)) {
+                    $matrix[$size_label][] = $color_slug;
+                }
+            }
+        } elseif (!empty($matrix)) {
+            foreach ($matrix as $size_label => &$color_list) {
+                if (!is_array($color_list)) {
+                    $color_list = [];
+                }
+                if (!in_array($color_slug, $color_list, true)) {
+                    $color_list[] = $color_slug;
+                }
+            }
+            unset($color_list);
+        }
+        if (empty($catalog_matrix) && empty($matrix) && !empty($sizes)) {
+            // leave matrix empty to allow all sizes when no restrictions exist
+            return $matrix;
+        }
+        foreach ($matrix as $size_label => $color_list) {
+            if (!is_array($color_list)) {
+                $matrix[$size_label] = [];
+            } else {
+                $matrix[$size_label] = array_values(array_unique($color_list));
+            }
+        }
+        return $matrix;
+    }
+
+    private static function prepare_selected_payload_for_color($snapshot, $type_slug, $color_slug) {
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $snapshot = self::sanitize_selected_products($snapshot);
+        $catalog_item = self::sanitize_single_product_snapshot(self::find_type_definition($type_slug));
+        $result = [];
+        $found = false;
+        foreach ($snapshot as $item) {
+            $item_slug = sanitize_title($item['key'] ?? '');
+            if ($item_slug === '') {
+                continue;
+            }
+            if ($item_slug === $type_slug) {
+                $result[] = self::enrich_type_snapshot_with_catalog($item, $catalog_item, $color_slug);
+                $found = true;
+            } else {
+                $result[] = $item;
+            }
+        }
+        if (!$found && $catalog_item) {
+            $result[] = self::enrich_type_snapshot_with_catalog([], $catalog_item, $color_slug);
+        }
+        return $result;
+    }
+
+    private static function enrich_type_snapshot_with_catalog($snapshot_item, $catalog_item, $focus_color_slug) {
+        if (!$catalog_item) {
+            return is_array($snapshot_item) ? $snapshot_item : [];
+        }
+        $snapshot_item = is_array($snapshot_item) ? $snapshot_item : [];
+        $focus_color_slug = sanitize_title($focus_color_slug);
+        $merged = $snapshot_item;
+        $merged['key'] = $catalog_item['key'];
+        $merged['label'] = $catalog_item['label'];
+        $merged['price'] = $catalog_item['price'];
+        $merged['sku_prefix'] = $catalog_item['sku_prefix'];
+        $merged['type_description'] = $catalog_item['type_description'];
+        $merged['is_primary'] = $catalog_item['is_primary'];
+        $merged['primary_color'] = $catalog_item['primary_color'];
+        $merged['primary_size'] = $catalog_item['primary_size'];
+        $merged['sizes'] = !empty($catalog_item['sizes']) ? $catalog_item['sizes'] : (isset($merged['sizes']) ? $merged['sizes'] : []);
+        $merged['colors'] = $catalog_item['colors'];
+        $merged['size_surcharges'] = $catalog_item['size_surcharges'];
+        $merged['color_surcharges'] = $catalog_item['color_surcharges'];
+        $existing_matrix = isset($merged['size_color_matrix']) ? $merged['size_color_matrix'] : [];
+        $merged_matrix = self::merge_size_color_matrix($existing_matrix, $catalog_item['size_color_matrix']);
+        $merged['size_color_matrix'] = self::ensure_color_allowed_for_sizes($merged_matrix, $focus_color_slug, $catalog_item['size_color_matrix'], $merged['sizes']);
+        $has_color = false;
+        foreach ($merged['colors'] as $color) {
+            if (($color['slug'] ?? '') === $focus_color_slug) {
+                $has_color = true;
+                break;
+            }
+        }
+        if (!$has_color) {
+            foreach ($catalog_item['colors'] as $color) {
+                if (($color['slug'] ?? '') === $focus_color_slug) {
+                    $merged['colors'][] = $color;
+                    break;
+                }
+            }
+        }
+        return $merged;
+    }
+
+    private static function ensure_product_has_color_variant($entry) {
+        if (!class_exists('MG_Product_Creator')) {
+            return;
+        }
+        $product_id = absint($entry['product_id'] ?? 0);
+        $type_slug = sanitize_title($entry['type_slug'] ?? '');
+        $color_slug = sanitize_title($entry['color_slug'] ?? '');
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            return;
+        }
+        $product = wc_get_product($product_id);
+        if (!$product || !$product->get_id()) {
+            return;
+        }
+        $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
+        $selected_snapshot = isset($source['selected_products']) ? $source['selected_products'] : [];
+        $selected_payload = self::prepare_selected_payload_for_color($selected_snapshot, $type_slug, $color_slug);
+        if (empty($selected_payload)) {
+            return;
+        }
+        $defaults_source = isset($source['defaults']) ? $source['defaults'] : [];
+        $defaults_source = self::sanitize_default_attributes($defaults_source);
+        $product_defaults = self::sanitize_default_attributes($product->get_default_attributes());
+        $merged_defaults = array_merge($product_defaults, $defaults_source);
+        $defaults_payload = [
+            'type'  => $merged_defaults['pa_termektipus'] ?? '',
+            'color' => $merged_defaults['pa_szin'] ?? '',
+            'size'  => $merged_defaults['meret'] ?? '',
+        ];
+        $generation_context = [
+            'skip_register_maintenance' => true,
+            'trigger' => 'maintenance_auto_color',
+        ];
+        $creator = new MG_Product_Creator();
+        $creator->add_type_to_existing_parent(
+            $product_id,
+            $selected_payload,
+            [],
+            '',
+            [],
+            $defaults_payload,
+            $generation_context
+        );
+    }
+
     public static function register_generation($product_id, $selected_products, $images_by_type_color, $context = []) {
         $product_id = absint($product_id);
         if ($product_id <= 0) {
@@ -150,6 +511,18 @@ class MG_Mockup_Maintenance {
             if ($resolved) {
                 $design_path = $resolved;
             }
+        }
+        $shared_source = [];
+        $sanitized_products = self::sanitize_selected_products($selected_products);
+        if (!empty($sanitized_products)) {
+            $shared_source['selected_products'] = $sanitized_products;
+        }
+        $sanitized_defaults = [];
+        if (isset($context['applied_defaults'])) {
+            $sanitized_defaults = self::sanitize_default_attributes($context['applied_defaults']);
+        }
+        if (!empty($sanitized_defaults)) {
+            $shared_source['defaults'] = $sanitized_defaults;
         }
         foreach ((array) $selected_products as $type) {
             if (!is_array($type) || empty($type['key'])) {
@@ -178,7 +551,7 @@ class MG_Mockup_Maintenance {
                     $index[$key]['last_message'] = '';
                     $index[$key]['pending_reason'] = '';
                 }
-                $index[$key]['source'] = array_merge($index[$key]['source'] ?? [], [
+                $index[$key]['source'] = array_merge($index[$key]['source'] ?? [], $shared_source, [
                     'design_path' => $design_path,
                     'design_attachment_id' => $design_attachment_id,
                     'type_label' => isset($type['label']) ? sanitize_text_field($type['label']) : $type_slug,
@@ -201,7 +574,8 @@ class MG_Mockup_Maintenance {
         $key = self::compose_key($product_id, $type_slug, $color_slug);
         $index = self::get_index();
         $timestamp = self::current_timestamp();
-        if (!isset($index[$key])) {
+        $is_new_entry = !isset($index[$key]);
+        if ($is_new_entry) {
             $index[$key] = [
                 'product_id'   => $product_id,
                 'type_slug'    => sanitize_title($type_slug),
@@ -237,6 +611,9 @@ class MG_Mockup_Maintenance {
         self::set_index($index);
         self::set_queue($queue);
         self::maybe_schedule_processor();
+        if ($is_new_entry && isset($index[$key])) {
+            self::ensure_product_has_color_variant($index[$key]);
+        }
     }
 
     private static function inherit_source($index, $product_id, $type_slug) {
