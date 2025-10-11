@@ -5,7 +5,7 @@ if (!defined('ABSPATH')) {
 
 class MG_Variant_Display_Page {
     public static function add_submenu_page() {
-        add_submenu_page(
+        $hook_suffix = add_submenu_page(
             'mockup-generator',
             __('Variáns megjelenítés', 'mgvd'),
             __('Variáns megjelenítés', 'mgvd'),
@@ -13,6 +13,20 @@ class MG_Variant_Display_Page {
             'mockup-generator-variant-display',
             array(__CLASS__, 'render_page')
         );
+
+        if ($hook_suffix) {
+            add_action('load-' . $hook_suffix, array(__CLASS__, 'prime_media_library'));
+        }
+    }
+
+    public static function prime_media_library() {
+        if (function_exists('wp_enqueue_media') && !did_action('wp_enqueue_media')) {
+            wp_enqueue_media();
+        }
+
+        if (function_exists('wp_enqueue_script')) {
+            wp_enqueue_script('media-editor');
+        }
     }
 
     public static function enqueue_assets($hook) {
@@ -25,7 +39,9 @@ class MG_Variant_Display_Page {
         $css_path = dirname(__DIR__) . '/assets/css/variant-display-admin.css';
         $js_path = dirname(__DIR__) . '/assets/js/variant-display-admin.js';
 
-        wp_enqueue_media();
+        if (function_exists('wp_enqueue_media') && !did_action('wp_enqueue_media')) {
+            wp_enqueue_media();
+        }
         // Ensure the media modal scripts are present and marked as dependencies
         if (function_exists('wp_enqueue_script')) {
             wp_enqueue_script('media-editor');

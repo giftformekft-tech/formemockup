@@ -69,7 +69,9 @@
     }
 
     function openMediaFrame($container) {
-        if (typeof wp === 'undefined' || !wp.media) {
+        if (typeof wp === 'undefined' || typeof wp.media !== 'function') {
+            var message = (window.MGVD_Admin && MGVD_Admin.mediaError) ? MGVD_Admin.mediaError : 'A média-felület nem érhető el.';
+            window.alert(message);
             return;
         }
         var existing = $container.data('mgvdFrame');
