@@ -218,15 +218,18 @@ class MG_Mockup_Maintenance {
             $index[$key]['updated_at'] = $timestamp;
             $index[$key]['pending_reason'] = sanitize_text_field($reason);
         }
+        $source = isset($index[$key]['source']) && is_array($index[$key]['source']) ? $index[$key]['source'] : [];
+        if (empty($source)) {
+            $source = self::inherit_source($index, $product_id, $type_slug);
+        }
         if (!empty($context)) {
             if (isset($context['design_path'])) {
                 $context['design_path'] = wp_normalize_path($context['design_path']);
             }
-            $index[$key]['source'] = array_merge($index[$key]['source'], $context);
+            $source = array_merge($source, $context);
         }
-        if (empty($index[$key]['source'])) {
-            $index[$key]['source'] = self::inherit_source($index, $product_id, $type_slug);
-        }
+        $source = self::apply_type_metadata_to_source($source, $type_slug, $color_slug);
+        $index[$key]['source'] = $source;
         $queue = self::get_queue();
         if (!in_array($key, $queue, true)) {
             $queue[] = $key;
@@ -248,6 +251,34 @@ class MG_Mockup_Maintenance {
             }
         }
         return [];
+    }
+
+    private static function apply_type_metadata_to_source($source, $type_slug, $color_slug) {
+        $source = is_array($source) ? $source : [];
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $type = self::find_type_definition($type_slug);
+        if ($type) {
+            $type_label = isset($type['label']) ? sanitize_text_field($type['label']) : $type_slug;
+            $source['type_label'] = $type_label;
+            if (isset($type['views']) && is_array($type['views'])) {
+                $source['views'] = array_values($type['views']);
+            }
+            $colors = self::normalize_colors_from_type($type);
+            if (isset($colors[$color_slug])) {
+                $color = $colors[$color_slug];
+                if (isset($color['name'])) {
+                    $source['color_label'] = sanitize_text_field($color['name']);
+                }
+            }
+        }
+        if (empty($source['type_label'])) {
+            $source['type_label'] = $type_slug;
+        }
+        if (empty($source['color_label'])) {
+            $source['color_label'] = $color_slug;
+        }
+        return $source;
     }
 
     private static function resolve_design_path($entry) {
