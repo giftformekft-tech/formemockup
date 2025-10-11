@@ -65,6 +65,10 @@ if (!function_exists('mg_bulk_allowed_sizes_for_color')) {
     }
 }
 
+if (!class_exists('MG_Custom_Fields_Manager')) {
+    require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
+}
+
 add_action('wp_ajax_mg_bulk_process', function(){
     try {
         if (!current_user_can('edit_products')) {
@@ -91,6 +95,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $parent_name = sanitize_text_field($_POST['product_name'] ?? pathinfo($design_path, PATHINFO_FILENAME));
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
+        $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
 
         // Load config & engine
         $all = get_option('mg_products', array());
@@ -170,10 +175,12 @@ add_action('wp_ajax_mg_bulk_process', function(){
         if ($parent_id > 0) {
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
+            MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
+            MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
             wp_send_json_success(array('product_id'=>$pid));
         }
     } catch (Throwable $e) {
