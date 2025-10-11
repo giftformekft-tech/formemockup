@@ -123,24 +123,43 @@
         }
 
         if (wp.media && wp.media.editor && typeof wp.media.editor.open === 'function') {
-            var trigger = $button.length ? $button.get(0) : ($container.find('.mgvd-media__preview').get(0) || null);
             var previousSendAttachment = wp.media.editor.send.attachment;
+            var previousActiveEditor = window.wpActiveEditor;
+            var fallbackEditorId = 'mgvd-media-fallback';
+
+            if (!document.getElementById(fallbackEditorId)) {
+                var placeholder = document.createElement('textarea');
+                placeholder.id = fallbackEditorId;
+                placeholder.style.position = 'absolute';
+                placeholder.style.left = '-9999px';
+                placeholder.style.width = '0';
+                placeholder.style.height = '0';
+                document.body.appendChild(placeholder);
+            }
+
+            window.wpActiveEditor = fallbackEditorId;
+
             wp.media.editor.send.attachment = function(props, attachment){
                 wp.media.editor.send.attachment = previousSendAttachment;
+                window.wpActiveEditor = previousActiveEditor;
                 if (!attachment) {
                     return;
                 }
                 $container.find('.mgvd-media-id').val(attachment.id || '');
                 updatePreview($container, attachment);
             };
-            var fallbackFrame = wp.media.editor.open(trigger || '');
+
+            var fallbackFrame = wp.media.editor.open(fallbackEditorId);
             if (!fallbackFrame) {
                 wp.media.editor.send.attachment = previousSendAttachment;
+                window.wpActiveEditor = previousActiveEditor;
                 return;
             }
+
             if (fallbackFrame && fallbackFrame.on) {
                 fallbackFrame.on('close', function(){
                     wp.media.editor.send.attachment = previousSendAttachment;
+                    window.wpActiveEditor = previousActiveEditor;
                 });
             }
         }
