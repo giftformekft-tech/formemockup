@@ -200,6 +200,9 @@
     if ($thead.length) {
       if ($thead.find('th:contains("Előnézet")').length === 0) { $('<th>Előnézet</th>').insertAfter($thead.find('th').first()); }
     }
+    if ($thead.length && $thead.find('th:contains("Egyedi termék")').length === 0) {
+      $('<th>Egyedi termék</th>').insertBefore($thead.find('th:contains("Tag-ek")'));
+    }
     if ($thead.length && $thead.find('th:contains("Tag-ek")').length === 0) {
       $('<th>Tag-ek</th>').insertBefore($thead.find('th').last());
     }
@@ -214,7 +217,7 @@
   function renderRows(files){
     var $tbody = $('#mg-bulk-rows').empty();
     if (!files || !files.length){
-      $tbody.append('<tr class="no-items"><td colspan="9">Válassz fájlokat fent.</td></tr>');
+      $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
       return;
     }
     mgEnsureHeader();
@@ -243,6 +246,7 @@
       });
       $tr.append('<td><input type="text" class="mg-name" value="'+basename(file.name||'')+'"></td>');
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
+      $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
       // NEW: tags cell before state
       $tr.append('<td class="mg-tags"><input type="text" class="mg-tags-input" placeholder="pl. horgaszat, ponty, kapucnis"></td>');
       $tr.append('<td class="mg-state">Várakozik</td>');
@@ -343,6 +347,15 @@
     });
   }
 
+  function copyCustomFlagFromFirst(){
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if ($rows.length <= 1){ return; }
+    var checked = $rows.first().find('.mg-custom-flag').is(':checked');
+    $rows.slice(1).each(function(){
+      $(this).find('.mg-custom-flag').prop('checked', checked);
+    });
+  }
+
   function setupCopyButtons(){
     var $legacy = $('#mg-bulk-apply-first');
     if (!$legacy.length || $legacy.data('mgSplitReady')){ return; }
@@ -352,7 +365,8 @@
     var $mainBtn = $('<button type="button" class="button" id="mg-bulk-copy-main">Főkategória másolása az első sorból</button>');
     var $subsBtn = $('<button type="button" class="button" id="mg-bulk-copy-subs">Alkategóriák másolása az első sorból</button>');
     var $tagsBtn = $('<button type="button" class="button" id="mg-bulk-copy-tags">Tag-ek másolása az első sorból</button>');
-    $legacy.after($tagsBtn).after($subsBtn).after($mainBtn);
+    var $customBtn = $('<button type="button" class="button" id="mg-bulk-copy-custom">Egyedi jelölés másolása</button>');
+    $legacy.after($customBtn).after($tagsBtn).after($subsBtn).after($mainBtn);
   }
 
   $(setupCopyButtons);
@@ -373,6 +387,11 @@
     copyTagsFromFirst();
   });
 
+  $(document).on('click', '#mg-bulk-copy-custom', function(e){
+    e.preventDefault();
+    copyCustomFlagFromFirst();
+  });
+
   $(document).on('click', '#mg-bulk-apply-first', function(e){
     e.preventDefault();
     var $rows = $('#mg-bulk-rows .mg-item-row');
@@ -381,6 +400,7 @@
     copySubsFromFirst();
     copyParentFromFirst();
     copyTagsFromFirst();
+    copyCustomFlagFromFirst();
   });
 
   function getSelectedProductKeys(){
@@ -430,6 +450,7 @@
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
       form.append('tags', tags);
+      form.append('custom_product', $row.find('.mg-custom-flag').is(':checked') ? '1' : '0');
       var defaults = MG_BULK_ADV.activeDefaults || {};
       form.append('primary_type', defaults.type || '');
       form.append('primary_color', defaults.color || '');

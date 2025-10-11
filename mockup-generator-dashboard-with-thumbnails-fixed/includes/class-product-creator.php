@@ -260,8 +260,9 @@ class MG_Product_Creator {
         }
     }
 
-    public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array()) {
+    public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array(), $generation_context = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
+        $generation_context = is_array($generation_context) ? $generation_context : array();
         $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
         $default_type = $resolved_defaults['type'];
         $default_color = $resolved_defaults['color'];
@@ -400,11 +401,18 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             if (function_exists('wc_delete_product_transients')) { wc_delete_product_transients($parent_id); }
             if (function_exists('wc_update_product_lookup_tables')) { wc_update_product_lookup_tables($parent_id); }
         }
+        if (!empty($applied_defaults)) {
+            $generation_context['applied_defaults'] = $applied_defaults;
+        }
+        if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
+            MG_Mockup_Maintenance::register_generation($parent_id, $selected_products, $images_by_type_color, $generation_context);
+        }
         return $parent_id;
     }
 
-    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array()) {
+    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array(), $generation_context = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
+        $generation_context = is_array($generation_context) ? $generation_context : array();
         $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
         $default_type = $resolved_defaults['type'];
         $default_color = $resolved_defaults['color'];
@@ -555,6 +563,13 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             if (function_exists('wc_delete_product_transients')) { wc_delete_product_transients($product->get_id()); }
             if (function_exists('wc_update_product_lookup_tables')) { wc_update_product_lookup_tables($product->get_id()); }
         }
-        return $product->get_id();
+        $result_id = $product->get_id();
+        if (!empty($applied_defaults)) {
+            $generation_context['applied_defaults'] = $applied_defaults;
+        }
+        if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
+            MG_Mockup_Maintenance::register_generation($result_id, $selected_products, $images_by_type_color, $generation_context);
+        }
+        return $result_id;
     }
 }
