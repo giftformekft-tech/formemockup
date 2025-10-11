@@ -23,8 +23,11 @@ add_action('plugins_loaded', function(){
         'admin/class-product-settings-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
+        'admin/class-custom-fields-page.php',
         'includes/class-generator.php',
         'includes/class-product-creator.php',
+        'includes/class-custom-fields-manager.php',
+        'includes/class-custom-fields-frontend.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -41,6 +44,9 @@ add_action('plugins_loaded', function(){
         MG_Admin_Page::add_menu_page();
         MG_Settings_Page::add_submenu_page();
         MG_Product_Settings_Page::register_dynamic_product_submenus();
+        if (class_exists('MG_Custom_Fields_Page')) {
+            MG_Custom_Fields_Page::add_submenu_page();
+        }
         });
 
 // Redirect top-level menu to the working manual dashboard slug
@@ -60,4 +66,8 @@ add_action('load-toplevel_page_mockup-generator', function(){
             ));
         }
     });
+
+    if (class_exists('MG_Custom_Fields_Frontend')) {
+        MG_Custom_Fields_Frontend::init();
+    }
 }, 20);
