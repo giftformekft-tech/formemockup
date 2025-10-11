@@ -23,8 +23,13 @@ add_action('plugins_loaded', function(){
         'admin/class-product-settings-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
+        'admin/class-custom-fields-page.php',
+        'admin/class-mockup-maintenance-page.php',
         'includes/class-generator.php',
         'includes/class-product-creator.php',
+        'includes/class-custom-fields-manager.php',
+        'includes/class-custom-fields-frontend.php',
+        'includes/class-mockup-maintenance.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -41,6 +46,12 @@ add_action('plugins_loaded', function(){
         MG_Admin_Page::add_menu_page();
         MG_Settings_Page::add_submenu_page();
         MG_Product_Settings_Page::register_dynamic_product_submenus();
+        if (class_exists('MG_Custom_Fields_Page')) {
+            MG_Custom_Fields_Page::add_submenu_page();
+        }
+        if (class_exists('MG_Mockup_Maintenance_Page')) {
+            MG_Mockup_Maintenance_Page::add_submenu_page();
+        }
         });
 
 // Redirect top-level menu to the working manual dashboard slug
@@ -58,6 +69,17 @@ add_action('load-toplevel_page_mockup-generator', function(){
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')
             ));
+            if ($hook === 'mockup-generator_page_mockup-generator-maintenance') {
+                wp_enqueue_style('mg-mockup-maintenance', plugins_url('assets/css/mockup-maintenance.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . 'assets/css/mockup-maintenance.css'));
+                wp_enqueue_script('mg-mockup-maintenance', plugins_url('assets/js/mockup-maintenance.js', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . 'assets/js/mockup-maintenance.js'), true);
+            }
         }
     });
+
+    if (class_exists('MG_Custom_Fields_Frontend')) {
+        MG_Custom_Fields_Frontend::init();
+    }
+    if (class_exists('MG_Mockup_Maintenance')) {
+        MG_Mockup_Maintenance::init();
+    }
 }, 20);
