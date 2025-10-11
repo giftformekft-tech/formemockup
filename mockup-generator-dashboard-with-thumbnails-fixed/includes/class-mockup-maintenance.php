@@ -9,6 +9,8 @@ class MG_Mockup_Maintenance {
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
     const DEFAULT_BATCH = 3;
     const CRON_HOOK = 'mg_mockup_process_queue';
+    const META_LAST_DESIGN_PATH = '_mg_last_design_path';
+    const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
 
     public static function init() {
         add_action('init', [__CLASS__, 'register_cron_schedule']);
@@ -573,6 +575,7 @@ class MG_Mockup_Maintenance {
                 $queue = array_values(array_diff($queue, [$key]));
             }
         }
+        self::store_design_reference($product_id, $design_path, $design_attachment_id);
         self::set_index($index);
         self::set_queue($queue);
     }
@@ -612,11 +615,15 @@ class MG_Mockup_Maintenance {
                 $context['design_path'] = wp_normalize_path($context['design_path']);
             }
             $source = array_merge($source, $context);
+            if (!empty($context['design_path']) || !empty($context['design_attachment_id'])) {
+                self::store_design_reference($product_id, $context['design_path'] ?? '', $context['design_attachment_id'] ?? 0);
+            }
         }
         $source = self::apply_type_metadata_to_source($source, $type_slug, $color_slug);
         if ($is_new_entry) {
             $source = self::prime_source_for_new_entry($source, $type_slug, $color_slug);
         }
+        $source = self::merge_design_reference_into_source($source, $product_id);
         $index[$key]['source'] = $source;
         $queue = self::get_queue();
         if (!in_array($key, $queue, true)) {
@@ -642,6 +649,64 @@ class MG_Mockup_Maintenance {
             }
         }
         return [];
+    }
+
+    private static function store_design_reference($product_id, $design_path, $design_attachment_id) {
+        $product_id = absint($product_id);
+        if ($product_id <= 0 || !function_exists('update_post_meta')) {
+            return;
+        }
+        $design_attachment_id = absint($design_attachment_id);
+        if ($design_attachment_id > 0) {
+            update_post_meta($product_id, self::META_LAST_DESIGN_ATTACHMENT, $design_attachment_id);
+        }
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        if ($design_path !== '' && file_exists($design_path)) {
+            update_post_meta($product_id, self::META_LAST_DESIGN_PATH, $design_path);
+        }
+    }
+
+    private static function fetch_design_reference($product_id) {
+        $reference = [];
+        $product_id = absint($product_id);
+        if ($product_id <= 0 || !function_exists('get_post_meta')) {
+            return $reference;
+        }
+        $attachment_id = get_post_meta($product_id, self::META_LAST_DESIGN_ATTACHMENT, true);
+        if (!empty($attachment_id)) {
+            $reference['design_attachment_id'] = (int) $attachment_id;
+        }
+        $stored_path = get_post_meta($product_id, self::META_LAST_DESIGN_PATH, true);
+        if (is_string($stored_path) && $stored_path !== '') {
+            $reference['design_path'] = wp_normalize_path($stored_path);
+        }
+        return $reference;
+    }
+
+    private static function merge_design_reference_into_source($source, $product_id) {
+        $source = is_array($source) ? $source : [];
+        $reference = self::fetch_design_reference($product_id);
+        $has_valid_path = false;
+        if (!empty($source['design_path'])) {
+            $source['design_path'] = wp_normalize_path($source['design_path']);
+            if ($source['design_path'] && file_exists($source['design_path'])) {
+                $has_valid_path = true;
+            }
+        }
+        if (!$has_valid_path && !empty($reference['design_path']) && file_exists($reference['design_path'])) {
+            $source['design_path'] = wp_normalize_path($reference['design_path']);
+            $has_valid_path = true;
+        }
+        if (empty($source['design_attachment_id']) && !empty($reference['design_attachment_id'])) {
+            $source['design_attachment_id'] = (int) $reference['design_attachment_id'];
+        }
+        if (!$has_valid_path && !empty($source['design_attachment_id']) && function_exists('get_attached_file')) {
+            $file = get_attached_file((int) $source['design_attachment_id']);
+            if ($file && file_exists($file)) {
+                $source['design_path'] = wp_normalize_path($file);
+            }
+        }
+        return $source;
     }
 
     private static function prime_source_for_new_entry($source, $type_slug, $color_slug) {
@@ -739,7 +804,7 @@ class MG_Mockup_Maintenance {
 
     private static function resolve_design_path($entry) {
         $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
-        $path = isset($source['design_path']) ? $source['design_path'] : '';
+        $path = isset($source['design_path']) ? wp_normalize_path($source['design_path']) : '';
         if (!empty($path) && file_exists($path)) {
             return $path;
         }
@@ -747,6 +812,19 @@ class MG_Mockup_Maintenance {
             $file = get_attached_file((int) $source['design_attachment_id']);
             if ($file && file_exists($file)) {
                 return $file;
+            }
+        }
+        $reference = self::fetch_design_reference($entry['product_id'] ?? 0);
+        if (!empty($reference['design_attachment_id']) && function_exists('get_attached_file')) {
+            $file = get_attached_file((int) $reference['design_attachment_id']);
+            if ($file && file_exists($file)) {
+                return $file;
+            }
+        }
+        if (!empty($reference['design_path'])) {
+            $ref_path = wp_normalize_path($reference['design_path']);
+            if ($ref_path && file_exists($ref_path)) {
+                return $ref_path;
             }
         }
         return apply_filters('mg_mockup_resolve_design_path', $path, $entry);
