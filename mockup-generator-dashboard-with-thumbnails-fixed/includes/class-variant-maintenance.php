@@ -17,6 +17,7 @@ class MG_Variant_Maintenance {
         $old_types = self::normalize_catalog($old_value);
 
         foreach ($new_types as $type_slug => $type_data) {
+            $is_new_type = !isset($old_types[$type_slug]);
             $old_data = isset($old_types[$type_slug]) ? $old_types[$type_slug] : ['colors' => [], 'sizes' => [], 'matrix' => []];
             $added_colors = array_diff(array_keys($type_data['colors']), array_keys($old_data['colors']));
             $added_sizes = array_diff($type_data['sizes'], $old_data['sizes']);
@@ -26,7 +27,7 @@ class MG_Variant_Maintenance {
                 continue;
             }
 
-            self::synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions);
+            self::synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions, $is_new_type);
         }
 
         return $new_value;
@@ -171,8 +172,8 @@ class MG_Variant_Maintenance {
         return array_values(array_unique($allowed));
     }
 
-    private static function synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions) {
-        $product_ids = self::collect_products_for_type($type_slug);
+    private static function synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions, $force_all_products = false) {
+        $product_ids = $force_all_products ? self::collect_all_products() : self::collect_products_for_type($type_slug);
         if (empty($product_ids)) {
             return;
         }
@@ -216,6 +217,24 @@ class MG_Variant_Maintenance {
                 if ($product_id > 0) {
                     $ids[$product_id] = true;
                 }
+            }
+        }
+        return array_keys($ids);
+    }
+
+    private static function collect_all_products() {
+        $index = MG_Mockup_Maintenance::get_index();
+        if (!is_array($index)) {
+            return [];
+        }
+        $ids = [];
+        foreach ($index as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $product_id = absint($entry['product_id'] ?? 0);
+            if ($product_id > 0) {
+                $ids[$product_id] = true;
             }
         }
         return array_keys($ids);
