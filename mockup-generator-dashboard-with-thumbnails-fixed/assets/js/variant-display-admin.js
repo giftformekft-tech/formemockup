@@ -41,11 +41,16 @@
         refreshColorChip($container.closest('.mgvd-color-card'), attachment || null);
     }
 
+    function hasModernMediaFrame() {
+        return typeof wp !== 'undefined' && wp.media && typeof wp.media === 'function';
+    }
+
+    function hasEditorFallback() {
+        return typeof wp !== 'undefined' && wp.media && wp.media.editor && typeof wp.media.editor.open === 'function';
+    }
+
     function mediaFrameworkReady() {
-        return typeof wp !== 'undefined' && wp.media && (
-            typeof wp.media === 'function' ||
-            (typeof wp.media === 'object' && wp.media.editor && typeof wp.media.editor.open === 'function')
-        );
+        return hasModernMediaFrame() || hasEditorFallback();
     }
 
     function ensureMediaAndRun(callback) {
@@ -89,7 +94,7 @@
         var $button = $container.find('.mgvd-media-select');
         var modalTitle = $button.data('modal-title') || (window.MGVD_Admin && MGVD_Admin.select) || 'Válassz képet';
 
-        if (typeof wp.media === 'function') {
+        if (hasModernMediaFrame()) {
             var frame = wp.media({
                 title: modalTitle,
                 multiple: false,
@@ -122,7 +127,7 @@
             return;
         }
 
-        if (wp.media && wp.media.editor && typeof wp.media.editor.open === 'function') {
+        if (hasEditorFallback()) {
             var previousSendAttachment = wp.media.editor.send.attachment;
             var previousActiveEditor = window.wpActiveEditor;
             var fallbackEditorId = 'mgvd-media-fallback';
@@ -162,7 +167,11 @@
                     window.wpActiveEditor = previousActiveEditor;
                 });
             }
+            return;
         }
+
+        var message = (window.MGVD_Admin && MGVD_Admin.mediaError) ? MGVD_Admin.mediaError : 'A média-felület nem érhető el.';
+        window.alert(message);
     }
 
     $(document).on('click', '.mgvd-media-select, .mgvd-media__preview', function(e){

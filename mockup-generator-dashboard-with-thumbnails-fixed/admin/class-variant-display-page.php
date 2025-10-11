@@ -20,12 +20,13 @@ class MG_Variant_Display_Page {
     }
 
     public static function prime_media_library() {
-        if (function_exists('wp_enqueue_media') && !did_action('wp_enqueue_media')) {
+        if (function_exists('wp_enqueue_media')) {
             wp_enqueue_media();
         }
 
         if (function_exists('wp_enqueue_script')) {
             wp_enqueue_script('media-editor');
+            wp_enqueue_script('media-upload');
         }
     }
 
@@ -39,12 +40,13 @@ class MG_Variant_Display_Page {
         $css_path = dirname(__DIR__) . '/assets/css/variant-display-admin.css';
         $js_path = dirname(__DIR__) . '/assets/js/variant-display-admin.js';
 
-        if (function_exists('wp_enqueue_media') && !did_action('wp_enqueue_media')) {
+        if (function_exists('wp_enqueue_media')) {
             wp_enqueue_media();
         }
         // Ensure the media modal scripts are present and marked as dependencies
         if (function_exists('wp_enqueue_script')) {
             wp_enqueue_script('media-editor');
+            wp_enqueue_script('media-upload');
         }
 
         wp_enqueue_style(
