@@ -1,0 +1,122 @@
+.mgvd-admin .mgvd-type-list {
+    display: grid;
+    gap: 24px;
+}
+
+.mgvd-admin .mgvd-type {
+    border: 1px solid #dce4f0;
+    border-radius: 8px;
+    padding: 20px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.mgvd-admin .mgvd-type__title {
+    margin-top: 0;
+    margin-bottom: 16px;
+}
+
+.mgvd-admin .mgvd-field {
+    margin-bottom: 20px;
+}
+
+.mgvd-admin .mgvd-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.mgvd-admin .mgvd-media {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mgvd-admin .mgvd-media__preview {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    overflow: hidden;
+}
+
+.mgvd-admin .mgvd-media__preview img {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+}
+
+.mgvd-admin .mgvd-media__placeholder {
+    font-size: 12px;
+    color: #64748b;
+    text-align: center;
+    padding: 6px;
+}
+
+.mgvd-admin .mgvd-media-select,
+.mgvd-admin .mgvd-media-remove {
+    margin: 0;
+}
+
+.mgvd-admin .mgvd-colors {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 16px;
+}
+
+.mgvd-admin .mgvd-color {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: #f9fafb;
+}
+
+.mgvd-admin .mgvd-color:last-child {
+    margin-bottom: 0;
+}
+
+.mgvd-admin .mgvd-color__header {
+    margin-bottom: 12px;
+}
+
+.mgvd-admin .mgvd-color__name {
+    font-weight: 600;
+}
+
+.mgvd-admin .mgvd-color__controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+}
+
+.mgvd-admin .mgvd-color__controls label {
+    margin-bottom: 4px;
+}
+
+.mgvd-admin .mgvd-color__media {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mgvd-admin .mgvd-color__media-label {
+    font-size: 13px;
+    color: #475569;
+}
+
+@media (max-width: 782px) {
+    .mgvd-admin .mgvd-media {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .mgvd-admin .mgvd-color__controls {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
