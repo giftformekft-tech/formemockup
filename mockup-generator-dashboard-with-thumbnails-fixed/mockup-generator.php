@@ -30,6 +30,7 @@ add_action('plugins_loaded', function(){
         'includes/class-custom-fields-manager.php',
         'includes/class-custom-fields-frontend.php',
         'includes/class-mockup-maintenance.php',
+        'includes/class-variant-maintenance.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -81,5 +82,8 @@ add_action('load-toplevel_page_mockup-generator', function(){
     }
     if (class_exists('MG_Mockup_Maintenance')) {
         MG_Mockup_Maintenance::init();
+    }
+    if (class_exists('MG_Variant_Maintenance')) {
+        MG_Variant_Maintenance::init();
     }
 }, 20);
