@@ -16,7 +16,7 @@ class MG_Variant_Display_Page {
     }
 
     public static function enqueue_assets($hook) {
-        if ($hook !== 'mockup-generator_page_mockup-generator-variant-display') {
+        if (strpos((string) $hook, 'mockup-generator-variant-display') === false) {
             return;
         }
 
@@ -47,6 +47,12 @@ class MG_Variant_Display_Page {
     public static function render_page() {
         if (!current_user_can('manage_woocommerce')) {
             wp_die(__('Nincs jogosultságod a beállítások módosításához.', 'mgvd'));
+        }
+
+        // Ensure the WordPress media modal assets are available when the page renders
+        // even if enqueue_assets() did not run due to an unexpected hook name.
+        if (function_exists('wp_enqueue_media')) {
+            wp_enqueue_media();
         }
 
         $catalog = MG_Variant_Display_Manager::get_catalog_index();
