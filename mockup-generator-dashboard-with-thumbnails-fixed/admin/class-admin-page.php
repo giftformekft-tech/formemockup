@@ -332,12 +332,13 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
                     <th>Alkategóriák</th>
                     <th>Terméknév</th>
                     <th>Szülő keresése</th>
+                    <th>Egyedi termék</th>
                     <th>Tag-ek</th>
                     <th>Állapot</th>
                   </tr>
                 </thead>
                 <tbody id="mg-bulk-rows">
-                  <tr class="no-items"><td colspan="9">Válassz fájlokat fent.</td></tr>
+                  <tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>
                 </tbody>
               </table>
             </div>

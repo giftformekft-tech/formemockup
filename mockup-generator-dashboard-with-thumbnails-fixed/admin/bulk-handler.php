@@ -63,6 +63,10 @@ if (!function_exists('mg_bulk_allowed_sizes_for_color')) {
         return array_values(array_unique($allowed));
     }
 }
+
+if (!class_exists('MG_Custom_Fields_Manager')) {
+    require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
+}
 add_action('wp_ajax_mg_bulk_process_one', function(){
     check_ajax_referer('mg_ajax_nonce','nonce');
     if (!current_user_can('manage_options')) wp_send_json_error(array('message'=>'Jogosultság hiányzik.'), 403);
@@ -76,6 +80,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     $keys = isset($_POST['product_keys']) ? (array) $_POST['product_keys'] : array();
     $keys = array_map('sanitize_text_field', $keys);
     if (empty($keys)) wp_send_json_error(array('message'=>'Nincs kiválasztott terméktípus.'), 400);
+    $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
 
     require_once plugin_dir_path(__FILE__) . '../includes/class-generator.php';
     require_once plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
@@ -137,6 +142,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         }
         $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults);
         if (is_wp_error($product_id)) wp_send_json_error(array('message'=>$product_id->get_error_message()), 500);
+        MG_Custom_Fields_Manager::set_custom_product($product_id, $is_custom_product);
 
         wp_send_json_success(array('product_id'=>$product_id, 'name'=>$parent_name));
     } catch (Throwable $e) {
