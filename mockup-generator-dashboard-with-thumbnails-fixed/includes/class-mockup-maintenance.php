@@ -467,9 +467,11 @@ class MG_Mockup_Maintenance {
         if (!$product || !$product->get_id()) {
             return;
         }
+        $key = self::compose_key($product_id, $type_slug, $color_slug);
         $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
         $selected_snapshot = isset($source['selected_products']) ? $source['selected_products'] : [];
         $selected_payload = self::prepare_selected_payload_for_color($selected_snapshot, $type_slug, $color_slug);
+        $selected_payload = self::sanitize_selected_products($selected_payload);
         if (empty($selected_payload)) {
             return;
         }
@@ -477,6 +479,16 @@ class MG_Mockup_Maintenance {
         $defaults_source = self::sanitize_default_attributes($defaults_source);
         $product_defaults = self::sanitize_default_attributes($product->get_default_attributes());
         $merged_defaults = array_merge($product_defaults, $defaults_source);
+        $index = self::get_index();
+        if (isset($index[$key])) {
+            $stored_source = isset($index[$key]['source']) && is_array($index[$key]['source']) ? $index[$key]['source'] : [];
+            $stored_source['selected_products'] = $selected_payload;
+            if (!empty($merged_defaults)) {
+                $stored_source['defaults'] = $merged_defaults;
+            }
+            $index[$key]['source'] = $stored_source;
+            self::set_index($index);
+        }
         $defaults_payload = [
             'type'  => $merged_defaults['pa_termektipus'] ?? '',
             'color' => $merged_defaults['pa_szin'] ?? '',
@@ -505,6 +517,20 @@ class MG_Mockup_Maintenance {
         );
         if (is_wp_error($result)) {
             self::log_activity($entry, 'error', sprintf(__('Nem sikerült az új szín variáns létrehozása: %s', 'mgdtp'), $result->get_error_message()));
+            return;
+        }
+        $latest_product = wc_get_product($product_id);
+        if ($latest_product && $latest_product->get_id()) {
+            $latest_defaults = self::sanitize_default_attributes($latest_product->get_default_attributes());
+            if (!empty($latest_defaults)) {
+                $index = self::get_index();
+                if (isset($index[$key])) {
+                    $stored_source = isset($index[$key]['source']) && is_array($index[$key]['source']) ? $index[$key]['source'] : [];
+                    $stored_source['defaults'] = $latest_defaults;
+                    $index[$key]['source'] = $stored_source;
+                    self::set_index($index);
+                }
+            }
         }
     }
 
@@ -870,6 +896,13 @@ class MG_Mockup_Maintenance {
     }
 
     private static function process_single($key) {
+        $index = self::get_index();
+        if (!isset($index[$key])) {
+            self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
+            return;
+        }
+        $entry = $index[$key];
+        self::ensure_product_has_color_variant($entry);
         $index = self::get_index();
         if (!isset($index[$key])) {
             self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
