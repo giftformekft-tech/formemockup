@@ -110,6 +110,7 @@ add_action('admin_post_mg_upload_design_multi', function() {
         }
 
         $creator = new MG_Product_Creator();
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'admin_upload');
         $assign_cats = array('main'=>$main_cat, 'sub'=>$sub_cat);
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
@@ -154,10 +155,10 @@ add_action('admin_post_mg_upload_design_multi', function() {
         }
 
         if ($parent_id > 0) {
-            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $assign_cats, $defaults);
+            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $assign_cats, $defaults, $generation_context);
             if (is_wp_error($result)) throw new Exception($result->get_error_message());
         } else {
-            $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $assign_cats, $defaults);
+            $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $assign_cats, $defaults, $generation_context);
             if (is_wp_error($product_id)) throw new Exception($product_id->get_error_message());
         }
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;
