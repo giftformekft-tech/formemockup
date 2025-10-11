@@ -227,6 +227,7 @@ class MG_Custom_Fields_Page {
         echo '</form>';
 
         $fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
+        self::render_presets_section($product_id, $fields);
         if (empty($fields)) {
             echo '<h3>' . esc_html__('Még nincs mező konfigurálva', 'mgcf') . '</h3>';
         } else {
@@ -237,7 +238,6 @@ class MG_Custom_Fields_Page {
         }
         echo '<h3>' . esc_html__('Új mező hozzáadása', 'mgcf') . '</h3>';
         self::render_field_editor_form($product_id, null, true);
-        self::render_presets_section($product_id, $fields);
     }
 
     protected static function render_field_editor_form($product_id, $field = null, $is_new = false) {
