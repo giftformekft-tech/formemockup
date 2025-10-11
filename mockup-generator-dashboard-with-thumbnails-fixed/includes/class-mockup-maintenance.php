@@ -484,16 +484,27 @@ class MG_Mockup_Maintenance {
             'skip_register_maintenance' => true,
             'trigger' => 'maintenance_auto_color',
         ];
+        $type_definition = self::find_type_definition($type_slug);
+        $images_payload = [];
+        $override_images = self::collect_override_images_for_color($type_definition, $color_slug);
+        if (!empty($override_images)) {
+            $type_key_for_images = $type_definition && !empty($type_definition['key']) ? sanitize_title($type_definition['key']) : $type_slug;
+            $images_payload[$type_key_for_images][$color_slug] = $override_images;
+        }
         $creator = new MG_Product_Creator();
-        $creator->add_type_to_existing_parent(
+        $result = $creator->add_type_to_existing_parent(
             $product_id,
             $selected_payload,
+            $images_payload,
             [],
             '',
             [],
             $defaults_payload,
             $generation_context
         );
+        if (is_wp_error($result)) {
+            self::log_activity($entry, 'error', sprintf(__('Nem sikerült az új szín variáns létrehozása: %s', 'mgdtp'), $result->get_error_message()));
+        }
     }
 
     public static function register_generation($product_id, $selected_products, $images_by_type_color, $context = []) {
@@ -603,6 +614,9 @@ class MG_Mockup_Maintenance {
             $source = array_merge($source, $context);
         }
         $source = self::apply_type_metadata_to_source($source, $type_slug, $color_slug);
+        if ($is_new_entry) {
+            $source = self::prime_source_for_new_entry($source, $type_slug, $color_slug);
+        }
         $index[$key]['source'] = $source;
         $queue = self::get_queue();
         if (!in_array($key, $queue, true)) {
@@ -628,6 +642,71 @@ class MG_Mockup_Maintenance {
             }
         }
         return [];
+    }
+
+    private static function prime_source_for_new_entry($source, $type_slug, $color_slug) {
+        $source = is_array($source) ? $source : [];
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $catalog_item = self::find_type_definition($type_slug);
+        $sanitized_catalog = self::sanitize_single_product_snapshot($catalog_item);
+        if ($sanitized_catalog) {
+            $selected = isset($source['selected_products']) ? self::sanitize_selected_products($source['selected_products']) : [];
+            $has_type = false;
+            foreach ($selected as $idx => $item) {
+                if (($item['key'] ?? '') === ($sanitized_catalog['key'] ?? '')) {
+                    $selected[$idx] = self::enrich_type_snapshot_with_catalog($item, $sanitized_catalog, $color_slug);
+                    $has_type = true;
+                    break;
+                }
+            }
+            if (!$has_type) {
+                $selected[] = self::enrich_type_snapshot_with_catalog([], $sanitized_catalog, $color_slug);
+            }
+            $source['selected_products'] = $selected;
+            if (empty($source['defaults'])) {
+                $defaults = [];
+                if (!empty($sanitized_catalog['key'])) {
+                    $defaults['pa_termektipus'] = $sanitized_catalog['key'];
+                }
+                if (!empty($sanitized_catalog['primary_color'])) {
+                    $defaults['pa_szin'] = $sanitized_catalog['primary_color'];
+                }
+                if (!empty($sanitized_catalog['primary_size'])) {
+                    $defaults['meret'] = $sanitized_catalog['primary_size'];
+                }
+                if (!empty($defaults)) {
+                    $source['defaults'] = $defaults;
+                }
+            }
+        }
+        return $source;
+    }
+
+    private static function collect_override_images_for_color($type, $color_slug) {
+        $images = [];
+        if (!is_array($type) || empty($type['views']) || !is_array($type['views'])) {
+            return $images;
+        }
+        $color_slug = sanitize_title($color_slug);
+        $overrides = self::normalize_overrides_from_type($type);
+        if (!isset($overrides[$color_slug])) {
+            return $images;
+        }
+        foreach ((array) $type['views'] as $view) {
+            if (!is_array($view) || empty($view['file'])) {
+                continue;
+            }
+            $view_key = $view['file'];
+            if (!isset($overrides[$color_slug][$view_key])) {
+                continue;
+            }
+            $path = wp_normalize_path($overrides[$color_slug][$view_key]);
+            if ($path && file_exists($path)) {
+                $images[] = $path;
+            }
+        }
+        return $images;
     }
 
     private static function apply_type_metadata_to_source($source, $type_slug, $color_slug) {
