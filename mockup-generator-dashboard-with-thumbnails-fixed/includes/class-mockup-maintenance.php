@@ -498,7 +498,6 @@ class MG_Mockup_Maintenance {
             $product_id,
             $selected_payload,
             $images_payload,
-            [],
             '',
             [],
             $defaults_payload,
