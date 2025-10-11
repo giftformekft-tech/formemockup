@@ -334,7 +334,7 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
                     <th>Szülő keresése</th>
                     <th>Egyedi termék</th>
                     <th>Tag-ek</th>
-                    <th>Állapot</th>
+                    <th class="mg-state">Állapot</th>
                   </tr>
                 </thead>
                 <tbody id="mg-bulk-rows">
