@@ -41,11 +41,18 @@
         refreshColorChip($container.closest('.mgvd-color-card'), attachment || null);
     }
 
+    function mediaFrameworkReady() {
+        return typeof wp !== 'undefined' && wp.media && (
+            typeof wp.media === 'function' ||
+            (typeof wp.media === 'object' && wp.media.editor && typeof wp.media.editor.open === 'function')
+        );
+    }
+
     function ensureMediaAndRun(callback) {
         var attempts = 0;
         function tryRun() {
             attempts++;
-            if (typeof wp !== 'undefined' && wp.media && typeof wp.media === 'function') {
+            if (mediaFrameworkReady()) {
                 callback();
                 return true;
             }
@@ -69,9 +76,9 @@
     }
 
     function openMediaFrame($container) {
-        if (typeof wp === 'undefined' || typeof wp.media !== 'function') {
-            var message = (window.MGVD_Admin && MGVD_Admin.mediaError) ? MGVD_Admin.mediaError : 'A média-felület nem érhető el.';
-            window.alert(message);
+        if (!mediaFrameworkReady()) {
+            var fallbackMessage = (window.MGVD_Admin && MGVD_Admin.mediaError) ? MGVD_Admin.mediaError : 'A média-felület nem érhető el.';
+            window.alert(fallbackMessage);
             return;
         }
         var existing = $container.data('mgvdFrame');
@@ -81,35 +88,62 @@
         }
         var $button = $container.find('.mgvd-media-select');
         var modalTitle = $button.data('modal-title') || (window.MGVD_Admin && MGVD_Admin.select) || 'Válassz képet';
-        var frame = wp.media({
-            title: modalTitle,
-            multiple: false,
-            library: { type: 'image' }
-        });
-        frame.on('select', function(){
-            var model = frame.state().get('selection').first();
-            if (!model) {
+
+        if (typeof wp.media === 'function') {
+            var frame = wp.media({
+                title: modalTitle,
+                multiple: false,
+                library: { type: 'image' }
+            });
+            frame.on('select', function(){
+                var model = frame.state().get('selection').first();
+                if (!model) {
+                    return;
+                }
+                var attachment = model.toJSON();
+                $container.find('.mgvd-media-id').val(attachment.id || '');
+                updatePreview($container, attachment);
+            });
+            frame.on('open', function(){
+                var currentId = parseInt($container.find('.mgvd-media-id').val(), 10);
+                if (!currentId) {
+                    return;
+                }
+                var selection = frame.state().get('selection');
+                var attachment = wp.media.attachment(currentId);
+                if (!attachment) {
+                    return;
+                }
+                attachment.fetch();
+                selection.reset([attachment]);
+            });
+            $container.data('mgvdFrame', frame);
+            frame.open();
+            return;
+        }
+
+        if (wp.media && wp.media.editor && typeof wp.media.editor.open === 'function') {
+            var trigger = $button.length ? $button.get(0) : ($container.find('.mgvd-media__preview').get(0) || null);
+            var previousSendAttachment = wp.media.editor.send.attachment;
+            wp.media.editor.send.attachment = function(props, attachment){
+                wp.media.editor.send.attachment = previousSendAttachment;
+                if (!attachment) {
+                    return;
+                }
+                $container.find('.mgvd-media-id').val(attachment.id || '');
+                updatePreview($container, attachment);
+            };
+            var fallbackFrame = wp.media.editor.open(trigger || '');
+            if (!fallbackFrame) {
+                wp.media.editor.send.attachment = previousSendAttachment;
                 return;
             }
-            var attachment = model.toJSON();
-            $container.find('.mgvd-media-id').val(attachment.id || '');
-            updatePreview($container, attachment);
-        });
-        frame.on('open', function(){
-            var currentId = parseInt($container.find('.mgvd-media-id').val(), 10);
-            if (!currentId) {
-                return;
+            if (fallbackFrame && fallbackFrame.on) {
+                fallbackFrame.on('close', function(){
+                    wp.media.editor.send.attachment = previousSendAttachment;
+                });
             }
-            var selection = frame.state().get('selection');
-            var attachment = wp.media.attachment(currentId);
-            if (!attachment) {
-                return;
-            }
-            attachment.fetch();
-            selection.reset([attachment]);
-        });
-        $container.data('mgvdFrame', frame);
-        frame.open();
+        }
     }
 
     $(document).on('click', '.mgvd-media-select, .mgvd-media__preview', function(e){
