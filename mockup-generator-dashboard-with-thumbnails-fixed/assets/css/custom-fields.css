@@ -12,6 +12,14 @@
     font-size: 1.2em;
 }
 
+.mg-custom-fields--placement-above_variants {
+    margin-top: 0;
+}
+
+.mg-custom-fields--placement-above_variants + .mg-custom-fields--placement-below_variants {
+    margin-top: 1em;
+}
+
 .mg-custom-field {
     margin-bottom: 1em;
 }
@@ -57,4 +65,55 @@
 
 .mg-custom-toggle-form {
     margin-bottom: 1.5em;
+}
+
+.mg-custom-presets {
+    margin-top: 2em;
+}
+
+.mg-custom-presets__block {
+    background: #fff;
+    border: 1px solid #dcdcde;
+    padding: 1em 1.5em;
+    margin-bottom: 1.5em;
+}
+
+.mg-custom-presets__block h4 {
+    margin-top: 0;
+}
+
+.mg-custom-preset-form select {
+    min-width: 260px;
+}
+
+.mg-custom-preset-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.mg-custom-preset-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e2e2e2;
+    padding: 0.6em 0;
+}
+
+.mg-custom-preset-list li:last-child {
+    border-bottom: none;
+}
+
+.mg-custom-preset-name {
+    font-weight: 600;
+}
+
+.mg-custom-preset-meta {
+    margin-left: 1em;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.mg-custom-preset-delete {
+    margin: 0;
 }

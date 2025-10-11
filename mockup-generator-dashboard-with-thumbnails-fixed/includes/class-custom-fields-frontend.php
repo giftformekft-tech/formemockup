@@ -4,12 +4,18 @@ if (!defined('ABSPATH')) {
 }
 
 class MG_Custom_Fields_Frontend {
+    protected static $current_product_id = 0;
+    protected static $cached_fields = array();
+    protected static $heading_rendered = false;
+    protected static $nonce_rendered = false;
+
     /**
      * Register front-end hooks.
      */
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'));
-        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields'));
+        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields_above'), 5);
+        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields_below'), 20);
         add_filter('woocommerce_add_to_cart_validation', array(__CLASS__, 'validate_fields'), 10, 5);
         add_filter('woocommerce_add_cart_item_data', array(__CLASS__, 'add_cart_item_data'), 10, 3);
         add_filter('woocommerce_get_item_data', array(__CLASS__, 'display_cart_item_data'), 10, 2);
@@ -32,9 +38,25 @@ class MG_Custom_Fields_Frontend {
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_url = plugins_url('assets/css/custom-fields.css', $base_file);
         wp_enqueue_style('mg-custom-fields', $style_url, array(), '1.0.0');
+        $script_url = plugins_url('assets/js/custom-fields-frontend.js', $base_file);
+        wp_enqueue_script('mg-custom-fields-frontend', $script_url, array(), '1.0.0', true);
     }
 
-    public static function render_fields() {
+    protected static function ensure_fields_loaded($product_id) {
+        $product_id = intval($product_id);
+        if ($product_id <= 0) {
+            return false;
+        }
+        if (self::$current_product_id !== $product_id) {
+            self::$current_product_id = $product_id;
+            self::$cached_fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
+            self::$heading_rendered = false;
+            self::$nonce_rendered = false;
+        }
+        return !empty(self::$cached_fields);
+    }
+
+    protected static function render_fields_for_placement($placement) {
         global $product;
         if (!$product) {
             return;
@@ -43,17 +65,42 @@ class MG_Custom_Fields_Frontend {
         if (!MG_Custom_Fields_Manager::is_custom_product($product_id)) {
             return;
         }
-        $fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
-        if (empty($fields)) {
+        if (!self::ensure_fields_loaded($product_id)) {
             return;
         }
-        wp_nonce_field('mg_custom_fields', 'mg_custom_fields_nonce');
-        echo '<div class="mg-custom-fields">';
-        echo '<h3 class="mg-custom-fields__title">Egyedi mezők</h3>';
-        foreach ($fields as $field) {
+        $normalized = MG_Custom_Fields_Manager::normalize_placement($placement);
+        $group = array();
+        foreach (self::$cached_fields as $field) {
+            $field_placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'below_variants';
+            if ($field_placement === $normalized) {
+                $group[] = $field;
+            }
+        }
+        if (empty($group)) {
+            return;
+        }
+        if (!self::$nonce_rendered) {
+            wp_nonce_field('mg_custom_fields', 'mg_custom_fields_nonce');
+            self::$nonce_rendered = true;
+        }
+        $classes = array('mg-custom-fields', 'mg-custom-fields--placement-' . sanitize_html_class($normalized));
+        echo '<div class="' . esc_attr(implode(' ', $classes)) . '" data-mgcf-placement="' . esc_attr($normalized) . '">';
+        if (!self::$heading_rendered) {
+            echo '<h3 class="mg-custom-fields__title">' . esc_html__('Egyedi mezők', 'mgcf') . '</h3>';
+            self::$heading_rendered = true;
+        }
+        foreach ($group as $field) {
             self::render_single_field($field);
         }
         echo '</div>';
+    }
+
+    public static function render_fields_above() {
+        self::render_fields_for_placement('above_variants');
+    }
+
+    public static function render_fields_below() {
+        self::render_fields_for_placement('below_variants');
     }
 
     protected static function render_single_field($field) {
@@ -66,7 +113,7 @@ class MG_Custom_Fields_Frontend {
         $min = isset($field['validation_min']) ? $field['validation_min'] : '';
         $max = isset($field['validation_max']) ? $field['validation_max'] : '';
         $description = isset($field['description']) ? $field['description'] : '';
-        $placement = isset($field['placement']) ? $field['placement'] : '';
+        $placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'below_variants';
         $options = isset($field['options']) && is_array($field['options']) ? $field['options'] : array();
         $surcharge_type = isset($field['surcharge_type']) ? $field['surcharge_type'] : 'none';
         $surcharge_amount = isset($field['surcharge_amount']) ? floatval($field['surcharge_amount']) : 0.0;

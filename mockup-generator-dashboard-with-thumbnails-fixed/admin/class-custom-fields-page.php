@@ -91,6 +91,45 @@ class MG_Custom_Fields_Page {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_unmarked', __('A termék többé nem egyedi.', 'mgcf'), 'updated');
                 }
                 break;
+            case 'save_preset':
+                $preset_name = isset($_POST['preset_name']) ? sanitize_text_field($_POST['preset_name']) : '';
+                if ($preset_name === '') {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_missing_preset_name', __('A preset neve kötelező.', 'mgcf'), 'error');
+                    break;
+                }
+                $fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
+                if (empty($fields)) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_no_fields_for_preset', __('Nincsenek menthető mezők ezen a terméken.', 'mgcf'), 'error');
+                    break;
+                }
+                $preset_id = MG_Custom_Fields_Manager::save_preset($preset_name, $fields);
+                if ($preset_id) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_preset_saved', __('A preset elmentve.', 'mgcf'), 'updated');
+                } else {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_preset_failed', __('Nem sikerült elmenteni a presetet.', 'mgcf'), 'error');
+                }
+                break;
+            case 'apply_preset':
+                $preset_id = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+                if ($preset_id === '') {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_missing_preset', __('Válassz ki egy presetet.', 'mgcf'), 'error');
+                    break;
+                }
+                if (MG_Custom_Fields_Manager::apply_preset_to_product($product_id, $preset_id)) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_preset_applied', __('Preset sikeresen hozzárendelve a termékhez.', 'mgcf'), 'updated');
+                } else {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_preset_apply_failed', __('Nem sikerült alkalmazni a presetet.', 'mgcf'), 'error');
+                }
+                break;
+            case 'delete_preset':
+                $preset_id = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+                if ($preset_id === '') {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_missing_delete_preset', __('Hiányzik a törlendő preset azonosítója.', 'mgcf'), 'error');
+                    break;
+                }
+                MG_Custom_Fields_Manager::delete_preset($preset_id);
+                add_settings_error('mg_custom_fields_admin', 'mgcf_preset_deleted', __('Preset törölve.', 'mgcf'), 'updated');
+                break;
         }
     }
 
@@ -103,7 +142,7 @@ class MG_Custom_Fields_Page {
         $field['default'] = isset($_POST['field_default']) ? sanitize_text_field($_POST['field_default']) : '';
         $field['validation_min'] = isset($_POST['field_validation_min']) ? sanitize_text_field($_POST['field_validation_min']) : '';
         $field['validation_max'] = isset($_POST['field_validation_max']) ? sanitize_text_field($_POST['field_validation_max']) : '';
-        $field['placement'] = isset($_POST['field_placement']) ? sanitize_text_field($_POST['field_placement']) : '';
+        $field['placement'] = isset($_POST['field_placement']) ? MG_Custom_Fields_Manager::normalize_placement($_POST['field_placement']) : 'below_variants';
         $field['position'] = isset($_POST['field_position']) ? intval($_POST['field_position']) : 0;
         $field['description'] = isset($_POST['field_description']) ? sanitize_textarea_field($_POST['field_description']) : '';
         $options_raw = isset($_POST['field_options']) ? wp_kses_post($_POST['field_options']) : '';
@@ -198,6 +237,7 @@ class MG_Custom_Fields_Page {
         }
         echo '<h3>' . esc_html__('Új mező hozzáadása', 'mgcf') . '</h3>';
         self::render_field_editor_form($product_id, null, true);
+        self::render_presets_section($product_id, $fields);
     }
 
     protected static function render_field_editor_form($product_id, $field = null, $is_new = false) {
@@ -209,7 +249,7 @@ class MG_Custom_Fields_Page {
         $default = isset($field['default']) ? $field['default'] : '';
         $validation_min = isset($field['validation_min']) ? $field['validation_min'] : '';
         $validation_max = isset($field['validation_max']) ? $field['validation_max'] : '';
-        $placement = isset($field['placement']) ? $field['placement'] : '';
+        $placement = isset($field['placement']) ? $field['placement'] : 'below_variants';
         $position = isset($field['position']) ? intval($field['position']) : 0;
         $description = isset($field['description']) ? $field['description'] : '';
         $options = isset($field['options']) ? $field['options'] : array();
@@ -256,7 +296,15 @@ class MG_Custom_Fields_Page {
         echo '<tr><th scope="row"><label>' . esc_html__('Alapértelmezett érték', 'mgcf') . '</label></th><td><input type="text" name="field_default" value="' . esc_attr($default) . '" class="regular-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Érvényességi minimum', 'mgcf') . '</label></th><td><input type="text" name="field_validation_min" value="' . esc_attr($validation_min) . '" class="regular-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Érvényességi maximum', 'mgcf') . '</label></th><td><input type="text" name="field_validation_max" value="' . esc_attr($validation_max) . '" class="regular-text" /></td></tr>';
-        echo '<tr><th scope="row"><label>' . esc_html__('Elhelyezés (pl. variánsok alatt)', 'mgcf') . '</label></th><td><input type="text" name="field_placement" value="' . esc_attr($placement) . '" class="regular-text" /></td></tr>';
+        $placement_options = MG_Custom_Fields_Manager::get_placement_options();
+        if (!isset($placement_options[$placement])) {
+            $placement = MG_Custom_Fields_Manager::normalize_placement($placement);
+        }
+        echo '<tr><th scope="row"><label>' . esc_html__('Elhelyezés', 'mgcf') . '</label></th><td><select name="field_placement">';
+        foreach ($placement_options as $value => $option_label) {
+            echo '<option value="' . esc_attr($value) . '"' . selected($placement, $value, false) . '>' . esc_html($option_label) . '</option>';
+        }
+        echo '</select></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Sorrend', 'mgcf') . '</label></th><td><input type="number" name="field_position" value="' . esc_attr($position) . '" class="small-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Leírás', 'mgcf') . '</label></th><td><textarea name="field_description" rows="2" class="large-text">' . esc_textarea($description) . '</textarea></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Választólista értékek', 'mgcf') . '</label></th><td><textarea name="field_options" rows="3" class="large-text" placeholder="Érték1\nÉrték2">' . esc_textarea($options_text) . '</textarea><p class="description">' . esc_html__('Választólista típusnál soronként egy opció.', 'mgcf') . '</p></td></tr>';
@@ -286,6 +334,82 @@ class MG_Custom_Fields_Page {
         }
         echo '</p>';
         echo '</form>';
+        echo '</div>';
+    }
+
+    protected static function render_presets_section($product_id, $fields) {
+        echo '<div class="mg-custom-presets">';
+        echo '<h3>' . esc_html__('Presetek', 'mgcf') . '</h3>';
+        $presets = MG_Custom_Fields_Manager::get_presets();
+
+        if (!empty($fields)) {
+            echo '<div class="mg-custom-presets__block">';
+            echo '<h4>' . esc_html__('Jelenlegi mezők mentése presetként', 'mgcf') . '</h4>';
+            echo '<form method="post" class="mg-custom-preset-form">';
+            wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
+            echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
+            echo '<input type="hidden" name="mg_custom_fields_action" value="save_preset" />';
+            echo '<p><label for="mgcf-preset-name" class="mg-custom-preset-label">' . esc_html__('Preset neve', 'mgcf') . '</label>';
+            echo '<input type="text" id="mgcf-preset-name" name="preset_name" class="regular-text" required /></p>';
+            echo '<p class="description">' . esc_html__('A jelenlegi mezők beállításait egy név alatt elmentheted későbbi felhasználásra.', 'mgcf') . '</p>';
+            echo '<p class="submit"><button type="submit" class="button">' . esc_html__('Preset mentése', 'mgcf') . '</button></p>';
+            echo '</form>';
+            echo '</div>';
+        }
+
+        echo '<div class="mg-custom-presets__block">';
+        echo '<h4>' . esc_html__('Preset alkalmazása', 'mgcf') . '</h4>';
+        if (!empty($presets)) {
+            echo '<form method="post" class="mg-custom-preset-form">';
+            wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
+            echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
+            echo '<input type="hidden" name="mg_custom_fields_action" value="apply_preset" />';
+            echo '<select name="preset_id">';
+            echo '<option value="">' . esc_html__('Válassz presetet…', 'mgcf') . '</option>';
+            foreach ($presets as $preset) {
+                $name = isset($preset['name']) ? $preset['name'] : '';
+                $id = isset($preset['id']) ? $preset['id'] : '';
+                echo '<option value="' . esc_attr($id) . '">' . esc_html($name) . '</option>';
+            }
+            echo '</select>';
+            echo '<p class="description">' . esc_html__('A kiválasztott preset mezői lecserélik a termék jelenlegi mezőit.', 'mgcf') . '</p>';
+            echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Preset hozzárendelése', 'mgcf') . '</button></p>';
+            echo '</form>';
+        } else {
+            echo '<p><em>' . esc_html__('Még nincs elmentett preset.', 'mgcf') . '</em></p>';
+        }
+        echo '</div>';
+
+        if (!empty($presets)) {
+            echo '<div class="mg-custom-presets__block">';
+            echo '<h4>' . esc_html__('Elmentett presetek kezelése', 'mgcf') . '</h4>';
+            echo '<ul class="mg-custom-preset-list">';
+            foreach ($presets as $preset) {
+                $name = isset($preset['name']) ? $preset['name'] : '';
+                $id = isset($preset['id']) ? $preset['id'] : '';
+                $updated = isset($preset['updated']) ? $preset['updated'] : '';
+                echo '<li>';
+                echo '<span class="mg-custom-preset-name">' . esc_html($name) . '</span>';
+                if ($updated !== '') {
+                    $formatted = $updated;
+                    if (function_exists('mysql2date')) {
+                        $formatted = mysql2date('Y.m.d H:i', $updated);
+                    }
+                    echo '<span class="mg-custom-preset-meta">' . esc_html(sprintf(__('Utolsó frissítés: %s', 'mgcf'), $formatted)) . '</span>';
+                }
+                echo '<form method="post" class="mg-custom-preset-delete">';
+                wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
+                echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
+                echo '<input type="hidden" name="mg_custom_fields_action" value="delete_preset" />';
+                echo '<input type="hidden" name="preset_id" value="' . esc_attr($id) . '" />';
+                echo '<button type="submit" class="button-link delete" onclick="return confirm(\'' . esc_js(__('Biztosan törölni szeretnéd ezt a presetet?', 'mgcf')) . '\');">' . esc_html__('Törlés', 'mgcf') . '</button>';
+                echo '</form>';
+                echo '</li>';
+            }
+            echo '</ul>';
+            echo '</div>';
+        }
+
         echo '</div>';
     }
 }

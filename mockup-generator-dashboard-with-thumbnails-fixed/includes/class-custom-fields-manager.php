@@ -6,6 +6,11 @@ if (!defined('ABSPATH')) {
 class MG_Custom_Fields_Manager {
     const META_KEY = '_mg_is_custom_product';
     const OPTION_KEY = 'mg_custom_fields';
+    const PRESET_OPTION_KEY = 'mg_custom_field_presets';
+
+    protected static $placement_keys = array('below_variants', 'above_variants');
+
+    protected static $cached_presets = null;
 
     /**
      * Return whether the given product is marked as custom.
@@ -35,6 +40,21 @@ class MG_Custom_Fields_Manager {
         } else {
             delete_post_meta($product_id, self::META_KEY);
         }
+    }
+
+    public static function get_placement_options() {
+        return array(
+            'below_variants' => __('Variánsok alatt', 'mgcf'),
+            'above_variants' => __('Variánsok felett', 'mgcf'),
+        );
+    }
+
+    public static function normalize_placement($placement) {
+        $placement = sanitize_key($placement);
+        if (in_array($placement, self::$placement_keys, true)) {
+            return $placement;
+        }
+        return 'below_variants';
     }
 
     /**
@@ -80,6 +100,26 @@ class MG_Custom_Fields_Manager {
         update_option(self::OPTION_KEY, $data, false);
     }
 
+    protected static function get_all_presets() {
+        if (is_array(self::$cached_presets)) {
+            return self::$cached_presets;
+        }
+        $stored = get_option(self::PRESET_OPTION_KEY, array());
+        if (!is_array($stored)) {
+            $stored = array();
+        }
+        self::$cached_presets = $stored;
+        return self::$cached_presets;
+    }
+
+    protected static function save_all_presets($presets) {
+        if (!is_array($presets)) {
+            $presets = array();
+        }
+        self::$cached_presets = $presets;
+        update_option(self::PRESET_OPTION_KEY, $presets, false);
+    }
+
     /**
      * Retrieve fields for a product.
      */
@@ -109,6 +149,109 @@ class MG_Custom_Fields_Manager {
             return ($pos_a < $pos_b) ? -1 : 1;
         });
         return $sanitized;
+    }
+
+    public static function get_presets() {
+        $presets = self::get_all_presets();
+        $sorted = $presets;
+        uasort($sorted, function($a, $b) {
+            $name_a = isset($a['name']) ? strtolower($a['name']) : '';
+            $name_b = isset($b['name']) ? strtolower($b['name']) : '';
+            return strcmp($name_a, $name_b);
+        });
+        return $sorted;
+    }
+
+    public static function get_preset($preset_id) {
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '') {
+            return null;
+        }
+        $presets = self::get_all_presets();
+        if (!isset($presets[$preset_id]) || !is_array($presets[$preset_id])) {
+            return null;
+        }
+        $preset = $presets[$preset_id];
+        if (!isset($preset['fields']) || !is_array($preset['fields'])) {
+            $preset['fields'] = array();
+        }
+        $clean_fields = array();
+        foreach ($preset['fields'] as $field) {
+            $clean_fields[] = self::sanitize_field($field);
+        }
+        $preset['fields'] = $clean_fields;
+        return $preset;
+    }
+
+    public static function save_preset($name, $fields, $preset_id = '') {
+        $name = is_string($name) ? trim(wp_strip_all_tags($name)) : '';
+        if ($name === '') {
+            return false;
+        }
+        if (!is_array($fields) || empty($fields)) {
+            return false;
+        }
+        $clean_fields = array();
+        foreach ($fields as $field) {
+            $clean_fields[] = self::sanitize_field($field);
+        }
+        $presets = self::get_all_presets();
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '' || !isset($presets[$preset_id])) {
+            $preset_id = '';
+        }
+        if ($preset_id === '') {
+            foreach ($presets as $existing_id => $preset) {
+                if (!is_array($preset)) {
+                    continue;
+                }
+                if (isset($preset['name']) && strcasecmp($preset['name'], $name) === 0) {
+                    $preset_id = $existing_id;
+                    break;
+                }
+            }
+        }
+        if ($preset_id === '') {
+            $preset_id = 'mgcf_preset_' . uniqid();
+        }
+        $presets[$preset_id] = array(
+            'id'     => $preset_id,
+            'name'   => $name,
+            'fields' => $clean_fields,
+            'updated'=> current_time('mysql'),
+        );
+        self::save_all_presets($presets);
+        return $preset_id;
+    }
+
+    public static function delete_preset($preset_id) {
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '') {
+            return;
+        }
+        $presets = self::get_all_presets();
+        if (isset($presets[$preset_id])) {
+            unset($presets[$preset_id]);
+            self::save_all_presets($presets);
+        }
+    }
+
+    public static function apply_preset_to_product($product_id, $preset_id) {
+        $product_id = intval($product_id);
+        if ($product_id <= 0) {
+            return false;
+        }
+        $preset = self::get_preset($preset_id);
+        if (!$preset) {
+            return false;
+        }
+        $fields = isset($preset['fields']) && is_array($preset['fields']) ? $preset['fields'] : array();
+        if (empty($fields)) {
+            return false;
+        }
+        self::save_fields_for_product($product_id, $fields);
+        self::set_custom_product($product_id, true);
+        return true;
     }
 
     /**
@@ -206,7 +349,7 @@ class MG_Custom_Fields_Manager {
         $default = isset($field['default']) ? self::sanitize_field_value($field['default'], $type) : '';
         $validation_min = isset($field['validation_min']) ? sanitize_text_field($field['validation_min']) : '';
         $validation_max = isset($field['validation_max']) ? sanitize_text_field($field['validation_max']) : '';
-        $placement = isset($field['placement']) ? sanitize_text_field($field['placement']) : '';
+        $placement = isset($field['placement']) ? self::normalize_placement($field['placement']) : 'below_variants';
         $options = array();
         if ($type === 'select') {
             if (!empty($field['options']) && is_array($field['options'])) {
