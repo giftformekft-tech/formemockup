@@ -104,6 +104,37 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function normalize_overrides_from_type($type) {
+        $out = [];
+        if (!is_array($type) || empty($type['mockup_overrides']) || !is_array($type['mockup_overrides'])) {
+            return $out;
+        }
+        foreach ($type['mockup_overrides'] as $color_slug => $files) {
+            if (!is_string($color_slug)) {
+                continue;
+            }
+            $color_slug = sanitize_title($color_slug);
+            if ($color_slug === '' || !is_array($files)) {
+                continue;
+            }
+            foreach ($files as $view_key => $path) {
+                if (!is_string($view_key)) {
+                    continue;
+                }
+                $view_key = trim($view_key);
+                if ($view_key === '') {
+                    continue;
+                }
+                $path = is_string($path) ? trim($path) : '';
+                if ($path === '') {
+                    continue;
+                }
+                $out[$color_slug][$view_key] = wp_normalize_path($path);
+            }
+        }
+        return $out;
+    }
+
     public static function register_generation($product_id, $selected_products, $images_by_type_color, $context = []) {
         $product_id = absint($product_id);
         if ($product_id <= 0) {
@@ -537,6 +568,8 @@ class MG_Mockup_Maintenance {
             $colors = self::normalize_colors_from_type($type);
             $old_type = isset($old_map[$slug]) ? $old_map[$slug] : null;
             $old_colors = self::normalize_colors_from_type($old_type);
+            $new_overrides = self::normalize_overrides_from_type($type);
+            $old_overrides = self::normalize_overrides_from_type($old_type);
             $old_hash = md5(wp_json_encode($old_type['views'] ?? []));
             $new_hash = md5(wp_json_encode($type['views'] ?? []));
             if ($old_type && $old_hash !== $new_hash) {
@@ -544,6 +577,33 @@ class MG_Mockup_Maintenance {
                     if (($entry['type_slug'] ?? '') === $slug) {
                         self::queue_for_regeneration($entry['product_id'], $slug, $entry['color_slug'], __('A nézetek módosultak.', 'mgdtp'));
                     }
+                }
+            }
+            $override_changes = [];
+            $override_color_keys = array_unique(array_merge(array_keys($new_overrides), array_keys($old_overrides)));
+            foreach ($override_color_keys as $color_slug) {
+                $new_views = isset($new_overrides[$color_slug]) ? $new_overrides[$color_slug] : [];
+                $old_views = isset($old_overrides[$color_slug]) ? $old_overrides[$color_slug] : [];
+                $view_keys = array_unique(array_merge(array_keys($new_views), array_keys($old_views)));
+                foreach ($view_keys as $view_key) {
+                    $new_path = isset($new_views[$view_key]) ? $new_views[$view_key] : '';
+                    $old_path = isset($old_views[$view_key]) ? $old_views[$view_key] : '';
+                    if ($new_path !== $old_path) {
+                        $override_changes[$color_slug] = true;
+                        break;
+                    }
+                }
+            }
+            if (!empty($override_changes)) {
+                $changed_colors = array_keys($override_changes);
+                foreach ($index_snapshot as $entry) {
+                    if (($entry['type_slug'] ?? '') !== $slug) {
+                        continue;
+                    }
+                    if (!in_array($entry['color_slug'] ?? '', $changed_colors, true)) {
+                        continue;
+                    }
+                    self::queue_for_regeneration($entry['product_id'], $slug, $entry['color_slug'], __('Az alap mockup lecserélésre került.', 'mgdtp'));
                 }
             }
             foreach ($colors as $color_slug => $color) {
