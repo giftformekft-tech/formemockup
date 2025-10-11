@@ -41,6 +41,33 @@
         refreshColorChip($container.closest('.mgvd-color-card'), attachment || null);
     }
 
+    function ensureMediaAndRun(callback) {
+        var attempts = 0;
+        function tryRun() {
+            attempts++;
+            if (typeof wp !== 'undefined' && wp.media && typeof wp.media === 'function') {
+                callback();
+                return true;
+            }
+            if (attempts >= 20) {
+                var message = (window.MGVD_Admin && MGVD_Admin.mediaError) ? MGVD_Admin.mediaError : 'A média-felület nem érhető el.';
+                window.alert(message);
+                return true;
+            }
+            return false;
+        }
+
+        if (tryRun()) {
+            return;
+        }
+
+        var poll = setInterval(function(){
+            if (tryRun()) {
+                clearInterval(poll);
+            }
+        }, 150);
+    }
+
     function openMediaFrame($container) {
         if (typeof wp === 'undefined' || !wp.media) {
             return;
@@ -89,7 +116,9 @@
         if (!$container.length) {
             return;
         }
-        openMediaFrame($container);
+        ensureMediaAndRun(function(){
+            openMediaFrame($container);
+        });
     });
 
     $(document).on('keydown', '.mgvd-media__preview', function(e){
@@ -97,7 +126,9 @@
             e.preventDefault();
             var $container = $(this).closest('.mgvd-media');
             if ($container.length) {
-                openMediaFrame($container);
+                ensureMediaAndRun(function(){
+                    openMediaFrame($container);
+                });
             }
         }
     });

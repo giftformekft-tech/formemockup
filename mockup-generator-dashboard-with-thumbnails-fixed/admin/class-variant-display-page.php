@@ -26,16 +26,18 @@ class MG_Variant_Display_Page {
         $js_path = dirname(__DIR__) . '/assets/js/variant-display-admin.js';
 
         wp_enqueue_media();
+        // Ensure the media modal scripts are present and marked as dependencies
+        if (function_exists('wp_enqueue_script')) {
+            wp_enqueue_script('media-editor');
+        }
+
         wp_enqueue_style(
             'mg-variant-display-admin',
             plugins_url('assets/css/variant-display-admin.css', $base_file),
             array(),
             file_exists($css_path) ? filemtime($css_path) : '1.0.0'
         );
-        $script_deps = array('jquery');
-        if (wp_script_is('media-editor', 'registered') || wp_script_is('media-editor', 'enqueued') || function_exists('wp_enqueue_media')) {
-            $script_deps[] = 'media-editor';
-        }
+        $script_deps = array('jquery', 'media-editor');
 
         wp_enqueue_script(
             'mg-variant-display-admin',
@@ -47,6 +49,7 @@ class MG_Variant_Display_Page {
         wp_localize_script('mg-variant-display-admin', 'MGVD_Admin', array(
             'placeholder' => __('Nincs kép', 'mgvd'),
             'select' => __('Kép kiválasztása', 'mgvd'),
+            'mediaError' => __('A média-felület nem tölthető be. Frissítsd az oldalt, majd próbáld újra.', 'mgvd'),
         ));
     }
 
