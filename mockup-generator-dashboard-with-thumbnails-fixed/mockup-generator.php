@@ -21,6 +21,7 @@ add_action('plugins_loaded', function(){
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
+        'admin/class-variant-display-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
@@ -31,6 +32,7 @@ add_action('plugins_loaded', function(){
         'includes/class-custom-fields-frontend.php',
         'includes/class-mockup-maintenance.php',
         'includes/class-variant-maintenance.php',
+        'includes/class-variant-display-manager.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -52,6 +54,9 @@ add_action('plugins_loaded', function(){
         }
         if (class_exists('MG_Mockup_Maintenance_Page')) {
             MG_Mockup_Maintenance_Page::add_submenu_page();
+        }
+        if (class_exists('MG_Variant_Display_Page')) {
+            MG_Variant_Display_Page::add_submenu_page();
         }
         });
 
@@ -86,4 +91,11 @@ add_action('load-toplevel_page_mockup-generator', function(){
     if (class_exists('MG_Variant_Maintenance')) {
         MG_Variant_Maintenance::init();
     }
+    if (class_exists('MG_Variant_Display_Manager')) {
+        MG_Variant_Display_Manager::init();
+    }
 }, 20);
+
+if (class_exists('MG_Variant_Display_Page')) {
+    add_action('admin_enqueue_scripts', array('MG_Variant_Display_Page', 'enqueue_assets'));
+}
