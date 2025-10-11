@@ -73,10 +73,7 @@ class MG_Variant_Display_Manager {
             return array();
         }
 
-        $all_settings = self::get_all_settings();
-        $product_id = $product->get_id();
-        $product_settings = isset($all_settings['products'][$product_id]) ? $all_settings['products'][$product_id] : array();
-        $merged_settings = self::merge_settings($product_settings, $all_settings['global']);
+        $settings = self::get_settings($catalog);
         $types_payload = array();
         $type_order = array();
 
@@ -87,13 +84,13 @@ class MG_Variant_Display_Manager {
             $type_meta = $catalog[$type_slug];
             $type_order[] = $type_slug;
 
-            $icon_url = self::resolve_type_icon_url($merged_settings, $type_slug);
+            $icon_url = self::resolve_type_icon_url($settings, $type_slug);
             $colors_payload = array();
             $color_order = array();
 
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
-                $color_settings = self::get_color_settings($merged_settings, $type_slug, $color_slug);
+                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug);
                 $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
                 $image_url = self::resolve_color_image_url($color_settings);
                 $colors_payload[$color_slug] = array(
@@ -109,7 +106,7 @@ class MG_Variant_Display_Manager {
                 'icon' => $icon_url,
                 'color_order' => $color_order,
                 'colors' => $colors_payload,
-                'size_order' => $type_meta['sizes'],
+                'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
             );
         }
 
@@ -228,40 +225,16 @@ class MG_Variant_Display_Manager {
         return $index;
     }
 
-    protected static function get_all_settings() {
+    protected static function get_settings($catalog) {
         $raw = get_option('mg_variant_display', array());
-        $result = array(
-            'global' => array(
-                'types' => array(),
-                'colors' => array(),
-            ),
-            'products' => array(),
-        );
-
-        if (!is_array($raw)) {
-            return $result;
+        if (!is_array($catalog)) {
+            $catalog = array();
         }
-
-        if (isset($raw['types']) || isset($raw['colors'])) {
-            $result['global'] = self::sanitize_settings_block($raw);
-            return $result;
-        }
-
-        if (!empty($raw['global']) && is_array($raw['global'])) {
-            $result['global'] = self::sanitize_settings_block($raw['global']);
-        }
-
-        if (!empty($raw['products']) && is_array($raw['products'])) {
-            foreach ($raw['products'] as $product_id => $settings) {
-                $product_id = absint($product_id);
-                if ($product_id <= 0) {
-                    continue;
-                }
-                $result['products'][$product_id] = self::sanitize_settings_block($settings);
-            }
-        }
-
-        return $result;
+        $sanitized = self::sanitize_settings_block($raw, $catalog);
+        return wp_parse_args($sanitized, array(
+            'types' => array(),
+            'colors' => array(),
+        ));
     }
 
     public static function sanitize_settings_block($input, $catalog = null) {
@@ -346,31 +319,6 @@ class MG_Variant_Display_Manager {
         }
 
         return $clean;
-    }
-
-    protected static function merge_settings($primary, $fallback) {
-        $base = array(
-            'types' => array(),
-            'colors' => array(),
-        );
-        $primary = is_array($primary) ? wp_parse_args($primary, $base) : $base;
-        $fallback = is_array($fallback) ? wp_parse_args($fallback, $base) : $base;
-
-        $merged = array(
-            'types' => array_merge($fallback['types'], $primary['types']),
-            'colors' => $fallback['colors'],
-        );
-
-        foreach ($primary['colors'] as $type_slug => $colors) {
-            if (!isset($merged['colors'][$type_slug])) {
-                $merged['colors'][$type_slug] = array();
-            }
-            foreach ($colors as $color_slug => $settings) {
-                $merged['colors'][$type_slug][$color_slug] = $settings;
-            }
-        }
-
-        return $merged;
     }
 
     protected static function get_color_settings($settings, $type_slug, $color_slug) {

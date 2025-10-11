@@ -132,6 +132,15 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mgvd-media__preview:hover,
+.mgvd-media__preview:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
+    outline: none;
 }
 
 .mgvd-media__preview img {

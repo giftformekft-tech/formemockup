@@ -41,21 +41,65 @@
         refreshColorChip($container.closest('.mgvd-color-card'), attachment || null);
     }
 
-    $(document).on('click', '.mgvd-media-select', function(e){
-        e.preventDefault();
-        var $button = $(this);
-        var $container = $button.closest('.mgvd-media');
+    function openMediaFrame($container) {
+        if (typeof wp === 'undefined' || !wp.media) {
+            return;
+        }
+        var existing = $container.data('mgvdFrame');
+        if (existing) {
+            existing.open();
+            return;
+        }
+        var $button = $container.find('.mgvd-media-select');
+        var modalTitle = $button.data('modal-title') || (window.MGVD_Admin && MGVD_Admin.select) || 'Válassz képet';
         var frame = wp.media({
-            title: $button.data('modal-title') || (MGVD_Admin && MGVD_Admin.select) || 'Válassz képet',
+            title: modalTitle,
             multiple: false,
             library: { type: 'image' }
         });
         frame.on('select', function(){
-            var attachment = frame.state().get('selection').first().toJSON();
-            $container.find('.mgvd-media-id').val(attachment.id);
+            var model = frame.state().get('selection').first();
+            if (!model) {
+                return;
+            }
+            var attachment = model.toJSON();
+            $container.find('.mgvd-media-id').val(attachment.id || '');
             updatePreview($container, attachment);
         });
+        frame.on('open', function(){
+            var currentId = parseInt($container.find('.mgvd-media-id').val(), 10);
+            if (!currentId) {
+                return;
+            }
+            var selection = frame.state().get('selection');
+            var attachment = wp.media.attachment(currentId);
+            if (!attachment) {
+                return;
+            }
+            attachment.fetch();
+            selection.reset([attachment]);
+        });
+        $container.data('mgvdFrame', frame);
         frame.open();
+    }
+
+    $(document).on('click', '.mgvd-media-select, .mgvd-media__preview', function(e){
+        e.preventDefault();
+        var $container = $(this).closest('.mgvd-media');
+        if (!$container.length) {
+            return;
+        }
+        openMediaFrame($container);
+    });
+
+    $(document).on('keydown', '.mgvd-media__preview', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            var $container = $(this).closest('.mgvd-media');
+            if ($container.length) {
+                openMediaFrame($container);
+            }
+        }
     });
 
     $(document).on('click', '.mgvd-media-remove', function(e){
