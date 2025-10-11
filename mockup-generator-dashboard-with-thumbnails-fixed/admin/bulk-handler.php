@@ -99,6 +99,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         }
 
         $creator = new MG_Product_Creator();
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'legacy_bulk');
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
@@ -140,7 +141,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
             $defaults['color'] = $resolved_color;
             $defaults['size'] = $resolved_size;
         }
-        $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults);
+        $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults, $generation_context);
         if (is_wp_error($product_id)) wp_send_json_error(array('message'=>$product_id->get_error_message()), 500);
         MG_Custom_Fields_Manager::set_custom_product($product_id, $is_custom_product);
 

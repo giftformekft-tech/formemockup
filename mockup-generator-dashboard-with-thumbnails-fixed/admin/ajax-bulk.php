@@ -171,14 +171,15 @@ add_action('wp_ajax_mg_bulk_process', function(){
         }
 
         $creator = new MG_Product_Creator();
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk');
         $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
         if ($parent_id > 0) {
-            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults);
+            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
             MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
-            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults);
+            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
             MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
             wp_send_json_success(array('product_id'=>$pid));
