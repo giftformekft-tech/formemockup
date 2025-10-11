@@ -1,4 +1,30 @@
 (function($){
+    function refreshColorChip($card, attachment) {
+        if (!$card || !$card.length) {
+            return;
+        }
+        var $chip = $card.find('.mgvd-color-chip');
+        if (!$chip.length) {
+            return;
+        }
+        if (attachment && attachment.url) {
+            var url = attachment.sizes && attachment.sizes.thumbnail ? attachment.sizes.thumbnail.url : attachment.url;
+            url = typeof url === 'string' ? url.replace(/"/g, '&quot;') : '';
+            if (url) {
+                $chip.addClass('has-image').css({
+                    'background-image': 'url(' + url + ')',
+                    'background-color': '#ffffff'
+                });
+            }
+        } else {
+            var color = $card.find('input[type="color"]').val() || '#ffffff';
+            $chip.removeClass('has-image').css({
+                'background-image': 'none',
+                'background-color': color
+            });
+        }
+    }
+
     function updatePreview($container, attachment) {
         var $preview = $container.find('.mgvd-media__preview');
         var $remove = $container.find('.mgvd-media-remove');
@@ -12,6 +38,7 @@
             $preview.html('<span class="mgvd-media__placeholder">' + placeholder + '</span>');
             $remove.hide();
         }
+        refreshColorChip($container.closest('.mgvd-color-card'), attachment || null);
     }
 
     $(document).on('click', '.mgvd-media-select', function(e){
@@ -36,5 +63,16 @@
         var $container = $(this).closest('.mgvd-media');
         $container.find('.mgvd-media-id').val('');
         updatePreview($container, null);
+    });
+
+    $(document).on('input change', '.mgvd-color-card input[type="color"]', function(){
+        var $card = $(this).closest('.mgvd-color-card');
+        if (!$card.length) {
+            return;
+        }
+        if ($card.find('.mgvd-media-id').val()) {
+            return;
+        }
+        refreshColorChip($card, null);
     });
 })(jQuery);

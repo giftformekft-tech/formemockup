@@ -73,7 +73,10 @@ class MG_Variant_Display_Manager {
             return array();
         }
 
-        $display_settings = self::get_settings();
+        $all_settings = self::get_all_settings();
+        $product_id = $product->get_id();
+        $product_settings = isset($all_settings['products'][$product_id]) ? $all_settings['products'][$product_id] : array();
+        $merged_settings = self::merge_settings($product_settings, $all_settings['global']);
         $types_payload = array();
         $type_order = array();
 
@@ -84,13 +87,13 @@ class MG_Variant_Display_Manager {
             $type_meta = $catalog[$type_slug];
             $type_order[] = $type_slug;
 
-            $icon_url = self::resolve_type_icon_url($display_settings, $type_slug);
+            $icon_url = self::resolve_type_icon_url($merged_settings, $type_slug);
             $colors_payload = array();
             $color_order = array();
 
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
-                $color_settings = isset($display_settings['colors'][$type_slug][$color_slug]) ? $display_settings['colors'][$type_slug][$color_slug] : array();
+                $color_settings = self::get_color_settings($merged_settings, $type_slug, $color_slug);
                 $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
                 $image_url = self::resolve_color_image_url($color_settings);
                 $colors_payload[$color_slug] = array(
@@ -140,7 +143,7 @@ class MG_Variant_Display_Manager {
         );
     }
 
-    protected static function get_catalog_index() {
+    public static function get_catalog_index() {
         $all = get_option('mg_products', array());
         $index = array();
         if (!is_array($all)) {
@@ -225,34 +228,96 @@ class MG_Variant_Display_Manager {
         return $index;
     }
 
-    protected static function get_settings() {
+    protected static function get_all_settings() {
         $raw = get_option('mg_variant_display', array());
         $result = array(
-            'types' => array(),
-            'colors' => array(),
+            'global' => array(
+                'types' => array(),
+                'colors' => array(),
+            ),
+            'products' => array(),
         );
 
         if (!is_array($raw)) {
             return $result;
         }
 
-        if (!empty($raw['types']) && is_array($raw['types'])) {
-            foreach ($raw['types'] as $type_slug => $type_settings) {
+        if (isset($raw['types']) || isset($raw['colors'])) {
+            $result['global'] = self::sanitize_settings_block($raw);
+            return $result;
+        }
+
+        if (!empty($raw['global']) && is_array($raw['global'])) {
+            $result['global'] = self::sanitize_settings_block($raw['global']);
+        }
+
+        if (!empty($raw['products']) && is_array($raw['products'])) {
+            foreach ($raw['products'] as $product_id => $settings) {
+                $product_id = absint($product_id);
+                if ($product_id <= 0) {
+                    continue;
+                }
+                $result['products'][$product_id] = self::sanitize_settings_block($settings);
+            }
+        }
+
+        return $result;
+    }
+
+    public static function sanitize_settings_block($input, $catalog = null) {
+        $clean = array(
+            'types' => array(),
+            'colors' => array(),
+        );
+
+        if (!is_array($input)) {
+            return $clean;
+        }
+
+        $allowed_types = null;
+        if (is_array($catalog)) {
+            $allowed_types = array();
+            foreach ($catalog as $type_slug => $meta) {
+                $type_slug = sanitize_title($type_slug);
+                if ($type_slug === '') {
+                    continue;
+                }
+                $allowed_types[$type_slug] = array();
+                if (!empty($meta['colors']) && is_array($meta['colors'])) {
+                    foreach ($meta['colors'] as $color_slug => $color_meta) {
+                        $color_slug = sanitize_title($color_slug);
+                        if ($color_slug === '') {
+                            continue;
+                        }
+                        $allowed_types[$type_slug][$color_slug] = true;
+                    }
+                }
+            }
+        }
+
+        if (!empty($input['types']) && is_array($input['types'])) {
+            foreach ($input['types'] as $type_slug => $type_settings) {
                 $slug = sanitize_title($type_slug);
                 if ($slug === '') {
                     continue;
                 }
+                if (is_array($allowed_types) && !isset($allowed_types[$slug])) {
+                    continue;
+                }
                 $icon_id = isset($type_settings['icon_id']) ? intval($type_settings['icon_id']) : 0;
-                $result['types'][$slug] = array(
+                $clean['types'][$slug] = array(
                     'icon_id' => $icon_id > 0 ? $icon_id : 0,
                 );
             }
         }
 
-        if (!empty($raw['colors']) && is_array($raw['colors'])) {
-            foreach ($raw['colors'] as $type_slug => $colors) {
+        if (!empty($input['colors']) && is_array($input['colors'])) {
+            foreach ($input['colors'] as $type_slug => $colors) {
                 $type_slug = sanitize_title($type_slug);
                 if ($type_slug === '') {
+                    continue;
+                }
+                if (is_array($allowed_types) && !isset($allowed_types[$type_slug])) {
                     continue;
                 }
                 foreach ((array) $colors as $color_slug => $color_settings) {
@@ -260,16 +325,19 @@ class MG_Variant_Display_Manager {
                     if ($color_slug === '') {
                         continue;
                     }
-                    if (!isset($result['colors'][$type_slug])) {
-                        $result['colors'][$type_slug] = array();
+                    if (is_array($allowed_types) && empty($allowed_types[$type_slug][$color_slug])) {
+                        continue;
+                    }
+                    if (!isset($clean['colors'][$type_slug])) {
+                        $clean['colors'][$type_slug] = array();
                     }
                     $swatch = '';
                     if (isset($color_settings['swatch'])) {
-                        $clean = sanitize_hex_color($color_settings['swatch']);
-                        $swatch = $clean ? $clean : '';
+                        $clean_color = sanitize_hex_color($color_settings['swatch']);
+                        $swatch = $clean_color ? $clean_color : '';
                     }
                     $image_id = isset($color_settings['image_id']) ? intval($color_settings['image_id']) : 0;
-                    $result['colors'][$type_slug][$color_slug] = array(
+                    $clean['colors'][$type_slug][$color_slug] = array(
                         'swatch' => $swatch,
                         'image_id' => $image_id > 0 ? $image_id : 0,
                     );
@@ -277,7 +345,39 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        return $result;
+        return $clean;
+    }
+
+    protected static function merge_settings($primary, $fallback) {
+        $base = array(
+            'types' => array(),
+            'colors' => array(),
+        );
+        $primary = is_array($primary) ? wp_parse_args($primary, $base) : $base;
+        $fallback = is_array($fallback) ? wp_parse_args($fallback, $base) : $base;
+
+        $merged = array(
+            'types' => array_merge($fallback['types'], $primary['types']),
+            'colors' => $fallback['colors'],
+        );
+
+        foreach ($primary['colors'] as $type_slug => $colors) {
+            if (!isset($merged['colors'][$type_slug])) {
+                $merged['colors'][$type_slug] = array();
+            }
+            foreach ($colors as $color_slug => $settings) {
+                $merged['colors'][$type_slug][$color_slug] = $settings;
+            }
+        }
+
+        return $merged;
+    }
+
+    protected static function get_color_settings($settings, $type_slug, $color_slug) {
+        if (empty($settings['colors'][$type_slug][$color_slug])) {
+            return array();
+        }
+        return $settings['colors'][$type_slug][$color_slug];
     }
 
     protected static function resolve_type_icon_url($settings, $type_slug) {
