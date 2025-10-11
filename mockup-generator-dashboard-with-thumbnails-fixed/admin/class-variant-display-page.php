@@ -16,7 +16,8 @@ class MG_Variant_Display_Page {
     }
 
     public static function enqueue_assets($hook) {
-        if (strpos((string) $hook, 'mockup-generator-variant-display') === false) {
+        $page_slug = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        if (strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
             return;
         }
 
@@ -31,10 +32,15 @@ class MG_Variant_Display_Page {
             array(),
             file_exists($css_path) ? filemtime($css_path) : '1.0.0'
         );
+        $script_deps = array('jquery');
+        if (wp_script_is('media-editor', 'registered') || wp_script_is('media-editor', 'enqueued') || function_exists('wp_enqueue_media')) {
+            $script_deps[] = 'media-editor';
+        }
+
         wp_enqueue_script(
             'mg-variant-display-admin',
             plugins_url('assets/js/variant-display-admin.js', $base_file),
-            array('jquery'),
+            $script_deps,
             file_exists($js_path) ? filemtime($js_path) : '1.0.0',
             true
         );
