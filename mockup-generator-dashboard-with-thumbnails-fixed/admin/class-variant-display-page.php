@@ -13,21 +13,6 @@ class MG_Variant_Display_Page {
             'mockup-generator-variant-display',
             array(__CLASS__, 'render_page')
         );
-
-        if ($hook_suffix) {
-            add_action('load-' . $hook_suffix, array(__CLASS__, 'prime_media_library'));
-        }
-    }
-
-    public static function prime_media_library() {
-        if (function_exists('wp_enqueue_media')) {
-            wp_enqueue_media();
-        }
-
-        if (function_exists('wp_enqueue_script')) {
-            wp_enqueue_script('media-editor');
-            wp_enqueue_script('media-upload');
-        }
     }
 
     public static function enqueue_assets($hook) {
@@ -40,22 +25,13 @@ class MG_Variant_Display_Page {
         $css_path = dirname(__DIR__) . '/assets/css/variant-display-admin.css';
         $js_path = dirname(__DIR__) . '/assets/js/variant-display-admin.js';
 
-        if (function_exists('wp_enqueue_media')) {
-            wp_enqueue_media();
-        }
-        // Ensure the media modal scripts are present and marked as dependencies
-        if (function_exists('wp_enqueue_script')) {
-            wp_enqueue_script('media-editor');
-            wp_enqueue_script('media-upload');
-        }
-
         wp_enqueue_style(
             'mg-variant-display-admin',
             plugins_url('assets/css/variant-display-admin.css', $base_file),
             array(),
             file_exists($css_path) ? filemtime($css_path) : '1.0.0'
         );
-        $script_deps = array('jquery', 'media-editor');
+        $script_deps = array('jquery');
 
         wp_enqueue_script(
             'mg-variant-display-admin',
@@ -64,22 +40,11 @@ class MG_Variant_Display_Page {
             file_exists($js_path) ? filemtime($js_path) : '1.0.0',
             true
         );
-        wp_localize_script('mg-variant-display-admin', 'MGVD_Admin', array(
-            'placeholder' => __('Nincs kép', 'mgvd'),
-            'select' => __('Kép kiválasztása', 'mgvd'),
-            'mediaError' => __('A média-felület nem tölthető be. Frissítsd az oldalt, majd próbáld újra.', 'mgvd'),
-        ));
     }
 
     public static function render_page() {
         if (!current_user_can('manage_woocommerce')) {
             wp_die(__('Nincs jogosultságod a beállítások módosításához.', 'mgvd'));
-        }
-
-        // Ensure the WordPress media modal assets are available when the page renders
-        // even if enqueue_assets() did not run due to an unexpected hook name.
-        if (function_exists('wp_enqueue_media')) {
-            wp_enqueue_media();
         }
 
         $catalog = MG_Variant_Display_Manager::get_catalog_index();
@@ -137,8 +102,6 @@ class MG_Variant_Display_Page {
 
         $type_meta = $catalog[$selected_type];
         $type_label = isset($type_meta['label']) && $type_meta['label'] ? $type_meta['label'] : self::get_attribute_label('pa_termektipus', $selected_type);
-        $icon_id = !empty($store['types'][$selected_type]['icon_id']) ? intval($store['types'][$selected_type]['icon_id']) : 0;
-        $icon_url = $icon_id ? wp_get_attachment_image_url($icon_id, 'thumbnail') : '';
 
         echo '<form method="post" class="mgvd-settings-form">';
         wp_nonce_field('mg_variant_display_save', 'mg_variant_display_nonce');
@@ -149,16 +112,7 @@ class MG_Variant_Display_Page {
         echo '<div class="mgvd-type-card__header">';
         echo '<div class="mgvd-type-card__title">';
         echo '<h2>' . esc_html($type_label) . '</h2>';
-        echo '<p>' . esc_html__('Ikon és színbeállítások testreszabása', 'mgvd') . '</p>';
-        echo '</div>';
-        echo '<div class="mgvd-field mgvd-field--icon">';
-        echo '<span class="mgvd-field__label">' . esc_html__('Terméktípus ikon', 'mgvd') . '</span>';
-        self::render_media_control(
-            'variant_display[types][' . $selected_type . '][icon_id]',
-            $icon_id,
-            $icon_url,
-            __('Ikon kiválasztása', 'mgvd')
-        );
+        echo '<p>' . esc_html__('Színbeállítások testreszabása', 'mgvd') . '</p>';
         echo '</div>';
         echo '</div>';
 
@@ -167,29 +121,17 @@ class MG_Variant_Display_Page {
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_settings = isset($store['colors'][$selected_type][$color_slug]) ? $store['colors'][$selected_type][$color_slug] : array();
                 $swatch = isset($color_settings['swatch']) && $color_settings['swatch'] ? $color_settings['swatch'] : '#ffffff';
-                $image_id = isset($color_settings['image_id']) ? intval($color_settings['image_id']) : 0;
-                $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : '';
-                $chip_style = $image_url ? 'background-image:url(' . esc_url($image_url) . ');' : 'background-color:' . esc_attr($swatch) . ';';
-                $chip_class = $image_url ? ' has-image' : '';
+                $chip_style = 'background-color:' . esc_attr($swatch) . ';';
                 $color_label = isset($color_meta['label']) && $color_meta['label'] ? $color_meta['label'] : self::get_attribute_label('pa_szin', $color_slug);
 
                 echo '<div class="mgvd-color-card" data-color="' . esc_attr($color_slug) . '">';
                 echo '<div class="mgvd-color-card__header">';
-                echo '<span class="mgvd-color-chip' . $chip_class . '" style="' . esc_attr($chip_style) . '"></span>';
+                echo '<span class="mgvd-color-chip" style="' . esc_attr($chip_style) . '"></span>';
                 echo '<div class="mgvd-color-card__title">' . esc_html($color_label) . '</div>';
                 echo '</div>';
                 echo '<div class="mgvd-color-card__controls">';
                 echo '<label class="mgvd-field__label" for="mgvd-color-' . esc_attr($selected_type . '-' . $color_slug) . '">' . esc_html__('Színkód', 'mgvd') . '</label>';
                 echo '<input id="mgvd-color-' . esc_attr($selected_type . '-' . $color_slug) . '" type="color" name="variant_display[colors][' . esc_attr($selected_type) . '][' . esc_attr($color_slug) . '][swatch]" value="' . esc_attr($swatch) . '" />';
-                echo '<div class="mgvd-field mgvd-field--media">';
-                echo '<span class="mgvd-field__label">' . esc_html__('Mintakép', 'mgvd') . '</span>';
-                self::render_media_control(
-                    'variant_display[colors][' . $selected_type . '][' . $color_slug . '][image_id]',
-                    $image_id,
-                    $image_url,
-                    __('Mintakép kiválasztása', 'mgvd')
-                );
-                echo '</div>';
                 echo '</div>';
                 echo '</div>';
             }
@@ -212,7 +154,6 @@ class MG_Variant_Display_Page {
         }
         $store = MG_Variant_Display_Manager::sanitize_settings_block($raw, $catalog);
         return wp_parse_args($store, array(
-            'types' => array(),
             'colors' => array(),
         ));
     }
@@ -232,21 +173,12 @@ class MG_Variant_Display_Page {
     protected static function apply_type_settings($store, $type_slug, $sanitized) {
         if (!is_array($store)) {
             $store = array(
-                'types' => array(),
                 'colors' => array(),
             );
-        }
-        if (!isset($store['types']) || !is_array($store['types'])) {
-            $store['types'] = array();
         }
         if (!isset($store['colors']) || !is_array($store['colors'])) {
             $store['colors'] = array();
         }
-
-        $icon_settings = isset($sanitized['types'][$type_slug]) ? $sanitized['types'][$type_slug] : array('icon_id' => 0);
-        $store['types'][$type_slug] = array(
-            'icon_id' => isset($icon_settings['icon_id']) ? intval($icon_settings['icon_id']) : 0,
-        );
 
         if (!empty($sanitized['colors'][$type_slug])) {
             $store['colors'][$type_slug] = $sanitized['colors'][$type_slug];
@@ -264,16 +196,5 @@ class MG_Variant_Display_Page {
         }
         $readable = str_replace('-', ' ', $slug);
         return ucwords($readable);
-    }
-
-    protected static function render_media_control($field_name, $attachment_id, $current_url, $button_label) {
-        $preview = $current_url ? '<img src="' . esc_url($current_url) . '" alt="" />' : '<span class="mgvd-media__placeholder">' . esc_html__('Nincs kép', 'mgvd') . '</span>';
-        $remove_style = $attachment_id ? '' : ' style="display:none;"';
-        echo '<div class="mgvd-media">';
-        echo '<div class="mgvd-media__preview" role="button" tabindex="0" aria-label="' . esc_attr($button_label) . '">' . $preview . '</div>';
-        echo '<input type="hidden" class="mgvd-media-id" name="' . esc_attr($field_name) . '" value="' . esc_attr($attachment_id) . '" />';
-        echo '<button type="button" class="button mgvd-media-select" data-modal-title="' . esc_attr($button_label) . '">' . esc_html($button_label) . '</button>';
-        echo '<button type="button" class="button mgvd-media-remove"' . $remove_style . '>' . esc_html__('Eltávolítás', 'mgvd') . '</button>';
-        echo '</div>';
     }
 }

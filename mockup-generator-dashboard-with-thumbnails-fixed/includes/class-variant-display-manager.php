@@ -83,8 +83,6 @@ class MG_Variant_Display_Manager {
             }
             $type_meta = $catalog[$type_slug];
             $type_order[] = $type_slug;
-
-            $icon_url = self::resolve_type_icon_url($settings, $type_slug);
             $colors_payload = array();
             $color_order = array();
 
@@ -92,18 +90,15 @@ class MG_Variant_Display_Manager {
                 $color_order[] = $color_slug;
                 $color_settings = self::get_color_settings($settings, $type_slug, $color_slug);
                 $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
-                $image_url = self::resolve_color_image_url($color_settings);
                 $colors_payload[$color_slug] = array(
                     'label' => $color_meta['label'],
                     'swatch' => $swatch,
-                    'image' => $image_url,
                     'sizes' => self::sizes_for_color($type_meta, $color_slug),
                 );
             }
 
             $types_payload[$type_slug] = array(
                 'label' => $type_meta['label'],
-                'icon' => $icon_url,
                 'color_order' => $color_order,
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
@@ -232,14 +227,12 @@ class MG_Variant_Display_Manager {
         }
         $sanitized = self::sanitize_settings_block($raw, $catalog);
         return wp_parse_args($sanitized, array(
-            'types' => array(),
             'colors' => array(),
         ));
     }
 
     public static function sanitize_settings_block($input, $catalog = null) {
         $clean = array(
-            'types' => array(),
             'colors' => array(),
         );
 
@@ -268,22 +261,6 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        if (!empty($input['types']) && is_array($input['types'])) {
-            foreach ($input['types'] as $type_slug => $type_settings) {
-                $slug = sanitize_title($type_slug);
-                if ($slug === '') {
-                    continue;
-                }
-                if (is_array($allowed_types) && !isset($allowed_types[$slug])) {
-                    continue;
-                }
-                $icon_id = isset($type_settings['icon_id']) ? intval($type_settings['icon_id']) : 0;
-                $clean['types'][$slug] = array(
-                    'icon_id' => $icon_id > 0 ? $icon_id : 0,
-                );
-            }
-        }
-
         if (!empty($input['colors']) && is_array($input['colors'])) {
             foreach ($input['colors'] as $type_slug => $colors) {
                 $type_slug = sanitize_title($type_slug);
@@ -309,10 +286,8 @@ class MG_Variant_Display_Manager {
                         $clean_color = sanitize_hex_color($color_settings['swatch']);
                         $swatch = $clean_color ? $clean_color : '';
                     }
-                    $image_id = isset($color_settings['image_id']) ? intval($color_settings['image_id']) : 0;
                     $clean['colors'][$type_slug][$color_slug] = array(
                         'swatch' => $swatch,
-                        'image_id' => $image_id > 0 ? $image_id : 0,
                     );
                 }
             }
@@ -326,30 +301,6 @@ class MG_Variant_Display_Manager {
             return array();
         }
         return $settings['colors'][$type_slug][$color_slug];
-    }
-
-    protected static function resolve_type_icon_url($settings, $type_slug) {
-        if (empty($settings['types'][$type_slug]['icon_id'])) {
-            return '';
-        }
-        $icon_id = intval($settings['types'][$type_slug]['icon_id']);
-        if ($icon_id <= 0) {
-            return '';
-        }
-        $url = wp_get_attachment_image_url($icon_id, 'thumbnail');
-        return $url ? esc_url_raw($url) : '';
-    }
-
-    protected static function resolve_color_image_url($settings) {
-        if (empty($settings['image_id'])) {
-            return '';
-        }
-        $image_id = intval($settings['image_id']);
-        if ($image_id <= 0) {
-            return '';
-        }
-        $url = wp_get_attachment_image_url($image_id, 'thumbnail');
-        return $url ? esc_url_raw($url) : '';
     }
 
     protected static function sizes_for_color($type_meta, $color_slug) {

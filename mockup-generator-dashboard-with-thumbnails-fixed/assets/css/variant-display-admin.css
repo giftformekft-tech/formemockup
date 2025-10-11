@@ -93,85 +93,12 @@
     color: var(--mgvd-muted);
 }
 
-.mgvd-field {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 .mgvd-field__label {
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: #475569;
-}
-
-.mgvd-media {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    background: var(--mgvd-soft);
-    border: 1px dashed var(--mgvd-border);
-    border-radius: 12px;
-    padding: 12px 14px;
-}
-
-.mgvd-field--media .mgvd-media {
-    padding: 12px 0 0;
-    border: none;
-    background: transparent;
-}
-
-.mgvd-media__preview {
-    width: 68px;
-    height: 68px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0.02));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.mgvd-media__preview:hover,
-.mgvd-media__preview:focus-visible {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 24px rgba(37, 99, 235, 0.2);
-    outline: none;
-}
-
-.mgvd-media__preview img {
-    max-width: 100%;
-    max-height: 100%;
-    display: block;
-}
-
-.mgvd-media__placeholder {
-    font-size: 12px;
-    color: var(--mgvd-muted);
-    text-align: center;
-    padding: 6px;
-}
-
-.mgvd-media-select,
-.mgvd-media-remove {
-    margin: 0;
-}
-
-.mgvd-media-select {
-    background: var(--mgvd-primary);
-    border-color: var(--mgvd-primary);
-    color: #fff;
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
-}
-
-.mgvd-media-remove {
-    background: transparent;
-    color: var(--mgvd-muted);
-    border-color: rgba(100, 116, 139, 0.2);
 }
 
 .mgvd-color-grid {
@@ -205,10 +132,6 @@
     background-size: cover;
     background-position: center;
     box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.12);
-}
-
-.mgvd-color-chip.has-image {
-    background-color: #fff;
 }
 
 .mgvd-color-card__title {
@@ -262,10 +185,5 @@
 
     .mgvd-type-grid {
         grid-template-columns: 1fr;
-    }
-
-    .mgvd-media {
-        flex-direction: column;
-        align-items: stretch;
     }
 }

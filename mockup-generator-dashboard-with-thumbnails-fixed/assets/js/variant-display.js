@@ -66,11 +66,6 @@
             }
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--type" aria-pressed="false" />');
             $btn.attr('data-value', typeSlug);
-            if (meta.icon) {
-                var $icon = $('<span class="mg-variant-option__icon" />');
-                $icon.append($('<img />', { src: meta.icon, alt: '' }));
-                $btn.append($icon);
-            }
             $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || typeSlug));
             self.$typeOptions.append($btn);
         });
@@ -305,9 +300,7 @@
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--color" aria-pressed="false" />');
             $btn.attr('data-value', colorSlug);
             var $swatch = $('<span class="mg-variant-swatch" />');
-            if (meta.image) {
-                $swatch.addClass('has-image').css('background-image', 'url(' + meta.image + ')');
-            } else if (meta.swatch) {
+            if (meta.swatch) {
                 $swatch.css('background-color', meta.swatch);
             }
             $btn.append($swatch);
