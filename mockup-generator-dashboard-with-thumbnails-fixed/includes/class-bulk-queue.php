@@ -10,6 +10,7 @@ class MG_Bulk_Queue {
     const DISPATCH_LOCK = 'mg_bulk_dispatch_lock';
     const WORKER_COUNT = 4;
     const LOCK_TTL = 180; // seconds
+    const STALE_TTL = 300; // seconds
     const MAX_JOBS_PER_WORKER = 10;
 
     public static function enqueue(array $payload) {
@@ -40,6 +41,8 @@ class MG_Bulk_Queue {
     }
 
     public static function get_status(array $job_ids) {
+        self::maybe_recover_stalled_jobs();
+
         $jobs = array();
         $queued = 0; $running = 0; $completed = 0; $failed = 0;
         foreach ($job_ids as $job_id_raw) {
@@ -95,6 +98,7 @@ class MG_Bulk_Queue {
         if ($force) {
             delete_transient(self::DISPATCH_LOCK);
         }
+        self::maybe_recover_stalled_jobs();
         set_transient(self::DISPATCH_LOCK, 1, 5);
         $token = self::get_worker_token();
         $url = admin_url('admin-ajax.php');
@@ -310,6 +314,8 @@ class MG_Bulk_Queue {
     }
 
     private static function has_pending_jobs() {
+        self::maybe_recover_stalled_jobs();
+
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order)) {
             return false;
@@ -321,6 +327,36 @@ class MG_Bulk_Queue {
             }
         }
         return false;
+    }
+
+    private static function maybe_recover_stalled_jobs() {
+        $order = get_option(self::ORDER_OPTION, array());
+        if (!is_array($order) || empty($order)) {
+            return;
+        }
+
+        $now = time();
+        foreach ($order as $job_id) {
+            $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
+            if (!is_array($job) || !isset($job['status']) || $job['status'] !== 'running') {
+                continue;
+            }
+
+            $started_at = isset($job['started_at']) ? intval($job['started_at']) : 0;
+            $lock = get_transient(self::lock_key($job_id));
+            $is_stale = ($started_at > 0 && ($now - $started_at) > self::STALE_TTL);
+            if (!$is_stale && $lock !== false) {
+                continue;
+            }
+
+            self::release_lock($job_id);
+
+            $job['status'] = 'pending';
+            $job['message'] = __('Újrapróbáljuk…', 'mgdtp');
+            $job['started_at'] = null;
+            $job['worker'] = '';
+            update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
+        }
     }
 
     private static function lock_key($job_id) {
