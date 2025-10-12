@@ -3,57 +3,6 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
-    private function disable_heavy_product_save_hooks() {
-        if (function_exists('remove_all_actions')) {
-            remove_all_actions('save_post_product');
-        }
-    }
-
-    private function normalize_sku_candidate($value) {
-        $value = strtoupper(trim((string)$value));
-        if ($value === '') {
-            return '';
-        }
-        $value = preg_replace('/[^A-Z0-9\-_]+/', '-', $value);
-        $value = preg_replace('/-+/', '-', $value);
-        return trim($value, '-');
-    }
-
-    private function ensure_unique_sku($desired, $product_id = 0) {
-        $base = $this->normalize_sku_candidate($desired);
-        if ($base === '') {
-            $base = 'SKU';
-        }
-        if (!function_exists('wc_product_has_unique_sku')) {
-            return $base;
-        }
-        $candidate = $base;
-        $suffix = 2;
-        while (!wc_product_has_unique_sku($product_id, $candidate)) {
-            $candidate = $base . '-' . $suffix;
-            $suffix++;
-            if ($suffix > 25) {
-                $candidate = $base . '-' . strtoupper(wp_generate_password(4, false, false));
-                if (wc_product_has_unique_sku($product_id, $candidate)) {
-                    break;
-                }
-                $suffix = 2;
-            }
-        }
-        return $candidate;
-    }
-
-    private function is_duplicate_sku_exception($exception) {
-        if (!($exception instanceof WC_Data_Exception)) {
-            return false;
-        }
-        $code = method_exists($exception, 'getErrorCode') ? $exception->getErrorCode() : '';
-        if (in_array($code, array('woocommerce_duplicate_sku', 'woocommerce_product_invalid_sku'), true)) {
-            return true;
-        }
-        $message = $exception->getMessage();
-        return stripos($message, 'SKU') !== false || stripos($message, 'cikkszám') !== false;
-    }
     private function sanitize_size_list($product) {
         $sizes = array();
         if (is_array($product)) {
@@ -319,8 +268,6 @@ class MG_Product_Creator {
         $default_color = $resolved_defaults['color'];
         $default_size = $resolved_defaults['size'];
 
-        $this->disable_heavy_product_save_hooks();
-
         $attr_type_id  = $this->ensure_attribute_taxonomy('Terméktípus','termektipus');
         $attr_color_id = $this->ensure_attribute_taxonomy('Szín','szin');
         $tax_type  = 'pa_termektipus'; $tax_color='pa_szin';
@@ -372,7 +319,7 @@ class MG_Product_Creator {
                 $product->set_props(['short_description' => $short]);
             }
         }
-        $parent_sku_base = $this->ensure_unique_sku($parent_name);
+$parent_sku_base = strtoupper(sanitize_title($parent_name));
         $product->set_sku($parent_sku_base);
         if (!empty($gallery)) $product->set_image_id($gallery[0]);
         $attr_type = new WC_Product_Attribute(); if ($attr_type_id) $attr_type->set_id($attr_type_id);
@@ -381,17 +328,7 @@ class MG_Product_Creator {
         $attr_color->set_name($tax_color); $attr_color->set_options($color_term_ids); $attr_color->set_visible(true); $attr_color->set_variation(true);
         $attr_size = new WC_Product_Attribute(); $attr_size->set_name('Méret'); $attr_size->set_options($all_sizes); $attr_size->set_visible(true); $attr_size->set_variation(true);
         $product->set_attributes([$attr_type,$attr_color,$attr_size]);
-        try {
-            $parent_id = $product->save();
-        } catch (WC_Data_Exception $ex) {
-            if ($this->is_duplicate_sku_exception($ex)) {
-                $parent_sku_base = $this->ensure_unique_sku($parent_sku_base);
-                $product->set_sku($parent_sku_base);
-                $parent_id = $product->save();
-            } else {
-                throw $ex;
-            }
-        }
+        $parent_id=$product->save();
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         $created_variations = array();
@@ -416,25 +353,9 @@ class MG_Product_Creator {
                     $variation=new WC_Product_Variation(); $variation->set_parent_id($parent_id);
                     $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'meret'=>$size]);
                     if ($price>0) $variation->set_regular_price($price);
-                    $variation_sku_base = $parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size;
-                    $variation_sku = $this->ensure_unique_sku($variation_sku_base);
-                    $variation->set_sku($variation_sku);
+                    $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
-                    $attempts = 0;
-                    while (true) {
-                        try {
-                            $variation->save();
-                            break;
-                        } catch (WC_Data_Exception $ex) {
-                            if ($this->is_duplicate_sku_exception($ex) && $attempts < 3) {
-                                $attempts++;
-                                $variation_sku = $this->ensure_unique_sku($variation_sku_base.'-'.$attempts);
-                                $variation->set_sku($variation_sku);
-                                continue;
-                            }
-                            throw $ex;
-                        }
-                    }
+                    $variation->save();
                     $created_variations[] = $this->normalize_attributes(array(
                         'pa_termektipus'=>$type_slug,
                         'pa_szin'=>$color_slug,
@@ -496,8 +417,6 @@ class MG_Product_Creator {
         $default_type = $resolved_defaults['type'];
         $default_color = $resolved_defaults['color'];
         $default_size = $resolved_defaults['size'];
-
-        $this->disable_heavy_product_save_hooks();
 
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
@@ -569,22 +488,7 @@ class MG_Product_Creator {
             $k = ($norm['pa_termektipus'] ?? '').'|'.($norm['pa_szin'] ?? '').'|'.($norm['meret'] ?? '');
             if ($k !== '||') { $existing[$k]=true; }
         }
-        $parent_sku_base=$product->get_sku();
-        if (!$parent_sku_base) {
-            $parent_sku_base = $this->ensure_unique_sku($product->get_name(), $product->get_id());
-            $product->set_sku($parent_sku_base);
-            try {
-                $product->save();
-            } catch (WC_Data_Exception $ex) {
-                if ($this->is_duplicate_sku_exception($ex)) {
-                    $parent_sku_base = $this->ensure_unique_sku($parent_sku_base, $product->get_id());
-                    $product->set_sku($parent_sku_base);
-                    $product->save();
-                } else {
-                    throw $ex;
-                }
-            }
-        }
+        $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $created_variations = array();
         foreach ($selected_products as $p) {
             $type_slug = isset($p['key']) ? sanitize_title($p['key']) : '';
@@ -609,25 +513,9 @@ class MG_Product_Creator {
                     $variation->set_parent_id($product->get_id());
                     $variation->set_attributes(['pa_termektipus'=>$type_slug,'pa_szin'=>$color_slug,'meret'=>$size]);
                     if ($price>0) $variation->set_regular_price($price);
-                    $variation_sku_base = $parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size;
-                    $variation_sku = $this->ensure_unique_sku($variation_sku_base);
-                    $variation->set_sku($variation_sku);
+                    $variation->set_sku(strtoupper($parent_sku_base.'-'.$prefix.'-'.$color_slug.'-'.$size));
                     if ($img_id) $variation->set_image_id($img_id);
-                    $attempts = 0;
-                    while (true) {
-                        try {
-                            $variation->save();
-                            break;
-                        } catch (WC_Data_Exception $ex) {
-                            if ($this->is_duplicate_sku_exception($ex) && $attempts < 3) {
-                                $attempts++;
-                                $variation_sku = $this->ensure_unique_sku($variation_sku_base.'-'.$attempts);
-                                $variation->set_sku($variation_sku);
-                                continue;
-                            }
-                            throw $ex;
-                        }
-                    }
+                    $variation->save();
                     $created_variations[] = $this->normalize_attributes(array(
                         'pa_termektipus'=>$type_slug,
                         'pa_szin'=>$color_slug,

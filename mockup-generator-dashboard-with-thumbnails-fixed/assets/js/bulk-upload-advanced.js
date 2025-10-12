@@ -417,81 +417,20 @@
 
   $('#mg-bulk-start').on('click', function(e){
     e.preventDefault();
-    var $btn = $(this);
-    if ($btn.data('running')){ return; }
     var files = ($('#mg-bulk-files-adv')[0] && $('#mg-bulk-files-adv')[0].files) ? $('#mg-bulk-files-adv')[0].files : null;
     if (!files || !files.length){ alert('Válassz fájlokat.'); return; }
     var keys = getSelectedProductKeys();
     if (!keys.length){ alert('Válassz legalább egy terméktípust.'); return; }
     var $rows = $('#mg-bulk-rows .mg-item-row').toArray();
-    var total = $rows.length, queued = 0;
-    var jobIds = [], jobMap = {}, pollTimer = null;
-
-    function updateProgress(pct){
-      if (typeof pct === 'number'){ $('#mg-bulk-bar').css('width', pct+'%'); $('#mg-bulk-status').text(pct+'%'); return; }
-      var localPct = total ? Math.round((queued/total)*100) : 0;
-      $('#mg-bulk-bar').css('width', localPct+'%');
-      $('#mg-bulk-status').text(localPct+'%');
+    var total = $rows.length, done = 0;
+    function updateProgress(){
+      var pct = Math.round((done/total)*100);
+      $('#mg-bulk-bar').css('width', pct+'%'); $('#mg-bulk-status').text(pct+'%');
     }
-
-    function stopPolling(){
-      if (pollTimer){ clearInterval(pollTimer); pollTimer = null; }
-      $btn.data('running', false);
-    }
-
-    function startPolling(){
-      if (!jobIds.length){ stopPolling(); return; }
-      var interval = parseInt(MG_BULK_ADV.poll_interval, 10);
-      if (!interval || interval < 1000){ interval = 4000; }
-      function poll(){
-        $.ajax({
-          url: MG_BULK_ADV.ajax_url,
-          method: 'POST',
-          dataType: 'json',
-          data: {
-            action: 'mg_bulk_queue_status',
-            nonce: MG_BULK_ADV.nonce,
-            job_ids: jobIds
-          }
-        }).done(function(resp){
-          if (resp && resp.success && resp.data){
-            var stats = resp.data.stats || {};
-            var jobs = resp.data.jobs || [];
-            var percent = stats.percent || 0;
-            updateProgress(percent);
-            jobs.forEach(function(job){
-              var meta = jobMap[job.id];
-              if (!meta){ return; }
-              var $state = meta.row.find('.mg-state');
-              if (meta.lastStatus === job.status && job.status !== 'failed'){ return; }
-              meta.lastStatus = job.status;
-              if (job.status === 'running'){
-                $state.text('Folyamatban…');
-              } else if (job.status === 'completed'){
-                $state.text('OK');
-              } else if (job.status === 'failed'){
-                $state.text('Hiba: '+(job.message || 'Ismeretlen'));
-              } else if (job.status === 'missing'){
-                $state.text('Hiba: Ismeretlen feladat');
-              }
-            });
-            if (stats.total && (stats.completed + stats.failed) >= stats.total){
-              stopPolling();
-            }
-          }
-        }).fail(function(){
-          // keep polling silently
-        });
-      }
-      poll();
-      pollTimer = setInterval(poll, interval);
-    }
+    updateProgress();
 
     function processRow(i){
-      if (i>=total){
-        startPolling();
-        return;
-      }
+      if (i>=total) return;
       var $row = $($rows[i]);
       var file = files[i];
       var $mainSel = $row.find('select.mg-main');
@@ -517,31 +456,36 @@
       form.append('primary_color', defaults.color || '');
       form.append('primary_size', defaults.size || '');
 
-      var $state = $row.find('.mg-state');
-      $state.text('Feltöltés…');
+      $row.find('.mg-state').text('Feldolgozás...');
       $.ajax({
         url: MG_BULK_ADV.ajax_url, method:'POST', data: form, processData:false, contentType:false, dataType:'json'
       }).done(function(resp){
-        if (resp && resp.success && resp.data && resp.data.job_id){
-          var jobId = resp.data.job_id;
-          jobIds.push(jobId);
-          jobMap[jobId] = { row: $row, name: $name.val().trim(), lastStatus: 'pending' };
-          $row.attr('data-job-id', jobId);
-          $state.text('Sorban…');
+        if (resp && resp.success){
+          $row.find('.mg-state').text('OK…');
+          var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id,10) : 0;
+          var tags = ($row.find('.mg-tags-input').val()||'').trim();
+          if (pid && tags){
+            $.post(MG_BULK_ADV.ajax_url, {
+              action: 'mg_set_product_tags',
+              nonce: MG_BULK_ADV.nonce,
+              product_id: pid,
+              tags: tags
+            }, function(r){
+              if (r && r.success){ $row.find('.mg-state').text('OK'); }
+              else { $row.find('.mg-state').text('OK – tagek hiba'); }
+            }, 'json').fail(function(){ $row.find('.mg-state').text('OK – tagek hiba'); });
+          } else {
+            $row.find('.mg-state').text('OK');
+          }
         } else {
-          $state.text('Hiba: '+(resp && resp.data && resp.data.message ? resp.data.message : 'Ismeretlen'));
+          $row.find('.mg-state').text('Hiba: '+(resp && resp.data && resp.data.message ? resp.data.message : 'Ismeretlen'));
         }
       }).fail(function(xhr){
-        $state.text('Hiba: '+serverErrorToText(xhr));
+        $row.find('.mg-state').text('Hiba: '+serverErrorToText(xhr));
       }).always(function(){
-        queued++;
-        updateProgress();
-        processRow(i+1);
+        done++; updateProgress(); processRow(i+1);
       });
     }
-
-    $btn.data('running', true);
-    updateProgress();
     processRow(0);
   });
 

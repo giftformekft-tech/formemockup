@@ -68,9 +68,6 @@ if (!function_exists('mg_bulk_allowed_sizes_for_color')) {
 if (!class_exists('MG_Custom_Fields_Manager')) {
     require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
 }
-if (!class_exists('MG_Bulk_Queue')) {
-    require_once plugin_dir_path(__FILE__) . '../includes/class-bulk-queue.php';
-}
 
 add_action('wp_ajax_mg_bulk_process', function(){
     try {
@@ -100,13 +97,27 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
 
-        // Load config for defaults
+        // Load config & engine
         $all = get_option('mg_products', array());
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 
-        $tags_raw = isset($_POST['tags']) ? (string)$_POST['tags'] : '';
-        $tags = array_values(array_filter(array_unique(array_map('trim', explode(',', $tags_raw)))));
+        $gen_path = plugin_dir_path(__FILE__) . '../includes/class-generator.php';
+        $creator_path = plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
+        if (!file_exists($gen_path) || !file_exists($creator_path)) {
+            wp_send_json_error(array('message'=>'Hiányzó rendszerfájlok.'), 500);
+        }
+        require_once $gen_path; require_once $creator_path;
+
+        $gen = new MG_Generator();
+        $images_by_type_color = array();
+        foreach ($selected as $prod) {
+            $res = $gen->generate_for_product($prod['key'], $design_path);
+            if (is_wp_error($res)) {
+                wp_send_json_error(array('message'=>$res->get_error_message()), 500);
+            }
+            $images_by_type_color[$prod['key']] = $res;
+        }
 
         $primary_type = sanitize_text_field($_POST['primary_type'] ?? '');
         $primary_color_input = sanitize_text_field($_POST['primary_color'] ?? '');
@@ -159,51 +170,24 @@ add_action('wp_ajax_mg_bulk_process', function(){
             }
         }
 
-        $payload = array(
-            'design_path' => $design_path,
-            'product_keys' => $keys,
-            'parent_id' => $parent_id,
-            'parent_name' => $parent_name,
-            'categories' => array('main' => $main_cat, 'subs' => $sub_cats),
-            'defaults' => $defaults,
-            'trigger' => 'ajax_bulk',
-            'custom_product' => $is_custom_product ? 1 : 0,
-            'tags' => $tags,
-        );
-
-        $job_id = MG_Bulk_Queue::enqueue($payload);
-        wp_send_json_success(array('job_id' => $job_id));
+        $creator = new MG_Product_Creator();
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk');
+        $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
+        if ($parent_id > 0) {
+            $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
+            if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
+            MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
+            wp_send_json_success(array('product_id'=>$parent_id));
+        } else {
+            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
+            if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
+            MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
+            wp_send_json_success(array('product_id'=>$pid));
+        }
     } catch (Throwable $e) {
         wp_send_json_error(array('message'=>$e->getMessage()), 500);
     }
 });
-
-
-add_action('wp_ajax_mg_bulk_queue_status', function(){
-    try {
-        if (!current_user_can('edit_products')) {
-            wp_send_json_error(array('message'=>'Jogosultság hiányzik.'), 403);
-        }
-        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_bulk_nonce')) {
-            wp_send_json_error(array('message'=>'Érvénytelen kérés (nonce).'), 401);
-        }
-        $job_ids = isset($_POST['job_ids']) ? (array)$_POST['job_ids'] : array();
-        $job_ids = array_values(array_filter(array_map('sanitize_text_field', $job_ids)));
-        $status = MG_Bulk_Queue::get_status($job_ids);
-        wp_send_json_success($status);
-    } catch (Throwable $e) {
-        wp_send_json_error(array('message'=>$e->getMessage()), 500);
-    }
-});
-
-if (!function_exists('mg_bulk_worker_gateway')) {
-    function mg_bulk_worker_gateway() {
-        $token = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : '';
-        MG_Bulk_Queue::run_worker_request($token);
-    }
-}
-add_action('wp_ajax_mg_bulk_worker', 'mg_bulk_worker_gateway');
-add_action('wp_ajax_nopriv_mg_bulk_worker', 'mg_bulk_worker_gateway');
 
 
 // Extra: direct tag setter to ensure tags are applied
