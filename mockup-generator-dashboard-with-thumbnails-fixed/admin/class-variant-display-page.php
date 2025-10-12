@@ -123,39 +123,39 @@ class MG_Variant_Display_Page {
         echo '<p>' . esc_html__('Színbeállítások testreszabása', 'mgvd') . '</p>';
         echo '</div>';
 
-        $icon_settings = isset($store['icons'][$selected_type]) ? $store['icons'][$selected_type] : array();
-        $icon_id = isset($icon_settings['attachment_id']) ? absint($icon_settings['attachment_id']) : 0;
-        $icon_url = '';
-        if ($icon_id) {
-            $image_src = wp_get_attachment_image_url($icon_id, 'thumbnail');
+        $thumbnail_settings = isset($store['thumbnails'][$selected_type]) ? $store['thumbnails'][$selected_type] : array();
+        $thumbnail_id = isset($thumbnail_settings['attachment_id']) ? absint($thumbnail_settings['attachment_id']) : 0;
+        $thumbnail_url = '';
+        if ($thumbnail_id) {
+            $image_src = wp_get_attachment_image_url($thumbnail_id, 'thumbnail');
             if ($image_src) {
-                $icon_url = $image_src;
+                $thumbnail_url = $image_src;
             }
         }
-        if (!$icon_url && !empty($icon_settings['url'])) {
-            $icon_url = esc_url($icon_settings['url']);
+        if (!$thumbnail_url && !empty($thumbnail_settings['url'])) {
+            $thumbnail_url = esc_url($thumbnail_settings['url']);
         }
 
-        $preview_classes = 'mgvd-type-icon__preview';
-        if ($icon_url) {
-            $preview_classes .= ' has-icon';
+        $preview_classes = 'mgvd-type-thumbnail__preview';
+        if ($thumbnail_url) {
+            $preview_classes .= ' has-thumbnail';
         }
 
-        $placeholder_text = __('Nincs ikon beállítva', 'mgvd');
-        echo '<div class="mgvd-type-icon" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '">';
+        $placeholder_text = __('Nincs kiskép beállítva', 'mgvd');
+        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '">';
         echo '<div class="' . esc_attr($preview_classes) . '">';
-        if ($icon_url) {
-            echo '<img src="' . esc_url($icon_url) . '" alt="' . esc_attr($type_label) . '" />';
+        if ($thumbnail_url) {
+            echo '<img src="' . esc_url($thumbnail_url) . '" alt="' . esc_attr($type_label) . '" />';
         } else {
-            echo '<span class="mgvd-type-icon__placeholder">' . esc_html($placeholder_text) . '</span>';
+            echo '<span class="mgvd-type-thumbnail__placeholder">' . esc_html($placeholder_text) . '</span>';
         }
         echo '</div>';
-        echo '<div class="mgvd-type-icon__actions">';
-        echo '<button type="button" class="button button-secondary mgvd-icon-button mgvd-icon-button--select" data-type="' . esc_attr($selected_type) . '">' . esc_html__('Ikon kiválasztása', 'mgvd') . '</button>';
-        echo '<button type="button" class="button-link mgvd-icon-button mgvd-icon-button--remove" data-type="' . esc_attr($selected_type) . '"' . ($icon_url ? '' : ' disabled') . '>' . esc_html__('Ikon eltávolítása', 'mgvd') . '</button>';
+        echo '<div class="mgvd-type-thumbnail__actions">';
+        echo '<button type="button" class="button button-secondary mgvd-thumbnail-button mgvd-thumbnail-button--select" data-type="' . esc_attr($selected_type) . '">' . esc_html__('Kiskép kiválasztása', 'mgvd') . '</button>';
+        echo '<button type="button" class="button-link mgvd-thumbnail-button mgvd-thumbnail-button--remove" data-type="' . esc_attr($selected_type) . '"' . ($thumbnail_url ? '' : ' disabled') . '>' . esc_html__('Kiskép eltávolítása', 'mgvd') . '</button>';
         echo '</div>';
-        echo '<input type="hidden" class="mgvd-icon-field mgvd-icon-field--id" name="variant_display[icons][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($icon_id) . '" />';
-        echo '<input type="hidden" class="mgvd-icon-field mgvd-icon-field--url" name="variant_display[icons][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($icon_url) . '" />';
+        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--id" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($thumbnail_id) . '" />';
+        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--url" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($thumbnail_url) . '" />';
         echo '</div>';
         echo '</div>';
 
@@ -221,9 +221,14 @@ class MG_Variant_Display_Page {
             $catalog = array();
         }
         $store = MG_Variant_Display_Manager::sanitize_settings_block($raw, $catalog);
+        if (isset($store['icons']) && !isset($store['thumbnails'])) {
+            $store['thumbnails'] = $store['icons'];
+            unset($store['icons']);
+        }
+
         return wp_parse_args($store, array(
             'colors' => array(),
-            'icons' => array(),
+            'thumbnails' => array(),
             'size_charts' => array(),
         ));
     }
@@ -244,15 +249,15 @@ class MG_Variant_Display_Page {
         if (!is_array($store)) {
             $store = array(
                 'colors' => array(),
-                'icons' => array(),
+                'thumbnails' => array(),
                 'size_charts' => array(),
             );
         }
         if (!isset($store['colors']) || !is_array($store['colors'])) {
             $store['colors'] = array();
         }
-        if (!isset($store['icons']) || !is_array($store['icons'])) {
-            $store['icons'] = array();
+        if (!isset($store['thumbnails']) || !is_array($store['thumbnails'])) {
+            $store['thumbnails'] = array();
         }
         if (!isset($store['size_charts']) || !is_array($store['size_charts'])) {
             $store['size_charts'] = array();
@@ -264,10 +269,10 @@ class MG_Variant_Display_Page {
             unset($store['colors'][$type_slug]);
         }
 
-        if (!empty($sanitized['icons'][$type_slug])) {
-            $store['icons'][$type_slug] = $sanitized['icons'][$type_slug];
+        if (!empty($sanitized['thumbnails'][$type_slug])) {
+            $store['thumbnails'][$type_slug] = $sanitized['thumbnails'][$type_slug];
         } else {
-            unset($store['icons'][$type_slug]);
+            unset($store['thumbnails'][$type_slug]);
         }
 
         if (isset($sanitized['size_charts'][$type_slug]) && $sanitized['size_charts'][$type_slug] !== '') {

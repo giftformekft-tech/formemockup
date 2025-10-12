@@ -25,46 +25,46 @@
         refreshColorChip($card);
     });
 
-    function updateIconPreview($container, iconUrl) {
-        var $preview = $container.find('.mgvd-type-icon__preview');
+    function updateThumbnailPreview($container, thumbnailUrl) {
+        var $preview = $container.find('.mgvd-type-thumbnail__preview');
         if (!$preview.length) {
             return;
         }
 
         var label = $container.data('label') || '';
         var placeholder = $container.data('placeholder') || '';
-        $preview.removeClass('has-icon');
+        $preview.removeClass('has-thumbnail');
 
-        if (iconUrl) {
+        if (thumbnailUrl) {
             var $img = $('<img />');
-            $img.attr('src', iconUrl);
+            $img.attr('src', thumbnailUrl);
             if (label) {
                 $img.attr('alt', label);
             }
             $preview.empty().append($img);
-            $preview.addClass('has-icon');
+            $preview.addClass('has-thumbnail');
         } else {
             $preview.empty();
             if (placeholder) {
-                $preview.append($('<span class="mgvd-type-icon__placeholder" />').text(placeholder));
+                $preview.append($('<span class="mgvd-type-thumbnail__placeholder" />').text(placeholder));
             }
         }
 
-        var $removeBtn = $container.find('.mgvd-icon-button--remove');
+        var $removeBtn = $container.find('.mgvd-thumbnail-button--remove');
         if ($removeBtn.length) {
-            $removeBtn.prop('disabled', !iconUrl);
+            $removeBtn.prop('disabled', !thumbnailUrl);
         }
     }
 
-    function setIconFields($container, attachmentId, iconUrl) {
-        $container.find('.mgvd-icon-field--id').val(attachmentId || '');
-        $container.find('.mgvd-icon-field--url').val(iconUrl || '');
-        updateIconPreview($container, iconUrl);
+    function setThumbnailFields($container, attachmentId, thumbnailUrl) {
+        $container.find('.mgvd-thumbnail-field--id').val(attachmentId || '');
+        $container.find('.mgvd-thumbnail-field--url').val(thumbnailUrl || '');
+        updateThumbnailPreview($container, thumbnailUrl);
     }
 
     var mediaFrames = {};
 
-    function openIconPicker($container) {
+    function openThumbnailPicker($container) {
         if (!window.wp || !wp.media || typeof wp.media !== 'function') {
             window.alert('A média könyvtár nem érhető el.');
             return;
@@ -78,7 +78,7 @@
         var frame = mediaFrames[typeKey];
         if (!frame) {
             frame = wp.media({
-                title: 'Ikon kiválasztása',
+                title: 'Kiskép kiválasztása',
                 button: {
                     text: 'Kiválasztás'
                 },
@@ -106,7 +106,7 @@
                 if (!url && attachment.url) {
                     url = attachment.url;
                 }
-                setIconFields($container, attachmentId, url);
+                setThumbnailFields($container, attachmentId, url);
             });
 
             mediaFrames[typeKey] = frame;
@@ -115,36 +115,36 @@
         frame.open();
     }
 
-    $(document).on('click', '.mgvd-icon-button--select', function(e){
+    $(document).on('click', '.mgvd-thumbnail-button--select', function(e){
         e.preventDefault();
-        var $container = $(this).closest('.mgvd-type-icon');
+        var $container = $(this).closest('.mgvd-type-thumbnail');
         if (!$container.length) {
             return;
         }
-        openIconPicker($container);
+        openThumbnailPicker($container);
     });
 
-    $(document).on('click', '.mgvd-icon-button--remove', function(e){
+    $(document).on('click', '.mgvd-thumbnail-button--remove', function(e){
         e.preventDefault();
-        var $container = $(this).closest('.mgvd-type-icon');
+        var $container = $(this).closest('.mgvd-type-thumbnail');
         if (!$container.length) {
             return;
         }
-        setIconFields($container, '', '');
+        setThumbnailFields($container, '', '');
     });
 
     $(document).ready(function(){
-        $('.mgvd-type-icon').each(function(){
+        $('.mgvd-type-thumbnail').each(function(){
             var $container = $(this);
-            var iconUrl = $container.find('.mgvd-icon-field--url').val();
-            if (!iconUrl) {
-                var attachmentId = $container.find('.mgvd-icon-field--id').val();
+            var thumbnailUrl = $container.find('.mgvd-thumbnail-field--url').val();
+            if (!thumbnailUrl) {
+                var attachmentId = $container.find('.mgvd-thumbnail-field--id').val();
                 if (!attachmentId) {
-                    updateIconPreview($container, '');
+                    updateThumbnailPreview($container, '');
                     return;
                 }
             }
-            updateIconPreview($container, iconUrl);
+            updateThumbnailPreview($container, thumbnailUrl);
         });
     });
 })(jQuery);

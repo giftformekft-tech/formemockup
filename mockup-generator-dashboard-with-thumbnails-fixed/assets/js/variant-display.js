@@ -77,11 +77,18 @@
             }
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--type" aria-pressed="false" />');
             $btn.attr('data-value', typeSlug);
-            if (meta.icon && meta.icon.url) {
-                $btn.addClass('mg-variant-option--has-icon');
-                var $icon = $('<span class="mg-variant-option__icon" aria-hidden="true" />');
-                $icon.css('background-image', 'url("' + meta.icon.url + '")');
-                $btn.append($icon);
+            if (meta.thumbnail && meta.thumbnail.url) {
+                $btn.addClass('mg-variant-option--has-thumbnail');
+                var $thumb = $('<span class="mg-variant-option__thumbnail" aria-hidden="true" />');
+                var $img = $('<img />');
+                $img.attr('src', meta.thumbnail.url);
+                if (meta.thumbnail.alt) {
+                    $img.attr('alt', meta.thumbnail.alt);
+                } else {
+                    $img.attr('alt', '');
+                }
+                $thumb.append($img);
+                $btn.append($thumb);
             }
             $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || typeSlug));
             self.$typeOptions.append($btn);
