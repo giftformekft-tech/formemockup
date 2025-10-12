@@ -23,6 +23,7 @@ class MG_Custom_Fields_Frontend {
         add_action('woocommerce_checkout_update_order_meta', array(__CLASS__, 'add_order_meta'), 10, 2);
         add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_surcharges'), 30, 1);
         add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_order_item_design_reference'), 10, 3);
+        add_action('admin_post_mgcf_download_design', array(__CLASS__, 'handle_admin_design_download'));
     }
 
     public static function enqueue_assets() {
@@ -603,7 +604,13 @@ class MG_Custom_Fields_Frontend {
         if ($design_url) {
             $link_text = $filename !== '' ? $filename : $design_url;
             echo '<a href="' . esc_url($design_url) . '" target="_blank" rel="noopener">' . esc_html($link_text) . '</a>';
-            echo ' <a class="button button-small mg-order-design-download" href="' . esc_url($design_url) . '" target="_blank" rel="noopener">' . esc_html__('Letöltés', 'mgcf') . '</a>';
+            $download_url = self::get_design_download_url($item_id, $reference);
+            if ($download_url === '' && $design_url !== '') {
+                $download_url = $design_url;
+            }
+            if ($download_url !== '') {
+                echo ' <a class="button button-small mg-order-design-download" href="' . esc_url($download_url) . '" target="_blank" rel="noopener">' . esc_html__('Letöltés', 'mgcf') . '</a>';
+            }
             if ($design_path && $design_path !== $link_text) {
                 echo '<br /><small class="mg-order-design-path">' . esc_html($design_path) . '</small>';
             }
@@ -616,6 +623,156 @@ class MG_Custom_Fields_Frontend {
         }
 
         echo '</div>';
+    }
+
+    protected static function get_design_download_url($item_id, $reference) {
+        $item_id = absint($item_id);
+        if ($item_id <= 0 || empty($reference) || !is_array($reference)) {
+            return '';
+        }
+
+        $design_path = isset($reference['design_path']) ? $reference['design_path'] : '';
+        $design_attachment_id = isset($reference['design_attachment_id']) ? absint($reference['design_attachment_id']) : 0;
+
+        if (!function_exists('wp_upload_dir')) {
+            return '';
+        }
+
+        $uploads = wp_upload_dir();
+        if (empty($uploads['basedir'])) {
+            return '';
+        }
+
+        $normalized_base = wp_normalize_path($uploads['basedir']);
+        if ($normalized_base === '') {
+            return '';
+        }
+
+        $has_local_reference = false;
+
+        if ($design_path !== '') {
+            $normalized_path = wp_normalize_path($design_path);
+            if (strpos($normalized_path, $normalized_base) === 0) {
+                $has_local_reference = true;
+            }
+        }
+
+        if (!$has_local_reference && $design_attachment_id > 0 && function_exists('get_attached_file')) {
+            $attachment_path = get_attached_file($design_attachment_id);
+            if (is_string($attachment_path) && $attachment_path !== '') {
+                $normalized_attachment = wp_normalize_path($attachment_path);
+                if (strpos($normalized_attachment, $normalized_base) === 0) {
+                    $has_local_reference = true;
+                }
+            }
+        }
+
+        if (!$has_local_reference) {
+            return '';
+        }
+
+        $url = add_query_arg(
+            array(
+                'action'  => 'mgcf_download_design',
+                'item_id' => $item_id,
+            ),
+            admin_url('admin-post.php')
+        );
+
+        return wp_nonce_url($url, 'mgcf_download_design_' . $item_id);
+    }
+
+    public static function handle_admin_design_download() {
+        if (!is_user_logged_in() || !current_user_can('manage_woocommerce')) {
+            wp_die(esc_html__('Nincs jogosultság a fájl letöltéséhez.', 'mgcf'));
+        }
+
+        $item_id = isset($_GET['item_id']) ? absint($_GET['item_id']) : 0;
+        if ($item_id <= 0 || !isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'mgcf_download_design_' . $item_id)) {
+            wp_die(esc_html__('Érvénytelen letöltési hivatkozás.', 'mgcf'));
+        }
+
+        if (!class_exists('WC_Order_Factory')) {
+            wp_die(esc_html__('A rendelési tétel nem található.', 'mgcf'));
+        }
+
+        $item = WC_Order_Factory::get_order_item($item_id);
+        if (!$item || !is_object($item) || !method_exists($item, 'get_meta')) {
+            wp_die(esc_html__('A rendelési tétel nem található.', 'mgcf'));
+        }
+
+        $reference = $item->get_meta('_mg_print_design_reference', true);
+        if (empty($reference) || !is_array($reference)) {
+            wp_die(esc_html__('A fájl nem érhető el.', 'mgcf'));
+        }
+
+        $design_path = isset($reference['design_path']) ? $reference['design_path'] : '';
+        $design_url = isset($reference['design_url']) ? $reference['design_url'] : '';
+        $filename = isset($reference['design_filename']) ? $reference['design_filename'] : '';
+        $design_attachment_id = isset($reference['design_attachment_id']) ? absint($reference['design_attachment_id']) : 0;
+
+        $resolved_path = '';
+        $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+        $normalized_base = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+
+        if ($design_attachment_id > 0 && function_exists('get_attached_file')) {
+            $attachment_path = get_attached_file($design_attachment_id);
+            if (is_string($attachment_path) && $attachment_path !== '') {
+                $normalized_attachment = wp_normalize_path($attachment_path);
+                if ($normalized_base === '' || strpos($normalized_attachment, $normalized_base) === 0) {
+                    $resolved_path = $normalized_attachment;
+                }
+            }
+        }
+
+        if ($resolved_path === '' && $design_path !== '') {
+            $normalized_path = wp_normalize_path($design_path);
+            if ($normalized_base === '' || strpos($normalized_path, $normalized_base) === 0) {
+                $resolved_path = $normalized_path;
+            }
+        }
+
+        if ($resolved_path !== '' && file_exists($resolved_path) && is_readable($resolved_path)) {
+            if ($filename === '') {
+                $filename = function_exists('wp_basename') ? wp_basename($resolved_path) : basename($resolved_path);
+            }
+
+            $real_path = function_exists('realpath') ? realpath($resolved_path) : $resolved_path;
+            if ($real_path !== false) {
+                $resolved_path = wp_normalize_path($real_path);
+            }
+
+            nocache_headers();
+
+            $type_source = $resolved_path;
+            if ($filename !== '') {
+                $type_source = $filename;
+            }
+
+            $filetype = function_exists('wp_check_filetype') ? wp_check_filetype($type_source) : false;
+            if (!empty($filetype['type'])) {
+                header('Content-Type: ' . $filetype['type']);
+            } else {
+                header('Content-Type: application/octet-stream');
+            }
+
+            header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
+
+            $filesize = filesize($resolved_path);
+            if ($filesize !== false) {
+                header('Content-Length: ' . $filesize);
+            }
+
+            readfile($resolved_path);
+            exit;
+        }
+
+        if ($design_url !== '') {
+            wp_safe_redirect($design_url);
+            exit;
+        }
+
+        wp_die(esc_html__('A fájl nem érhető el.', 'mgcf'));
     }
 
     public static function apply_cart_surcharges($cart) {
