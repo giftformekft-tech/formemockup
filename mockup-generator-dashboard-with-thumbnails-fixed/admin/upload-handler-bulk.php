@@ -86,6 +86,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         if (!file_exists($gen_path) || !file_exists($creator_path)) throw new Exception('Hiányzó rendszerfájlok.');
         require_once $gen_path; require_once $creator_path;
         $creator = new MG_Product_Creator();
+        $generator = new MG_Generator();
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
@@ -137,10 +138,9 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             $typed = isset($names[$i]) ? trim($names[$i]) : '';
             if ($typed === '') $typed = pathinfo($design_path, PATHINFO_FILENAME);
             $parent_name = sanitize_text_field($typed);
-            $gen = new MG_Generator();
             $images_by_type_color = array();
             foreach ($selected as $prod) {
-                $res = $gen->generate_for_product($prod['key'], $design_path);
+                $res = $generator->generate_for_product($prod['key'], $design_path);
                 if (is_wp_error($res)) { $images_by_type_color = array(); break; }
                 $images_by_type_color[$prod['key']] = $res;
             }
