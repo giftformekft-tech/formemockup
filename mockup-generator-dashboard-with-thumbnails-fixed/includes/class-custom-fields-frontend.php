@@ -513,6 +513,23 @@ class MG_Custom_Fields_Frontend {
                 }
             }
 
+            if ($design_path === '' && $design_attachment_id <= 0) {
+                $fallback = self::locate_design_reference_from_index($candidate_id);
+                if (!empty($fallback['design_path']) && is_string($fallback['design_path'])) {
+                    $design_path = wp_normalize_path($fallback['design_path']);
+                }
+                if (!empty($fallback['design_attachment_id'])) {
+                    $design_attachment_id = (int) $fallback['design_attachment_id'];
+                }
+            }
+
+            if ($design_path === '' && $design_attachment_id > 0 && function_exists('get_attached_file')) {
+                $attached_path = get_attached_file($design_attachment_id);
+                if (is_string($attached_path) && $attached_path !== '') {
+                    $design_path = wp_normalize_path($attached_path);
+                }
+            }
+
             $design_url = '';
             if ($design_attachment_id > 0 && function_exists('wp_get_attachment_url')) {
                 $design_url = wp_get_attachment_url($design_attachment_id);
@@ -581,6 +598,37 @@ class MG_Custom_Fields_Frontend {
             'path'       => $path_key,
             'attachment' => $attachment_key,
         );
+    }
+
+    protected static function locate_design_reference_from_index($product_id) {
+        $reference = array();
+        $product_id = absint($product_id);
+        if ($product_id <= 0 || !class_exists('MG_Mockup_Maintenance') || !method_exists('MG_Mockup_Maintenance', 'get_index')) {
+            return $reference;
+        }
+
+        $index = MG_Mockup_Maintenance::get_index();
+        if (empty($index) || !is_array($index)) {
+            return $reference;
+        }
+
+        foreach ($index as $entry) {
+            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== $product_id) {
+                continue;
+            }
+            $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
+            if (!empty($source['design_attachment_id']) && empty($reference['design_attachment_id'])) {
+                $reference['design_attachment_id'] = (int) $source['design_attachment_id'];
+            }
+            if (!empty($source['design_path']) && empty($reference['design_path'])) {
+                $reference['design_path'] = $source['design_path'];
+            }
+            if (!empty($reference['design_path']) && !empty($reference['design_attachment_id'])) {
+                break;
+            }
+        }
+
+        return $reference;
     }
 
     public static function render_order_item_design_reference($item_id, $item, $product) {
