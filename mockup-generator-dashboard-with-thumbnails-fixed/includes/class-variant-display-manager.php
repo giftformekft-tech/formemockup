@@ -4,6 +4,13 @@ if (!defined('ABSPATH')) {
 }
 
 class MG_Variant_Display_Manager {
+    /**
+     * Whether the preload assets have already been hooked for the current request.
+     *
+     * @var bool
+     */
+    protected static $preload_hooked = false;
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
@@ -28,6 +35,8 @@ class MG_Variant_Display_Manager {
             return;
         }
 
+        self::hook_preload_assets();
+
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_path = dirname(__DIR__) . '/assets/css/variant-display.css';
         $script_path = dirname(__DIR__) . '/assets/js/variant-display.js';
@@ -48,6 +57,42 @@ class MG_Variant_Display_Manager {
         );
 
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
+    }
+
+    protected static function hook_preload_assets() {
+        if (self::$preload_hooked) {
+            return;
+        }
+
+        self::$preload_hooked = true;
+
+        add_action('wp_head', array(__CLASS__, 'output_preload_markup'), 1);
+    }
+
+    public static function output_preload_markup() {
+        ?>
+        <style id="mg-variant-preload-css">
+            html.mg-variant-preparing form.variations_form .variations,
+            html.mg-variant-preparing form.variations_form .woocommerce-variation,
+            html.mg-variant-preparing form.variations_form .single_variation,
+            html.mg-variant-preparing form.variations_form .woocommerce-variation-add-to-cart {
+                opacity: 0;
+                pointer-events: none;
+            }
+        </style>
+        <script id="mg-variant-preload-script">
+            (function () {
+                var doc = document.documentElement;
+                if (!doc || doc.classList.contains('mg-variant-preparing')) {
+                    return;
+                }
+                doc.classList.add('mg-variant-preparing');
+                window.setTimeout(function () {
+                    doc.classList.remove('mg-variant-preparing');
+                }, 2000);
+            })();
+        </script>
+        <?php
     }
 
     protected static function build_frontend_config($product) {
@@ -90,6 +135,18 @@ class MG_Variant_Display_Manager {
                 $size_chart = do_shortcode($size_chart);
             }
 
+            $type_description = isset($type_meta['description']) ? $type_meta['description'] : '';
+            if ($type_description !== '') {
+                /**
+                 * Filter the rendered type description before it is exposed to the frontend script.
+                 *
+                 * @param string   $type_description HTML for the description.
+                 * @param string   $type_slug        The current type slug.
+                 * @param WC_Product $product        The WooCommerce product instance.
+                 */
+                $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
+            }
+
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
                 $color_settings = self::get_color_settings($settings, $type_slug, $color_slug);
@@ -107,6 +164,7 @@ class MG_Variant_Display_Manager {
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
                 'size_chart' => $size_chart,
+                'description' => $type_description,
             );
         }
 
@@ -116,6 +174,22 @@ class MG_Variant_Display_Manager {
 
         $availability = self::build_availability_map($product);
         $defaults = $product->get_default_attributes();
+
+        $description_targets = apply_filters(
+            'mg_variant_display_description_targets',
+            array(
+                '.woocommerce-product-details__short-description',
+                '#tab-description',
+                '.woocommerce-Tabs-panel--description',
+            ),
+            $product
+        );
+
+        if (!is_array($description_targets)) {
+            $description_targets = array();
+        }
+
+        $description_targets = array_values(array_filter(array_unique(array_map('strval', $description_targets))));
 
         return array(
             'types' => $types_payload,
@@ -140,6 +214,7 @@ class MG_Variant_Display_Manager {
                 'color' => isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '',
                 'size' => isset($defaults['meret']) ? sanitize_text_field($defaults['meret']) : '',
             ),
+            'descriptionTargets' => $description_targets,
         );
     }
 
@@ -217,11 +292,14 @@ class MG_Variant_Display_Manager {
                 }
             }
 
+            $description = isset($entry['type_description']) ? wp_kses_post($entry['type_description']) : '';
+
             $index[$slug] = array(
                 'label' => $label,
                 'colors' => $colors,
                 'sizes' => $sizes,
                 'matrix' => $matrix,
+                'description' => $description,
             );
         }
 
