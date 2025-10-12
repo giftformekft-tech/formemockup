@@ -67,6 +67,9 @@ if (!function_exists('mg_bulk_allowed_sizes_for_color')) {
 if (!class_exists('MG_Custom_Fields_Manager')) {
     require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
 }
+if (!class_exists('MG_Bulk_Queue')) {
+    require_once plugin_dir_path(__FILE__) . '../includes/class-bulk-queue.php';
+}
 add_action('wp_ajax_mg_bulk_process_one', function(){
     check_ajax_referer('mg_ajax_nonce','nonce');
     if (!current_user_can('manage_options')) wp_send_json_error(array('message'=>'Jogosultság hiányzik.'), 403);
@@ -82,24 +85,11 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     if (empty($keys)) wp_send_json_error(array('message'=>'Nincs kiválasztott terméktípus.'), 400);
     $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
 
-    require_once plugin_dir_path(__FILE__) . '../includes/class-generator.php';
-    require_once plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
-
     $all = get_option('mg_products', array());
     $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
     if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 
     try {
-        $gen = new MG_Generator();
-        $images_by_type_color = array();
-        foreach ($selected as $prod) {
-            $res = $gen->generate_for_product($prod['key'], $design_path);
-            if (is_wp_error($res)) wp_send_json_error(array('message'=>$res->get_error_message()), 500);
-            $images_by_type_color[$prod['key']] = $res;
-        }
-
-        $creator = new MG_Product_Creator();
-        $generation_context = array('design_path' => $design_path, 'trigger' => 'legacy_bulk');
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
@@ -141,11 +131,19 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
             $defaults['color'] = $resolved_color;
             $defaults['size'] = $resolved_size;
         }
-        $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults, $generation_context);
-        if (is_wp_error($product_id)) wp_send_json_error(array('message'=>$product_id->get_error_message()), 500);
-        MG_Custom_Fields_Manager::set_custom_product($product_id, $is_custom_product);
-
-        wp_send_json_success(array('product_id'=>$product_id, 'name'=>$parent_name));
+        $payload = array(
+            'design_path' => $design_path,
+            'product_keys' => $keys,
+            'parent_id' => 0,
+            'parent_name' => $parent_name,
+            'categories' => array('main' => 0, 'subs' => array()),
+            'defaults' => $defaults,
+            'trigger' => 'legacy_bulk',
+            'custom_product' => $is_custom_product ? 1 : 0,
+            'tags' => array(),
+        );
+        $job_id = MG_Bulk_Queue::enqueue($payload);
+        wp_send_json_success(array('job_id'=>$job_id, 'name'=>$parent_name));
     } catch (Throwable $e) {
         wp_send_json_error(array('message'=>$e->getMessage()), 500);
     }

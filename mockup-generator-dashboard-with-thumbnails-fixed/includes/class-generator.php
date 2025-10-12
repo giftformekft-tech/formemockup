@@ -3,6 +3,7 @@ if (!defined('ABSPATH')) exit;
 class MG_Generator {
 
     private $product_cache = null;
+    private $design_cache = array();
 
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
@@ -55,6 +56,10 @@ class MG_Generator {
         $upload_path = $upload_dir['path'];
 
         $out = [];
+        $base_design = $this->get_design_clone($design_path);
+        if (is_wp_error($base_design)) {
+            return $base_design;
+        }
         foreach ($colors as $c) {
             $slug = $c['slug'];
             $out[$slug] = [];
@@ -62,7 +67,8 @@ class MG_Generator {
                 $template = $this->resolve_template($product, $slug, $view['file']);
                 if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
                 $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
-                $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_path, $view, $outfile);
+                $design_layer = clone $base_design;
+                $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_layer, $view, $outfile);
                 if (is_wp_error($ok)) return $ok;
                 $out[$slug][] = $outfile;
             }
@@ -71,18 +77,17 @@ class MG_Generator {
     }
 
     // WebP output, preserve alpha, optional output resize from settings
-    private function apply_imagick_webp_with_optional_resize($template_path, $design_path, $cfg, $outfile) {
+    private function apply_imagick_webp_with_optional_resize($template_path, Imagick $design, $cfg, $outfile) {
         try {
             $mockup = new Imagick($template_path);
-            $design = new Imagick($design_path);
+            if (method_exists($mockup,'stripImage')) $mockup->stripImage();
+            if (method_exists($design,'stripImage')) $design->stripImage();
 
             if (method_exists('Imagick','setResourceLimit')) {
                 $threads = max(1, (int)@ini_get('imagick.thread_limit') ?: 2);
                 $mockup->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
                 $design->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
             }
-            if (method_exists($mockup,'stripImage')) $mockup->stripImage();
-            // do not strip design (keep alpha)
 
             if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
             if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
@@ -125,11 +130,40 @@ class MG_Generator {
             }
 
             if (method_exists($mockup,'setImageFormat')) $mockup->setImageFormat('webp');
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(82);
+            if (method_exists($mockup,'setOption')) {
+                $mockup->setOption('webp:method', '4');
+                $mockup->setOption('webp:thread-level', '1');
+                $mockup->setOption('webp:auto-filter', '1');
+            }
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(80);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
             return new WP_Error('imagick_error', $e->getMessage());
+        }
+    }
+
+    private function get_design_clone($design_path) {
+        $real = realpath($design_path);
+        if (!$real || !file_exists($real)) {
+            return new WP_Error('design_missing', 'A design fájl nem található: '.$design_path);
+        }
+        $key = md5($real . '|' . @filemtime($real));
+        if (!isset($this->design_cache[$key]) || !($this->design_cache[$key] instanceof Imagick)) {
+            try {
+                $img = new Imagick($real);
+                if (method_exists($img,'stripImage')) $img->stripImage();
+                if (method_exists($img,'setImageAlphaChannel')) $img->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+                if (method_exists($img,'setBackgroundColor')) $img->setBackgroundColor(new ImagickPixel('transparent'));
+                $this->design_cache[$key] = $img;
+            } catch (Throwable $e) {
+                return new WP_Error('design_init_failed', $e->getMessage());
+            }
+        }
+        try {
+            return clone $this->design_cache[$key];
+        } catch (Throwable $e) {
+            return new WP_Error('design_clone_failed', $e->getMessage());
         }
     }
 }
