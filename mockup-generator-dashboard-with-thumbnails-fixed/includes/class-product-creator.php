@@ -3,6 +3,12 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    private function disable_heavy_product_save_hooks() {
+        if (function_exists('remove_all_actions')) {
+            remove_all_actions('save_post_product');
+        }
+    }
+
     private function normalize_sku_candidate($value) {
         $value = strtoupper(trim((string)$value));
         if ($value === '') {
@@ -313,6 +319,8 @@ class MG_Product_Creator {
         $default_color = $resolved_defaults['color'];
         $default_size = $resolved_defaults['size'];
 
+        $this->disable_heavy_product_save_hooks();
+
         $attr_type_id  = $this->ensure_attribute_taxonomy('Terméktípus','termektipus');
         $attr_color_id = $this->ensure_attribute_taxonomy('Szín','szin');
         $tax_type  = 'pa_termektipus'; $tax_color='pa_szin';
@@ -488,6 +496,8 @@ class MG_Product_Creator {
         $default_type = $resolved_defaults['type'];
         $default_color = $resolved_defaults['color'];
         $default_size = $resolved_defaults['size'];
+
+        $this->disable_heavy_product_save_hooks();
 
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
