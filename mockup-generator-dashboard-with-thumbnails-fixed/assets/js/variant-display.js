@@ -23,6 +23,7 @@
             $body: null,
             $close: null
         };
+        this.descriptionTargets = [];
         this.init();
     }
 
@@ -39,6 +40,7 @@
         }
 
         this.buildLayout();
+        this.captureDescriptionTargets();
         this.bindEvents();
         this.initialSync();
     };
@@ -284,6 +286,7 @@
         });
         this.rebuildColorOptions();
         this.updateSizeChartLink();
+        this.updateDescription();
     };
 
     VariantDisplay.prototype.updateColorUI = function() {
@@ -504,6 +507,75 @@
             return '';
         }
         return typeMeta.size_chart;
+    };
+
+    VariantDisplay.prototype.captureDescriptionTargets = function() {
+        this.descriptionTargets = [];
+        var selectors = [];
+        if (this.config && $.isArray(this.config.descriptionTargets) && this.config.descriptionTargets.length) {
+            selectors = this.config.descriptionTargets;
+        } else {
+            selectors = [
+                '.woocommerce-product-details__short-description',
+                '#tab-description',
+                '.woocommerce-Tabs-panel--description'
+            ];
+        }
+
+        var self = this;
+        $.each(selectors, function(_, selector){
+            $(selector).each(function(){
+                var $el = $(this);
+                if (!$el.length) {
+                    return;
+                }
+                var exists = false;
+                for (var i = 0; i < self.descriptionTargets.length; i++) {
+                    if (self.descriptionTargets[i].$el && self.descriptionTargets[i].$el[0] === $el[0]) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) {
+                    return;
+                }
+                self.descriptionTargets.push({
+                    $el: $el,
+                    original: $el.html()
+                });
+            });
+        });
+    };
+
+    VariantDisplay.prototype.updateDescription = function() {
+        if (!this.descriptionTargets.length) {
+            return;
+        }
+        var html = '';
+        if (this.state.type && this.config && this.config.types && this.config.types[this.state.type]) {
+            html = this.config.types[this.state.type].description || '';
+        }
+
+        var hasHtml = typeof html === 'string' && html !== '';
+        for (var i = 0; i < this.descriptionTargets.length; i++) {
+            var target = this.descriptionTargets[i];
+            if (!target.$el || !target.$el.length) {
+                continue;
+            }
+            var newContent = hasHtml ? html : target.original;
+            if (typeof newContent === 'undefined') {
+                newContent = '';
+            }
+            target.$el.html(newContent);
+            target.$el.toggleClass('mg-variant-description--empty', newContent === '');
+        }
+
+        $(document).trigger('mg:variantDescriptionChange', {
+            form: this.$form,
+            type: this.state.type,
+            html: html,
+            hasCustomDescription: hasHtml
+        });
     };
 
     VariantDisplay.prototype.showSizeChart = function() {
