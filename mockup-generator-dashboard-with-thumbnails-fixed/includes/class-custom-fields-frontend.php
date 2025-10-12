@@ -638,7 +638,10 @@ class MG_Custom_Fields_Frontend {
 
         $reference = $item->get_meta('_mg_print_design_reference', true);
         if (empty($reference) || !is_array($reference)) {
-            return;
+            $reference = self::rehydrate_order_item_design_reference($item);
+            if (empty($reference)) {
+                return;
+            }
         }
 
         $label = apply_filters('mgcf_order_item_design_label', __('Nyomtatási minta', 'mgcf'), $item, $reference);
@@ -671,6 +674,36 @@ class MG_Custom_Fields_Frontend {
         }
 
         echo '</div>';
+    }
+
+    protected static function rehydrate_order_item_design_reference($item) {
+        if (!is_object($item) || !method_exists($item, 'get_meta')) {
+            return array();
+        }
+
+        $values = array();
+
+        if (method_exists($item, 'get_product_id')) {
+            $values['product_id'] = (int) $item->get_product_id();
+        }
+
+        if (method_exists($item, 'get_variation_id')) {
+            $values['variation_id'] = (int) $item->get_variation_id();
+        }
+
+        $reference = self::capture_design_reference_for_item($item, $values);
+        if (empty($reference)) {
+            return array();
+        }
+
+        if (method_exists($item, 'update_meta_data')) {
+            $item->update_meta_data('_mg_print_design_reference', $reference);
+            if (method_exists($item, 'save')) {
+                $item->save();
+            }
+        }
+
+        return $reference;
     }
 
     protected static function get_design_download_url($item_id, $reference) {
