@@ -183,6 +183,7 @@ class MG_Variant_Display_Page {
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--id" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($thumbnail_id) . '" />';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--url" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($thumbnail_url) . '" />';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--legacy-target" value="' . esc_attr($legacy_target) . '" />';
+        echo '<textarea id="' . esc_attr($legacy_target) . '" class="mgvd-thumbnail-legacy-target" style="display:none;" aria-hidden="true"></textarea>';
         echo '</div>';
         echo '</div>';
 

@@ -67,6 +67,7 @@
     var mediaFrames = {};
     var legacyEditorState = {
         previousHandler: null,
+        previousEditor: null,
         activeType: null
     };
 
@@ -75,6 +76,10 @@
             wp.media.editor.send.attachment = legacyEditorState.previousHandler;
         }
         legacyEditorState.previousHandler = null;
+        if (typeof window.wpActiveEditor !== 'undefined') {
+            window.wpActiveEditor = legacyEditorState.previousEditor || '';
+        }
+        legacyEditorState.previousEditor = null;
         legacyEditorState.activeType = null;
     }
 
@@ -155,7 +160,17 @@
             }
 
             legacyEditorState.previousHandler = wp.media.editor.send.attachment;
+            legacyEditorState.previousEditor = (typeof window.wpActiveEditor !== 'undefined') ? window.wpActiveEditor : null;
             legacyEditorState.activeType = typeKey;
+
+            if (!document.getElementById(legacyTarget)) {
+                var legacyTextarea = document.createElement('textarea');
+                legacyTextarea.setAttribute('id', legacyTarget);
+                legacyTextarea.className = 'mgvd-thumbnail-legacy-target';
+                legacyTextarea.setAttribute('aria-hidden', 'true');
+                legacyTextarea.style.display = 'none';
+                $container.append(legacyTextarea);
+            }
 
             wp.media.editor.send.attachment = function(props, attachment){
                 if (legacyEditorState.previousHandler) {
@@ -167,9 +182,7 @@
                 restoreLegacyHandler();
             };
 
-            if (typeof window.wpActiveEditor === 'undefined' || !window.wpActiveEditor) {
-                window.wpActiveEditor = legacyTarget;
-            }
+            window.wpActiveEditor = legacyTarget;
 
             $(document).one('tb_unload.mgvdLegacy', function(){
                 restoreLegacyHandler();
