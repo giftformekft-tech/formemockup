@@ -26,6 +26,7 @@ add_action('plugins_loaded', function(){
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
         'admin/class-mockup-maintenance-page.php',
+        'includes/class-bulk-queue.php',
         'includes/class-generator.php',
         'includes/class-product-creator.php',
         'includes/class-custom-fields-manager.php',
@@ -73,7 +74,8 @@ add_action('load-toplevel_page_mockup-generator', function(){
             wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.1', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('mg_ajax_nonce')
+                'nonce' => wp_create_nonce('mg_ajax_nonce'),
+                'poll_interval' => 4000,
             ));
             if ($hook === 'mockup-generator_page_mockup-generator-maintenance') {
                 wp_enqueue_style('mg-mockup-maintenance', plugins_url('assets/css/mockup-maintenance.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . 'assets/css/mockup-maintenance.css'));
