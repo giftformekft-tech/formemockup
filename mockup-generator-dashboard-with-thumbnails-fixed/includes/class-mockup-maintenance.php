@@ -45,7 +45,71 @@ class MG_Mockup_Maintenance {
         if (!is_array($index)) {
             $index = [];
         }
+        list($normalized, $needs_update) = self::normalize_index_entries($index);
+        if ($needs_update) {
+            $index = $normalized;
+            self::set_index($index);
+        } else {
+            $index = $normalized;
+        }
         return $index;
+    }
+
+    private static function normalize_index_entries($raw_index) {
+        $normalized = [];
+        $needs_update = false;
+        if (!is_array($raw_index)) {
+            return [$normalized, true];
+        }
+        foreach ($raw_index as $key => $entry) {
+            if (!is_array($entry)) {
+                $needs_update = true;
+                continue;
+            }
+            $product_id = absint($entry['product_id'] ?? 0);
+            $type_slug = sanitize_title($entry['type_slug'] ?? '');
+            $color_slug = sanitize_title($entry['color_slug'] ?? '');
+            if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+                $needs_update = true;
+                continue;
+            }
+            $expected_key = self::compose_key($product_id, $type_slug, $color_slug);
+            $entry['product_id'] = $product_id;
+            $entry['type_slug'] = $type_slug;
+            $entry['color_slug'] = $color_slug;
+            if (!isset($normalized[$expected_key])) {
+                $normalized[$expected_key] = $entry;
+            } else {
+                $normalized[$expected_key] = self::prefer_latest_entry($normalized[$expected_key], $entry);
+                $needs_update = true;
+            }
+            if ($key !== $expected_key) {
+                $needs_update = true;
+            }
+        }
+        if (count($normalized) !== count($raw_index)) {
+            $needs_update = true;
+        }
+        return [$normalized, $needs_update];
+    }
+
+    private static function prefer_latest_entry($current, $candidate) {
+        $current = is_array($current) ? $current : [];
+        $candidate = is_array($candidate) ? $candidate : [];
+        $current_updated = isset($current['updated_at']) ? (int) $current['updated_at'] : 0;
+        $candidate_updated = isset($candidate['updated_at']) ? (int) $candidate['updated_at'] : 0;
+        if ($candidate_updated > $current_updated) {
+            $merged = array_merge($current, $candidate);
+        } else {
+            $merged = array_merge($candidate, $current);
+            if (empty($merged['source']) && !empty($candidate['source'])) {
+                $merged['source'] = $candidate['source'];
+            }
+        }
+        $merged['product_id'] = absint($merged['product_id'] ?? 0);
+        $merged['type_slug'] = sanitize_title($merged['type_slug'] ?? '');
+        $merged['color_slug'] = sanitize_title($merged['color_slug'] ?? '');
+        return $merged;
     }
 
     public static function set_index($index) {
@@ -73,6 +137,19 @@ class MG_Mockup_Maintenance {
 
     private static function current_timestamp() {
         return current_time('timestamp', true);
+    }
+
+    private static function product_is_active($product) {
+        if (!$product || !is_object($product)) {
+            return false;
+        }
+        if (method_exists($product, 'get_status')) {
+            $status = $product->get_status();
+            if (!in_array($status, ['publish'], true)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static function find_type_definition($type_slug) {
@@ -857,7 +934,7 @@ class MG_Mockup_Maintenance {
 
     public static function get_status_entries($filters = []) {
         $filters = is_array($filters) ? $filters : [];
-        $index = self::get_index();
+        $index = self::prune_missing_references(self::get_index());
         $result = [];
         foreach ($index as $key => $entry) {
             $status = $entry['status'] ?? '';
@@ -882,6 +959,42 @@ class MG_Mockup_Maintenance {
             return $tb <=> $ta;
         });
         return $result;
+    }
+
+    private static function prune_missing_references($index) {
+        if (!is_array($index) || empty($index)) {
+            return [];
+        }
+        $pruned = $index;
+        $needs_update = false;
+        $product_cache = [];
+        foreach ($pruned as $key => $entry) {
+            $product_id = absint($entry['product_id'] ?? 0);
+            if ($product_id > 0 && function_exists('wc_get_product')) {
+                if (!array_key_exists($product_id, $product_cache)) {
+                    $product_obj = wc_get_product($product_id);
+                    $product_cache[$product_id] = [
+                        'exists' => ($product_obj && $product_obj->get_id()),
+                        'active' => ($product_obj && $product_obj->get_id() && self::product_is_active($product_obj)),
+                    ];
+                }
+                $cached = $product_cache[$product_id];
+                if (!$cached['exists'] || !$cached['active']) {
+                    unset($pruned[$key]);
+                    $needs_update = true;
+                    continue;
+                }
+            }
+            $type_slug = sanitize_title($entry['type_slug'] ?? '');
+            if ($type_slug !== '' && !self::find_type_definition($type_slug)) {
+                unset($pruned[$key]);
+                $needs_update = true;
+            }
+        }
+        if ($needs_update) {
+            self::set_index($pruned);
+        }
+        return $pruned;
     }
 
     public static function process_queue() {

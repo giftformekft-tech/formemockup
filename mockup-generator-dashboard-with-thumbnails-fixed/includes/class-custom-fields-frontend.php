@@ -513,6 +513,23 @@ class MG_Custom_Fields_Frontend {
                 }
             }
 
+            if ($design_path === '' && $design_attachment_id <= 0) {
+                $fallback = self::locate_design_reference_from_index($candidate_id);
+                if (!empty($fallback['design_path']) && is_string($fallback['design_path'])) {
+                    $design_path = wp_normalize_path($fallback['design_path']);
+                }
+                if (!empty($fallback['design_attachment_id'])) {
+                    $design_attachment_id = (int) $fallback['design_attachment_id'];
+                }
+            }
+
+            if ($design_path === '' && $design_attachment_id > 0 && function_exists('get_attached_file')) {
+                $attached_path = get_attached_file($design_attachment_id);
+                if (is_string($attached_path) && $attached_path !== '') {
+                    $design_path = wp_normalize_path($attached_path);
+                }
+            }
+
             $design_url = '';
             if ($design_attachment_id > 0 && function_exists('wp_get_attachment_url')) {
                 $design_url = wp_get_attachment_url($design_attachment_id);
@@ -583,6 +600,37 @@ class MG_Custom_Fields_Frontend {
         );
     }
 
+    protected static function locate_design_reference_from_index($product_id) {
+        $reference = array();
+        $product_id = absint($product_id);
+        if ($product_id <= 0 || !class_exists('MG_Mockup_Maintenance') || !method_exists('MG_Mockup_Maintenance', 'get_index')) {
+            return $reference;
+        }
+
+        $index = MG_Mockup_Maintenance::get_index();
+        if (empty($index) || !is_array($index)) {
+            return $reference;
+        }
+
+        foreach ($index as $entry) {
+            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== $product_id) {
+                continue;
+            }
+            $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
+            if (!empty($source['design_attachment_id']) && empty($reference['design_attachment_id'])) {
+                $reference['design_attachment_id'] = (int) $source['design_attachment_id'];
+            }
+            if (!empty($source['design_path']) && empty($reference['design_path'])) {
+                $reference['design_path'] = $source['design_path'];
+            }
+            if (!empty($reference['design_path']) && !empty($reference['design_attachment_id'])) {
+                break;
+            }
+        }
+
+        return $reference;
+    }
+
     public static function render_order_item_design_reference($item_id, $item, $product) {
         if (!is_admin() || !is_object($item) || !method_exists($item, 'get_meta')) {
             return;
@@ -590,7 +638,10 @@ class MG_Custom_Fields_Frontend {
 
         $reference = $item->get_meta('_mg_print_design_reference', true);
         if (empty($reference) || !is_array($reference)) {
-            return;
+            $reference = self::rehydrate_order_item_design_reference($item);
+            if (empty($reference)) {
+                return;
+            }
         }
 
         $label = apply_filters('mgcf_order_item_design_label', __('Nyomtatási minta', 'mgcf'), $item, $reference);
@@ -623,6 +674,36 @@ class MG_Custom_Fields_Frontend {
         }
 
         echo '</div>';
+    }
+
+    protected static function rehydrate_order_item_design_reference($item) {
+        if (!is_object($item) || !method_exists($item, 'get_meta')) {
+            return array();
+        }
+
+        $values = array();
+
+        if (method_exists($item, 'get_product_id')) {
+            $values['product_id'] = (int) $item->get_product_id();
+        }
+
+        if (method_exists($item, 'get_variation_id')) {
+            $values['variation_id'] = (int) $item->get_variation_id();
+        }
+
+        $reference = self::capture_design_reference_for_item($item, $values);
+        if (empty($reference)) {
+            return array();
+        }
+
+        if (method_exists($item, 'update_meta_data')) {
+            $item->update_meta_data('_mg_print_design_reference', $reference);
+            if (method_exists($item, 'save')) {
+                $item->save();
+            }
+        }
+
+        return $reference;
     }
 
     protected static function get_design_download_url($item_id, $reference) {
