@@ -64,39 +64,6 @@
         updateThumbnailPreview($container, thumbnailUrl);
     }
 
-    var mediaFrames = {};
-    var fallbackState = {
-        previousSendToEditor: null,
-        previousEditorHandler: null,
-        previousEditorId: null,
-        activeType: null,
-        activeContainer: null
-    };
-
-    function clearFallbackState() {
-        fallbackState.activeType = null;
-        fallbackState.activeContainer = null;
-    }
-
-    function restoreFallbackHandlers() {
-        if (fallbackState.previousEditorHandler && window.wp && wp.media && wp.media.editor) {
-            wp.media.editor.send.attachment = fallbackState.previousEditorHandler;
-        }
-        fallbackState.previousEditorHandler = null;
-
-        if (typeof window.wpActiveEditor !== 'undefined') {
-            window.wpActiveEditor = fallbackState.previousEditorId || '';
-        }
-        fallbackState.previousEditorId = null;
-
-        if (fallbackState.previousSendToEditor) {
-            window.send_to_editor = fallbackState.previousSendToEditor;
-        }
-        fallbackState.previousSendToEditor = null;
-
-        clearFallbackState();
-    }
-
     function pickUrlFromAttachment(attachment) {
         if (!attachment) {
             return { id: '', url: '' };
@@ -123,52 +90,28 @@
         };
     }
 
-    function parseImageHtml(html) {
-        if (!html) {
-            return { id: '', url: '' };
-        }
+    var mediaFrames = {};
 
-        var $wrapper = $('<div />').html(html);
-        var $img = $wrapper.find('img').first();
-
-        if (!$img.length && $wrapper.is('img')) {
-            $img = $wrapper;
-        }
-
-        if (!$img.length) {
-            return { id: '', url: '' };
-        }
-
-        var url = $img.attr('src') || '';
-        var id = '';
-
-        var className = $img.attr('class') || '';
-        var idMatch = className.match(/wp-image-(\d+)/);
-        if (idMatch && idMatch[1]) {
-            id = idMatch[1];
-        }
-
-        if (!id) {
-            var dataId = $img.data('attachment-id') || $img.data('id') || '';
-            if (dataId) {
-                id = dataId;
-            }
-        }
-
-        return {
-            id: id,
-            url: url
-        };
+    function ensureMediaReady() {
+        return !!(window.wp && typeof wp.media === 'function');
     }
 
-    function openWithMediaFrame($container, typeKey) {
-        if (!window.wp || typeof wp.media !== 'function') {
-            return false;
+    function resolveSelectionData(selection) {
+        if (!selection || typeof selection.first !== 'function') {
+            return { id: '', url: '' };
         }
 
-        var frame = mediaFrames[typeKey];
-        if (!frame) {
-            frame = wp.media({
+        var first = selection.first();
+        if (!first || typeof first.toJSON !== 'function') {
+            return { id: '', url: '' };
+        }
+
+        return pickUrlFromAttachment(first.toJSON());
+    }
+
+    function getMediaFrame(typeKey) {
+        if (!mediaFrames[typeKey]) {
+            mediaFrames[typeKey] = wp.media({
                 frame: 'select',
                 title: strings.thumbnailFrameTitle || 'Kiskép feltöltése',
                 button: {
@@ -179,130 +122,9 @@
                 },
                 multiple: false
             });
-
-            frame.on('select', function(){
-                var selection = frame.state().get('selection');
-                if (!selection || !selection.first) {
-                    return;
-                }
-
-                var attachment = selection.first().toJSON();
-                var picked = pickUrlFromAttachment(attachment);
-                setThumbnailFields($container, picked.id, picked.url);
-            });
-
-            mediaFrames[typeKey] = frame;
         }
 
-        frame.open();
-        return true;
-    }
-
-    function ensureLegacyTextarea($container, legacyTarget) {
-        if (document.getElementById(legacyTarget)) {
-            return;
-        }
-        var legacyTextarea = document.createElement('textarea');
-        legacyTextarea.setAttribute('id', legacyTarget);
-        legacyTextarea.className = 'mgvd-thumbnail-legacy-target';
-        legacyTextarea.setAttribute('aria-hidden', 'true');
-        legacyTextarea.style.display = 'none';
-        $container.append(legacyTextarea);
-    }
-
-    function openWithMediaEditor($container, typeKey) {
-        if (!window.wp || !wp.media || !wp.media.editor || typeof wp.media.editor.open !== 'function') {
-            return false;
-        }
-
-        var legacyTarget = $container.data('legacy-target');
-        if (!legacyTarget) {
-            legacyTarget = 'mgvd-thumbnail-legacy-' + typeKey;
-        }
-
-        ensureLegacyTextarea($container, legacyTarget);
-
-        fallbackState.previousEditorHandler = wp.media.editor.send.attachment;
-        fallbackState.previousEditorId = (typeof window.wpActiveEditor !== 'undefined') ? window.wpActiveEditor : null;
-        fallbackState.activeType = typeKey;
-        fallbackState.activeContainer = $container;
-
-        wp.media.editor.send.attachment = function(props, attachment){
-            if (fallbackState.previousEditorHandler) {
-                fallbackState.previousEditorHandler.apply(this, arguments);
-            }
-
-            var picked = pickUrlFromAttachment(attachment);
-            if (fallbackState.activeContainer) {
-                setThumbnailFields(fallbackState.activeContainer, picked.id, picked.url);
-            }
-
-            restoreFallbackHandlers();
-        };
-
-        window.wpActiveEditor = legacyTarget;
-
-        $(document).one('tb_unload.mgvdLegacyEditor', function(){
-            restoreFallbackHandlers();
-            $(document).off('tb_unload.mgvdLegacyEditor');
-        });
-
-        wp.media.editor.open(legacyTarget);
-        return true;
-    }
-
-    function buildThickboxUrl(baseUrl) {
-        if (!baseUrl) {
-            return '';
-        }
-        var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
-        return baseUrl + separator + 'type=image&TB_iframe=1';
-    }
-
-    function openWithThickbox($container, typeKey) {
-        if (typeof window.tb_show !== 'function' || typeof window.tb_remove !== 'function') {
-            return false;
-        }
-
-        var baseUrl = strings.uploadFrameUrl || '';
-        if (!baseUrl && window.ajaxurl) {
-            baseUrl = window.ajaxurl.replace('admin-ajax.php', 'media-upload.php');
-        }
-
-        var thickboxUrl = buildThickboxUrl(baseUrl);
-        if (!thickboxUrl) {
-            return false;
-        }
-
-        fallbackState.previousSendToEditor = window.send_to_editor;
-        fallbackState.activeContainer = $container;
-        fallbackState.activeType = typeKey;
-
-        window.send_to_editor = function(html) {
-            var picked = parseImageHtml(html);
-            if (fallbackState.activeContainer && picked.url) {
-                setThumbnailFields(fallbackState.activeContainer, picked.id, picked.url);
-            }
-
-            if (typeof fallbackState.previousSendToEditor === 'function') {
-                fallbackState.previousSendToEditor(html);
-            }
-
-            restoreFallbackHandlers();
-            try {
-                tb_remove();
-            } catch (err) {
-                // Ignore if Thickbox is already closed.
-            }
-        };
-
-        $(document).one('tb_unload.mgvdLegacyHtml', function(){
-            restoreFallbackHandlers();
-            $(document).off('tb_unload.mgvdLegacyHtml');
-        });
-
-        tb_show(strings.thumbnailFrameTitle || 'Kiskép feltöltése', thickboxUrl);
-        return true;
+        return mediaFrames[typeKey];
     }
 
     function openThumbnailPicker($container) {
@@ -311,20 +133,50 @@
             return;
         }
 
-        if (openWithMediaFrame($container, typeKey)) {
+        if (!ensureMediaReady()) {
+            var unavailableMessage = strings.mediaUnavailable || 'A média könyvtár nem érhető el.';
+            window.alert(unavailableMessage);
             return;
         }
 
-        if (openWithMediaEditor($container, typeKey)) {
-            return;
-        }
+        var frame = getMediaFrame(typeKey);
+        frame.mgvdTarget = $container;
 
-        if (openWithThickbox($container, typeKey)) {
-            return;
-        }
+        frame.off('select.mgvd').on('select.mgvd', function(){
+            var picked = resolveSelectionData(frame.state().get('selection'));
+            if (frame.mgvdTarget && picked.url) {
+                setThumbnailFields(frame.mgvdTarget, picked.id, picked.url);
+            } else if (frame.mgvdTarget) {
+                setThumbnailFields(frame.mgvdTarget, '', '');
+            }
+        });
 
-        var unavailableMessage = strings.mediaUnavailable || 'A média könyvtár nem érhető el.';
-        window.alert(unavailableMessage);
+        frame.off('open.mgvd').on('open.mgvd', function(){
+            if (!frame.mgvdTarget) {
+                return;
+            }
+
+            var currentId = parseInt(frame.mgvdTarget.find('.mgvd-thumbnail-field--id').val(), 10);
+            var selection = frame.state().get('selection');
+            if (!currentId) {
+                if (selection && typeof selection.reset === 'function') {
+                    selection.reset();
+                }
+                return;
+            }
+
+            if (!selection || typeof selection.reset !== 'function' || !wp.media || typeof wp.media.attachment !== 'function') {
+                return;
+            }
+
+            var attachment = wp.media.attachment(currentId);
+            if (attachment && typeof attachment.fetch === 'function') {
+                attachment.fetch();
+            }
+            selection.reset(attachment ? [attachment] : []);
+        });
+
+        frame.open();
     }
 
     $(document).on('click', '.mgvd-thumbnail-button--select', function(e){

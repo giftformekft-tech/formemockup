@@ -28,9 +28,6 @@ class MG_Variant_Display_Page {
             wp_enqueue_media();
         }
 
-        if (function_exists('add_thickbox')) {
-            add_thickbox();
-        }
     }
 
     public static function enqueue_assets($hook) {
@@ -66,7 +63,6 @@ class MG_Variant_Display_Page {
                 'mediaUnavailable'   => __('A média könyvtár nem érhető el.', 'mgvd'),
                 'thumbnailFrameTitle' => __('Kiskép feltöltése', 'mgvd'),
                 'thumbnailFrameButton' => __('Kiskép feltöltése', 'mgvd'),
-                'uploadFrameUrl'     => admin_url('media-upload.php'),
             )
         );
 
@@ -78,9 +74,7 @@ class MG_Variant_Display_Page {
             wp_enqueue_media();
         }
 
-        if (function_exists('add_thickbox')) {
-            add_thickbox();
-        }
+        // Thickbox erőforrásokra nincs szükség, mivel a modern média keretet használjuk.
     }
 
     public static function render_page() {
@@ -175,9 +169,7 @@ class MG_Variant_Display_Page {
         }
 
         $placeholder_text = __('Nincs kiskép beállítva', 'mgvd');
-        $legacy_target = 'mgvd-thumbnail-legacy-' . $selected_type;
-
-        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '" data-legacy-target="' . esc_attr($legacy_target) . '">';
+        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '">';
         echo '<div class="' . esc_attr($preview_classes) . '">';
         if ($thumbnail_url) {
             echo '<img src="' . esc_url($thumbnail_url) . '" alt="' . esc_attr($type_label) . '" />';
@@ -191,8 +183,6 @@ class MG_Variant_Display_Page {
         echo '</div>';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--id" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($thumbnail_id) . '" />';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--url" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($thumbnail_url) . '" />';
-        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--legacy-target" value="' . esc_attr($legacy_target) . '" />';
-        echo '<textarea id="' . esc_attr($legacy_target) . '" class="mgvd-thumbnail-legacy-target" style="display:none;" aria-hidden="true"></textarea>';
         echo '</div>';
         echo '</div>';
 
