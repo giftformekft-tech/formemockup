@@ -1,29 +1,28 @@
 (function($){
   function log(msg){ $('#mg-bulk-log').append($('<div/>').text(msg)); var el = $('#mg-bulk-log')[0]; el.scrollTop = el.scrollHeight; }
 
-  var CONCURRENCY = 3;
-  var queue = [], active = 0, done = 0, total = 0;
+  var queue = [], done = 0, total = 0;
 
   function startBulk(files, keys){
     $('#mg-bulk-status').show();
     total = files.length;
+    done = 0;
     $('#mg-bulk-total').text(total);
     queue = Array.from(files);
     pump(keys);
   }
   function pump(keys){
-    while (active < CONCURRENCY && queue.length){
-      var file = queue.shift();
-      active++; processOne(file, keys).always(function(){
-        active--; done++;
-        var percent = Math.round(done/total*100);
-        $('#mg-bulk-count').text(done);
-        $('#mg-bulk-percent').text(percent);
-        $('#mg-bulk-bar').css('width', percent+'%');
-        if (done >= total){ log('Kész.'); }
-        else { pump(keys); }
-      });
-    }
+    if (!queue.length){ return; }
+    var file = queue.shift();
+    processOne(file, keys).always(function(){
+      done++;
+      var percent = Math.round(done/total*100);
+      $('#mg-bulk-count').text(done);
+      $('#mg-bulk-percent').text(percent);
+      $('#mg-bulk-bar').css('width', percent+'%');
+      if (done >= total){ log('Kész.'); }
+      else { pump(keys); }
+    });
   }
   function processOne(file, keys){
     var fd = new FormData();
