@@ -56,7 +56,7 @@ class MG_Generator {
         $upload_path = $upload_dir['path'];
 
         $out = [];
-        $base_design = $this->get_design_clone($design_path);
+        $base_design = $this->get_design_base($design_path);
         if (is_wp_error($base_design)) {
             return $base_design;
         }
@@ -67,7 +67,14 @@ class MG_Generator {
                 $template = $this->resolve_template($product, $slug, $view['file']);
                 if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
                 $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
-                $design_layer = clone $base_design;
+                try {
+                    $design_layer = clone $base_design;
+                } catch (Throwable $e) {
+                    return new WP_Error('design_clone_failed', $e->getMessage());
+                }
+                if (method_exists($design_layer, 'stripImage')) {
+                    $design_layer->stripImage();
+                }
                 $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_layer, $view, $outfile);
                 if (is_wp_error($ok)) return $ok;
                 $out[$slug][] = $outfile;
@@ -135,7 +142,8 @@ class MG_Generator {
                 $mockup->setOption('webp:thread-level', '1');
                 $mockup->setOption('webp:auto-filter', '1');
             }
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(80);
+            if (method_exists($mockup,'stripImage')) $mockup->stripImage();
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
@@ -143,7 +151,7 @@ class MG_Generator {
         }
     }
 
-    private function get_design_clone($design_path) {
+    private function get_design_base($design_path) {
         $real = realpath($design_path);
         if (!$real || !file_exists($real)) {
             return new WP_Error('design_missing', 'A design fájl nem található: '.$design_path);
@@ -160,8 +168,16 @@ class MG_Generator {
                 return new WP_Error('design_init_failed', $e->getMessage());
             }
         }
+        return $this->design_cache[$key];
+    }
+
+    private function get_design_clone($design_path) {
+        $base = $this->get_design_base($design_path);
+        if (is_wp_error($base)) {
+            return $base;
+        }
         try {
-            return clone $this->design_cache[$key];
+            return clone $base;
         } catch (Throwable $e) {
             return new WP_Error('design_clone_failed', $e->getMessage());
         }
