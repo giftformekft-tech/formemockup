@@ -242,7 +242,6 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
             'default_type' => $default_type,
             'default_color' => $default_color,
             'default_size' => $default_size,
-            'poll_interval' => 4000,
         ));
 
         $default_colors_render = array();
