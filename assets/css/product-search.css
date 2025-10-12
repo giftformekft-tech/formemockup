@@ -1,0 +1,8 @@
+#mg-parent-results{margin-top:6px;border:1px solid #ccd0d4;background:#fff;max-width:600px;max-height:240px;overflow:auto;padding:4px;border-radius:2px;}
+#mg-parent-results.loading{opacity:0.75;}
+#mg-parent-results .mg-item{padding:6px 8px;cursor:pointer;border-bottom:1px solid #f1f1f1;}
+#mg-parent-results .mg-item:hover{background:#f6f7f7;}
+#mg-parent-results .mg-item.none{cursor:default;color:#666;}
+#mg-parent-results .mg-picked{padding:6px 8px;background:#e7f7e7;border-left:3px solid #46b450;}
+#mg-parent-results.error{border-color:#dc3232;}
+#mg-parent-results .mg-error{color:#dc3232;padding:6px 8px;white-space:pre-wrap;}
