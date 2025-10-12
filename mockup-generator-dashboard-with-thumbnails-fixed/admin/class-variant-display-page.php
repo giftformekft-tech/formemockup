@@ -27,6 +27,10 @@ class MG_Variant_Display_Page {
         if (function_exists('wp_enqueue_media')) {
             wp_enqueue_media();
         }
+
+        if (function_exists('add_thickbox')) {
+            add_thickbox();
+        }
     }
 
     public static function enqueue_assets($hook) {
@@ -62,6 +66,7 @@ class MG_Variant_Display_Page {
                 'mediaUnavailable'   => __('A média könyvtár nem érhető el.', 'mgvd'),
                 'thumbnailFrameTitle' => __('Kiskép feltöltése', 'mgvd'),
                 'thumbnailFrameButton' => __('Kiskép feltöltése', 'mgvd'),
+                'uploadFrameUrl'     => admin_url('media-upload.php'),
             )
         );
 
@@ -71,6 +76,10 @@ class MG_Variant_Display_Page {
 
         if (function_exists('wp_enqueue_media')) {
             wp_enqueue_media();
+        }
+
+        if (function_exists('add_thickbox')) {
+            add_thickbox();
         }
     }
 
