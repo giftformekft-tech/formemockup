@@ -80,6 +80,57 @@
     gap: 18px;
 }
 
+.mgvd-type-icon {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.mgvd-type-icon__preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    border: 1px dashed rgba(148, 163, 184, 0.5);
+    background: rgba(148, 163, 184, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.1);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.mgvd-type-icon__preview.has-icon {
+    border-style: solid;
+    border-color: rgba(37, 99, 235, 0.4);
+    background: #fff;
+}
+
+.mgvd-type-icon__preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.mgvd-type-icon__placeholder {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--mgvd-muted);
+    text-align: center;
+    padding: 0 8px;
+}
+
+.mgvd-type-icon__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.mgvd-type-icon__actions .button-link[disabled] {
+    pointer-events: none;
+    color: rgba(71, 85, 105, 0.5);
+}
+
 .mgvd-type-card__title h2 {
     margin: 0;
     font-size: 20px;

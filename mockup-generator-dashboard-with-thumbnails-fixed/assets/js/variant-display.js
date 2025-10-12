@@ -77,6 +77,12 @@
             }
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--type" aria-pressed="false" />');
             $btn.attr('data-value', typeSlug);
+            if (meta.icon && meta.icon.url) {
+                $btn.addClass('mg-variant-option--has-icon');
+                var $icon = $('<span class="mg-variant-option__icon" aria-hidden="true" />');
+                $icon.css('background-image', 'url("' + meta.icon.url + '")');
+                $btn.append($icon);
+            }
             $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || typeSlug));
             self.$typeOptions.append($btn);
         });
