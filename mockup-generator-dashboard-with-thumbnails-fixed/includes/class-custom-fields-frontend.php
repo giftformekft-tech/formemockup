@@ -22,6 +22,7 @@ class MG_Custom_Fields_Frontend {
         add_action('woocommerce_checkout_create_order_line_item', array(__CLASS__, 'add_order_item_meta'), 10, 4);
         add_action('woocommerce_checkout_update_order_meta', array(__CLASS__, 'add_order_meta'), 10, 2);
         add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_surcharges'), 30, 1);
+        add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_order_item_design_reference'), 10, 3);
     }
 
     public static function enqueue_assets() {
@@ -421,6 +422,11 @@ class MG_Custom_Fields_Frontend {
         if (!empty($stored)) {
             $item->add_meta_data('_mg_custom_fields', $stored, true);
         }
+
+        $design_reference = self::capture_design_reference_for_item($item, $values);
+        if (!empty($design_reference)) {
+            $item->add_meta_data('_mg_print_design_reference', $design_reference, true);
+        }
     }
 
     public static function add_order_meta($order_id, $data) {
@@ -449,6 +455,167 @@ class MG_Custom_Fields_Frontend {
             $order->update_meta_data('_mg_custom_fields', $aggregated);
             $order->save();
         }
+    }
+
+    protected static function capture_design_reference_for_item($item, $values) {
+        if (!is_object($item) || !is_callable(array($item, 'get_product_id'))) {
+            return array();
+        }
+
+        $product_id = (int) $item->get_product_id();
+        if ($product_id <= 0 && !empty($values['product_id'])) {
+            $product_id = (int) $values['product_id'];
+        }
+
+        $variation_id = !empty($values['variation_id']) ? (int) $values['variation_id'] : 0;
+        $candidate_ids = array();
+
+        if ($variation_id > 0) {
+            $candidate_ids[] = $variation_id;
+        }
+        if ($product_id > 0) {
+            $candidate_ids[] = $product_id;
+        }
+
+        if (function_exists('wc_get_product')) {
+            $product_object = wc_get_product($variation_id > 0 ? $variation_id : $product_id);
+            if ($product_object) {
+                $parent_id = (int) $product_object->get_parent_id();
+                if ($parent_id > 0) {
+                    $candidate_ids[] = $parent_id;
+                }
+            }
+        }
+
+        $candidate_ids = array_values(array_unique(array_filter(array_map('intval', $candidate_ids))));
+        if (empty($candidate_ids)) {
+            return array();
+        }
+
+        $meta_keys = self::get_design_meta_keys();
+
+        foreach ($candidate_ids as $candidate_id) {
+            $design_path = '';
+            $design_attachment_id = 0;
+
+            if (!empty($meta_keys['path']) && function_exists('get_post_meta')) {
+                $stored_path = get_post_meta($candidate_id, $meta_keys['path'], true);
+                if (is_string($stored_path) && $stored_path !== '') {
+                    $design_path = wp_normalize_path($stored_path);
+                }
+            }
+
+            if (!empty($meta_keys['attachment']) && function_exists('get_post_meta')) {
+                $stored_attachment = get_post_meta($candidate_id, $meta_keys['attachment'], true);
+                if (!empty($stored_attachment)) {
+                    $design_attachment_id = (int) $stored_attachment;
+                }
+            }
+
+            $design_url = '';
+            if ($design_attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+                $design_url = wp_get_attachment_url($design_attachment_id);
+            }
+
+            if ($design_url === '' && $design_path !== '') {
+                $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+                if (!empty($uploads['basedir']) && !empty($uploads['baseurl'])) {
+                    $normalized_base = wp_normalize_path($uploads['basedir']);
+                    $normalized_path = wp_normalize_path($design_path);
+                    if ($normalized_base !== '' && strpos($normalized_path, $normalized_base) === 0) {
+                        $relative = ltrim(substr($normalized_path, strlen($normalized_base)), '/\\');
+                        $design_url = trailingslashit($uploads['baseurl']) . str_replace('\\', '/', $relative);
+                    }
+                }
+            }
+
+            if ($design_path === '' && $design_url === '') {
+                continue;
+            }
+
+            $filename = '';
+            if ($design_path !== '') {
+                $filename = function_exists('wp_basename') ? wp_basename($design_path) : basename($design_path);
+            } elseif ($design_url !== '') {
+                $url_path = wp_parse_url($design_url, PHP_URL_PATH);
+                if (!empty($url_path)) {
+                    $filename = function_exists('wp_basename') ? wp_basename($url_path) : basename($url_path);
+                }
+            }
+
+            $reference = array(
+                'ordered_product_id'   => $product_id,
+                'source_product_id'    => $candidate_id,
+                'design_path'          => $design_path,
+                'design_filename'      => $filename,
+                'design_url'           => $design_url,
+                'design_attachment_id' => $design_attachment_id,
+                'captured_at'          => function_exists('current_time') ? current_time('mysql') : gmdate('Y-m-d H:i:s'),
+            );
+
+            $reference = apply_filters('mgcf_captured_design_reference', $reference, $item, $values);
+
+            if (!empty($reference) && is_array($reference)) {
+                return $reference;
+            }
+        }
+
+        return array();
+    }
+
+    protected static function get_design_meta_keys() {
+        $path_key = '_mg_last_design_path';
+        $attachment_key = '_mg_last_design_attachment';
+
+        if (class_exists('MG_Mockup_Maintenance')) {
+            if (defined('MG_Mockup_Maintenance::META_LAST_DESIGN_PATH')) {
+                $path_key = MG_Mockup_Maintenance::META_LAST_DESIGN_PATH;
+            }
+            if (defined('MG_Mockup_Maintenance::META_LAST_DESIGN_ATTACHMENT')) {
+                $attachment_key = MG_Mockup_Maintenance::META_LAST_DESIGN_ATTACHMENT;
+            }
+        }
+
+        return array(
+            'path'       => $path_key,
+            'attachment' => $attachment_key,
+        );
+    }
+
+    public static function render_order_item_design_reference($item_id, $item, $product) {
+        if (!is_admin() || !is_object($item) || !method_exists($item, 'get_meta')) {
+            return;
+        }
+
+        $reference = $item->get_meta('_mg_print_design_reference', true);
+        if (empty($reference) || !is_array($reference)) {
+            return;
+        }
+
+        $label = apply_filters('mgcf_order_item_design_label', __('Nyomtatási minta', 'mgcf'), $item, $reference);
+        $design_url = isset($reference['design_url']) ? $reference['design_url'] : '';
+        $design_path = isset($reference['design_path']) ? $reference['design_path'] : '';
+        $filename = isset($reference['design_filename']) ? $reference['design_filename'] : '';
+
+        echo '<div class="mg-order-design-reference">';
+        echo '<strong>' . esc_html($label) . ':</strong> ';
+
+        if ($design_url) {
+            $link_text = $filename !== '' ? $filename : $design_url;
+            echo '<a href="' . esc_url($design_url) . '" target="_blank" rel="noopener">' . esc_html($link_text) . '</a>';
+            echo ' <a class="button button-small mg-order-design-download" href="' . esc_url($design_url) . '" target="_blank" rel="noopener">' . esc_html__('Letöltés', 'mgcf') . '</a>';
+            if ($design_path && $design_path !== $link_text) {
+                echo '<br /><small class="mg-order-design-path">' . esc_html($design_path) . '</small>';
+            }
+        } elseif ($design_path) {
+            echo esc_html($design_path);
+        } elseif ($filename) {
+            echo esc_html($filename);
+        } else {
+            echo esc_html__('Nem elérhető', 'mgcf');
+        }
+
+        echo '</div>';
     }
 
     public static function apply_cart_surcharges($cart) {
