@@ -46,7 +46,7 @@ class MG_Variant_Display_Page {
             array(),
             file_exists($css_path) ? filemtime($css_path) : '1.0.0'
         );
-        $script_deps = array('jquery', 'media-editor');
+        $script_deps = array('jquery');
 
         wp_enqueue_script(
             'mg-variant-display-admin',
@@ -56,25 +56,9 @@ class MG_Variant_Display_Page {
             true
         );
 
-        wp_localize_script(
-            'mg-variant-display-admin',
-            'MGVDAdminL10n',
-            array(
-                'mediaUnavailable'   => __('A média könyvtár nem érhető el.', 'mgvd'),
-                'thumbnailFrameTitle' => __('Kiskép feltöltése', 'mgvd'),
-                'thumbnailFrameButton' => __('Kiskép feltöltése', 'mgvd'),
-            )
-        );
-
         if (function_exists('wp_enqueue_editor')) {
             wp_enqueue_editor();
         }
-
-        if (function_exists('wp_enqueue_media')) {
-            wp_enqueue_media();
-        }
-
-        // Thickbox erőforrásokra nincs szükség, mivel a modern média keretet használjuk.
     }
 
     public static function render_page() {
@@ -149,41 +133,6 @@ class MG_Variant_Display_Page {
         echo '<h2>' . esc_html($type_label) . '</h2>';
         echo '<p>' . esc_html__('Színbeállítások testreszabása', 'mgvd') . '</p>';
         echo '</div>';
-
-        $thumbnail_settings = isset($store['thumbnails'][$selected_type]) ? $store['thumbnails'][$selected_type] : array();
-        $thumbnail_id = isset($thumbnail_settings['attachment_id']) ? absint($thumbnail_settings['attachment_id']) : 0;
-        $thumbnail_url = '';
-        if ($thumbnail_id) {
-            $image_src = wp_get_attachment_image_url($thumbnail_id, 'thumbnail');
-            if ($image_src) {
-                $thumbnail_url = $image_src;
-            }
-        }
-        if (!$thumbnail_url && !empty($thumbnail_settings['url'])) {
-            $thumbnail_url = esc_url($thumbnail_settings['url']);
-        }
-
-        $preview_classes = 'mgvd-type-thumbnail__preview';
-        if ($thumbnail_url) {
-            $preview_classes .= ' has-thumbnail';
-        }
-
-        $placeholder_text = __('Nincs kiskép beállítva', 'mgvd');
-        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '">';
-        echo '<div class="' . esc_attr($preview_classes) . '">';
-        if ($thumbnail_url) {
-            echo '<img src="' . esc_url($thumbnail_url) . '" alt="' . esc_attr($type_label) . '" />';
-        } else {
-            echo '<span class="mgvd-type-thumbnail__placeholder">' . esc_html($placeholder_text) . '</span>';
-        }
-        echo '</div>';
-        echo '<div class="mgvd-type-thumbnail__actions">';
-        echo '<button type="button" class="button button-secondary mgvd-thumbnail-button mgvd-thumbnail-button--select" data-type="' . esc_attr($selected_type) . '">' . esc_html__('Kiskép feltöltése', 'mgvd') . '</button>';
-        echo '<button type="button" class="button-link mgvd-thumbnail-button mgvd-thumbnail-button--remove" data-type="' . esc_attr($selected_type) . '"' . ($thumbnail_url ? '' : ' disabled') . '>' . esc_html__('Kiskép eltávolítása', 'mgvd') . '</button>';
-        echo '</div>';
-        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--id" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($thumbnail_id) . '" />';
-        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--url" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($thumbnail_url) . '" />';
-        echo '</div>';
         echo '</div>';
 
         if (!empty($type_meta['colors']) && is_array($type_meta['colors'])) {
@@ -248,14 +197,9 @@ class MG_Variant_Display_Page {
             $catalog = array();
         }
         $store = MG_Variant_Display_Manager::sanitize_settings_block($raw, $catalog);
-        if (isset($store['icons']) && !isset($store['thumbnails'])) {
-            $store['thumbnails'] = $store['icons'];
-            unset($store['icons']);
-        }
 
         return wp_parse_args($store, array(
             'colors' => array(),
-            'thumbnails' => array(),
             'size_charts' => array(),
         ));
     }
@@ -276,15 +220,11 @@ class MG_Variant_Display_Page {
         if (!is_array($store)) {
             $store = array(
                 'colors' => array(),
-                'thumbnails' => array(),
                 'size_charts' => array(),
             );
         }
         if (!isset($store['colors']) || !is_array($store['colors'])) {
             $store['colors'] = array();
-        }
-        if (!isset($store['thumbnails']) || !is_array($store['thumbnails'])) {
-            $store['thumbnails'] = array();
         }
         if (!isset($store['size_charts']) || !is_array($store['size_charts'])) {
             $store['size_charts'] = array();
@@ -294,12 +234,6 @@ class MG_Variant_Display_Page {
             $store['colors'][$type_slug] = $sanitized['colors'][$type_slug];
         } else {
             unset($store['colors'][$type_slug]);
-        }
-
-        if (!empty($sanitized['thumbnails'][$type_slug])) {
-            $store['thumbnails'][$type_slug] = $sanitized['thumbnails'][$type_slug];
-        } else {
-            unset($store['thumbnails'][$type_slug]);
         }
 
         if (isset($sanitized['size_charts'][$type_slug]) && $sanitized['size_charts'][$type_slug] !== '') {

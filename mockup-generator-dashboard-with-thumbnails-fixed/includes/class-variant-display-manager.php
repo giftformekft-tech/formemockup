@@ -85,10 +85,6 @@ class MG_Variant_Display_Manager {
             $type_order[] = $type_slug;
             $colors_payload = array();
             $color_order = array();
-            $thumbnail = self::get_type_thumbnail($settings, $type_slug);
-            if (!isset($thumbnail['alt'])) {
-                $thumbnail['alt'] = $type_meta['label'];
-            }
             $size_chart = isset($settings['size_charts'][$type_slug]) ? $settings['size_charts'][$type_slug] : '';
             if ($size_chart !== '') {
                 $size_chart = do_shortcode($size_chart);
@@ -107,7 +103,6 @@ class MG_Variant_Display_Manager {
 
             $types_payload[$type_slug] = array(
                 'label' => $type_meta['label'],
-                'thumbnail' => $thumbnail,
                 'color_order' => $color_order,
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
@@ -238,15 +233,9 @@ class MG_Variant_Display_Manager {
         if (!is_array($catalog)) {
             $catalog = array();
         }
-        if (isset($raw['icons']) && !isset($raw['thumbnails'])) {
-            $raw['thumbnails'] = $raw['icons'];
-            unset($raw['icons']);
-        }
-
         $sanitized = self::sanitize_settings_block($raw, $catalog);
         return wp_parse_args($sanitized, array(
             'colors' => array(),
-            'thumbnails' => array(),
             'size_charts' => array(),
         ));
     }
@@ -254,16 +243,11 @@ class MG_Variant_Display_Manager {
     public static function sanitize_settings_block($input, $catalog = null) {
         $clean = array(
             'colors' => array(),
-            'thumbnails' => array(),
             'size_charts' => array(),
         );
 
         if (!is_array($input)) {
             return $clean;
-        }
-
-        if (isset($input['icons']) && !isset($input['thumbnails'])) {
-            $input['thumbnails'] = $input['icons'];
         }
 
         $allowed_types = null;
@@ -324,36 +308,6 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        if (!empty($input['thumbnails']) && is_array($input['thumbnails'])) {
-            foreach ($input['thumbnails'] as $type_slug => $icon_settings) {
-                $type_slug = sanitize_title($type_slug);
-                if ($type_slug === '') {
-                    continue;
-                }
-                if (is_array($allowed_type_slugs) && !in_array($type_slug, $allowed_type_slugs, true)) {
-                    continue;
-                }
-                $attachment_id = 0;
-                if (isset($icon_settings['attachment_id'])) {
-                    $attachment_id = absint($icon_settings['attachment_id']);
-                }
-                $icon_url = '';
-                if (!empty($icon_settings['url'])) {
-                    $icon_url = esc_url_raw($icon_settings['url']);
-                }
-                if (!$attachment_id && $icon_url === '') {
-                    continue;
-                }
-                if (!isset($clean['thumbnails'][$type_slug])) {
-                    $clean['thumbnails'][$type_slug] = array();
-                }
-                $clean['thumbnails'][$type_slug] = array(
-                    'attachment_id' => $attachment_id,
-                    'url' => $icon_url,
-                );
-            }
-        }
-
         if (!empty($input['size_charts']) && is_array($input['size_charts'])) {
             foreach ($input['size_charts'] as $type_slug => $chart) {
                 $type_slug = sanitize_title($type_slug);
@@ -372,44 +326,6 @@ class MG_Variant_Display_Manager {
         }
 
         return $clean;
-    }
-
-    protected static function get_type_thumbnail($settings, $type_slug) {
-        if (empty($settings['thumbnails'][$type_slug]) || !is_array($settings['thumbnails'][$type_slug])) {
-            return array(
-                'attachment_id' => 0,
-                'url' => '',
-            );
-        }
-
-        $icon_settings = $settings['thumbnails'][$type_slug];
-        $icon_id = isset($icon_settings['attachment_id']) ? absint($icon_settings['attachment_id']) : 0;
-        $icon_url = '';
-
-        if ($icon_id) {
-            $image_src = wp_get_attachment_image_src($icon_id, 'thumbnail');
-            if (is_array($image_src) && !empty($image_src[0])) {
-                $icon_url = $image_src[0];
-            }
-        }
-
-        if ($icon_url !== '') {
-            $icon_url = esc_url($icon_url);
-        } elseif (!empty($icon_settings['url'])) {
-            $icon_url = esc_url($icon_settings['url']);
-        }
-
-        if ($icon_url === '') {
-            return array(
-                'attachment_id' => $icon_id,
-                'url' => '',
-            );
-        }
-
-        return array(
-            'attachment_id' => $icon_id,
-            'url' => $icon_url,
-        );
     }
 
     protected static function get_color_settings($settings, $type_slug, $color_slug) {
