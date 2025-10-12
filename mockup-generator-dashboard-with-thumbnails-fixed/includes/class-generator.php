@@ -2,6 +2,23 @@
 if (!defined('ABSPATH')) exit;
 class MG_Generator {
 
+    private $product_cache = null;
+
+    private function get_product_definition($product_key) {
+        if ($this->product_cache === null) {
+            $raw_products = get_option('mg_products', array());
+            $indexed = array();
+            if (is_array($raw_products)) {
+                foreach ($raw_products as $item) {
+                    if (!is_array($item) || empty($item['key'])) { continue; }
+                    $indexed[$item['key']] = $item;
+                }
+            }
+            $this->product_cache = $indexed;
+        }
+        return $this->product_cache[$product_key] ?? null;
+    }
+
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
             $ov = $product['mockup_overrides'][$color_slug][$view_file];
@@ -25,12 +42,17 @@ class MG_Generator {
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
         }
-        $products = get_option('mg_products', array());
-        $product = null; foreach ($products as $p) if ($p['key']===$product_key) {$product=$p; break;}
+        $product = $this->get_product_definition($product_key);
         if (!$product) return new WP_Error('product_missing','Ismeretlen terméktípus: '.$product_key);
         $views = $product['views']; $colors = $product['colors'];
         if (empty($views)) return new WP_Error('views_missing','Nincs nézet.');
         if (empty($colors)) return new WP_Error('colors_missing','Nincs szín.');
+
+        $upload_dir = wp_upload_dir();
+        if (empty($upload_dir['path'])) {
+            return new WP_Error('upload_dir_missing', 'A feltöltési könyvtár nem elérhető.');
+        }
+        $upload_path = $upload_dir['path'];
 
         $out = [];
         foreach ($colors as $c) {
@@ -39,8 +61,7 @@ class MG_Generator {
             foreach ($views as $view) {
                 $template = $this->resolve_template($product, $slug, $view['file']);
                 if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
-                $upload_dir = wp_upload_dir()['path'];
-                $outfile = $upload_dir . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
+                $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
                 $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_path, $view, $outfile);
                 if (is_wp_error($ok)) return $ok;
                 $out[$slug][] = $outfile;
