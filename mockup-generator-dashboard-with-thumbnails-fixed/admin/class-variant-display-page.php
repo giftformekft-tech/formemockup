@@ -13,6 +13,20 @@ class MG_Variant_Display_Page {
             'mockup-generator-variant-display',
             array(__CLASS__, 'render_page')
         );
+
+        if ($hook_suffix) {
+            add_action('load-' . $hook_suffix, array(__CLASS__, 'prime_editor_and_media')); 
+        }
+    }
+
+    public static function prime_editor_and_media() {
+        if (function_exists('wp_enqueue_editor')) {
+            wp_enqueue_editor();
+        }
+
+        if (function_exists('wp_enqueue_media')) {
+            wp_enqueue_media();
+        }
     }
 
     public static function enqueue_assets($hook) {
@@ -31,7 +45,7 @@ class MG_Variant_Display_Page {
             array(),
             file_exists($css_path) ? filemtime($css_path) : '1.0.0'
         );
-        $script_deps = array('jquery');
+        $script_deps = array('jquery', 'media-editor');
 
         wp_enqueue_script(
             'mg-variant-display-admin',
@@ -39,6 +53,16 @@ class MG_Variant_Display_Page {
             $script_deps,
             file_exists($js_path) ? filemtime($js_path) : '1.0.0',
             true
+        );
+
+        wp_localize_script(
+            'mg-variant-display-admin',
+            'MGVDAdminL10n',
+            array(
+                'mediaUnavailable'   => __('A média könyvtár nem érhető el.', 'mgvd'),
+                'thumbnailFrameTitle' => __('Kiskép feltöltése', 'mgvd'),
+                'thumbnailFrameButton' => __('Kiskép feltöltése', 'mgvd'),
+            )
         );
 
         if (function_exists('wp_enqueue_editor')) {
@@ -142,7 +166,9 @@ class MG_Variant_Display_Page {
         }
 
         $placeholder_text = __('Nincs kiskép beállítva', 'mgvd');
-        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '">';
+        $legacy_target = 'mgvd-thumbnail-legacy-' . $selected_type;
+
+        echo '<div class="mgvd-type-thumbnail" data-type="' . esc_attr($selected_type) . '" data-label="' . esc_attr($type_label) . '" data-placeholder="' . esc_attr($placeholder_text) . '" data-legacy-target="' . esc_attr($legacy_target) . '">';
         echo '<div class="' . esc_attr($preview_classes) . '">';
         if ($thumbnail_url) {
             echo '<img src="' . esc_url($thumbnail_url) . '" alt="' . esc_attr($type_label) . '" />';
@@ -151,11 +177,12 @@ class MG_Variant_Display_Page {
         }
         echo '</div>';
         echo '<div class="mgvd-type-thumbnail__actions">';
-        echo '<button type="button" class="button button-secondary mgvd-thumbnail-button mgvd-thumbnail-button--select" data-type="' . esc_attr($selected_type) . '">' . esc_html__('Kiskép kiválasztása', 'mgvd') . '</button>';
+        echo '<button type="button" class="button button-secondary mgvd-thumbnail-button mgvd-thumbnail-button--select" data-type="' . esc_attr($selected_type) . '">' . esc_html__('Kiskép feltöltése', 'mgvd') . '</button>';
         echo '<button type="button" class="button-link mgvd-thumbnail-button mgvd-thumbnail-button--remove" data-type="' . esc_attr($selected_type) . '"' . ($thumbnail_url ? '' : ' disabled') . '>' . esc_html__('Kiskép eltávolítása', 'mgvd') . '</button>';
         echo '</div>';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--id" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][attachment_id]" value="' . esc_attr($thumbnail_id) . '" />';
         echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--url" name="variant_display[thumbnails][' . esc_attr($selected_type) . '][url]" value="' . esc_attr($thumbnail_url) . '" />';
+        echo '<input type="hidden" class="mgvd-thumbnail-field mgvd-thumbnail-field--legacy-target" value="' . esc_attr($legacy_target) . '" />';
         echo '</div>';
         echo '</div>';
 
