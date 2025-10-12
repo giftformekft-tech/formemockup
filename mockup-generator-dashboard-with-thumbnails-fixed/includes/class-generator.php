@@ -54,27 +54,41 @@ class MG_Generator {
         }
         $upload_path = $upload_dir['path'];
 
-        $out = [];
-        foreach ($colors as $c) {
-            $slug = $c['slug'];
-            $out[$slug] = [];
-            foreach ($views as $view) {
-                $template = $this->resolve_template($product, $slug, $view['file']);
-                if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
-                $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
-                $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_path, $view, $outfile);
-                if (is_wp_error($ok)) return $ok;
-                $out[$slug][] = $outfile;
+        try {
+            $design_base = new Imagick($design_path);
+            if (method_exists($design_base, 'stripImage')) {
+                $design_base->stripImage();
             }
+        } catch (Throwable $e) {
+            return new WP_Error('design_load_failed', $e->getMessage());
+        }
+
+        $out = [];
+        try {
+            foreach ($colors as $c) {
+                $slug = $c['slug'];
+                $out[$slug] = [];
+                foreach ($views as $view) {
+                    $template = $this->resolve_template($product, $slug, $view['file']);
+                    if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
+                    $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
+                    $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_base, $view, $outfile);
+                    if (is_wp_error($ok)) return $ok;
+                    $out[$slug][] = $outfile;
+                }
+            }
+        } finally {
+            $design_base->clear();
+            $design_base->destroy();
         }
         return $out;
     }
 
     // WebP output, preserve alpha, optional output resize from settings
-    private function apply_imagick_webp_with_optional_resize($template_path, $design_path, $cfg, $outfile) {
+    private function apply_imagick_webp_with_optional_resize($template_path, Imagick $design_base, $cfg, $outfile) {
         try {
             $mockup = new Imagick($template_path);
-            $design = new Imagick($design_path);
+            $design = clone $design_base;
 
             if (method_exists('Imagick','setResourceLimit')) {
                 $threads = max(1, (int)@ini_get('imagick.thread_limit') ?: 2);
@@ -82,7 +96,7 @@ class MG_Generator {
                 $design->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
             }
             if (method_exists($mockup,'stripImage')) $mockup->stripImage();
-            // do not strip design (keep alpha)
+            if (method_exists($design,'stripImage')) $design->stripImage();
 
             if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
             if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
@@ -125,7 +139,12 @@ class MG_Generator {
             }
 
             if (method_exists($mockup,'setImageFormat')) $mockup->setImageFormat('webp');
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(82);
+            if (method_exists($mockup,'setOption')) {
+                $mockup->setOption('webp:method', '4');
+                $mockup->setOption('webp:thread-level', '1');
+                $mockup->setOption('webp:auto-filter', '1');
+            }
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
