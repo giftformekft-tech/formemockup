@@ -10,6 +10,7 @@
             color: '',
             size: ''
         };
+        this.isReady = false;
         this.syncing = {
             type: false,
             color: false,
@@ -40,6 +41,18 @@
         this.buildLayout();
         this.bindEvents();
         this.initialSync();
+    };
+
+    VariantDisplay.prototype.markReady = function() {
+        if (this.isReady) {
+            return;
+        }
+        this.isReady = true;
+        this.$form.addClass('mg-variant-form--enhanced');
+        if (typeof document !== 'undefined' && document.documentElement) {
+            document.documentElement.classList.remove('mg-variant-preparing');
+            document.documentElement.classList.add('mg-variant-ready');
+        }
     };
 
     VariantDisplay.prototype.buildLayout = function() {
@@ -167,6 +180,7 @@
 
     VariantDisplay.prototype.initialSync = function() {
         this.syncFromSelects(true);
+        this.markReady();
     };
 
     VariantDisplay.prototype.syncFromSelects = function(useDefaults) {

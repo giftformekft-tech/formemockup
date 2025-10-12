@@ -4,6 +4,13 @@ if (!defined('ABSPATH')) {
 }
 
 class MG_Variant_Display_Manager {
+    /**
+     * Whether the preload assets have already been hooked for the current request.
+     *
+     * @var bool
+     */
+    protected static $preload_hooked = false;
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
@@ -28,6 +35,8 @@ class MG_Variant_Display_Manager {
             return;
         }
 
+        self::hook_preload_assets();
+
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_path = dirname(__DIR__) . '/assets/css/variant-display.css';
         $script_path = dirname(__DIR__) . '/assets/js/variant-display.js';
@@ -48,6 +57,42 @@ class MG_Variant_Display_Manager {
         );
 
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
+    }
+
+    protected static function hook_preload_assets() {
+        if (self::$preload_hooked) {
+            return;
+        }
+
+        self::$preload_hooked = true;
+
+        add_action('wp_head', array(__CLASS__, 'output_preload_markup'), 1);
+    }
+
+    public static function output_preload_markup() {
+        ?>
+        <style id="mg-variant-preload-css">
+            html.mg-variant-preparing form.variations_form .variations,
+            html.mg-variant-preparing form.variations_form .woocommerce-variation,
+            html.mg-variant-preparing form.variations_form .single_variation,
+            html.mg-variant-preparing form.variations_form .woocommerce-variation-add-to-cart {
+                opacity: 0;
+                pointer-events: none;
+            }
+        </style>
+        <script id="mg-variant-preload-script">
+            (function () {
+                var doc = document.documentElement;
+                if (!doc || doc.classList.contains('mg-variant-preparing')) {
+                    return;
+                }
+                doc.classList.add('mg-variant-preparing');
+                window.setTimeout(function () {
+                    doc.classList.remove('mg-variant-preparing');
+                }, 2000);
+            })();
+        </script>
+        <?php
     }
 
     protected static function build_frontend_config($product) {
