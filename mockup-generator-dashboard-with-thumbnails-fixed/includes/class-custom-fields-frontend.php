@@ -632,9 +632,7 @@ class MG_Custom_Fields_Frontend {
         }
 
         $design_path = isset($reference['design_path']) ? $reference['design_path'] : '';
-        if ($design_path === '') {
-            return '';
-        }
+        $design_attachment_id = isset($reference['design_attachment_id']) ? absint($reference['design_attachment_id']) : 0;
 
         if (!function_exists('wp_upload_dir')) {
             return '';
@@ -646,9 +644,30 @@ class MG_Custom_Fields_Frontend {
         }
 
         $normalized_base = wp_normalize_path($uploads['basedir']);
-        $normalized_path = wp_normalize_path($design_path);
+        if ($normalized_base === '') {
+            return '';
+        }
 
-        if ($normalized_base === '' || strpos($normalized_path, $normalized_base) !== 0) {
+        $has_local_reference = false;
+
+        if ($design_path !== '') {
+            $normalized_path = wp_normalize_path($design_path);
+            if (strpos($normalized_path, $normalized_base) === 0) {
+                $has_local_reference = true;
+            }
+        }
+
+        if (!$has_local_reference && $design_attachment_id > 0 && function_exists('get_attached_file')) {
+            $attachment_path = get_attached_file($design_attachment_id);
+            if (is_string($attachment_path) && $attachment_path !== '') {
+                $normalized_attachment = wp_normalize_path($attachment_path);
+                if (strpos($normalized_attachment, $normalized_base) === 0) {
+                    $has_local_reference = true;
+                }
+            }
+        }
+
+        if (!$has_local_reference) {
             return '';
         }
 
@@ -690,32 +709,62 @@ class MG_Custom_Fields_Frontend {
         $design_path = isset($reference['design_path']) ? $reference['design_path'] : '';
         $design_url = isset($reference['design_url']) ? $reference['design_url'] : '';
         $filename = isset($reference['design_filename']) ? $reference['design_filename'] : '';
+        $design_attachment_id = isset($reference['design_attachment_id']) ? absint($reference['design_attachment_id']) : 0;
 
-        if ($design_path !== '' && function_exists('wp_upload_dir')) {
-            $uploads = wp_upload_dir();
-            $normalized_base = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
-            $normalized_path = wp_normalize_path($design_path);
+        $resolved_path = '';
+        $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+        $normalized_base = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
 
-            if ($normalized_base !== '' && strpos($normalized_path, $normalized_base) === 0 && file_exists($normalized_path) && is_readable($normalized_path)) {
-                if ($filename === '') {
-                    $filename = function_exists('wp_basename') ? wp_basename($normalized_path) : basename($normalized_path);
+        if ($design_attachment_id > 0 && function_exists('get_attached_file')) {
+            $attachment_path = get_attached_file($design_attachment_id);
+            if (is_string($attachment_path) && $attachment_path !== '') {
+                $normalized_attachment = wp_normalize_path($attachment_path);
+                if ($normalized_base === '' || strpos($normalized_attachment, $normalized_base) === 0) {
+                    $resolved_path = $normalized_attachment;
                 }
-
-                nocache_headers();
-
-                $filetype = function_exists('wp_check_filetype') ? wp_check_filetype($filename) : false;
-                if (!empty($filetype['type'])) {
-                    header('Content-Type: ' . $filetype['type']);
-                } else {
-                    header('Content-Type: application/octet-stream');
-                }
-
-                header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
-                header('Content-Length: ' . filesize($normalized_path));
-
-                readfile($normalized_path);
-                exit;
             }
+        }
+
+        if ($resolved_path === '' && $design_path !== '') {
+            $normalized_path = wp_normalize_path($design_path);
+            if ($normalized_base === '' || strpos($normalized_path, $normalized_base) === 0) {
+                $resolved_path = $normalized_path;
+            }
+        }
+
+        if ($resolved_path !== '' && file_exists($resolved_path) && is_readable($resolved_path)) {
+            if ($filename === '') {
+                $filename = function_exists('wp_basename') ? wp_basename($resolved_path) : basename($resolved_path);
+            }
+
+            $real_path = function_exists('realpath') ? realpath($resolved_path) : $resolved_path;
+            if ($real_path !== false) {
+                $resolved_path = wp_normalize_path($real_path);
+            }
+
+            nocache_headers();
+
+            $type_source = $resolved_path;
+            if ($filename !== '') {
+                $type_source = $filename;
+            }
+
+            $filetype = function_exists('wp_check_filetype') ? wp_check_filetype($type_source) : false;
+            if (!empty($filetype['type'])) {
+                header('Content-Type: ' . $filetype['type']);
+            } else {
+                header('Content-Type: application/octet-stream');
+            }
+
+            header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
+
+            $filesize = filesize($resolved_path);
+            if ($filesize !== false) {
+                header('Content-Length: ' . $filesize);
+            }
+
+            readfile($resolved_path);
+            exit;
         }
 
         if ($design_url !== '') {
