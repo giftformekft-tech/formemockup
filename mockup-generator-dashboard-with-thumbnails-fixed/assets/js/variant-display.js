@@ -15,6 +15,13 @@
             color: false,
             size: false
         };
+        this.sizeChart = {
+            $link: null,
+            $modal: null,
+            $title: null,
+            $body: null,
+            $close: null
+        };
         this.init();
     }
 
@@ -53,9 +60,13 @@
         sizeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('size', 'Méret')));
         this.$sizeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
         sizeSection.append(this.$sizeOptions);
+        this.sizeChart.$link = $('<button type="button" class="mg-size-chart-link" aria-disabled="true" aria-expanded="false" />').text(this.getText('sizeChartLink', '📏 Mérettáblázat megnyitása'));
+        sizeSection.append(this.sizeChart.$link);
         wrapper.append(sizeSection);
 
         this.$form.find('.variations').addClass('mg-variant-hidden').before(wrapper);
+
+        this.createSizeChartModal();
 
         var typeOrder = (this.config.order && this.config.order.types && this.config.order.types.length) ? this.config.order.types : Object.keys(this.config.types);
         var self = this;
@@ -106,6 +117,16 @@
             }
             self.setSize(value, true);
         });
+
+        if (this.sizeChart.$link) {
+            this.sizeChart.$link.on('click', function(e){
+                e.preventDefault();
+                if ($(this).hasClass('is-disabled') || $(this).prop('disabled')) {
+                    return;
+                }
+                self.showSizeChart();
+            });
+        }
 
         this.$typeSelect.on('change', function(){
             if (self.syncing.type) {
@@ -181,6 +202,9 @@
         if (!value) {
             this.setColor('', triggerChange);
         }
+        if (this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open')) {
+            this.hideSizeChart();
+        }
         this.updateTypeUI();
     };
 
@@ -245,6 +269,7 @@
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
         this.rebuildColorOptions();
+        this.updateSizeChartLink();
     };
 
     VariantDisplay.prototype.updateColorUI = function() {
@@ -323,11 +348,13 @@
         if (!this.state.type) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
             this.setSize('', false);
+            this.updateSizeChartLink();
             return;
         }
         if (!this.state.color || !this.config.types[this.state.type] || !this.config.types[this.state.type].colors[this.state.color]) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseColorFirst', 'Először válassz színt.')));
             this.setSize('', false);
+            this.updateSizeChartLink();
             return;
         }
 
@@ -338,6 +365,7 @@
         if (!sizes.length) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noSizes', 'Ehhez a kombinációhoz nincs elérhető méret.')));
             this.setSize('', false);
+            this.updateSizeChartLink();
             return;
         }
 
@@ -357,6 +385,7 @@
         }
 
         this.updateSizeUI();
+        this.updateSizeChartLink();
     };
 
     VariantDisplay.prototype.getAvailability = function(type, color, size) {
@@ -399,4 +428,103 @@
             new VariantDisplay($(this), MG_VARIANT_DISPLAY);
         });
     });
+
+    VariantDisplay.prototype.createSizeChartModal = function() {
+        if (this.sizeChart.$modal) {
+            return;
+        }
+        var $modal = $('<div class="mg-size-chart-modal" role="dialog" aria-modal="true" aria-hidden="true" />');
+        var $dialog = $('<div class="mg-size-chart-modal__dialog" role="document" />');
+        var $header = $('<div class="mg-size-chart-modal__header" />');
+        this.sizeChart.$title = $('<h3 class="mg-size-chart-modal__title" />').text(this.getText('sizeChartTitle', 'Mérettáblázat'));
+        this.sizeChart.$close = $('<button type="button" class="mg-size-chart-modal__close" />').text(this.getText('sizeChartClose', 'Bezárás'));
+        var $body = $('<div class="mg-size-chart-modal__body" />');
+
+        $header.append(this.sizeChart.$title);
+        $header.append(this.sizeChart.$close);
+        $dialog.append($header);
+        $dialog.append($body);
+        $modal.append($dialog);
+
+        $('body').append($modal);
+
+        this.sizeChart.$modal = $modal;
+        this.sizeChart.$body = $body;
+
+        var self = this;
+        this.sizeChart.$close.on('click', function(){
+            self.hideSizeChart();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal)) {
+                self.hideSizeChart();
+            }
+        });
+
+        $(document).on('keydown.mgVariantSizeChart', function(event){
+            if (event.key === 'Escape' && self.sizeChart.$modal && self.sizeChart.$modal.hasClass('is-open')) {
+                self.hideSizeChart();
+            }
+        });
+    };
+
+    VariantDisplay.prototype.updateSizeChartLink = function() {
+        if (!this.sizeChart.$link) {
+            return;
+        }
+        var chart = this.getSizeChartContent();
+        var hasChart = !!chart;
+        this.sizeChart.$link.toggleClass('is-disabled', !hasChart);
+        this.sizeChart.$link.attr('aria-disabled', hasChart ? 'false' : 'true');
+        this.sizeChart.$link.prop('disabled', !hasChart);
+        this.sizeChart.$link.attr('aria-expanded', this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open') ? 'true' : 'false');
+    };
+
+    VariantDisplay.prototype.getSizeChartContent = function() {
+        if (!this.state.type) {
+            return '';
+        }
+        var typeMeta = this.config.types[this.state.type];
+        if (!typeMeta || !typeMeta.size_chart) {
+            return '';
+        }
+        return typeMeta.size_chart;
+    };
+
+    VariantDisplay.prototype.showSizeChart = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        var content = this.getSizeChartContent();
+        if (!content) {
+            return;
+        }
+        var typeLabel = this.state.type && this.config.types[this.state.type] ? this.config.types[this.state.type].label : '';
+        if (typeLabel) {
+            this.sizeChart.$title.text(this.getText('sizeChartTitle', 'Mérettáblázat') + ' – ' + typeLabel);
+        } else {
+            this.sizeChart.$title.text(this.getText('sizeChartTitle', 'Mérettáblázat'));
+        }
+        this.sizeChart.$body.html(content);
+        this.sizeChart.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        this.sizeChart.$link.attr('aria-expanded', 'true');
+        this.sizeChart.$close.trigger('focus');
+        this.updateSizeChartLink();
+    };
+
+    VariantDisplay.prototype.hideSizeChart = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        this.sizeChart.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        if (this.sizeChart.$body) {
+            this.sizeChart.$body.empty();
+        }
+        if (this.sizeChart.$link) {
+            this.sizeChart.$link.attr('aria-expanded', 'false');
+            this.sizeChart.$link.trigger('focus');
+        }
+        this.updateSizeChartLink();
+    };
 })(jQuery);

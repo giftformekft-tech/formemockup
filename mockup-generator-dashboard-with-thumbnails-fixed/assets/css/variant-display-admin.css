@@ -162,6 +162,45 @@
     padding: 0;
 }
 
+.mgvd-size-chart {
+    margin-top: 10px;
+    padding: 20px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(148, 163, 184, 0.08));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mgvd-size-chart__header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #0f172a;
+    font-weight: 600;
+}
+
+.mgvd-size-chart__header p {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--mgvd-muted);
+}
+
+.mgvd-size-chart__editor .wp-editor-wrap {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: #fff;
+}
+
+.mgvd-size-chart__editor .wp-editor-container textarea.wp-editor-area {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #0f172a;
+}
+
 .mgvd-empty {
     margin: 0;
     padding: 16px;

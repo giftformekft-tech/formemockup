@@ -85,6 +85,10 @@ class MG_Variant_Display_Manager {
             $type_order[] = $type_slug;
             $colors_payload = array();
             $color_order = array();
+            $size_chart = isset($settings['size_charts'][$type_slug]) ? $settings['size_charts'][$type_slug] : '';
+            if ($size_chart !== '') {
+                $size_chart = do_shortcode($size_chart);
+            }
 
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
@@ -102,6 +106,7 @@ class MG_Variant_Display_Manager {
                 'color_order' => $color_order,
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
+                'size_chart' => $size_chart,
             );
         }
 
@@ -126,6 +131,9 @@ class MG_Variant_Display_Manager {
                 'chooseColorFirst' => __('Először válassz színt.', 'mgvd'),
                 'noColors' => __('Ehhez a terméktípushoz nincs elérhető szín.', 'mgvd'),
                 'noSizes' => __('Ehhez a kombinációhoz nincs elérhető méret.', 'mgvd'),
+                'sizeChartLink' => __('📏 Mérettáblázat megnyitása', 'mgvd'),
+                'sizeChartTitle' => __('Mérettáblázat', 'mgvd'),
+                'sizeChartClose' => __('Bezárás', 'mgvd'),
             ),
             'default' => array(
                 'type' => isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '',
@@ -228,12 +236,14 @@ class MG_Variant_Display_Manager {
         $sanitized = self::sanitize_settings_block($raw, $catalog);
         return wp_parse_args($sanitized, array(
             'colors' => array(),
+            'size_charts' => array(),
         ));
     }
 
     public static function sanitize_settings_block($input, $catalog = null) {
         $clean = array(
             'colors' => array(),
+            'size_charts' => array(),
         );
 
         if (!is_array($input)) {
@@ -241,6 +251,7 @@ class MG_Variant_Display_Manager {
         }
 
         $allowed_types = null;
+        $allowed_type_slugs = null;
         if (is_array($catalog)) {
             $allowed_types = array();
             foreach ($catalog as $type_slug => $meta) {
@@ -248,6 +259,10 @@ class MG_Variant_Display_Manager {
                 if ($type_slug === '') {
                     continue;
                 }
+                if (!is_array($allowed_type_slugs)) {
+                    $allowed_type_slugs = array();
+                }
+                $allowed_type_slugs[] = $type_slug;
                 $allowed_types[$type_slug] = array();
                 if (!empty($meta['colors']) && is_array($meta['colors'])) {
                     foreach ($meta['colors'] as $color_slug => $color_meta) {
@@ -290,6 +305,23 @@ class MG_Variant_Display_Manager {
                         'swatch' => $swatch,
                     );
                 }
+            }
+        }
+
+        if (!empty($input['size_charts']) && is_array($input['size_charts'])) {
+            foreach ($input['size_charts'] as $type_slug => $chart) {
+                $type_slug = sanitize_title($type_slug);
+                if ($type_slug === '') {
+                    continue;
+                }
+                if (is_array($allowed_type_slugs) && !in_array($type_slug, $allowed_type_slugs, true)) {
+                    continue;
+                }
+                if (!isset($clean['size_charts'])) {
+                    $clean['size_charts'] = array();
+                }
+                $chart = is_string($chart) ? $chart : '';
+                $clean['size_charts'][$type_slug] = wp_kses_post($chart);
             }
         }
 

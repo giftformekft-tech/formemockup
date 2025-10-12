@@ -40,6 +40,10 @@ class MG_Variant_Display_Page {
             file_exists($js_path) ? filemtime($js_path) : '1.0.0',
             true
         );
+
+        if (function_exists('wp_enqueue_editor')) {
+            wp_enqueue_editor();
+        }
     }
 
     public static function render_page() {
@@ -140,6 +144,31 @@ class MG_Variant_Display_Page {
             echo '<p class="mgvd-empty">' . esc_html__('Ehhez a terméktípushoz nem tartoznak színek.', 'mgvd') . '</p>';
         }
 
+        $size_chart = isset($store['size_charts'][$selected_type]) ? $store['size_charts'][$selected_type] : '';
+
+        echo '<div class="mgvd-size-chart">';
+        echo '<div class="mgvd-size-chart__header">';
+        echo '<h3>' . esc_html__('Mérettáblázat', 'mgvd') . '</h3>';
+        echo '<p>' . esc_html__('Szerkeszd az adott terméktípushoz tartozó mérettáblázat tartalmát.', 'mgvd') . '</p>';
+        echo '</div>';
+        echo '<div class="mgvd-size-chart__editor">';
+
+        ob_start();
+        wp_editor(
+            $size_chart,
+            'mgvd-size-chart-' . $selected_type,
+            array(
+                'textarea_name' => 'variant_display[size_charts][' . $selected_type . ']',
+                'textarea_rows' => 10,
+                'editor_height' => 220,
+            )
+        );
+        $editor_markup = ob_get_clean();
+        echo $editor_markup; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+
+        echo '</div>';
+        echo '</div>';
+
         echo '</section>';
         echo '</div>';
         submit_button(__('Beállítások mentése', 'mgvd'));
@@ -155,6 +184,7 @@ class MG_Variant_Display_Page {
         $store = MG_Variant_Display_Manager::sanitize_settings_block($raw, $catalog);
         return wp_parse_args($store, array(
             'colors' => array(),
+            'size_charts' => array(),
         ));
     }
 
@@ -174,16 +204,26 @@ class MG_Variant_Display_Page {
         if (!is_array($store)) {
             $store = array(
                 'colors' => array(),
+                'size_charts' => array(),
             );
         }
         if (!isset($store['colors']) || !is_array($store['colors'])) {
             $store['colors'] = array();
+        }
+        if (!isset($store['size_charts']) || !is_array($store['size_charts'])) {
+            $store['size_charts'] = array();
         }
 
         if (!empty($sanitized['colors'][$type_slug])) {
             $store['colors'][$type_slug] = $sanitized['colors'][$type_slug];
         } else {
             unset($store['colors'][$type_slug]);
+        }
+
+        if (isset($sanitized['size_charts'][$type_slug]) && $sanitized['size_charts'][$type_slug] !== '') {
+            $store['size_charts'][$type_slug] = $sanitized['size_charts'][$type_slug];
+        } else {
+            unset($store['size_charts'][$type_slug]);
         }
 
         return $store;
