@@ -139,6 +139,19 @@ class MG_Mockup_Maintenance {
         return current_time('timestamp', true);
     }
 
+    private static function product_is_active($product) {
+        if (!$product || !is_object($product)) {
+            return false;
+        }
+        if (method_exists($product, 'get_status')) {
+            $status = $product->get_status();
+            if (!in_array($status, ['publish'], true)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static function find_type_definition($type_slug) {
         $catalog = get_option('mg_products', []);
         if (!is_array($catalog)) {
@@ -960,9 +973,13 @@ class MG_Mockup_Maintenance {
             if ($product_id > 0 && function_exists('wc_get_product')) {
                 if (!array_key_exists($product_id, $product_cache)) {
                     $product_obj = wc_get_product($product_id);
-                    $product_cache[$product_id] = ($product_obj && $product_obj->get_id());
+                    $product_cache[$product_id] = [
+                        'exists' => ($product_obj && $product_obj->get_id()),
+                        'active' => ($product_obj && $product_obj->get_id() && self::product_is_active($product_obj)),
+                    ];
                 }
-                if (!$product_cache[$product_id]) {
+                $cached = $product_cache[$product_id];
+                if (!$cached['exists'] || !$cached['active']) {
                     unset($pruned[$key]);
                     $needs_update = true;
                     continue;
