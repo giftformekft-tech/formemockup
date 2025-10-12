@@ -81,11 +81,9 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         $all = get_option('mg_products', array());
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) throw new Exception('A kiválasztott terméktípusok nem találhatók.');
-        $gen_path = plugin_dir_path(__FILE__) . '../includes/class-generator.php';
-        $creator_path = plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
-        if (!file_exists($gen_path) || !file_exists($creator_path)) throw new Exception('Hiányzó rendszerfájlok.');
-        require_once $gen_path; require_once $creator_path;
-        $creator = new MG_Product_Creator();
+        $queue_path = plugin_dir_path(__FILE__) . '../includes/class-bulk-queue.php';
+        if (!file_exists($queue_path)) throw new Exception('Hiányzó queue komponens.');
+        require_once $queue_path;
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {
@@ -127,6 +125,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             $defaults['color'] = $resolved_color;
             $defaults['size'] = $resolved_size;
         }
+        $job_ids = array();
         for ($i=0; $i < $count; $i++) {
             if (!isset($files['tmp_name'][$i]) || empty($files['tmp_name'][$i])) continue;
             if (!empty($files['error'][$i])) continue;
@@ -137,19 +136,29 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             $typed = isset($names[$i]) ? trim($names[$i]) : '';
             if ($typed === '') $typed = pathinfo($design_path, PATHINFO_FILENAME);
             $parent_name = sanitize_text_field($typed);
-            $gen = new MG_Generator();
-            $images_by_type_color = array();
-            foreach ($selected as $prod) {
-                $res = $gen->generate_for_product($prod['key'], $design_path);
-                if (is_wp_error($res)) { $images_by_type_color = array(); break; }
-                $images_by_type_color[$prod['key']] = $res;
-            }
-            if (empty($images_by_type_color)) continue;
             $cats = array('main'=> intval($main[$i] ?? 0), 'sub'=> intval($sub[$i] ?? 0));
-            $generation_context = array('design_path' => $design_path, 'trigger' => 'multi_upload');
-            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
+            $sub_list = array();
+            if (!empty($cats['sub'])) { $sub_list[] = $cats['sub']; }
+            $payload = array(
+                'design_path' => $design_path,
+                'product_keys' => $keys,
+                'parent_id' => 0,
+                'parent_name' => $parent_name,
+                'categories' => array('main' => $cats['main'], 'subs' => $sub_list),
+                'defaults' => $defaults,
+                'trigger' => 'multi_upload',
+                'custom_product' => 0,
+                'tags' => array(),
+            );
+            $job_id = MG_Bulk_Queue::enqueue($payload);
+            if ($job_id) { $job_ids[] = $job_id; }
         }
-        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;
+        $status = 'queued';
+        $extra = '';
+        if (!empty($job_ids)) {
+            $extra = '&jobs='.count($job_ids);
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status='.$status.$extra)); exit;
     } catch (Throwable $e) {
         $msg = rawurlencode($e->getMessage());
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=error&mg_error='.$msg)); exit;
