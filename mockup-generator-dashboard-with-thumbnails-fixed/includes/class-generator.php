@@ -144,7 +144,7 @@ class MG_Generator {
                 $mockup->setOption('webp:thread-level', '1');
                 $mockup->setOption('webp:auto-filter', '1');
             }
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(76);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
