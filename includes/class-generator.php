@@ -21,32 +21,25 @@ class MG_Generator {
 
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
-            $override_entry = $product['mockup_overrides'][$color_slug][$view_file];
+            $override = $product['mockup_overrides'][$color_slug][$view_file];
             $candidates = array();
-            if (is_array($override_entry)) {
-                foreach ($override_entry as $candidate) {
-                    if (!is_string($candidate)) { continue; }
-                    $candidate = wp_normalize_path($candidate);
-                    if ($candidate && file_exists($candidate)) {
-                        $candidates[] = $candidate;
+            if (is_array($override)) {
+                foreach ($override as $path) {
+                    if (!is_string($path)) { continue; }
+                    $path = trim($path);
+                    if ($path === '') { continue; }
+                    if (file_exists($path)) {
+                        $candidates[] = $path;
                     }
                 }
-            } elseif (is_string($override_entry)) {
-                $candidate = wp_normalize_path($override_entry);
-                if ($candidate && file_exists($candidate)) {
-                    $candidates[] = $candidate;
+            } elseif (is_string($override)) {
+                $override = trim($override);
+                if ($override !== '' && file_exists($override)) {
+                    $candidates[] = $override;
                 }
             }
             if (!empty($candidates)) {
-                if (count($candidates) === 1) {
-                    return $candidates[0];
-                }
-                if (function_exists('wp_rand')) {
-                    $index = wp_rand(0, count($candidates) - 1);
-                } else {
-                    $index = mt_rand(0, count($candidates) - 1);
-                }
-                return $candidates[$index];
+                return $candidates[array_rand($candidates)];
             }
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
