@@ -21,14 +21,47 @@ class MG_Generator {
 
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
-            $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            $selected = $this->select_mockup_override($product['mockup_overrides'][$color_slug][$view_file]);
+            if ($selected && file_exists($selected)) {
+                return $selected;
+            }
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
         if (file_exists($abs)) return $abs;
         $abs2 = plugin_dir_path(__FILE__) . '../' . ltrim($rel,'/');
         return $abs2;
+    }
+
+    private function select_mockup_override($candidates) {
+        if (is_string($candidates)) {
+            $candidates = array($candidates);
+        } elseif (!is_array($candidates)) {
+            return '';
+        }
+        $paths = array();
+        foreach ($candidates as $path) {
+            if (!is_string($path)) {
+                continue;
+            }
+            $path = trim($path);
+            if ($path === '') {
+                continue;
+            }
+            $normalized = function_exists('wp_normalize_path') ? wp_normalize_path($path) : $path;
+            if (file_exists($normalized)) {
+                $paths[] = $normalized;
+            }
+        }
+        $paths = array_values(array_unique($paths));
+        if (empty($paths)) {
+            return '';
+        }
+        if (count($paths) === 1) {
+            return $paths[0];
+        }
+        $index = function_exists('wp_rand') ? wp_rand(0, count($paths) - 1) : array_rand($paths);
+        return $paths[$index];
     }
 
     private function webp_supported() {
