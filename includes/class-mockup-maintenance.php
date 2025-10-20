@@ -196,7 +196,7 @@ class MG_Mockup_Maintenance {
             if ($color_slug === '' || !is_array($files)) {
                 continue;
             }
-            foreach ($files as $view_key => $path) {
+            foreach ($files as $view_key => $paths) {
                 if (!is_string($view_key)) {
                     continue;
                 }
@@ -204,11 +204,31 @@ class MG_Mockup_Maintenance {
                 if ($view_key === '') {
                     continue;
                 }
-                $path = is_string($path) ? trim($path) : '';
-                if ($path === '') {
+                $normalized_paths = [];
+                if (is_array($paths)) {
+                    foreach ($paths as $path) {
+                        if (!is_string($path)) {
+                            continue;
+                        }
+                        $path = trim($path);
+                        if ($path === '') {
+                            continue;
+                        }
+                        $normalized = wp_normalize_path($path);
+                        if (!in_array($normalized, $normalized_paths, true)) {
+                            $normalized_paths[] = $normalized;
+                        }
+                    }
+                } else {
+                    $path = is_string($paths) ? trim($paths) : '';
+                    if ($path !== '') {
+                        $normalized_paths[] = wp_normalize_path($path);
+                    }
+                }
+                if (empty($normalized_paths)) {
                     continue;
                 }
-                $out[$color_slug][$view_key] = wp_normalize_path($path);
+                $out[$color_slug][$view_key] = array_values($normalized_paths);
             }
         }
         return $out;
@@ -868,9 +888,15 @@ class MG_Mockup_Maintenance {
             if (!isset($overrides[$color_slug][$view_key])) {
                 continue;
             }
-            $path = wp_normalize_path($overrides[$color_slug][$view_key]);
-            if ($path && file_exists($path)) {
-                $images[] = $path;
+            $paths = $overrides[$color_slug][$view_key];
+            if (!is_array($paths)) {
+                $paths = $paths ? array($paths) : array();
+            }
+            foreach ($paths as $path) {
+                $path = wp_normalize_path($path);
+                if ($path && file_exists($path)) {
+                    $images[] = $path;
+                }
             }
         }
         return $images;
