@@ -102,6 +102,88 @@ class MG_Generator {
         return false;
     }
 
+    private function ensure_imagick_alpha_channel($image, $preferred_mode = null) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        if ($preferred_mode === null) {
+            if (defined('Imagick::ALPHACHANNEL_ACTIVATE')) {
+                $preferred_mode = Imagick::ALPHACHANNEL_ACTIVATE;
+            } elseif (defined('Imagick::ALPHACHANNEL_SET')) {
+                $preferred_mode = Imagick::ALPHACHANNEL_SET;
+            }
+        }
+        $modes = array();
+        if ($preferred_mode !== null) {
+            $modes[] = $preferred_mode;
+        }
+        if (defined('Imagick::ALPHACHANNEL_ACTIVATE')) {
+            $modes[] = Imagick::ALPHACHANNEL_ACTIVATE;
+        }
+        if (defined('Imagick::ALPHACHANNEL_SET')) {
+            $modes[] = Imagick::ALPHACHANNEL_SET;
+        }
+        if (defined('Imagick::ALPHACHANNEL_RESET')) {
+            $modes[] = Imagick::ALPHACHANNEL_RESET;
+        }
+        $modes = array_unique($modes);
+        foreach ($modes as $mode) {
+            if (!method_exists($image, 'setImageAlphaChannel')) {
+                break;
+            }
+            try {
+                $image->setImageAlphaChannel($mode);
+                return;
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+        if (method_exists($image, 'setImageMatte')) {
+            try { $image->setImageMatte(true); } catch (Throwable $ignored) {}
+        }
+    }
+
+    private function prepare_imagick_image_for_compositing($image) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        if (method_exists($image, 'setIteratorIndex')) {
+            try { $image->setIteratorIndex(0); } catch (Throwable $ignored) {}
+        }
+        $palette_types = array();
+        if (defined('Imagick::IMGTYPE_PALETTE')) {
+            $palette_types[] = Imagick::IMGTYPE_PALETTE;
+        }
+        if (defined('Imagick::IMGTYPE_PALETTEALPHA')) {
+            $palette_types[] = Imagick::IMGTYPE_PALETTEALPHA;
+        }
+        try {
+            $type = $image->getImageType();
+            if (in_array($type, $palette_types, true) && defined('Imagick::IMGTYPE_TRUECOLORALPHA')) {
+                $image->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+            }
+        } catch (Throwable $ignored) {
+        }
+        if (method_exists($image, 'transformImageColorspace')) {
+            try {
+                $colorspace = $image->getImageColorspace();
+                $rgb_spaces = array();
+                if (defined('Imagick::COLORSPACE_RGB')) {
+                    $rgb_spaces[] = Imagick::COLORSPACE_RGB;
+                }
+                if (defined('Imagick::COLORSPACE_SRGB')) {
+                    $rgb_spaces[] = Imagick::COLORSPACE_SRGB;
+                }
+                $target = defined('Imagick::COLORSPACE_SRGB') ? Imagick::COLORSPACE_SRGB : (defined('Imagick::COLORSPACE_RGB') ? Imagick::COLORSPACE_RGB : null);
+                if ($target !== null && !in_array($colorspace, $rgb_spaces, true)) {
+                    $image->transformImageColorspace($target);
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        $this->ensure_imagick_alpha_channel($image);
+    }
+
     public function generate_for_product($product_key, $design_path) {
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
@@ -123,6 +205,7 @@ class MG_Generator {
             if (method_exists($design_base, 'stripImage')) {
                 $design_base->stripImage();
             }
+            $this->prepare_imagick_image_for_compositing($design_base);
         } catch (Throwable $e) {
             return new WP_Error('design_load_failed', $e->getMessage());
         }
@@ -283,12 +366,14 @@ class MG_Generator {
             }
             if (method_exists($mockup,'stripImage')) $mockup->stripImage();
             if (method_exists($design,'stripImage')) $design->stripImage();
+            $this->prepare_imagick_image_for_compositing($mockup);
+            $this->prepare_imagick_image_for_compositing($design);
 
             $placement_scale = 1.0;
             if (is_array($scale_plan)) {
                 if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
                     $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], Imagick::FILTER_LANCZOS, 1, true);
-                    if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+                    $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                 }
                 $scale_w = ($template_width > 0) ? ($scale_plan['width'] / $template_width) : 1.0;
                 $scale_h = ($template_height > 0) ? ($scale_plan['height'] / $template_height) : 1.0;
@@ -332,12 +417,12 @@ class MG_Generator {
             $design_x_px = (int)round($target_x);
             $design_y_px = (int)round($target_y);
 
-            if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
-            if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+            $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
+            $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
             if (method_exists($design,'setBackgroundColor')) $design->setBackgroundColor(new ImagickPixel('transparent'));
 
             if (method_exists($design,'thumbnailImage')) $design->thumbnailImage($design_width_px, $design_height_px, true, false);
-            if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+            $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
 
             if (method_exists($mockup,'compositeImage')) $mockup->compositeImage($design, Imagick::COMPOSITE_OVER, $design_x_px, $design_y_px);
 
@@ -368,7 +453,7 @@ class MG_Generator {
                 }
                 if (($target_w != $cw) || ($target_h != $ch)) {
                     $mockup->resizeImage($target_w, $target_h, Imagick::FILTER_LANCZOS, 1, true);
-                    if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+                    $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                 }
             }
 
