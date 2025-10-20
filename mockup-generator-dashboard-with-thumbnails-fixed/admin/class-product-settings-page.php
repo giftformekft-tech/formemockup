@@ -85,6 +85,40 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         if (!$prod) { echo '<div class="notice notice-error"><p>Ismeretlen termék.</p></div>'; return; }
         if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
 
+        // Ensure mockup overrides are stored as arrays of file paths per view
+        $normalized_overrides = array();
+        if (isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides'])) {
+            foreach ($prod['mockup_overrides'] as $color_slug => $views) {
+                if (!is_string($color_slug)) { continue; }
+                $color_slug = sanitize_title($color_slug);
+                if ($color_slug === '') { continue; }
+                if (!is_array($views)) { continue; }
+                foreach ($views as $view_key => $paths) {
+                    if (!is_string($view_key)) { continue; }
+                    $view_key = trim($view_key);
+                    if ($view_key === '') { continue; }
+                    $list = array();
+                    if (is_array($paths)) {
+                        foreach ($paths as $path) {
+                            if (!is_string($path)) { continue; }
+                            $path = trim($path);
+                            if ($path === '') { continue; }
+                            $list[] = wp_normalize_path($path);
+                        }
+                    } elseif (is_string($paths)) {
+                        $paths = trim($paths);
+                        if ($paths !== '') {
+                            $list[] = wp_normalize_path($paths);
+                        }
+                    }
+                    if (!empty($list)) {
+                        $normalized_overrides[$color_slug][$view_key] = array_values(array_unique($list));
+                    }
+                }
+            }
+        }
+        $prod['mockup_overrides'] = $normalized_overrides;
+
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
             $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
             if (!empty($sizes)) $prod['sizes']=$sizes;
