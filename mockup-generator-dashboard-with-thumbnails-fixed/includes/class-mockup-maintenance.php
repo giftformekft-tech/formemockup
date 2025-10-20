@@ -196,10 +196,7 @@ class MG_Mockup_Maintenance {
             if ($color_slug === '') {
                 continue;
             }
-            if (!is_array($files)) {
-                continue;
-            }
-            foreach ($files as $view_key => $paths) {
+            foreach ($files as $view_key => $path_collection) {
                 if (!is_string($view_key)) {
                     continue;
                 }
@@ -207,26 +204,17 @@ class MG_Mockup_Maintenance {
                 if ($view_key === '') {
                     continue;
                 }
+                $paths = is_array($path_collection) ? $path_collection : array($path_collection);
                 $normalized = [];
-                if (is_array($paths)) {
-                    foreach ($paths as $path) {
-                        if (!is_string($path)) {
-                            continue;
-                        }
-                        $path = trim($path);
-                        if ($path === '') {
-                            continue;
-                        }
-                        $normalized[] = wp_normalize_path($path);
+                foreach ($paths as $single) {
+                    $single = is_string($single) ? trim($single) : '';
+                    if ($single === '') {
+                        continue;
                     }
-                } elseif (is_string($paths)) {
-                    $paths = trim($paths);
-                    if ($paths !== '') {
-                        $normalized[] = wp_normalize_path($paths);
-                    }
+                    $normalized[] = wp_normalize_path($single);
                 }
                 if (!empty($normalized)) {
-                    $out[$color_slug][$view_key] = array_values(array_unique($normalized));
+                    $out[$color_slug][$view_key] = $normalized;
                 }
             }
         }
@@ -887,14 +875,11 @@ class MG_Mockup_Maintenance {
             if (!isset($overrides[$color_slug][$view_key])) {
                 continue;
             }
-            $paths = $overrides[$color_slug][$view_key];
-            if (!is_array($paths)) {
-                $paths = [$paths];
-            }
+            $paths = is_array($overrides[$color_slug][$view_key]) ? $overrides[$color_slug][$view_key] : array($overrides[$color_slug][$view_key]);
             foreach ($paths as $path) {
-                $path = is_string($path) ? wp_normalize_path($path) : '';
-                if ($path && file_exists($path) && !in_array($path, $images, true)) {
-                    $images[] = $path;
+                $norm = is_string($path) ? wp_normalize_path($path) : '';
+                if ($norm && file_exists($norm)) {
+                    $images[] = $norm;
                 }
             }
         }
