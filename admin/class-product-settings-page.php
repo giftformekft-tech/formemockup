@@ -43,21 +43,70 @@ class MG_Product_Settings_Page {
         return $normalized;
     }
 
+    private static function normalize_single_mockup_path($path) {
+        if (!is_string($path)) {
+            return '';
+        }
+        $path = wp_normalize_path(trim($path));
+        if ($path === '') {
+            return '';
+        }
+        if (file_exists($path)) {
+            return $path;
+        }
+
+        $uploads = wp_upload_dir();
+        $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+
+        if ($basedir !== '') {
+            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
+                if (strpos($path, $baseurl) === 0) {
+                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
+                    if (file_exists($candidate)) {
+                        return $candidate;
+                    }
+                    $path = $candidate;
+                }
+            } else {
+                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
+                if (file_exists($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if (strpos($path, '://') === false) {
+            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
+            if (file_exists($abs_candidate)) {
+                return $abs_candidate;
+            }
+
+            $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
+            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
+            if (file_exists($plugin_candidate)) {
+                return $plugin_candidate;
+            }
+        }
+
+        return $path;
+    }
+
     private static function sanitize_mockup_path_list($value) {
         $paths = array();
         if (is_array($value)) {
             foreach ($value as $item) {
-                if (!is_string($item)) { continue; }
-                $item = wp_normalize_path(trim($item));
-                if ($item === '') { continue; }
-                if (!in_array($item, $paths, true)) {
-                    $paths[] = $item;
+                $normalized = self::normalize_single_mockup_path($item);
+                if ($normalized === '' || in_array($normalized, $paths, true)) {
+                    continue;
                 }
+                $paths[] = $normalized;
             }
         } elseif (is_string($value)) {
-            $value = wp_normalize_path(trim($value));
-            if ($value !== '') {
-                $paths[] = $value;
+            $normalized = self::normalize_single_mockup_path($value);
+            if ($normalized !== '') {
+                $paths[] = $normalized;
             }
         }
         return array_values($paths);

@@ -183,26 +183,70 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function normalize_single_override_path($path) {
+        if (!is_string($path)) {
+            return '';
+        }
+        $path = wp_normalize_path(trim($path));
+        if ($path === '') {
+            return '';
+        }
+        if (file_exists($path)) {
+            return $path;
+        }
+
+        $uploads = wp_upload_dir();
+        $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+
+        if ($basedir !== '') {
+            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
+                if (strpos($path, $baseurl) === 0) {
+                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
+                    if (file_exists($candidate)) {
+                        return $candidate;
+                    }
+                    $path = $candidate;
+                }
+            } else {
+                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
+                if (file_exists($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if (strpos($path, '://') === false) {
+            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
+            if (file_exists($abs_candidate)) {
+                return $abs_candidate;
+            }
+
+            $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
+            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
+            if (file_exists($plugin_candidate)) {
+                return $plugin_candidate;
+            }
+        }
+
+        return $path;
+    }
+
     private static function normalize_override_path_list($paths) {
         $list = [];
         if (is_array($paths)) {
             foreach ($paths as $path) {
-                if (!is_string($path)) {
+                $normalized = self::normalize_single_override_path($path);
+                if ($normalized === '' || in_array($normalized, $list, true)) {
                     continue;
                 }
-                $path = trim($path);
-                if ($path === '') {
-                    continue;
-                }
-                $normalized = wp_normalize_path($path);
-                if (!in_array($normalized, $list, true)) {
-                    $list[] = $normalized;
-                }
+                $list[] = $normalized;
             }
         } elseif (is_string($paths)) {
-            $paths = trim($paths);
-            if ($paths !== '') {
-                $list[] = wp_normalize_path($paths);
+            $normalized = self::normalize_single_override_path($paths);
+            if ($normalized !== '') {
+                $list[] = $normalized;
             }
         }
         return array_values($list);

@@ -19,6 +19,56 @@ class MG_Generator {
         return $this->product_cache[$product_key] ?? null;
     }
 
+    private function absolutize_override_path($path) {
+        if (!is_string($path)) {
+            return '';
+        }
+        $path = wp_normalize_path(trim($path));
+        if ($path === '') {
+            return '';
+        }
+        if (file_exists($path)) {
+            return $path;
+        }
+
+        $uploads = wp_upload_dir();
+        $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+
+        if ($basedir !== '') {
+            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
+                if (strpos($path, $baseurl) === 0) {
+                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
+                    if (file_exists($candidate)) {
+                        return $candidate;
+                    }
+                    $path = $candidate;
+                }
+            } else {
+                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
+                if (file_exists($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if (strpos($path, '://') === false) {
+            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
+            if (file_exists($abs_candidate)) {
+                return $abs_candidate;
+            }
+
+            $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
+            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
+            if (file_exists($plugin_candidate)) {
+                return $plugin_candidate;
+            }
+        }
+
+        return $path;
+    }
+
     private function collect_override_templates($product, $color_slug, $view_file) {
         $candidates = array();
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
@@ -27,8 +77,7 @@ class MG_Generator {
                 $override = array($override);
             }
             foreach ($override as $path) {
-                if (!is_string($path)) { continue; }
-                $path = wp_normalize_path(trim($path));
+                $path = $this->absolutize_override_path($path);
                 if ($path === '' || in_array($path, $candidates, true)) { continue; }
                 $candidates[] = $path;
             }
