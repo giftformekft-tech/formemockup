@@ -1,6 +1,54 @@
 <?php
 if (!defined('ABSPATH')) exit;
 class MG_Product_Settings_Page {
+    private static function nested_file_value($source, $color_slug, $view_key, $index) {
+        if (!is_array($source)) {
+            return '';
+        }
+        if (!isset($source[$color_slug])) {
+            return '';
+        }
+        $views = $source[$color_slug];
+        if (!is_array($views) || !array_key_exists($view_key, $views)) {
+            return '';
+        }
+        $value = $views[$view_key];
+        if (is_array($value)) {
+            return isset($value[$index]) ? $value[$index] : '';
+        }
+        return $index === 0 ? $value : '';
+    }
+
+    private static function normalize_mockup_file_uploads($files) {
+        $normalized = array();
+        if (!is_array($files) || !isset($files['name']) || !is_array($files['name'])) {
+            return $normalized;
+        }
+        $ok_code = defined('UPLOAD_ERR_OK') ? UPLOAD_ERR_OK : 0;
+        foreach ($files['name'] as $color_slug => $views) {
+            if (!is_array($views)) { continue; }
+            foreach ($views as $view_key => $names) {
+                $names = is_array($names) ? $names : array($names);
+                foreach ($names as $index => $name) {
+                    $name = is_string($name) ? trim($name) : '';
+                    if ($name === '') { continue; }
+                    $tmp_name = self::nested_file_value($files['tmp_name'], $color_slug, $view_key, $index);
+                    if ($tmp_name === '') { continue; }
+                    $error = self::nested_file_value($files['error'], $color_slug, $view_key, $index);
+                    if ($error !== '' && intval($error) !== $ok_code) { continue; }
+                    $normalized[$color_slug][$view_key][] = array(
+                        'name'     => $name,
+                        'type'     => self::nested_file_value($files['type'], $color_slug, $view_key, $index),
+                        'tmp_name' => $tmp_name,
+                        'error'    => $error,
+                        'size'     => self::nested_file_value($files['size'], $color_slug, $view_key, $index),
+                    );
+                }
+            }
+        }
+        return $normalized;
+    }
+
     private static function normalize_size_color_matrix_for_product($sizes, $colors, $input) {
         $size_values = array();
         if (is_array($sizes)) {
@@ -157,21 +205,33 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
     $prod['size_surcharges'] = $ss;
 }
 if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) $prod['mockup_overrides'] = array();
-            if (!empty($_FILES['mockup_files']['name'])) {
-                foreach ($_FILES['mockup_files']['name'] as $color_slug => $files) {
-                    foreach ($files as $file_key => $name) {
-                        if (!empty($name) && !empty($_FILES['mockup_files']['tmp_name'][$color_slug][$file_key])) {
-                            $file = array(
-                                'name' => $name,
-                                'type' => $_FILES['mockup_files']['type'][$color_slug][$file_key],
-                                'tmp_name' => $_FILES['mockup_files']['tmp_name'][$color_slug][$file_key],
-                                'error' => $_FILES['mockup_files']['error'][$color_slug][$file_key],
-                                'size' => $_FILES['mockup_files']['size'][$color_slug][$file_key],
-                            );
+            if (!empty($_FILES['mockup_files'])) {
+                $normalized_uploads = self::normalize_mockup_file_uploads($_FILES['mockup_files']);
+                foreach ($normalized_uploads as $color_slug => $files) {
+                    foreach ($files as $file_key => $entries) {
+                        foreach ($entries as $file) {
+                            if (empty($file['tmp_name'])) { continue; }
                             $uploaded = wp_handle_upload($file, array('test_form'=>false, 'mimes'=>array('png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp')));
-                            if (empty($uploaded['error'])) {
-                                if (!isset($prod['mockup_overrides'][$color_slug])) $prod['mockup_overrides'][$color_slug] = array();
-                                $prod['mockup_overrides'][$color_slug][$file_key] = $uploaded['file'];
+                            if (!empty($uploaded['error'])) { continue; }
+                            if (!isset($prod['mockup_overrides'][$color_slug])) {
+                                $prod['mockup_overrides'][$color_slug] = array();
+                            }
+                            if (!isset($prod['mockup_overrides'][$color_slug][$file_key]) || !is_array($prod['mockup_overrides'][$color_slug][$file_key])) {
+                                $existing = isset($prod['mockup_overrides'][$color_slug][$file_key]) ? $prod['mockup_overrides'][$color_slug][$file_key] : array();
+                                $prod['mockup_overrides'][$color_slug][$file_key] = array();
+                                if (is_string($existing) && $existing !== '') {
+                                    $prod['mockup_overrides'][$color_slug][$file_key][] = $existing;
+                                } elseif (is_array($existing)) {
+                                    foreach ($existing as $path) {
+                                        if (is_string($path) && $path !== '') {
+                                            $prod['mockup_overrides'][$color_slug][$file_key][] = $path;
+                                        }
+                                    }
+                                }
+                            }
+                            if (!in_array($uploaded['file'], $prod['mockup_overrides'][$color_slug][$file_key], true)) {
+                                $prod['mockup_overrides'][$color_slug][$file_key][] = $uploaded['file'];
+                                $prod['mockup_overrides'][$color_slug][$file_key] = array_values($prod['mockup_overrides'][$color_slug][$file_key]);
                             }
                         }
                     }
@@ -350,9 +410,18 @@ if (function_exists('wp_editor')) {
                                             $map = array();
                                             foreach ($colors as $c) {
                                                 $slug = $c['slug'];
-                                                $path = isset($over[$slug][$v['file']]) ? $over[$slug][$v['file']] : '';
-                                                if ($path && strpos($path, $uploads_base) === 0) {
-                                                    $rel = substr($path, strlen($uploads_base));
+                                                $paths = array();
+                                                if (isset($over[$slug][$v['file']])) {
+                                                    if (is_array($over[$slug][$v['file']])) {
+                                                        $paths = $over[$slug][$v['file']];
+                                                    } elseif (is_string($over[$slug][$v['file']])) {
+                                                        $paths = array($over[$slug][$v['file']]);
+                                                    }
+                                                }
+                                                $paths = array_values(array_filter(array_map('strval', $paths)));
+                                                $current = reset($paths);
+                                                if ($current && strpos($current, $uploads_base) === 0) {
+                                                    $rel = substr($current, strlen($uploads_base));
                                                     $url = $uploads_url . str_replace(DIRECTORY_SEPARATOR, '/', $rel);
                                                     $map[$slug] = $url;
                                                 }
@@ -369,21 +438,39 @@ if (function_exists('wp_editor')) {
                             <td><strong><?php echo esc_html($c['name']); ?></strong><br><code><?php echo esc_html($slug); ?></code></td>
                             <?php foreach ($views as $v):
                                 $file_key = $v['file'];
-                                $existing = isset($over[$slug][$file_key]) ? $over[$slug][$file_key] : '';
-                                $display = '';
-                                if ($existing && strpos($existing, $uploads_base) === 0) {
-                                    $rel = substr($existing, strlen($uploads_base));
-                                    $display = $uploads_url . str_replace(DIRECTORY_SEPARATOR, '/', $rel);
+                                $existing_raw = isset($over[$slug][$file_key]) ? $over[$slug][$file_key] : array();
+                                if (is_string($existing_raw) && $existing_raw !== '') {
+                                    $existing_raw = array($existing_raw);
+                                } elseif (!is_array($existing_raw)) {
+                                    $existing_raw = array();
+                                }
+                                $existing_files = array();
+                                foreach ($existing_raw as $path) {
+                                    if (!is_string($path) || $path === '') { continue; }
+                                    $existing_files[] = $path;
                                 }
                             ?>
                                 <td>
-                                    <?php if ($existing): ?>
-                                        <div>Jelenlegi: <code><?php echo esc_html(basename($existing)); ?></code></div>
-                                        <?php if ($display): ?>
-                                            <div><a href="<?php echo esc_url($display); ?>" target="_blank">Megnyitás</a></div>
-                                        <?php endif; ?>
+                                    <?php if (!empty($existing_files)): ?>
+                                        <div>Jelenlegi mockupok:</div>
+                                        <ul style="margin:0;padding-left:1.2em;">
+                                            <?php foreach ($existing_files as $path):
+                                                $display = '';
+                                                if (strpos($path, $uploads_base) === 0) {
+                                                    $rel = substr($path, strlen($uploads_base));
+                                                    $display = $uploads_url . str_replace(DIRECTORY_SEPARATOR, '/', $rel);
+                                                }
+                                            ?>
+                                                <li>
+                                                    <code><?php echo esc_html(basename($path)); ?></code>
+                                                    <?php if ($display): ?>
+                                                        – <a href="<?php echo esc_url($display); ?>" target="_blank">Megnyitás</a>
+                                                    <?php endif; ?>
+                                                </li>
+                                            <?php endforeach; ?>
+                                        </ul>
                                     <?php endif; ?>
-                                    <input type="file" name="mockup_files[<?php echo esc_attr($slug); ?>][<?php echo esc_attr($file_key); ?>]" accept=".png,.jpg,.jpeg,.webp" />
+                                    <input type="file" name="mockup_files[<?php echo esc_attr($slug); ?>][<?php echo esc_attr($file_key); ?>][]" accept=".png,.jpg,.jpeg,.webp" multiple />
                                 </td>
                             <?php endforeach; ?>
                         </tr>

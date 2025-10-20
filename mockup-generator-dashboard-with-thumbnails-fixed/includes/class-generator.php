@@ -19,10 +19,39 @@ class MG_Generator {
         return $this->product_cache[$product_key] ?? null;
     }
 
+    private function select_override_template($override) {
+        $candidates = array();
+        if (is_array($override)) {
+            foreach ($override as $path) {
+                if (!is_string($path)) { continue; }
+                $path = trim($path);
+                if ($path === '') { continue; }
+                $candidates[] = $path;
+            }
+        } elseif (is_string($override)) {
+            $override = trim($override);
+            if ($override !== '') {
+                $candidates[] = $override;
+            }
+        }
+        if (empty($candidates)) {
+            return '';
+        }
+        $candidates = array_values(array_unique($candidates));
+        shuffle($candidates);
+        foreach ($candidates as $candidate) {
+            $normalized = function_exists('wp_normalize_path') ? wp_normalize_path($candidate) : $candidate;
+            if (file_exists($normalized)) {
+                return $normalized;
+            }
+        }
+        return '';
+    }
+
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
-            $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            $override = $this->select_override_template($product['mockup_overrides'][$color_slug][$view_file]);
+            if ($override) return $override;
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
