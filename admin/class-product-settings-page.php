@@ -48,14 +48,14 @@ class MG_Product_Settings_Page {
         if (is_array($value)) {
             foreach ($value as $item) {
                 if (!is_string($item)) { continue; }
-                $item = trim($item);
+                $item = wp_normalize_path(trim($item));
                 if ($item === '') { continue; }
                 if (!in_array($item, $paths, true)) {
                     $paths[] = $item;
                 }
             }
         } elseif (is_string($value)) {
-            $value = trim($value);
+            $value = wp_normalize_path(trim($value));
             if ($value !== '') {
                 $paths[] = $value;
             }
