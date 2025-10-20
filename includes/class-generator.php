@@ -19,16 +19,31 @@ class MG_Generator {
         return $this->product_cache[$product_key] ?? null;
     }
 
-    private function resolve_template($product, $color_slug, $view_file) {
+    private function collect_override_templates($product, $color_slug, $view_file) {
+        $candidates = array();
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
-            $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            $override = $product['mockup_overrides'][$color_slug][$view_file];
+            if (!is_array($override)) {
+                $override = array($override);
+            }
+            foreach ($override as $path) {
+                if (!is_string($path)) { continue; }
+                $path = wp_normalize_path(trim($path));
+                if ($path === '' || in_array($path, $candidates, true)) { continue; }
+                $candidates[] = $path;
+            }
         }
+        return $candidates;
+    }
+
+    private function resolve_default_template_path($product, $color_slug, $view_file) {
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
-        if (file_exists($abs)) return $abs;
+        if (file_exists($abs)) {
+            return wp_normalize_path($abs);
+        }
         $abs2 = plugin_dir_path(__FILE__) . '../' . ltrim($rel,'/');
-        return $abs2;
+        return wp_normalize_path($abs2);
     }
 
     private function webp_supported() {
@@ -69,11 +84,37 @@ class MG_Generator {
                 $slug = $c['slug'];
                 $out[$slug] = [];
                 foreach ($views as $view) {
-                    $template = $this->resolve_template($product, $slug, $view['file']);
-                    if (!file_exists($template)) return new WP_Error('template_missing','Hiányzó template: '.$template);
+                    $templates_to_try = $this->collect_override_templates($product, $slug, $view['file']);
+                    if (!empty($templates_to_try)) {
+                        shuffle($templates_to_try);
+                    }
+                    $templates_to_try[] = $this->resolve_default_template_path($product, $slug, $view['file']);
+                    $templates_to_try = array_values(array_filter(array_unique($templates_to_try)));
                     $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
-                    $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_base, $view, $outfile);
-                    if (is_wp_error($ok)) return $ok;
+                    $generated = false;
+                    $last_error = null;
+                    foreach ($templates_to_try as $template) {
+                        if (!$template || !file_exists($template)) {
+                            $last_error = new WP_Error('template_missing','Hiányzó template: '.$template);
+                            continue;
+                        }
+                        $ok = $this->apply_imagick_webp_with_optional_resize($template, $design_base, $view, $outfile);
+                        if ($ok === true) {
+                            $generated = true;
+                            break;
+                        }
+                        if (is_wp_error($ok)) {
+                            $last_error = $ok;
+                            if (file_exists($outfile)) { @unlink($outfile); }
+                        }
+                    }
+                    if (!$generated) {
+                        if (file_exists($outfile)) { @unlink($outfile); }
+                        if ($last_error) {
+                            return $last_error;
+                        }
+                        return new WP_Error('template_missing','Hiányzó template: '.$view['file']);
+                    }
                     $out[$slug][] = $outfile;
                 }
             }
