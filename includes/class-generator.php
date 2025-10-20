@@ -180,11 +180,15 @@ class MG_Generator {
         $template_height = 0;
         $probing = null;
         $max_area = (int)apply_filters('mg_mockup_template_max_area', 120000000);
+        $filesize = 0;
+        $size_hint = '';
+        $scale_plan = null;
         try {
             $probing = new Imagick();
             $probing->pingImage($template_path);
             $template_width = (int)$probing->getImageWidth();
             $template_height = (int)$probing->getImageHeight();
+            $filesize = @filesize($template_path);
         } catch (Throwable $e) {
             if ($probing instanceof Imagick) {
                 $probing->clear();
@@ -199,21 +203,71 @@ class MG_Generator {
             $probing->destroy();
         }
 
+        if ($filesize > 0) {
+            $size_hint = sprintf(' (~%.2f MB)', $filesize / 1048576);
+        }
+
         if ($max_area > 0 && $area > $max_area) {
-            $megapixels = $area / 1000000;
-            $size_hint = '';
-            $filesize = @filesize($template_path);
-            if ($filesize > 0) {
-                $size_hint = sprintf(' (~%.2f MB)', $filesize / 1048576);
+            if ($template_width <= 0 || $template_height <= 0) {
+                return new WP_Error('mockup_template_too_large', 'A mockup háttér mérete nem állapítható meg, ezért nem skálázható biztonságosan.');
             }
-            $message = sprintf(
-                'A mockup háttér túl nagy (%dx%d px ≈ %.1f MP%s). Csökkentsd a felbontást, vagy állíts be kisebb hátteret, majd próbáld újra.',
-                $template_width,
-                $template_height,
-                $megapixels,
-                $size_hint
+
+            $scale_factor = sqrt($max_area / $area);
+            if (!is_finite($scale_factor) || $scale_factor <= 0) {
+                $megapixels = $area / 1000000;
+                $message = sprintf(
+                    'A mockup háttér túl nagy (%dx%d px ≈ %.1f MP%s). Csökkentsd a felbontást, vagy állíts be kisebb hátteret, majd próbáld újra.',
+                    $template_width,
+                    $template_height,
+                    $megapixels,
+                    $size_hint
+                );
+                return new WP_Error('mockup_template_too_large', $message);
+            }
+
+            $scaled_width = (int)floor($template_width * $scale_factor);
+            $scaled_height = (int)floor($template_height * $scale_factor);
+
+            if ($scaled_width < 1 || $scaled_height < 1) {
+                $megapixels = $area / 1000000;
+                $message = sprintf(
+                    'A mockup háttér túl nagy (%dx%d px ≈ %.1f MP%s), és nem sikerült automatikusan lekicsinyíteni. Csökkentsd a felbontást, vagy állíts be kisebb hátteret, majd próbáld újra.',
+                    $template_width,
+                    $template_height,
+                    $megapixels,
+                    $size_hint
+                );
+                return new WP_Error('mockup_template_too_large', $message);
+            }
+
+            $scaled_area = $scaled_width * $scaled_height;
+            if ($scaled_area > $max_area) {
+                // Biztonsági ellenőrzés a kerekítési anomáliákhoz.
+                $adjusted_scale = sqrt($max_area / ($scaled_area > 0 ? $scaled_area : 1));
+                if (is_finite($adjusted_scale) && $adjusted_scale > 0) {
+                    $scaled_width = max(1, (int)floor($scaled_width * $adjusted_scale));
+                    $scaled_height = max(1, (int)floor($scaled_height * $adjusted_scale));
+                    $scaled_area = $scaled_width * $scaled_height;
+                }
+            }
+
+            if ($scaled_width < 1 || $scaled_height < 1 || ($max_area > 0 && $scaled_area > $max_area)) {
+                $megapixels = $area / 1000000;
+                $message = sprintf(
+                    'A mockup háttér túl nagy (%dx%d px ≈ %.1f MP%s), és nem sikerült automatikusan lekicsinyíteni. Csökkentsd a felbontást, vagy állíts be kisebb hátteret, majd próbáld újra.',
+                    $template_width,
+                    $template_height,
+                    $megapixels,
+                    $size_hint
+                );
+                return new WP_Error('mockup_template_too_large', $message);
+            }
+
+            $scale_plan = array(
+                'width'  => $scaled_width,
+                'height' => $scaled_height,
+                'factor' => $scale_factor,
             );
-            return new WP_Error('mockup_template_too_large', $message);
         }
 
         $mockup = null;
@@ -230,14 +284,62 @@ class MG_Generator {
             if (method_exists($mockup,'stripImage')) $mockup->stripImage();
             if (method_exists($design,'stripImage')) $design->stripImage();
 
+            $placement_scale = 1.0;
+            if (is_array($scale_plan)) {
+                if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
+                    $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], Imagick::FILTER_LANCZOS, 1, true);
+                    if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+                }
+                $scale_w = ($template_width > 0) ? ($scale_plan['width'] / $template_width) : 1.0;
+                $scale_h = ($template_height > 0) ? ($scale_plan['height'] / $template_height) : 1.0;
+                $candidates = array();
+                if (is_finite($scale_w) && $scale_w > 0) { $candidates[] = $scale_w; }
+                if (is_finite($scale_h) && $scale_h > 0) { $candidates[] = $scale_h; }
+                if (!empty($candidates)) {
+                    $placement_scale = min($candidates);
+                }
+                if ($placement_scale <= 0 || !is_finite($placement_scale)) {
+                    $placement_scale = 1.0;
+                }
+                if (function_exists('do_action')) {
+                    do_action(
+                        'mg_mockup_template_scaled_down',
+                        $template_path,
+                        $template_width,
+                        $template_height,
+                        $scale_plan['width'],
+                        $scale_plan['height'],
+                        $placement_scale,
+                        $max_area
+                    );
+                }
+            }
+
+            $target_w = isset($cfg['w']) ? (float)$cfg['w'] : 0.0;
+            $target_h = isset($cfg['h']) ? (float)$cfg['h'] : 0.0;
+            $target_x = isset($cfg['x']) ? (float)$cfg['x'] : 0.0;
+            $target_y = isset($cfg['y']) ? (float)$cfg['y'] : 0.0;
+
+            if ($placement_scale !== 1.0) {
+                $target_w *= $placement_scale;
+                $target_h *= $placement_scale;
+                $target_x *= $placement_scale;
+                $target_y *= $placement_scale;
+            }
+
+            $design_width_px = $target_w > 0 ? max(1, (int)round($target_w)) : 1;
+            $design_height_px = $target_h > 0 ? max(1, (int)round($target_h)) : 1;
+            $design_x_px = (int)round($target_x);
+            $design_y_px = (int)round($target_y);
+
             if (method_exists($mockup,'setImageAlphaChannel')) $mockup->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
             if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
             if (method_exists($design,'setBackgroundColor')) $design->setBackgroundColor(new ImagickPixel('transparent'));
 
-            if (method_exists($design,'thumbnailImage')) $design->thumbnailImage((int)$cfg['w'], (int)$cfg['h'], true, false);
+            if (method_exists($design,'thumbnailImage')) $design->thumbnailImage($design_width_px, $design_height_px, true, false);
             if (method_exists($design,'setImageAlphaChannel')) $design->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
 
-            if (method_exists($mockup,'compositeImage')) $mockup->compositeImage($design, Imagick::COMPOSITE_OVER, (int)$cfg['x'], (int)$cfg['y']);
+            if (method_exists($mockup,'compositeImage')) $mockup->compositeImage($design, Imagick::COMPOSITE_OVER, $design_x_px, $design_y_px);
 
             // Optional output resize
             $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit'));
@@ -283,13 +385,18 @@ class MG_Generator {
             $message = $e->getMessage();
             if ($template_width > 0 && $template_height > 0) {
                 $area = $template_width * $template_height;
-                if (($max_area > 0 && $area > $max_area) || preg_match('/(limit|exceed|memory|cache)/i', $message)) {
+                $effective_width = is_array($scale_plan) ? $scale_plan['width'] : $template_width;
+                $effective_height = is_array($scale_plan) ? $scale_plan['height'] : $template_height;
+                if (($max_area > 0 && $area > $max_area && !is_array($scale_plan)) || preg_match('/(limit|exceed|memory|cache)/i', $message)) {
+                    $error_template_width = is_array($scale_plan) ? $scale_plan['width'] : $template_width;
+                    $error_template_height = is_array($scale_plan) ? $scale_plan['height'] : $template_height;
                     return new WP_Error(
                         'mockup_template_too_large',
                         sprintf(
-                            'A mockup háttér túl nagy (%dx%d px). Csökkentsd a kép felbontását, majd próbáld újra. Eredeti hiba: %s',
-                            $template_width,
-                            $template_height,
+                            'A mockup háttér túl nagy (%dx%d px%s). Csökkentsd a kép felbontását, majd próbáld újra. Eredeti hiba: %s',
+                            $error_template_width,
+                            $error_template_height,
+                            is_array($scale_plan) ? sprintf(' – eredetileg %dx%d px', $template_width, $template_height) : '',
                             $message
                         )
                     );
