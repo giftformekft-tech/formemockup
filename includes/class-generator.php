@@ -21,8 +21,26 @@ class MG_Generator {
 
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
-            $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            $override = $product['mockup_overrides'][$color_slug][$view_file];
+            $candidates = array();
+            if (is_array($override)) {
+                foreach ($override as $path) {
+                    if (!is_string($path)) { continue; }
+                    $path = trim($path);
+                    if ($path === '') { continue; }
+                    if (file_exists($path)) {
+                        $candidates[] = $path;
+                    }
+                }
+            } elseif (is_string($override)) {
+                $override = trim($override);
+                if ($override !== '' && file_exists($override)) {
+                    $candidates[] = $override;
+                }
+            }
+            if (!empty($candidates)) {
+                return $candidates[array_rand($candidates)];
+            }
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
