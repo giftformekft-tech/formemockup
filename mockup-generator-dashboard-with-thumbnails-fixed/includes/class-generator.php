@@ -22,7 +22,23 @@ class MG_Generator {
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
             $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            $candidates = array();
+            if (is_array($ov)) {
+                foreach ($ov as $path) {
+                    if (is_string($path) && $path !== '' && file_exists($path)) {
+                        $candidates[] = $path;
+                    }
+                }
+            } elseif (is_string($ov) && $ov !== '' && file_exists($ov)) {
+                $candidates[] = $ov;
+            }
+            if (!empty($candidates)) {
+                if (count($candidates) === 1) {
+                    return $candidates[0];
+                }
+                $index = array_rand($candidates);
+                return $candidates[$index];
+            }
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
