@@ -183,6 +183,75 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function normalize_single_override_path($path) {
+        if (!is_string($path)) {
+            return '';
+        }
+        $path = wp_normalize_path(trim($path));
+        if ($path === '') {
+            return '';
+        }
+        if (file_exists($path)) {
+            return $path;
+        }
+
+        $uploads = wp_upload_dir();
+        $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+
+        if ($basedir !== '') {
+            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
+                if (strpos($path, $baseurl) === 0) {
+                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
+                    if (file_exists($candidate)) {
+                        return $candidate;
+                    }
+                    $path = $candidate;
+                }
+            } else {
+                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
+                if (file_exists($candidate)) {
+                    return $candidate;
+                }
+            }
+        }
+
+        if (strpos($path, '://') === false) {
+            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
+            if (file_exists($abs_candidate)) {
+                return $abs_candidate;
+            }
+
+            $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
+            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
+            if (file_exists($plugin_candidate)) {
+                return $plugin_candidate;
+            }
+        }
+
+        return $path;
+    }
+
+    private static function normalize_override_path_list($paths) {
+        $list = [];
+        if (is_array($paths)) {
+            foreach ($paths as $path) {
+                $normalized = self::normalize_single_override_path($path);
+                if ($normalized === '' || in_array($normalized, $list, true)) {
+                    continue;
+                }
+                $list[] = $normalized;
+            }
+        } elseif (is_string($paths)) {
+            $normalized = self::normalize_single_override_path($paths);
+            if ($normalized !== '') {
+                $list[] = $normalized;
+            }
+        }
+        return array_values($list);
+    }
+
     private static function normalize_overrides_from_type($type) {
         $out = [];
         if (!is_array($type) || empty($type['mockup_overrides']) || !is_array($type['mockup_overrides'])) {
@@ -193,10 +262,13 @@ class MG_Mockup_Maintenance {
                 continue;
             }
             $color_slug = sanitize_title($color_slug);
-            if ($color_slug === '' || !is_array($files)) {
+            if ($color_slug === '') {
                 continue;
             }
-            foreach ($files as $view_key => $path) {
+            if (!is_array($files)) {
+                $files = [];
+            }
+            foreach ($files as $view_key => $paths) {
                 if (!is_string($view_key)) {
                     continue;
                 }
@@ -204,33 +276,11 @@ class MG_Mockup_Maintenance {
                 if ($view_key === '') {
                     continue;
                 }
-                $normalized_paths = [];
-                if (is_array($path)) {
-                    foreach ($path as $candidate) {
-                        if (!is_string($candidate)) {
-                            continue;
-                        }
-                        $candidate = trim($candidate);
-                        if ($candidate === '') {
-                            continue;
-                        }
-                        $normalized_paths[] = wp_normalize_path($candidate);
-                    }
-                } elseif (is_string($path)) {
-                    $path = trim($path);
-                    if ($path !== '') {
-                        $normalized_paths[] = wp_normalize_path($path);
-                    }
-                }
-                $normalized_paths = array_values(array_unique($normalized_paths));
-                if (empty($normalized_paths)) {
+                $list = self::normalize_override_path_list($paths);
+                if (empty($list)) {
                     continue;
                 }
-                if (count($normalized_paths) === 1) {
-                    $out[$color_slug][$view_key] = $normalized_paths[0];
-                } else {
-                    $out[$color_slug][$view_key] = $normalized_paths;
-                }
+                $out[$color_slug][$view_key] = $list;
             }
         }
         return $out;
@@ -890,9 +940,13 @@ class MG_Mockup_Maintenance {
             if (!isset($overrides[$color_slug][$view_key])) {
                 continue;
             }
-            $path = wp_normalize_path($overrides[$color_slug][$view_key]);
-            if ($path && file_exists($path)) {
-                $images[] = $path;
+            $paths = $overrides[$color_slug][$view_key];
+            $paths = is_array($paths) ? $paths : [$paths];
+            foreach ($paths as $path) {
+                $path = wp_normalize_path($path);
+                if ($path && file_exists($path)) {
+                    $images[] = $path;
+                }
             }
         }
         return $images;
@@ -1318,8 +1372,10 @@ class MG_Mockup_Maintenance {
                 $old_views = isset($old_overrides[$color_slug]) ? $old_overrides[$color_slug] : [];
                 $view_keys = array_unique(array_merge(array_keys($new_views), array_keys($old_views)));
                 foreach ($view_keys as $view_key) {
-                    $new_path = isset($new_views[$view_key]) ? $new_views[$view_key] : '';
-                    $old_path = isset($old_views[$view_key]) ? $old_views[$view_key] : '';
+                    $new_path = isset($new_views[$view_key]) ? $new_views[$view_key] : [];
+                    $old_path = isset($old_views[$view_key]) ? $old_views[$view_key] : [];
+                    $new_path = is_array($new_path) ? array_values($new_path) : (empty($new_path) ? [] : [wp_normalize_path($new_path)]);
+                    $old_path = is_array($old_path) ? array_values($old_path) : (empty($old_path) ? [] : [wp_normalize_path($old_path)]);
                     if ($new_path !== $old_path) {
                         $override_changes[$color_slug] = true;
                         break;
