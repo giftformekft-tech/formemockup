@@ -3,6 +3,7 @@ if (!defined('ABSPATH')) exit;
 class MG_Generator {
 
     private $product_cache = null;
+    private $override_random_cache = array();
 
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
@@ -22,7 +23,25 @@ class MG_Generator {
     private function resolve_template($product, $color_slug, $view_file) {
         if (!empty($product['mockup_overrides'][$color_slug][$view_file])) {
             $ov = $product['mockup_overrides'][$color_slug][$view_file];
-            if (file_exists($ov)) return $ov;
+            if (is_array($ov)) {
+                $candidates = array();
+                foreach ($ov as $candidate) {
+                    if (!is_string($candidate) || $candidate === '') { continue; }
+                    if (file_exists($candidate)) {
+                        $candidates[] = $candidate;
+                    }
+                }
+                if (!empty($candidates)) {
+                    $product_key = isset($product['key']) ? $product['key'] : '';
+                    $cache_key = $product_key . '|' . $color_slug . '|' . $view_file;
+                    if (!isset($this->override_random_cache[$cache_key])) {
+                        $this->override_random_cache[$cache_key] = $candidates[array_rand($candidates)];
+                    }
+                    return $this->override_random_cache[$cache_key];
+                }
+            } elseif (is_string($ov) && $ov !== '' && file_exists($ov)) {
+                return $ov;
+            }
         }
         $rel = trailingslashit($product['template_base']) . $color_slug . '/' . $view_file;
         $abs = ABSPATH . ltrim($rel, '/');
@@ -39,6 +58,7 @@ class MG_Generator {
     }
 
     public function generate_for_product($product_key, $design_path) {
+        $this->override_random_cache = array();
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
         }

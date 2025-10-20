@@ -196,7 +196,7 @@ class MG_Mockup_Maintenance {
             if ($color_slug === '' || !is_array($files)) {
                 continue;
             }
-            foreach ($files as $view_key => $path) {
+            foreach ($files as $view_key => $path_collection) {
                 if (!is_string($view_key)) {
                     continue;
                 }
@@ -204,11 +204,18 @@ class MG_Mockup_Maintenance {
                 if ($view_key === '') {
                     continue;
                 }
-                $path = is_string($path) ? trim($path) : '';
-                if ($path === '') {
-                    continue;
+                $paths = is_array($path_collection) ? $path_collection : array($path_collection);
+                $normalized = [];
+                foreach ($paths as $single) {
+                    $single = is_string($single) ? trim($single) : '';
+                    if ($single === '') {
+                        continue;
+                    }
+                    $normalized[] = wp_normalize_path($single);
                 }
-                $out[$color_slug][$view_key] = wp_normalize_path($path);
+                if (!empty($normalized)) {
+                    $out[$color_slug][$view_key] = $normalized;
+                }
             }
         }
         return $out;
@@ -868,9 +875,12 @@ class MG_Mockup_Maintenance {
             if (!isset($overrides[$color_slug][$view_key])) {
                 continue;
             }
-            $path = wp_normalize_path($overrides[$color_slug][$view_key]);
-            if ($path && file_exists($path)) {
-                $images[] = $path;
+            $paths = is_array($overrides[$color_slug][$view_key]) ? $overrides[$color_slug][$view_key] : array($overrides[$color_slug][$view_key]);
+            foreach ($paths as $path) {
+                $norm = is_string($path) ? wp_normalize_path($path) : '';
+                if ($norm && file_exists($norm)) {
+                    $images[] = $norm;
+                }
             }
         }
         return $images;
