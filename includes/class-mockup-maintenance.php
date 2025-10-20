@@ -191,46 +191,46 @@ class MG_Mockup_Maintenance {
         if ($path === '') {
             return '';
         }
-        if (file_exists($path)) {
-            return $path;
-        }
 
+        $candidates = [];
         $uploads = wp_upload_dir();
         $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
-        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+        $baseurl = !empty($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
 
-        if ($basedir !== '') {
-            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
-                if (strpos($path, $baseurl) === 0) {
-                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
-                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
-                    if (file_exists($candidate)) {
-                        return $candidate;
-                    }
-                    $path = $candidate;
-                }
+        $is_url = filter_var($path, FILTER_VALIDATE_URL);
+        if ($is_url) {
+            if ($baseurl && $basedir && strpos($path, $baseurl) === 0) {
+                $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                $candidates[] = wp_normalize_path(trailingslashit($basedir) . $relative);
             } else {
-                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
-                if (file_exists($candidate)) {
-                    return $candidate;
-                }
+                return '';
             }
-        }
-
-        if (strpos($path, '://') === false) {
-            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
-            if (file_exists($abs_candidate)) {
-                return $abs_candidate;
+        } else {
+            $candidates[] = $path;
+            if ($basedir !== '') {
+                $candidates[] = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
             }
-
+            $candidates[] = wp_normalize_path(ABSPATH . ltrim($path, '/'));
             $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
-            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
-            if (file_exists($plugin_candidate)) {
-                return $plugin_candidate;
+            $candidates[] = wp_normalize_path($plugin_root . ltrim($path, '/'));
+        }
+
+        $checked = [];
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) || $candidate === '') {
+                continue;
+            }
+            $candidate = wp_normalize_path($candidate);
+            if (in_array($candidate, $checked, true)) {
+                continue;
+            }
+            $checked[] = $candidate;
+            if (file_exists($candidate) && is_file($candidate) && is_readable($candidate)) {
+                return $candidate;
             }
         }
 
-        return $path;
+        return '';
     }
 
     private static function normalize_override_path_list($paths) {

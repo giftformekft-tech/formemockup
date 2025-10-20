@@ -51,46 +51,71 @@ class MG_Product_Settings_Page {
         if ($path === '') {
             return '';
         }
-        if (file_exists($path)) {
-            return $path;
-        }
 
+        $candidates = array();
         $uploads = wp_upload_dir();
         $basedir = !empty($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
-        $baseurl = !empty($uploads['baseurl']) ? $uploads['baseurl'] : '';
+        $baseurl = !empty($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
 
-        if ($basedir !== '') {
-            if ($baseurl && filter_var($path, FILTER_VALIDATE_URL)) {
-                if (strpos($path, $baseurl) === 0) {
-                    $relative = ltrim(substr($path, strlen($baseurl)), '/');
-                    $candidate = wp_normalize_path(trailingslashit($basedir) . $relative);
-                    if (file_exists($candidate)) {
-                        return $candidate;
-                    }
-                    $path = $candidate;
-                }
+        $is_url = filter_var($path, FILTER_VALIDATE_URL);
+        if ($is_url) {
+            if ($baseurl && $basedir && strpos($path, $baseurl) === 0) {
+                $relative = ltrim(substr($path, strlen($baseurl)), '/');
+                $candidates[] = wp_normalize_path(trailingslashit($basedir) . $relative);
             } else {
-                $candidate = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
-                if (file_exists($candidate)) {
-                    return $candidate;
-                }
+                return '';
             }
-        }
-
-        if (strpos($path, '://') === false) {
-            $abs_candidate = wp_normalize_path(ABSPATH . ltrim($path, '/'));
-            if (file_exists($abs_candidate)) {
-                return $abs_candidate;
+        } else {
+            $candidates[] = $path;
+            if ($basedir !== '') {
+                $candidates[] = wp_normalize_path(trailingslashit($basedir) . ltrim($path, '/'));
             }
-
+            $candidates[] = wp_normalize_path(ABSPATH . ltrim($path, '/'));
             $plugin_root = wp_normalize_path(trailingslashit(dirname(__DIR__)));
-            $plugin_candidate = wp_normalize_path($plugin_root . ltrim($path, '/'));
-            if (file_exists($plugin_candidate)) {
-                return $plugin_candidate;
+            $candidates[] = wp_normalize_path($plugin_root . ltrim($path, '/'));
+        }
+
+        $checked = array();
+        foreach ($candidates as $candidate) {
+            if (!is_string($candidate) || $candidate === '') {
+                continue;
+            }
+            $candidate = wp_normalize_path($candidate);
+            if (in_array($candidate, $checked, true)) {
+                continue;
+            }
+            $checked[] = $candidate;
+            if (file_exists($candidate) && is_file($candidate) && is_readable($candidate)) {
+                return $candidate;
             }
         }
 
-        return $path;
+        return '';
+    }
+
+    private static function count_mockup_paths($structure) {
+        $count = 0;
+        if (!is_array($structure)) {
+            return 0;
+        }
+        foreach ($structure as $color_entry) {
+            if (is_array($color_entry)) {
+                foreach ($color_entry as $paths) {
+                    if (is_array($paths)) {
+                        foreach ($paths as $path) {
+                            if (is_string($path) && trim($path) !== '') {
+                                $count++;
+                            }
+                        }
+                    } elseif (is_string($paths) && trim($paths) !== '') {
+                        $count++;
+                    }
+                }
+            } elseif (is_string($color_entry) && trim($color_entry) !== '') {
+                $count++;
+            }
+        }
+        return $count;
     }
 
     private static function sanitize_mockup_path_list($value) {
@@ -250,10 +275,18 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
     }
     $prod['size_surcharges'] = $ss;
 }
+            $removed_overrides = 0;
+            $raw_overrides = isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides']) ? $prod['mockup_overrides'] : array();
+            $before_initial_clean = self::count_mockup_paths($raw_overrides);
+            $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($raw_overrides);
+            $after_initial_clean = self::count_mockup_paths($prod['mockup_overrides']);
+            if ($after_initial_clean < $before_initial_clean) {
+                $removed_overrides += ($before_initial_clean - $after_initial_clean);
+            }
+
             if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) {
                 $prod['mockup_overrides'] = array();
             }
-            $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($prod['mockup_overrides']);
 
             $remove_requests = isset($_POST['mockup_remove']) && is_array($_POST['mockup_remove']) ? $_POST['mockup_remove'] : array();
             if (!empty($remove_requests)) {
@@ -289,6 +322,9 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
             }
 
             if (!empty($_FILES['mockup_files']['name'])) {
+                if (!function_exists('wp_handle_upload')) {
+                    require_once ABSPATH . 'wp-admin/includes/file.php';
+                }
                 foreach ($_FILES['mockup_files']['name'] as $color_slug => $files) {
                     $color_key = sanitize_text_field($color_slug);
                     if ($color_key !== $color_slug || $color_key === '') { continue; }
@@ -307,6 +343,9 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                             $type = is_array($type_source) ? ($type_source[$idx] ?? '') : $type_source;
                             $error = is_array($error_source) ? ($error_source[$idx] ?? 0) : $error_source;
                             $size = is_array($size_source) ? ($size_source[$idx] ?? 0) : $size_source;
+                            if ((int)$error !== UPLOAD_ERR_OK) {
+                                continue;
+                            }
                             $file = array(
                                 'name' => $name,
                                 'type' => $type,
@@ -328,10 +367,20 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 }
             }
 
+            $before_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
             $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($prod['mockup_overrides']);
+            $after_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
+            if ($after_final_clean < $before_final_clean) {
+                $removed_overrides += ($before_final_clean - $after_final_clean);
+            }
 
             self::save_product($prod);
             echo '<div class="notice notice-success is-dismissible"><p>Termék beállításai elmentve.</p></div>';
+            if ($removed_overrides > 0) {
+                echo '<div class="notice notice-warning is-dismissible"><p>';
+                printf(esc_html__('%d mockup háttér nem volt elérhető, ezért eltávolítottuk a listából. Ellenőrizd a mockup feltöltéseket.', 'mgdtp'), $removed_overrides);
+                echo '</p></div>';
+            }
         }
 
         $sizes = $prod['sizes'];
