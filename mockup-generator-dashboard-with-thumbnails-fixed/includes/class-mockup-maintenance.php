@@ -193,7 +193,7 @@ class MG_Mockup_Maintenance {
                 continue;
             }
             $color_slug = sanitize_title($color_slug);
-            if ($color_slug === '' || !is_array($files)) {
+            if ($color_slug === '') {
                 continue;
             }
             foreach ($files as $view_key => $paths) {

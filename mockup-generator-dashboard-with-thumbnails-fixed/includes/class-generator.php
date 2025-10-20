@@ -3,6 +3,7 @@ if (!defined('ABSPATH')) exit;
 class MG_Generator {
 
     private $product_cache = null;
+    private $override_random_cache = array();
 
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
@@ -68,6 +69,7 @@ class MG_Generator {
     }
 
     public function generate_for_product($product_key, $design_path) {
+        $this->override_random_cache = array();
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
         }
