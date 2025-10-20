@@ -204,11 +204,33 @@ class MG_Mockup_Maintenance {
                 if ($view_key === '') {
                     continue;
                 }
-                $path = is_string($path) ? trim($path) : '';
-                if ($path === '') {
+                $normalized_paths = [];
+                if (is_array($path)) {
+                    foreach ($path as $candidate) {
+                        if (!is_string($candidate)) {
+                            continue;
+                        }
+                        $candidate = trim($candidate);
+                        if ($candidate === '') {
+                            continue;
+                        }
+                        $normalized_paths[] = wp_normalize_path($candidate);
+                    }
+                } elseif (is_string($path)) {
+                    $path = trim($path);
+                    if ($path !== '') {
+                        $normalized_paths[] = wp_normalize_path($path);
+                    }
+                }
+                $normalized_paths = array_values(array_unique($normalized_paths));
+                if (empty($normalized_paths)) {
                     continue;
                 }
-                $out[$color_slug][$view_key] = wp_normalize_path($path);
+                if (count($normalized_paths) === 1) {
+                    $out[$color_slug][$view_key] = $normalized_paths[0];
+                } else {
+                    $out[$color_slug][$view_key] = $normalized_paths;
+                }
             }
         }
         return $out;
