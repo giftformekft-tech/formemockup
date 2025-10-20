@@ -176,6 +176,29 @@ class MG_Generator {
 
     // WebP output, preserve alpha, optional output resize from settings
     private function apply_imagick_webp_with_optional_resize($template_path, Imagick $design_base, $cfg, $outfile) {
+        $template_width = 0;
+        $template_height = 0;
+        $probing = null;
+        try {
+            $probing = new Imagick();
+            $probing->pingImage($template_path);
+            $template_width = (int)$probing->getImageWidth();
+            $template_height = (int)$probing->getImageHeight();
+        } catch (Throwable $e) {
+            if ($probing instanceof Imagick) {
+                $probing->clear();
+                $probing->destroy();
+            }
+            return new WP_Error('imagick_error', sprintf('A mockup háttér nem olvasható (%s): %s', basename($template_path), $e->getMessage()));
+        }
+
+        if ($probing instanceof Imagick) {
+            $probing->clear();
+            $probing->destroy();
+        }
+
+        $mockup = null;
+        $design = null;
         try {
             $mockup = new Imagick($template_path);
             $design = clone $design_base;
@@ -238,7 +261,31 @@ class MG_Generator {
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
-            return new WP_Error('imagick_error', $e->getMessage());
+            $message = $e->getMessage();
+            if ($template_width > 0 && $template_height > 0) {
+                $area = $template_width * $template_height;
+                if ($area > 120000000 || preg_match('/(limit|exceed|memory|cache)/i', $message)) {
+                    return new WP_Error(
+                        'mockup_template_too_large',
+                        sprintf(
+                            'A mockup háttér túl nagy (%dx%d px) vagy túl sok memóriát igényel. Csökkentsd a kép felbontását, majd próbáld újra. Eredeti hiba: %s',
+                            $template_width,
+                            $template_height,
+                            $message
+                        )
+                    );
+                }
+            }
+            return new WP_Error('imagick_error', $message);
+        } finally {
+            if ($design instanceof Imagick) {
+                $design->clear();
+                $design->destroy();
+            }
+            if ($mockup instanceof Imagick) {
+                $mockup->clear();
+                $mockup->destroy();
+            }
         }
     }
 }
