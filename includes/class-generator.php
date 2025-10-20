@@ -179,6 +179,7 @@ class MG_Generator {
         $template_width = 0;
         $template_height = 0;
         $probing = null;
+        $max_area = (int)apply_filters('mg_mockup_template_max_area', 120000000);
         try {
             $probing = new Imagick();
             $probing->pingImage($template_path);
@@ -192,9 +193,27 @@ class MG_Generator {
             return new WP_Error('imagick_error', sprintf('A mockup háttér nem olvasható (%s): %s', basename($template_path), $e->getMessage()));
         }
 
+        $area = $template_width > 0 && $template_height > 0 ? ($template_width * $template_height) : 0;
         if ($probing instanceof Imagick) {
             $probing->clear();
             $probing->destroy();
+        }
+
+        if ($max_area > 0 && $area > $max_area) {
+            $megapixels = $area / 1000000;
+            $size_hint = '';
+            $filesize = @filesize($template_path);
+            if ($filesize > 0) {
+                $size_hint = sprintf(' (~%.2f MB)', $filesize / 1048576);
+            }
+            $message = sprintf(
+                'A mockup háttér túl nagy (%dx%d px ≈ %.1f MP%s). Csökkentsd a felbontást, vagy állíts be kisebb hátteret, majd próbáld újra.',
+                $template_width,
+                $template_height,
+                $megapixels,
+                $size_hint
+            );
+            return new WP_Error('mockup_template_too_large', $message);
         }
 
         $mockup = null;
@@ -264,11 +283,11 @@ class MG_Generator {
             $message = $e->getMessage();
             if ($template_width > 0 && $template_height > 0) {
                 $area = $template_width * $template_height;
-                if ($area > 120000000 || preg_match('/(limit|exceed|memory|cache)/i', $message)) {
+                if (($max_area > 0 && $area > $max_area) || preg_match('/(limit|exceed|memory|cache)/i', $message)) {
                     return new WP_Error(
                         'mockup_template_too_large',
                         sprintf(
-                            'A mockup háttér túl nagy (%dx%d px) vagy túl sok memóriát igényel. Csökkentsd a kép felbontását, majd próbáld újra. Eredeti hiba: %s',
+                            'A mockup háttér túl nagy (%dx%d px). Csökkentsd a kép felbontását, majd próbáld újra. Eredeti hiba: %s',
                             $template_width,
                             $template_height,
                             $message
