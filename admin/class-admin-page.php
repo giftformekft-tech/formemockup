@@ -233,7 +233,7 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
         }, $products);
 
         $worker_count = 1;
-        $worker_options = array(1, 2, 4);
+        $worker_options = array(1, 2, 4, 6, 8);
         if (class_exists('MG_Bulk_Queue')) {
             $worker_count = MG_Bulk_Queue::get_configured_worker_count();
             $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();

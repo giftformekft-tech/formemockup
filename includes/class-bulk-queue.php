@@ -8,7 +8,7 @@ class MG_Bulk_Queue {
     const ORDER_OPTION = 'mg_bulk_queue_order';
     const WORKER_TOKEN_OPTION = 'mg_bulk_worker_token';
     const WORKER_COUNT_OPTION = 'mg_bulk_worker_count';
-    const WORKER_COUNT_CHOICES = array(1, 2, 4);
+    const WORKER_COUNT_CHOICES = array(1, 2, 4, 6, 8);
     const DEFAULT_WORKER_COUNT = 1;
     const ACTIVE_WORKERS_OPTION = 'mg_bulk_active_workers';
     const ACTIVE_WORKER_TTL = 300;
