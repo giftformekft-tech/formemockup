@@ -1,8 +1,8 @@
 <?php
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
-Description: WebP kimenet (alfa megőrzés), 3× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.12
+Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
+Version: 1.2.13
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -70,8 +70,8 @@ add_action('load-toplevel_page_mockup-generator', function(){
 
     add_action('admin_enqueue_scripts', function($hook){
         if (strpos($hook, 'mockup-generator') !== false) {
-            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.12');
-            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.12', true);
+            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.13');
+            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.13', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')
