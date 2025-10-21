@@ -7,7 +7,7 @@ class MG_Mockup_Maintenance {
     const OPTION_STATUS_INDEX = 'mg_mockup_status_index';
     const OPTION_QUEUE = 'mg_mockup_regen_queue';
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
-    const DEFAULT_BATCH = 100;
+    const DEFAULT_BATCH = 3;
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
