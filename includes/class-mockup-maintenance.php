@@ -755,35 +755,121 @@ class MG_Mockup_Maintenance {
     }
 
     public static function queue_for_regeneration($product_id, $type_slug, $color_slug, $reason = '', $context = []) {
-        $product_id = absint($product_id);
-        if ($product_id <= 0) {
+        self::queue_multiple_for_regeneration([
+            [
+                'product_id' => $product_id,
+                'type_slug' => $type_slug,
+                'color_slug' => $color_slug,
+                'reason' => $reason,
+                'context' => $context,
+            ],
+        ]);
+    }
+
+    public static function queue_multiple_for_regeneration($items) {
+        $normalized = [];
+        if (is_array($items)) {
+            foreach ($items as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                $product_id = absint($item['product_id'] ?? 0);
+                $type_slug = sanitize_title($item['type_slug'] ?? '');
+                $color_slug = sanitize_title($item['color_slug'] ?? '');
+                if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+                    continue;
+                }
+                $key = self::compose_key($product_id, $type_slug, $color_slug);
+                $normalized[$key] = [
+                    'product_id' => $product_id,
+                    'type_slug' => $type_slug,
+                    'color_slug' => $color_slug,
+                    'reason' => isset($item['reason']) ? $item['reason'] : '',
+                    'context' => isset($item['context']) && is_array($item['context']) ? $item['context'] : [],
+                ];
+            }
+        }
+        if (empty($normalized)) {
             return;
         }
-        $key = self::compose_key($product_id, $type_slug, $color_slug);
         $index = self::get_index();
-        $timestamp = self::current_timestamp();
-        $is_new_entry = !isset($index[$key]);
-        if ($is_new_entry) {
-            $index[$key] = [
-                'product_id'   => $product_id,
-                'type_slug'    => sanitize_title($type_slug),
-                'color_slug'   => sanitize_title($color_slug),
-                'status'       => 'pending',
-                'updated_at'   => $timestamp,
-                'last_generated' => 0,
-                'last_message' => '',
-                'pending_reason' => sanitize_text_field($reason),
-                'source'       => [],
-            ];
-        } else {
-            $index[$key]['status'] = 'pending';
-            $index[$key]['updated_at'] = $timestamp;
-            $index[$key]['pending_reason'] = sanitize_text_field($reason);
+        $queue = self::get_queue();
+        $index_changed = false;
+        $queue_changed = false;
+        $new_entries = [];
+        foreach ($normalized as $payload) {
+            $result = self::queue_regeneration_entry(
+                $index,
+                $queue,
+                $payload['product_id'],
+                $payload['type_slug'],
+                $payload['color_slug'],
+                $payload['reason'],
+                $payload['context'],
+                $new_entries
+            );
+            if ($result['index_changed']) {
+                $index_changed = true;
+            }
+            if ($result['queue_changed']) {
+                $queue_changed = true;
+            }
         }
-        $source = isset($index[$key]['source']) && is_array($index[$key]['source']) ? $index[$key]['source'] : [];
+        if ($index_changed) {
+            self::set_index($index);
+        }
+        if ($queue_changed) {
+            self::set_queue($queue);
+        }
+        if ($index_changed || $queue_changed) {
+            self::maybe_schedule_processor();
+        }
+        if (!empty($new_entries)) {
+            foreach ($new_entries as $entry) {
+                self::ensure_product_has_color_variant($entry);
+            }
+        }
+    }
+
+    private static function queue_regeneration_entry(&$index, &$queue, $product_id, $type_slug, $color_slug, $reason, $context, &$new_entries) {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            return [
+                'index_changed' => false,
+                'queue_changed' => false,
+            ];
+        }
+        $key = self::compose_key($product_id, $type_slug, $color_slug);
+        $timestamp = self::current_timestamp();
+        $existing_entry = isset($index[$key]) && is_array($index[$key]) ? $index[$key] : null;
+        $entry = $existing_entry ? $existing_entry : [];
+        $is_new_entry = !$existing_entry;
+
+        $entry['product_id'] = $product_id;
+        $entry['type_slug'] = $type_slug;
+        $entry['color_slug'] = $color_slug;
+        $entry['status'] = 'pending';
+        $entry['updated_at'] = $timestamp;
+        $entry['pending_reason'] = sanitize_text_field($reason);
+        if ($is_new_entry) {
+            $entry['last_generated'] = 0;
+            $entry['last_message'] = '';
+        } else {
+            if (!isset($entry['last_generated'])) {
+                $entry['last_generated'] = 0;
+            }
+            if (!isset($entry['last_message'])) {
+                $entry['last_message'] = '';
+            }
+        }
+
+        $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
         if (empty($source)) {
             $source = self::inherit_source($index, $product_id, $type_slug);
         }
+        $context = is_array($context) ? $context : [];
         if (!empty($context)) {
             if (isset($context['design_path'])) {
                 $context['design_path'] = wp_normalize_path($context['design_path']);
@@ -798,17 +884,37 @@ class MG_Mockup_Maintenance {
             $source = self::prime_source_for_new_entry($source, $type_slug, $color_slug);
         }
         $source = self::merge_design_reference_into_source($source, $product_id);
-        $index[$key]['source'] = $source;
-        $queue = self::get_queue();
+        $entry['source'] = $source;
+
+        $index_changed = $is_new_entry || !self::entries_are_equal($existing_entry, $entry);
+        if ($index_changed) {
+            $index[$key] = $entry;
+        }
+
+        $queue_changed = false;
         if (!in_array($key, $queue, true)) {
             $queue[] = $key;
+            $queue_changed = true;
         }
-        self::set_index($index);
-        self::set_queue($queue);
-        self::maybe_schedule_processor();
-        if ($is_new_entry && isset($index[$key])) {
-            self::ensure_product_has_color_variant($index[$key]);
+
+        if ($is_new_entry && $index_changed) {
+            $new_entries[] = $entry;
         }
+
+        return [
+            'index_changed' => $index_changed,
+            'queue_changed' => $queue_changed,
+        ];
+    }
+
+    private static function entries_are_equal($a, $b) {
+        if (!is_array($a) && !is_array($b)) {
+            return true;
+        }
+        if (!is_array($a) || !is_array($b)) {
+            return false;
+        }
+        return md5(wp_json_encode($a)) === md5(wp_json_encode($b));
     }
 
     private static function inherit_source($index, $product_id, $type_slug) {
@@ -1346,6 +1452,30 @@ class MG_Mockup_Maintenance {
             $old_map[sanitize_title($type['key'])] = $type;
         }
         $index_snapshot = self::get_index();
+        $index_lookup = [];
+        foreach ($index_snapshot as $entry) {
+            $type_key = sanitize_title($entry['type_slug'] ?? '');
+            $color_key = sanitize_title($entry['color_slug'] ?? '');
+            $product_id = absint($entry['product_id'] ?? 0);
+            if ($type_key === '' || $product_id <= 0) {
+                continue;
+            }
+            if (!isset($index_lookup[$type_key])) {
+                $index_lookup[$type_key] = [
+                    '__all_products' => [],
+                ];
+            }
+            $index_lookup[$type_key]['__all_products'][$product_id] = true;
+            if ($color_key === '') {
+                continue;
+            }
+            if (!isset($index_lookup[$type_key][$color_key])) {
+                $index_lookup[$type_key][$color_key] = [];
+            }
+            $index_lookup[$type_key][$color_key][] = $entry;
+        }
+
+        $regen_requests = [];
         foreach ($new_value as $type) {
             if (!is_array($type) || empty($type['key'])) {
                 continue;
@@ -1358,10 +1488,18 @@ class MG_Mockup_Maintenance {
             $old_overrides = self::normalize_overrides_from_type($old_type);
             $old_hash = md5(wp_json_encode($old_type['views'] ?? []));
             $new_hash = md5(wp_json_encode($type['views'] ?? []));
-            if ($old_type && $old_hash !== $new_hash) {
-                foreach ($index_snapshot as $entry) {
-                    if (($entry['type_slug'] ?? '') === $slug) {
-                        self::queue_for_regeneration($entry['product_id'], $slug, $entry['color_slug'], __('A nézetek módosultak.', 'mgdtp'));
+            if ($old_type && $old_hash !== $new_hash && isset($index_lookup[$slug])) {
+                foreach ($index_lookup[$slug] as $color_slug => $entries) {
+                    if ($color_slug === '__all_products' || empty($entries)) {
+                        continue;
+                    }
+                    foreach ($entries as $entry) {
+                        $regen_requests[] = [
+                            'product_id' => $entry['product_id'],
+                            'type_slug'  => $slug,
+                            'color_slug' => $entry['color_slug'],
+                            'reason'     => __('A nézetek módosultak.', 'mgdtp'),
+                        ];
                     }
                 }
             }
@@ -1382,35 +1520,49 @@ class MG_Mockup_Maintenance {
                     }
                 }
             }
-            if (!empty($override_changes)) {
-                $changed_colors = array_keys($override_changes);
-                foreach ($index_snapshot as $entry) {
-                    if (($entry['type_slug'] ?? '') !== $slug) {
+            if (!empty($override_changes) && isset($index_lookup[$slug])) {
+                $changed_colors = array_map('sanitize_title', array_keys($override_changes));
+                foreach ($changed_colors as $color_slug) {
+                    if ($color_slug === '' || empty($index_lookup[$slug][$color_slug])) {
                         continue;
                     }
-                    if (!in_array($entry['color_slug'] ?? '', $changed_colors, true)) {
-                        continue;
+                    foreach ($index_lookup[$slug][$color_slug] as $entry) {
+                        $regen_requests[] = [
+                            'product_id' => $entry['product_id'],
+                            'type_slug'  => $slug,
+                            'color_slug' => $entry['color_slug'],
+                            'reason'     => __('Az alap mockup lecserélésre került.', 'mgdtp'),
+                        ];
                     }
-                    self::queue_for_regeneration($entry['product_id'], $slug, $entry['color_slug'], __('Az alap mockup lecserélésre került.', 'mgdtp'));
                 }
             }
             foreach ($colors as $color_slug => $color) {
                 $old_color_hash = isset($old_colors[$color_slug]) ? md5(wp_json_encode($old_colors[$color_slug])) : '';
                 $new_color_hash = md5(wp_json_encode($color));
-                if ($old_color_hash && $old_color_hash !== $new_color_hash) {
-                    foreach ($index_snapshot as $entry) {
-                        if (($entry['type_slug'] ?? '') === $slug && ($entry['color_slug'] ?? '') === $color_slug) {
-                            self::queue_for_regeneration($entry['product_id'], $slug, $color_slug, __('A mockup sablonja megváltozott.', 'mgdtp'));
-                        }
+                $color_key = sanitize_title($color_slug);
+                if ($old_color_hash && $old_color_hash !== $new_color_hash && isset($index_lookup[$slug][$color_key])) {
+                    foreach ($index_lookup[$slug][$color_key] as $entry) {
+                        $regen_requests[] = [
+                            'product_id' => $entry['product_id'],
+                            'type_slug'  => $slug,
+                            'color_slug' => $color_key,
+                            'reason'     => __('A mockup sablonja megváltozott.', 'mgdtp'),
+                        ];
                     }
-                } elseif (!$old_color_hash) {
-                    foreach ($index_snapshot as $entry) {
-                        if (($entry['type_slug'] ?? '') === $slug) {
-                            self::queue_for_regeneration($entry['product_id'], $slug, $color_slug, __('Új szín került hozzáadásra.', 'mgdtp'));
-                        }
+                } elseif (!$old_color_hash && isset($index_lookup[$slug]['__all_products'])) {
+                    foreach (array_keys($index_lookup[$slug]['__all_products']) as $product_id) {
+                        $regen_requests[] = [
+                            'product_id' => $product_id,
+                            'type_slug'  => $slug,
+                            'color_slug' => $color_key,
+                            'reason'     => __('Új szín került hozzáadásra.', 'mgdtp'),
+                        ];
                     }
                 }
             }
+        }
+        if (!empty($regen_requests)) {
+            self::queue_multiple_for_regeneration($regen_requests);
         }
         return $new_value;
     }
