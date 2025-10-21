@@ -36,6 +36,17 @@ select.mg-subs { min-width: 240px; min-height: 88px; }
 .mg-bar { height:10px; background:#2271b1; width:0%; }
 .mg-ok { color:#22863a; }
 .mg-bad { color:#b22222; }
+.mg-worker-control { margin-top:20px; padding:14px; border:1px solid #dcdcde; border-radius:4px; background:#f6f7f7; }
+.mg-worker-label { display:block; margin-bottom:6px; font-size:14px; color:#1d2327; }
+.mg-worker-toggle-group { display:flex; gap:8px; flex-wrap:wrap; }
+.mg-worker-toggle { cursor:pointer; }
+.mg-worker-toggle.is-active { background:#2271b1; color:#fff; border-color:#135e96; box-shadow:none; }
+.mg-worker-toggle.is-active:hover { background:#135e96; color:#fff; }
+.mg-worker-summary { margin:8px 0 0; font-weight:600; }
+.mg-worker-active-count { font-weight:700; }
+.mg-worker-feedback { margin-top:6px; font-size:12px; color:#50575e; min-height:16px; }
+.mg-worker-feedback.is-error { color:#b32d2e; }
+.mg-worker-feedback.is-success { color:#1d7e34; }
 @media (max-width: 1280px) {
   .mg-bulk-table th:nth-child(2), .mg-bulk-table td:nth-child(2) { width: 6.25rem; }
   .mg-bulk-table th:nth-child(6), .mg-bulk-table td:nth-child(6) { width: 16rem; }
@@ -83,4 +94,9 @@ select.mg-subs { min-width: 240px; min-height: 88px; }
   #mg-drop-zone.mg-drop-zone{ background:#1f1f1f; border-color:#3a3a3a; }
   #mg-drop-zone .mg-drop-inner{ color:#e6e6e6; }
   #mg-drop-zone.is-dragover{ background:#23282d; border-color:#72aee6; }
+  .mg-worker-control { background:#1f1f1f; border-color:#3a3a3a; }
+  .mg-worker-label { color:#e6e6e6; }
+  .mg-worker-feedback { color:#c3c4c7; }
+  .mg-worker-feedback.is-success { color:#8ddb8c; }
+  .mg-worker-feedback.is-error { color:#f28c86; }
 }
