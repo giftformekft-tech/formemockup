@@ -18,6 +18,7 @@ add_action('plugins_loaded', function(){
     }
     // SAFE includes
     $files = [
+        'includes/class-bulk-queue.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
