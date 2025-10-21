@@ -232,6 +232,13 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
             );
         }, $products);
 
+        $worker_count = 1;
+        $worker_options = array(1, 2, 4);
+        if (class_exists('MG_Bulk_Queue')) {
+            $worker_count = MG_Bulk_Queue::get_configured_worker_count();
+            $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();
+        }
+
         wp_enqueue_script('mg-bulk-advanced', plugin_dir_url(__FILE__).'../assets/js/bulk-upload-advanced.js', array('jquery'), filemtime(plugin_dir_path(__FILE__).'../assets/js/bulk-upload-advanced.js'), true);
         wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
             'ajax_url' => admin_url('admin-ajax.php'),
@@ -242,6 +249,11 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
             'default_type' => $default_type,
             'default_color' => $default_color,
             'default_size' => $default_size,
+            'worker_count' => $worker_count,
+            'worker_options' => $worker_options,
+            'worker_feedback_saving' => 'Mentés…',
+            'worker_feedback_saved' => 'Beállítva: %d worker.',
+            'worker_feedback_error' => 'Nem sikerült menteni. Próbáld újra.',
         ));
 
         $default_colors_render = array();
@@ -312,15 +324,28 @@ if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
                     <option value="">— Ehhez a típushoz nincs méret —</option>
                   <?php endif; ?>
                 </select>
-              </div>
-              <p class="description" style="margin-top:8px;">Az itt megadott kombináció lesz előre kiválasztva a bulk feltöltés elindításakor.</p>
-              <?php endif; ?>
             </div>
+            <p class="description" style="margin-top:8px;">Az itt megadott kombináció lesz előre kiválasztva a bulk feltöltés elindításakor.</p>
+            <?php endif; ?>
+          </div>
 
-            <h3>Tételek</h3>
-            <p>
-              <button type="button" class="button" id="mg-bulk-apply-first">Első sor beállításainak másolása a többire</button>
-            </p>
+          <div class="mg-worker-control" id="mg-worker-control">
+            <span class="mg-worker-label"><strong>Párhuzamos feldolgozás</strong></span>
+            <div class="mg-worker-toggle-group" role="group" aria-label="Párhuzamos worker szám kiválasztása">
+              <?php foreach ($worker_options as $option): ?>
+                <?php $is_active = (intval($worker_count) === intval($option)); ?>
+                <button type="button" class="button mg-worker-toggle<?php if ($is_active) { echo ' is-active'; } ?>" data-workers="<?php echo esc_attr($option); ?>" aria-pressed="<?php echo $is_active ? 'true' : 'false'; ?>"><?php echo esc_html($option); ?> worker</button>
+              <?php endforeach; ?>
+            </div>
+            <p class="mg-worker-summary">Aktív: <span class="mg-worker-active-count"><?php echo esc_html($worker_count); ?></span> worker</p>
+            <p class="description">A több worker egyszerre több mockupot készít el, de jelentősen növelheti a szerver terhelését (CPU, memória).</p>
+            <p class="mg-worker-feedback" aria-live="polite"></p>
+          </div>
+
+          <h3>Tételek</h3>
+          <p>
+            <button type="button" class="button" id="mg-bulk-apply-first">Első sor beállításainak másolása a többire</button>
+          </p>
             <div class="mg-table-wrap">
               <table class="widefat fixed striped mg-bulk-table">
                 <thead>
