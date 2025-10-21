@@ -209,3 +209,28 @@ add_action('wp_ajax_mg_set_product_tags', function(){
         wp_send_json_error(array('message'=>$e->getMessage()), 500);
     }
 });
+
+add_action('wp_ajax_mg_bulk_set_worker_count', function(){
+    try {
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(array('message' => 'Jogosultság hiányzik.'), 403);
+        }
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_bulk_nonce')) {
+            wp_send_json_error(array('message' => 'Érvénytelen kérés (nonce).'), 401);
+        }
+        if (!class_exists('MG_Bulk_Queue')) {
+            $queue_file = plugin_dir_path(__FILE__) . '../includes/class-bulk-queue.php';
+            if (file_exists($queue_file)) {
+                require_once $queue_file;
+            }
+        }
+        if (!class_exists('MG_Bulk_Queue')) {
+            wp_send_json_error(array('message' => 'A queue osztály nem érhető el.'), 500);
+        }
+        $count = isset($_POST['count']) ? intval($_POST['count']) : 0;
+        $updated = MG_Bulk_Queue::update_worker_count($count);
+        wp_send_json_success(array('count' => $updated));
+    } catch (Throwable $e) {
+        wp_send_json_error(array('message' => $e->getMessage()), 500);
+    }
+});
