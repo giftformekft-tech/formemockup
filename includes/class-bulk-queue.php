@@ -7,11 +7,55 @@ class MG_Bulk_Queue {
     const JOB_OPTION_PREFIX = 'mg_bulk_job_';
     const ORDER_OPTION = 'mg_bulk_queue_order';
     const WORKER_TOKEN_OPTION = 'mg_bulk_worker_token';
+    const WORKER_COUNT_OPTION = 'mg_bulk_worker_count';
+    const WORKER_COUNT_CHOICES = array(1, 2, 4, 6, 8);
+    const DEFAULT_WORKER_COUNT = 1;
+    const ACTIVE_WORKERS_OPTION = 'mg_bulk_active_workers';
+    const ACTIVE_WORKER_TTL = 300;
+    const ACTIVE_WORKER_HEARTBEAT = 30;
     const DISPATCH_LOCK = 'mg_bulk_dispatch_lock';
-    const WORKER_COUNT = 4;
     const LOCK_TTL = 180; // seconds
     const STALE_TTL = 300; // seconds
     const MAX_JOBS_PER_WORKER = 10;
+
+    public static function get_allowed_worker_counts() {
+        $choices = apply_filters('mg_bulk_worker_counts', self::WORKER_COUNT_CHOICES);
+        $choices = array_map('intval', (array) $choices);
+        $choices = array_values(array_filter(array_unique($choices), function($value) {
+            return $value > 0;
+        }));
+        if (empty($choices)) {
+            $choices = array(self::DEFAULT_WORKER_COUNT);
+        }
+        sort($choices);
+        return $choices;
+    }
+
+    private static function normalize_worker_count($count) {
+        $count = intval($count);
+        $allowed = self::get_allowed_worker_counts();
+        if (in_array($count, $allowed, true)) {
+            return $count;
+        }
+        if (in_array(self::DEFAULT_WORKER_COUNT, $allowed, true)) {
+            return self::DEFAULT_WORKER_COUNT;
+        }
+        return reset($allowed);
+    }
+
+    public static function get_configured_worker_count() {
+        $saved = get_option(self::WORKER_COUNT_OPTION, null);
+        if ($saved === null || $saved === false) {
+            return self::normalize_worker_count(self::DEFAULT_WORKER_COUNT);
+        }
+        return self::normalize_worker_count($saved);
+    }
+
+    public static function update_worker_count($count) {
+        $normalized = self::normalize_worker_count($count);
+        update_option(self::WORKER_COUNT_OPTION, $normalized, false);
+        return $normalized;
+    }
 
     public static function enqueue(array $payload) {
         $job_id = 'mgjob_' . wp_generate_uuid4();
@@ -90,7 +134,15 @@ class MG_Bulk_Queue {
     }
 
     public static function dispatch_workers($count = null, $force = false) {
-        $count = ($count === null) ? self::WORKER_COUNT : max(1, intval($count));
+        if ($count === null) {
+            $count = self::get_configured_worker_count();
+        } else {
+            $count = max(1, intval($count));
+            $allowed = self::get_allowed_worker_counts();
+            if (!in_array($count, $allowed, true)) {
+                $count = self::get_configured_worker_count();
+            }
+        }
         if ($count < 1) { $count = 1; }
         if (!$force && false !== get_transient(self::DISPATCH_LOCK)) {
             return;
@@ -99,6 +151,20 @@ class MG_Bulk_Queue {
             delete_transient(self::DISPATCH_LOCK);
         }
         self::maybe_recover_stalled_jobs();
+        $active_workers = self::prune_stale_workers();
+        $active_count = count($active_workers);
+        $pending_jobs = self::count_pending_jobs();
+        if ($pending_jobs <= 0) {
+            return;
+        }
+        $available_slots = $count - $active_count;
+        if ($available_slots < 1) {
+            return;
+        }
+        $needed = min($pending_jobs, $available_slots);
+        if ($needed < 1) {
+            return;
+        }
         set_transient(self::DISPATCH_LOCK, 1, 5);
         $token = self::get_worker_token();
         $url = admin_url('admin-ajax.php');
@@ -111,7 +177,7 @@ class MG_Bulk_Queue {
             ),
             'sslverify' => apply_filters('https_local_ssl_verify', false),
         );
-        for ($i = 0; $i < $count; $i++) {
+        for ($i = 0; $i < $needed; $i++) {
             wp_remote_post($url, $args);
         }
     }
@@ -123,14 +189,24 @@ class MG_Bulk_Queue {
             wp_die();
         }
         $worker_id = uniqid('worker_', true);
+        self::mark_worker_active($worker_id, true);
         $processed = 0;
-        while ($processed < self::MAX_JOBS_PER_WORKER) {
-            $job = self::claim_next_job($worker_id);
-            if (!$job) {
-                break;
+        try {
+            while ($processed < self::MAX_JOBS_PER_WORKER) {
+                self::mark_worker_active($worker_id);
+                $job = self::claim_next_job($worker_id);
+                if (!$job) {
+                    break;
+                }
+                self::mark_worker_active($worker_id, true);
+                self::execute_job($job, $worker_id);
+                $processed++;
             }
-            self::execute_job($job, $worker_id);
-            $processed++;
+        } finally {
+            self::unregister_worker($worker_id);
+        }
+        if (self::has_pending_jobs()) {
+            self::dispatch_workers(null, true);
         }
         wp_die();
     }
@@ -166,6 +242,7 @@ class MG_Bulk_Queue {
 
     private static function execute_job(array $job, $worker_id) {
         $job_id = $job['id'];
+        self::mark_worker_active($worker_id, true);
         try {
             $payload = isset($job['payload']) && is_array($job['payload']) ? $job['payload'] : array();
             $design_path = isset($payload['design_path']) ? $payload['design_path'] : '';
@@ -282,6 +359,9 @@ class MG_Bulk_Queue {
             self::release_lock($job_id);
             return;
         }
+        if (!empty($job['worker'])) {
+            self::mark_worker_active($job['worker'], true);
+        }
         $job['status'] = 'completed';
         $job['message'] = __('Kész', 'mgdtp');
         $job['finished_at'] = time();
@@ -289,7 +369,7 @@ class MG_Bulk_Queue {
         update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
         self::release_lock($job_id);
         if (self::has_pending_jobs()) {
-            self::dispatch_workers(1, true);
+            self::dispatch_workers(null, true);
         }
     }
 
@@ -299,13 +379,16 @@ class MG_Bulk_Queue {
             self::release_lock($job_id);
             return;
         }
+        if (!empty($job['worker'])) {
+            self::mark_worker_active($job['worker'], true);
+        }
         $job['status'] = 'failed';
         $job['message'] = $message;
         $job['finished_at'] = time();
         update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
         self::release_lock($job_id);
         if (self::has_pending_jobs()) {
-            self::dispatch_workers(1, true);
+            self::dispatch_workers(null, true);
         }
     }
 
@@ -313,23 +396,29 @@ class MG_Bulk_Queue {
         delete_transient(self::lock_key($job_id));
     }
 
-    private static function has_pending_jobs() {
-        self::maybe_recover_stalled_jobs();
-
+    private static function count_pending_jobs() {
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order)) {
-            return false;
+            return 0;
         }
+        $pending = 0;
         foreach ($order as $job_id) {
             $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
             if (is_array($job) && isset($job['status']) && $job['status'] === 'pending') {
-                return true;
+                $pending++;
             }
         }
-        return false;
+        return $pending;
+    }
+
+    private static function has_pending_jobs() {
+        self::maybe_recover_stalled_jobs();
+        return self::count_pending_jobs() > 0;
     }
 
     private static function maybe_recover_stalled_jobs() {
+        self::prune_stale_workers();
+
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order) || empty($order)) {
             return;
@@ -350,12 +439,73 @@ class MG_Bulk_Queue {
             }
 
             self::release_lock($job_id);
+            if (!empty($job['worker'])) {
+                self::unregister_worker($job['worker']);
+            }
 
             $job['status'] = 'pending';
             $job['message'] = __('Újrapróbáljuk…', 'mgdtp');
             $job['started_at'] = null;
             $job['worker'] = '';
             update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
+        }
+    }
+
+    private static function load_active_workers() {
+        $workers = get_option(self::ACTIVE_WORKERS_OPTION, array());
+        if (!is_array($workers)) {
+            return array();
+        }
+        return $workers;
+    }
+
+    private static function save_active_workers(array $workers) {
+        update_option(self::ACTIVE_WORKERS_OPTION, $workers, false);
+    }
+
+    private static function prune_stale_workers() {
+        $workers = self::load_active_workers();
+        if (empty($workers)) {
+            return $workers;
+        }
+        $now = time();
+        $changed = false;
+        foreach ($workers as $worker_id => $timestamp) {
+            $timestamp = intval($timestamp);
+            if ($timestamp <= 0 || ($now - $timestamp) > self::ACTIVE_WORKER_TTL) {
+                unset($workers[$worker_id]);
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            self::save_active_workers($workers);
+        }
+        return $workers;
+    }
+
+    private static function mark_worker_active($worker_id, $force = false) {
+        $worker_id = is_string($worker_id) ? $worker_id : strval($worker_id);
+        if ($worker_id === '') {
+            return;
+        }
+        $workers = self::load_active_workers();
+        $now = time();
+        $current = isset($workers[$worker_id]) ? intval($workers[$worker_id]) : 0;
+        if ($force || $current === 0 || ($now - $current) >= self::ACTIVE_WORKER_HEARTBEAT) {
+            $workers[$worker_id] = $now;
+            self::save_active_workers($workers);
+        }
+    }
+
+    private static function unregister_worker($worker_id) {
+        $worker_id = is_string($worker_id) ? $worker_id : strval($worker_id);
+        if ($worker_id === '') {
+            return;
+        }
+        $workers = self::load_active_workers();
+        if (isset($workers[$worker_id])) {
+            unset($workers[$worker_id]);
+            self::save_active_workers($workers);
         }
     }
 
