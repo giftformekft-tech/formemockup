@@ -462,9 +462,9 @@ class MG_Generator {
                 $mockup->setOption('webp:method', '3');
                 $mockup->setOption('webp:thread-level', '1');
                 $mockup->setOption('webp:auto-filter', '0');
-                $mockup->setOption('webp:alpha-quality', '90');
+                $mockup->setOption('webp:alpha-quality', '92');
             }
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(76);
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
