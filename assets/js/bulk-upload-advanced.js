@@ -195,6 +195,55 @@
     }
   }
 
+  function sanitizeWorkerOptions(list){
+    var out = [];
+    if (Array.isArray(list)) {
+      list.forEach(function(item){
+        var parsed = parseInt(item, 10);
+        if (!isNaN(parsed) && out.indexOf(parsed) === -1) {
+          out.push(parsed);
+        }
+      });
+    }
+    if (!out.length) { out.push(1); }
+    out.sort(function(a, b){ return a - b; });
+    return out;
+  }
+
+  function updateWorkerToggleUI(activeCount){
+    var count = parseInt(activeCount, 10);
+    if (isNaN(count)) { count = 1; }
+    $('.mg-worker-toggle').each(function(){
+      var val = parseInt($(this).attr('data-workers'), 10);
+      var isActive = (!isNaN(val) && val === count);
+      $(this).toggleClass('is-active', isActive);
+      $(this).attr('aria-pressed', isActive ? 'true' : 'false');
+    });
+    $('.mg-worker-active-count').text(count);
+  }
+
+  function showWorkerFeedback(message, state){
+    var $target = $('.mg-worker-feedback');
+    if (!$target.length) { return; }
+    $target.removeClass('is-error is-success');
+    if (state === 'error') { $target.addClass('is-error'); }
+    else if (state === 'success') { $target.addClass('is-success'); }
+    $target.text(message || '');
+  }
+
+  function initWorkerToggle(){
+    if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
+    var opts = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
+    window.MG_BULK_ADV.worker_options = opts;
+    var current = parseInt(window.MG_BULK_ADV.worker_count, 10);
+    if (isNaN(current) || opts.indexOf(current) === -1) {
+      current = opts[0];
+    }
+    window.MG_BULK_ADV.worker_count = current;
+    updateWorkerToggleUI(current);
+    showWorkerFeedback('', null);
+  }
+
   function mgEnsureHeader(){
     var $thead = $('.mg-bulk-table thead tr');
     if ($thead.length) {
@@ -371,6 +420,7 @@
 
   $(setupCopyButtons);
   $(initDefaultSelectors);
+  $(initWorkerToggle);
 
   $(document).on('click', '#mg-bulk-copy-main', function(e){
     e.preventDefault();
@@ -390,6 +440,49 @@
   $(document).on('click', '#mg-bulk-copy-custom', function(e){
     e.preventDefault();
     copyCustomFlagFromFirst();
+  });
+
+  $(document).on('click', '.mg-worker-toggle', function(e){
+    e.preventDefault();
+    if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
+    if (window.MG_BULK_ADV._savingWorkerCount) { return; }
+    var options = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
+    window.MG_BULK_ADV.worker_options = options;
+    var requested = parseInt($(this).attr('data-workers'), 10);
+    if (isNaN(requested) || options.indexOf(requested) === -1) {
+      requested = options[0];
+    }
+    updateWorkerToggleUI(requested);
+    var savingMsg = window.MG_BULK_ADV.worker_feedback_saving || 'Mentés…';
+    showWorkerFeedback(savingMsg, null);
+    window.MG_BULK_ADV._savingWorkerCount = true;
+    $.post(window.MG_BULK_ADV.ajax_url, {
+      action: 'mg_bulk_set_worker_count',
+      nonce: window.MG_BULK_ADV.nonce,
+      count: requested
+    }, function(resp){
+      if (resp && resp.success && resp.data && typeof resp.data.count !== 'undefined') {
+        var saved = parseInt(resp.data.count, 10);
+        if (isNaN(saved)) { saved = requested; }
+        window.MG_BULK_ADV.worker_count = saved;
+        updateWorkerToggleUI(saved);
+        var okMsg = window.MG_BULK_ADV.worker_feedback_saved || 'Beállítva: %d worker.';
+        if (typeof okMsg === 'string' && okMsg.indexOf('%d') !== -1) {
+          okMsg = okMsg.replace('%d', saved);
+        }
+        showWorkerFeedback(okMsg, 'success');
+      } else {
+        updateWorkerToggleUI(window.MG_BULK_ADV.worker_count || options[0]);
+        var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
+        showWorkerFeedback(errMsg, 'error');
+      }
+    }, 'json').fail(function(){
+      updateWorkerToggleUI(window.MG_BULK_ADV.worker_count || options[0]);
+      var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
+      showWorkerFeedback(errMsg, 'error');
+    }).always(function(){
+      window.MG_BULK_ADV._savingWorkerCount = false;
+    });
   });
 
   $(document).on('click', '#mg-bulk-apply-first', function(e){
