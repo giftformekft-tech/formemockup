@@ -7,11 +7,52 @@ class MG_Bulk_Queue {
     const JOB_OPTION_PREFIX = 'mg_bulk_job_';
     const ORDER_OPTION = 'mg_bulk_queue_order';
     const WORKER_TOKEN_OPTION = 'mg_bulk_worker_token';
+    const WORKER_COUNT_OPTION = 'mg_bulk_worker_count';
+    const WORKER_COUNT_CHOICES = array(1, 2, 4);
+    const DEFAULT_WORKER_COUNT = 1;
     const DISPATCH_LOCK = 'mg_bulk_dispatch_lock';
-    const WORKER_COUNT = 4;
     const LOCK_TTL = 180; // seconds
     const STALE_TTL = 300; // seconds
     const MAX_JOBS_PER_WORKER = 10;
+
+    public static function get_allowed_worker_counts() {
+        $choices = apply_filters('mg_bulk_worker_counts', self::WORKER_COUNT_CHOICES);
+        $choices = array_map('intval', (array) $choices);
+        $choices = array_values(array_filter(array_unique($choices), function($value) {
+            return $value > 0;
+        }));
+        if (empty($choices)) {
+            $choices = array(self::DEFAULT_WORKER_COUNT);
+        }
+        sort($choices);
+        return $choices;
+    }
+
+    private static function normalize_worker_count($count) {
+        $count = intval($count);
+        $allowed = self::get_allowed_worker_counts();
+        if (in_array($count, $allowed, true)) {
+            return $count;
+        }
+        if (in_array(self::DEFAULT_WORKER_COUNT, $allowed, true)) {
+            return self::DEFAULT_WORKER_COUNT;
+        }
+        return reset($allowed);
+    }
+
+    public static function get_configured_worker_count() {
+        $saved = get_option(self::WORKER_COUNT_OPTION, null);
+        if ($saved === null || $saved === false) {
+            return self::normalize_worker_count(self::DEFAULT_WORKER_COUNT);
+        }
+        return self::normalize_worker_count($saved);
+    }
+
+    public static function update_worker_count($count) {
+        $normalized = self::normalize_worker_count($count);
+        update_option(self::WORKER_COUNT_OPTION, $normalized, false);
+        return $normalized;
+    }
 
     public static function enqueue(array $payload) {
         $job_id = 'mgjob_' . wp_generate_uuid4();
@@ -90,7 +131,15 @@ class MG_Bulk_Queue {
     }
 
     public static function dispatch_workers($count = null, $force = false) {
-        $count = ($count === null) ? self::WORKER_COUNT : max(1, intval($count));
+        if ($count === null) {
+            $count = self::get_configured_worker_count();
+        } else {
+            $count = max(1, intval($count));
+            $allowed = self::get_allowed_worker_counts();
+            if (!in_array($count, $allowed, true)) {
+                $count = self::get_configured_worker_count();
+            }
+        }
         if ($count < 1) { $count = 1; }
         if (!$force && false !== get_transient(self::DISPATCH_LOCK)) {
             return;
