@@ -195,6 +195,55 @@
     }
   }
 
+  function sanitizeWorkerOptions(list){
+    var out = [];
+    if (Array.isArray(list)) {
+      list.forEach(function(item){
+        var parsed = parseInt(item, 10);
+        if (!isNaN(parsed) && out.indexOf(parsed) === -1) {
+          out.push(parsed);
+        }
+      });
+    }
+    if (!out.length) { out.push(1); }
+    out.sort(function(a, b){ return a - b; });
+    return out;
+  }
+
+  function updateWorkerToggleUI(activeCount){
+    var count = parseInt(activeCount, 10);
+    if (isNaN(count)) { count = 1; }
+    $('.mg-worker-toggle').each(function(){
+      var val = parseInt($(this).attr('data-workers'), 10);
+      var isActive = (!isNaN(val) && val === count);
+      $(this).toggleClass('is-active', isActive);
+      $(this).attr('aria-pressed', isActive ? 'true' : 'false');
+    });
+    $('.mg-worker-active-count').text(count);
+  }
+
+  function showWorkerFeedback(message, state){
+    var $target = $('.mg-worker-feedback');
+    if (!$target.length) { return; }
+    $target.removeClass('is-error is-success');
+    if (state === 'error') { $target.addClass('is-error'); }
+    else if (state === 'success') { $target.addClass('is-success'); }
+    $target.text(message || '');
+  }
+
+  function initWorkerToggle(){
+    if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
+    var opts = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
+    window.MG_BULK_ADV.worker_options = opts;
+    var current = parseInt(window.MG_BULK_ADV.worker_count, 10);
+    if (isNaN(current) || opts.indexOf(current) === -1) {
+      current = opts[0];
+    }
+    window.MG_BULK_ADV.worker_count = current;
+    updateWorkerToggleUI(current);
+    showWorkerFeedback('', null);
+  }
+
   function mgEnsureHeader(){
     var $thead = $('.mg-bulk-table thead tr');
     if ($thead.length) {
@@ -371,6 +420,7 @@
 
   $(setupCopyButtons);
   $(initDefaultSelectors);
+  $(initWorkerToggle);
 
   $(document).on('click', '#mg-bulk-copy-main', function(e){
     e.preventDefault();
@@ -390,6 +440,49 @@
   $(document).on('click', '#mg-bulk-copy-custom', function(e){
     e.preventDefault();
     copyCustomFlagFromFirst();
+  });
+
+  $(document).on('click', '.mg-worker-toggle', function(e){
+    e.preventDefault();
+    if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
+    if (window.MG_BULK_ADV._savingWorkerCount) { return; }
+    var options = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
+    window.MG_BULK_ADV.worker_options = options;
+    var requested = parseInt($(this).attr('data-workers'), 10);
+    if (isNaN(requested) || options.indexOf(requested) === -1) {
+      requested = options[0];
+    }
+    updateWorkerToggleUI(requested);
+    var savingMsg = window.MG_BULK_ADV.worker_feedback_saving || 'Mentés…';
+    showWorkerFeedback(savingMsg, null);
+    window.MG_BULK_ADV._savingWorkerCount = true;
+    $.post(window.MG_BULK_ADV.ajax_url, {
+      action: 'mg_bulk_set_worker_count',
+      nonce: window.MG_BULK_ADV.nonce,
+      count: requested
+    }, function(resp){
+      if (resp && resp.success && resp.data && typeof resp.data.count !== 'undefined') {
+        var saved = parseInt(resp.data.count, 10);
+        if (isNaN(saved)) { saved = requested; }
+        window.MG_BULK_ADV.worker_count = saved;
+        updateWorkerToggleUI(saved);
+        var okMsg = window.MG_BULK_ADV.worker_feedback_saved || 'Beállítva: %d worker.';
+        if (typeof okMsg === 'string' && okMsg.indexOf('%d') !== -1) {
+          okMsg = okMsg.replace('%d', saved);
+        }
+        showWorkerFeedback(okMsg, 'success');
+      } else {
+        updateWorkerToggleUI(window.MG_BULK_ADV.worker_count || options[0]);
+        var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
+        showWorkerFeedback(errMsg, 'error');
+      }
+    }, 'json').fail(function(){
+      updateWorkerToggleUI(window.MG_BULK_ADV.worker_count || options[0]);
+      var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
+      showWorkerFeedback(errMsg, 'error');
+    }).always(function(){
+      window.MG_BULK_ADV._savingWorkerCount = false;
+    });
   });
 
   $(document).on('click', '#mg-bulk-apply-first', function(e){
@@ -417,29 +510,84 @@
 
   $('#mg-bulk-start').on('click', function(e){
     e.preventDefault();
-    var files = ($('#mg-bulk-files-adv')[0] && $('#mg-bulk-files-adv')[0].files) ? $('#mg-bulk-files-adv')[0].files : null;
+    if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
+    if (window.MG_BULK_ADV._isRunning) { return; }
+    var inputEl = $('#mg-bulk-files-adv')[0];
+    var files = (inputEl && inputEl.files) ? inputEl.files : null;
     if (!files || !files.length){ alert('Válassz fájlokat.'); return; }
     var keys = getSelectedProductKeys();
     if (!keys.length){ alert('Válassz legalább egy terméktípust.'); return; }
-    var $rows = $('#mg-bulk-rows .mg-item-row').toArray();
-    var total = $rows.length, done = 0;
+    var $rowsCollection = $('#mg-bulk-rows .mg-item-row');
+    if (!$rowsCollection.length){ alert('Nincs feldolgozható sor.'); return; }
+
+    var rows = $rowsCollection.toArray();
+    var total = rows.length;
+    var done = 0;
+    var active = 0;
+    var nextIndex = 0;
+    var options = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
+    window.MG_BULK_ADV.worker_options = options;
+    var limit = parseInt(window.MG_BULK_ADV.worker_count, 10);
+    if (isNaN(limit) || limit < 1) { limit = options[0]; }
+    var maxOption = options.length ? options[options.length - 1] : limit;
+    if (limit > maxOption) { limit = maxOption; }
+    limit = Math.max(1, Math.min(limit, total));
+    var defaultsSnapshot = $.extend({}, window.MG_BULK_ADV.activeDefaults || {});
+
+    mgDedupeTagInputs();
+    window.MG_BULK_ADV._isRunning = true;
+    $('#mg-bulk-start').prop('disabled', true);
+    $('.mg-worker-toggle').prop('disabled', true);
+    $rowsCollection.each(function(){ $(this).find('.mg-state').text('Sorban áll…'); });
+
     function updateProgress(){
-      var pct = Math.round((done/total)*100);
-      $('#mg-bulk-bar').css('width', pct+'%'); $('#mg-bulk-status').text(pct+'%');
+      var pct = total > 0 ? Math.round((done/total)*100) : 0;
+      if (pct < 0) { pct = 0; }
+      if (pct > 100) { pct = 100; }
+      $('#mg-bulk-bar').css('width', pct+'%');
+      $('#mg-bulk-status').text(pct+'%');
     }
     updateProgress();
 
-    function processRow(i){
-      if (i>=total) return;
-      var $row = $($rows[i]);
-      var file = files[i];
+    function finalize(){
+      window.MG_BULK_ADV._isRunning = false;
+      $('#mg-bulk-start').prop('disabled', false);
+      $('.mg-worker-toggle').prop('disabled', false);
+    }
+
+    function launchNext(){
+      if (done >= total && active === 0) {
+        finalize();
+        updateProgress();
+        return;
+      }
+      while (active < limit && nextIndex < total) {
+        startJob(nextIndex++);
+      }
+    }
+
+    function startJob(index){
+      var $row = $(rows[index]);
+      if (!$row.length) {
+        done++;
+        updateProgress();
+        launchNext();
+        return;
+      }
+      var file = files[index];
+      if (!file) {
+        $row.find('.mg-state').text('Hiba: hiányzó fájl');
+        done++;
+        updateProgress();
+        launchNext();
+        return;
+      }
+      active++;
+      $row.find('.mg-state').text('Feldolgozás...');
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
       var parentId = parseInt($row.find('.mg-parent-id').val(),10)||0;
-      var tags = ($row.find('.mg-tags-input').val()||'').trim();
-
-      mgDedupeTagInputs();
       var form = new FormData();
       form.append('action', 'mg_bulk_process');
       form.append('nonce', MG_BULK_ADV.nonce);
@@ -449,27 +597,31 @@
       form.append('main_cat', $mainSel.val()||'0');
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
-      form.append('tags', tags);
+      var initialTags = ($row.find('.mg-tags-input').val()||'').trim();
+      form.append('tags', initialTags);
       form.append('custom_product', $row.find('.mg-custom-flag').is(':checked') ? '1' : '0');
-      var defaults = MG_BULK_ADV.activeDefaults || {};
-      form.append('primary_type', defaults.type || '');
-      form.append('primary_color', defaults.color || '');
-      form.append('primary_size', defaults.size || '');
+      form.append('primary_type', defaultsSnapshot.type || '');
+      form.append('primary_color', defaultsSnapshot.color || '');
+      form.append('primary_size', defaultsSnapshot.size || '');
 
-      $row.find('.mg-state').text('Feldolgozás...');
       $.ajax({
-        url: MG_BULK_ADV.ajax_url, method:'POST', data: form, processData:false, contentType:false, dataType:'json'
+        url: MG_BULK_ADV.ajax_url,
+        method:'POST',
+        data: form,
+        processData:false,
+        contentType:false,
+        dataType:'json'
       }).done(function(resp){
         if (resp && resp.success){
           $row.find('.mg-state').text('OK…');
           var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id,10) : 0;
-          var tags = ($row.find('.mg-tags-input').val()||'').trim();
-          if (pid && tags){
+          var latestTags = ($row.find('.mg-tags-input').val()||'').trim();
+          if (pid && latestTags){
             $.post(MG_BULK_ADV.ajax_url, {
               action: 'mg_set_product_tags',
               nonce: MG_BULK_ADV.nonce,
               product_id: pid,
-              tags: tags
+              tags: latestTags
             }, function(r){
               if (r && r.success){ $row.find('.mg-state').text('OK'); }
               else { $row.find('.mg-state').text('OK – tagek hiba'); }
@@ -478,15 +630,20 @@
             $row.find('.mg-state').text('OK');
           }
         } else {
-          $row.find('.mg-state').text('Hiba: '+(resp && resp.data && resp.data.message ? resp.data.message : 'Ismeretlen'));
+          var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
+          $row.find('.mg-state').text('Hiba: '+msg);
         }
       }).fail(function(xhr){
         $row.find('.mg-state').text('Hiba: '+serverErrorToText(xhr));
       }).always(function(){
-        done++; updateProgress(); processRow(i+1);
+        done++;
+        active--;
+        updateProgress();
+        launchNext();
       });
     }
-    processRow(0);
+
+    launchNext();
   });
 
 })(jQuery);
