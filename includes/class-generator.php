@@ -157,10 +157,13 @@ class MG_Generator {
         if (defined('Imagick::IMGTYPE_PALETTEALPHA')) {
             $palette_types[] = Imagick::IMGTYPE_PALETTEALPHA;
         }
+        $target_type = defined('Imagick::IMGTYPE_TRUECOLORALPHA') ? Imagick::IMGTYPE_TRUECOLORALPHA : null;
+        $current_type = null;
         try {
-            $type = $image->getImageType();
-            if (in_array($type, $palette_types, true) && defined('Imagick::IMGTYPE_TRUECOLORALPHA')) {
-                $image->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+            $current_type = $image->getImageType();
+            if ($target_type !== null && in_array($current_type, $palette_types, true) && method_exists($image, 'setImageType')) {
+                $image->setImageType($target_type);
+                $current_type = $target_type;
             }
         } catch (Throwable $ignored) {
         }
@@ -182,6 +185,12 @@ class MG_Generator {
             }
         }
         $this->ensure_imagick_alpha_channel($image);
+        if ($target_type !== null && method_exists($image, 'setImageType') && $current_type !== $target_type) {
+            try { $image->setImageType($target_type); } catch (Throwable $ignored) {}
+        }
+        if ($target_type !== null && method_exists($image, 'setType')) {
+            try { $image->setType($target_type); } catch (Throwable $ignored) {}
+        }
     }
 
     public function generate_for_product($product_key, $design_path) {
