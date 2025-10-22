@@ -45,8 +45,8 @@ add_action('plugins_loaded', function(){
 
     add_action('admin_enqueue_scripts', function($hook){
         if (strpos($hook, 'mockup-generator') !== false) {
-            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.16');
-            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.16', true);
+            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.18');
+            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.18', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')

@@ -102,6 +102,71 @@ class MG_Generator {
         return false;
     }
 
+    private function imagick_image_has_alpha($image) {
+        if (!($image instanceof Imagick)) {
+            return null;
+        }
+        if (method_exists($image, 'getImageAlphaChannel')) {
+            try {
+                $alpha = $image->getImageAlphaChannel();
+                if (is_bool($alpha)) {
+                    return $alpha;
+                }
+                if (is_int($alpha)) {
+                    return $alpha !== 0;
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (method_exists($image, 'getImageMatte')) {
+            try {
+                $matte = $image->getImageMatte();
+                if (is_bool($matte)) {
+                    return $matte;
+                }
+                if (is_int($matte)) {
+                    return $matte !== 0;
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        return null;
+    }
+
+    private function force_imagick_alpha_channel_opaque($image) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        if (method_exists($image, 'evaluateImage') && defined('Imagick::EVALUATE_SET')) {
+            $channel = null;
+            if (defined('Imagick::CHANNEL_ALPHA')) {
+                $channel = Imagick::CHANNEL_ALPHA;
+            } elseif (defined('Imagick::CHANNEL_OPACITY')) {
+                $channel = Imagick::CHANNEL_OPACITY;
+            }
+            if ($channel !== null) {
+                try {
+                    $image->evaluateImage(Imagick::EVALUATE_SET, 1.0, $channel);
+                    return;
+                } catch (Throwable $ignored) {
+                }
+            }
+        }
+        if (method_exists($image, 'setImageAlpha')) {
+            try {
+                $image->setImageAlpha(1.0);
+                return;
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (method_exists($image, 'setImageOpacity')) {
+            try {
+                $image->setImageOpacity(1.0);
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+
     private function ensure_imagick_alpha_channel($image, $preferred_mode = null) {
         if (!($image instanceof Imagick)) {
             return;
@@ -147,6 +212,7 @@ class MG_Generator {
         if (!($image instanceof Imagick)) {
             return;
         }
+        $had_alpha = $this->imagick_image_has_alpha($image);
         if (method_exists($image, 'setIteratorIndex')) {
             try { $image->setIteratorIndex(0); } catch (Throwable $ignored) {}
         }
@@ -185,11 +251,17 @@ class MG_Generator {
             }
         }
         $this->ensure_imagick_alpha_channel($image);
-        if ($target_type !== null && method_exists($image, 'setImageType') && $current_type !== $target_type) {
-            try { $image->setImageType($target_type); } catch (Throwable $ignored) {}
+        if ($had_alpha === false) {
+            $this->force_imagick_alpha_channel_opaque($image);
         }
-        if ($target_type !== null && method_exists($image, 'setType')) {
-            try { $image->setType($target_type); } catch (Throwable $ignored) {}
+        if ($target_type !== null && method_exists($image, 'setImageType') && $current_type !== $target_type) {
+            try {
+                $image->setImageType($target_type);
+                if ($had_alpha === false) {
+                    $this->force_imagick_alpha_channel_opaque($image);
+                }
+            } catch (Throwable $ignored) {
+            }
         }
     }
 
