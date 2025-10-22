@@ -102,6 +102,78 @@ class MG_Generator {
         return false;
     }
 
+    private function imagick_image_has_alpha($image) {
+        if (!($image instanceof Imagick)) {
+            return null;
+        }
+        if (method_exists($image, 'getImageAlphaChannel')) {
+            try {
+                $alpha = $image->getImageAlphaChannel();
+                if (is_bool($alpha)) {
+                    return $alpha;
+                }
+                if (is_int($alpha)) {
+                    return $alpha !== 0;
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (method_exists($image, 'getImageMatte')) {
+            try {
+                $matte = $image->getImageMatte();
+                if (is_bool($matte)) {
+                    return $matte;
+                }
+                if (is_int($matte)) {
+                    return $matte !== 0;
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        return null;
+    }
+
+    private function force_imagick_alpha_channel_opaque($image) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_OPAQUE')) {
+            try {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+                return;
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (method_exists($image, 'evaluateImage') && defined('Imagick::EVALUATE_SET')) {
+            $channel = null;
+            if (defined('Imagick::CHANNEL_ALPHA')) {
+                $channel = Imagick::CHANNEL_ALPHA;
+            } elseif (defined('Imagick::CHANNEL_OPACITY')) {
+                $channel = Imagick::CHANNEL_OPACITY;
+            }
+            if ($channel !== null) {
+                try {
+                    $image->evaluateImage(Imagick::EVALUATE_SET, 1.0, $channel);
+                    return;
+                } catch (Throwable $ignored) {
+                }
+            }
+        }
+        if (method_exists($image, 'setImageAlpha')) {
+            try {
+                $image->setImageAlpha(1.0);
+                return;
+            } catch (Throwable $ignored) {
+            }
+        }
+        if (method_exists($image, 'setImageOpacity')) {
+            try {
+                $image->setImageOpacity(1.0);
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+
     private function ensure_imagick_alpha_channel($image, $preferred_mode = null) {
         if (!($image instanceof Imagick)) {
             return;
@@ -145,8 +217,9 @@ class MG_Generator {
 
     private function prepare_imagick_image_for_compositing($image) {
         if (!($image instanceof Imagick)) {
-            return;
+            return null;
         }
+        $had_alpha = $this->imagick_image_has_alpha($image);
         if (method_exists($image, 'setIteratorIndex')) {
             try { $image->setIteratorIndex(0); } catch (Throwable $ignored) {}
         }
@@ -157,10 +230,13 @@ class MG_Generator {
         if (defined('Imagick::IMGTYPE_PALETTEALPHA')) {
             $palette_types[] = Imagick::IMGTYPE_PALETTEALPHA;
         }
+        $target_type = defined('Imagick::IMGTYPE_TRUECOLORALPHA') ? Imagick::IMGTYPE_TRUECOLORALPHA : null;
+        $current_type = null;
         try {
-            $type = $image->getImageType();
-            if (in_array($type, $palette_types, true) && defined('Imagick::IMGTYPE_TRUECOLORALPHA')) {
-                $image->setImageType(Imagick::IMGTYPE_TRUECOLORALPHA);
+            $current_type = $image->getImageType();
+            if ($target_type !== null && in_array($current_type, $palette_types, true) && method_exists($image, 'setImageType')) {
+                $image->setImageType($target_type);
+                $current_type = $target_type;
             }
         } catch (Throwable $ignored) {
         }
@@ -182,6 +258,19 @@ class MG_Generator {
             }
         }
         $this->ensure_imagick_alpha_channel($image);
+        if ($had_alpha === false) {
+            $this->force_imagick_alpha_channel_opaque($image);
+        }
+        if ($target_type !== null && method_exists($image, 'setImageType') && $current_type !== $target_type) {
+            try {
+                $image->setImageType($target_type);
+                if ($had_alpha === false) {
+                    $this->force_imagick_alpha_channel_opaque($image);
+                }
+            } catch (Throwable $ignored) {
+            }
+        }
+        return $had_alpha;
     }
 
     public function generate_for_product($product_key, $design_path) {
@@ -355,8 +444,10 @@ class MG_Generator {
 
         $mockup = null;
         $design = null;
+        $mockup_started_with_alpha = null;
         try {
             $mockup = new Imagick($template_path);
+            $mockup_started_with_alpha = $this->imagick_image_has_alpha($mockup);
             $design = clone $design_base;
 
             if (method_exists('Imagick','setResourceLimit')) {
@@ -374,6 +465,9 @@ class MG_Generator {
                 if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
                     $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], Imagick::FILTER_LANCZOS, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
+                    if ($mockup_started_with_alpha === false) {
+                        $this->force_imagick_alpha_channel_opaque($mockup);
+                    }
                 }
                 $scale_w = ($template_width > 0) ? ($scale_plan['width'] / $template_width) : 1.0;
                 $scale_h = ($template_height > 0) ? ($scale_plan['height'] / $template_height) : 1.0;
@@ -418,6 +512,9 @@ class MG_Generator {
             $design_y_px = (int)round($target_y);
 
             $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
+            if ($mockup_started_with_alpha === false) {
+                $this->force_imagick_alpha_channel_opaque($mockup);
+            }
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
             if (method_exists($design,'setBackgroundColor')) $design->setBackgroundColor(new ImagickPixel('transparent'));
 
@@ -454,16 +551,23 @@ class MG_Generator {
                 if (($target_w != $cw) || ($target_h != $ch)) {
                     $mockup->resizeImage($target_w, $target_h, Imagick::FILTER_LANCZOS, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
+                    if ($mockup_started_with_alpha === false) {
+                        $this->force_imagick_alpha_channel_opaque($mockup);
+                    }
                 }
             }
 
             if (method_exists($mockup,'setImageFormat')) $mockup->setImageFormat('webp');
             if (method_exists($mockup,'setOption')) {
-                $mockup->setOption('webp:method', '4');
+                $mockup->setOption('webp:method', '3');
                 $mockup->setOption('webp:thread-level', '1');
-                $mockup->setOption('webp:auto-filter', '1');
+                $mockup->setOption('webp:auto-filter', '0');
+                $mockup->setOption('webp:alpha-quality', '92');
             }
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(76);
+            if ($mockup_started_with_alpha === false) {
+                $this->force_imagick_alpha_channel_opaque($mockup);
+            }
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
