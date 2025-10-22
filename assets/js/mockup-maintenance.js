@@ -24,4 +24,22 @@
             }
         });
     });
+
+    document.addEventListener('DOMContentLoaded', function(){
+        var form = document.querySelector('.mg-batch-size-form');
+        if (!form) {
+            return;
+        }
+        var slider = form.querySelector('.mg-batch-size-slider');
+        var output = form.querySelector('.mg-batch-size-value');
+        if (!slider || !output) {
+            return;
+        }
+        var update = function(){
+            output.textContent = slider.value;
+        };
+        slider.addEventListener('input', update);
+        slider.addEventListener('change', update);
+        update();
+    });
 })();

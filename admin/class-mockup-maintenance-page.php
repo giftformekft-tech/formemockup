@@ -74,6 +74,12 @@ class MG_Mockup_Maintenance_Page {
                 update_option(MG_Mockup_Maintenance::OPTION_ACTIVITY_LOG, [], false);
                 self::add_notice(__('A napló ürítve lett.', 'mgdtp'));
                 break;
+            case 'save_batch_size':
+                $raw_value = isset($_POST['mg_batch_size']) ? sanitize_text_field(wp_unslash($_POST['mg_batch_size'])) : 0;
+                $new_value = MG_Mockup_Maintenance::set_batch_size($raw_value);
+                /* translators: %d: number of mockups processed per cron run */
+                self::add_notice(sprintf(__('A cron mostantól egyszerre %d mockupot dolgoz fel.', 'mgdtp'), $new_value));
+                break;
         }
     }
 
@@ -273,12 +279,40 @@ class MG_Mockup_Maintenance_Page {
     }
 
     private static function render_queue_controls() {
+        $batch_size = MG_Mockup_Maintenance::get_batch_size();
+        $min_batch = MG_Mockup_Maintenance::MIN_BATCH;
+        $max_batch = MG_Mockup_Maintenance::MAX_BATCH;
         ?>
-        <form method="post" class="mg-queue-controls">
-            <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
-            <input type="hidden" name="mg_mockup_action" value="process_queue_now" />
-            <button type="submit" class="button button-secondary"><?php esc_html_e('Sor feldolgozása most', 'mgdtp'); ?></button>
-        </form>
+        <div class="mg-queue-controls">
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="process_queue_now" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Sor feldolgozása most', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-batch-size-form">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="save_batch_size" />
+                <label for="mg_batch_size">
+                    <span><?php esc_html_e('Feldolgozási csomagméret', 'mgdtp'); ?></span>
+                    <div class="mg-range-wrapper">
+                        <input
+                            type="range"
+                            id="mg_batch_size"
+                            name="mg_batch_size"
+                            class="mg-batch-size-slider"
+                            min="<?php echo esc_attr($min_batch); ?>"
+                            max="<?php echo esc_attr($max_batch); ?>"
+                            step="1"
+                            value="<?php echo esc_attr($batch_size); ?>"
+                        />
+                        <output for="mg_batch_size" id="mg_batch_size_value" class="mg-batch-size-value"><?php echo esc_html($batch_size); ?></output>
+                        <span class="mg-range-suffix"><?php esc_html_e('db', 'mgdtp'); ?></span>
+                    </div>
+                </label>
+                <p class="description"><?php esc_html_e('Egyszerre ennyi mockup kerül feldolgozásra a cron futásakor.', 'mgdtp'); ?></p>
+                <button type="submit" class="button button-primary"><?php esc_html_e('Csomagméret mentése', 'mgdtp'); ?></button>
+            </form>
+        </div>
         <?php
     }
 
