@@ -137,6 +137,13 @@ class MG_Generator {
         if (!($image instanceof Imagick)) {
             return;
         }
+        if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_OPAQUE')) {
+            try {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_OPAQUE);
+                return;
+            } catch (Throwable $ignored) {
+            }
+        }
         if (method_exists($image, 'evaluateImage') && defined('Imagick::EVALUATE_SET')) {
             $channel = null;
             if (defined('Imagick::CHANNEL_ALPHA')) {
@@ -210,7 +217,7 @@ class MG_Generator {
 
     private function prepare_imagick_image_for_compositing($image) {
         if (!($image instanceof Imagick)) {
-            return;
+            return null;
         }
         $had_alpha = $this->imagick_image_has_alpha($image);
         if (method_exists($image, 'setIteratorIndex')) {
@@ -263,6 +270,7 @@ class MG_Generator {
             } catch (Throwable $ignored) {
             }
         }
+        return $had_alpha;
     }
 
     public function generate_for_product($product_key, $design_path) {
@@ -436,8 +444,10 @@ class MG_Generator {
 
         $mockup = null;
         $design = null;
+        $mockup_started_with_alpha = null;
         try {
             $mockup = new Imagick($template_path);
+            $mockup_started_with_alpha = $this->imagick_image_has_alpha($mockup);
             $design = clone $design_base;
 
             if (method_exists('Imagick','setResourceLimit')) {
@@ -455,6 +465,9 @@ class MG_Generator {
                 if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
                     $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], Imagick::FILTER_LANCZOS, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
+                    if ($mockup_started_with_alpha === false) {
+                        $this->force_imagick_alpha_channel_opaque($mockup);
+                    }
                 }
                 $scale_w = ($template_width > 0) ? ($scale_plan['width'] / $template_width) : 1.0;
                 $scale_h = ($template_height > 0) ? ($scale_plan['height'] / $template_height) : 1.0;
@@ -499,6 +512,9 @@ class MG_Generator {
             $design_y_px = (int)round($target_y);
 
             $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
+            if ($mockup_started_with_alpha === false) {
+                $this->force_imagick_alpha_channel_opaque($mockup);
+            }
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
             if (method_exists($design,'setBackgroundColor')) $design->setBackgroundColor(new ImagickPixel('transparent'));
 
@@ -535,6 +551,9 @@ class MG_Generator {
                 if (($target_w != $cw) || ($target_h != $ch)) {
                     $mockup->resizeImage($target_w, $target_h, Imagick::FILTER_LANCZOS, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
+                    if ($mockup_started_with_alpha === false) {
+                        $this->force_imagick_alpha_channel_opaque($mockup);
+                    }
                 }
             }
 
@@ -544,6 +563,9 @@ class MG_Generator {
                 $mockup->setOption('webp:thread-level', '1');
                 $mockup->setOption('webp:auto-filter', '0');
                 $mockup->setOption('webp:alpha-quality', '92');
+            }
+            if ($mockup_started_with_alpha === false) {
+                $this->force_imagick_alpha_channel_opaque($mockup);
             }
             if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
             $mockup->writeImage($outfile);
