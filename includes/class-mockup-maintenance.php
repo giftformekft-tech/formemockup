@@ -7,7 +7,10 @@ class MG_Mockup_Maintenance {
     const OPTION_STATUS_INDEX = 'mg_mockup_status_index';
     const OPTION_QUEUE = 'mg_mockup_regen_queue';
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
-    const DEFAULT_BATCH = 100;
+    const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
+    const DEFAULT_BATCH = 3;
+    const MIN_BATCH = 1;
+    const MAX_BATCH = 50;
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
@@ -126,6 +129,32 @@ class MG_Mockup_Maintenance {
 
     public static function set_queue($queue) {
         update_option(self::OPTION_QUEUE, array_values(array_unique(array_filter($queue))), false);
+    }
+
+    public static function get_batch_size() {
+        $stored = get_option(self::OPTION_BATCH_SIZE, self::DEFAULT_BATCH);
+        $normalized = self::normalize_batch_size($stored);
+        if ((int) $stored !== $normalized) {
+            update_option(self::OPTION_BATCH_SIZE, $normalized, false);
+        }
+        return $normalized;
+    }
+
+    public static function set_batch_size($value) {
+        $normalized = self::normalize_batch_size($value);
+        update_option(self::OPTION_BATCH_SIZE, $normalized, false);
+        return $normalized;
+    }
+
+    private static function normalize_batch_size($value) {
+        $value = absint($value);
+        if ($value < self::MIN_BATCH) {
+            return self::MIN_BATCH;
+        }
+        if ($value > self::MAX_BATCH) {
+            return self::MAX_BATCH;
+        }
+        return $value;
     }
 
     private static function compose_key($product_id, $type_slug, $color_slug) {
@@ -1184,7 +1213,7 @@ class MG_Mockup_Maintenance {
         if (empty($queue)) {
             return;
         }
-        $batch = array_slice($queue, 0, self::DEFAULT_BATCH);
+        $batch = array_slice($queue, 0, self::get_batch_size());
         foreach ($batch as $key) {
             self::process_single($key);
         }
