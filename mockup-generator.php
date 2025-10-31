@@ -67,13 +67,6 @@ add_action('plugins_loaded', function(){
         }
         });
 
-// Redirect top-level menu to the working manual dashboard slug
-add_action('load-toplevel_page_mockup-generator', function(){
-    wp_redirect( admin_url('admin.php?page=mockup-generator-dashboard') );
-    exit;
-});
-
-
     add_action('admin_enqueue_scripts', function($hook){
         if (strpos($hook, 'mockup-generator') !== false) {
             wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.19');
