@@ -15,6 +15,17 @@ class MG_Variant_Display_Manager {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
 
+    protected static function is_supercharge_enabled() {
+        $raw = get_option('mg_variant_display', array());
+        $sanitized = self::sanitize_settings_block($raw, null);
+
+        if (is_array($sanitized) && array_key_exists('supercharge_enabled', $sanitized)) {
+            return !empty($sanitized['supercharge_enabled']);
+        }
+
+        return true;
+    }
+
     public static function enqueue_assets() {
         if (!function_exists('is_product') || !is_product()) {
             return;
@@ -27,6 +38,10 @@ class MG_Variant_Display_Manager {
 
         $product = wc_get_product($post->ID);
         if (!$product || !$product->is_type('variable')) {
+            return;
+        }
+
+        if (!self::is_supercharge_enabled()) {
             return;
         }
 
@@ -149,8 +164,15 @@ class MG_Variant_Display_Manager {
 
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
-                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug);
+                $default_hex = isset($color_meta['hex']) ? $color_meta['hex'] : '';
+                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug, $default_hex);
                 $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
+                if ($swatch === '' && $default_hex !== '') {
+                    $candidate = sanitize_hex_color($default_hex);
+                    if ($candidate) {
+                        $swatch = $candidate;
+                    }
+                }
                 $colors_payload[$color_slug] = array(
                     'label' => $color_meta['label'],
                     'swatch' => $swatch,
@@ -245,8 +267,16 @@ class MG_Variant_Display_Manager {
                     if ($color_slug === '') {
                         continue;
                     }
+                    $hex = '';
+                    if (!empty($color['hex'])) {
+                        $candidate = sanitize_hex_color($color['hex']);
+                        if ($candidate) {
+                            $hex = $candidate;
+                        }
+                    }
                     $colors[$color_slug] = array(
                         'label' => isset($color['name']) ? wp_strip_all_tags($color['name']) : $color_slug,
+                        'hex' => $hex,
                     );
                 }
             }
@@ -315,6 +345,7 @@ class MG_Variant_Display_Manager {
         return wp_parse_args($sanitized, array(
             'colors' => array(),
             'size_charts' => array(),
+            'supercharge_enabled' => true,
         ));
     }
 
@@ -326,6 +357,12 @@ class MG_Variant_Display_Manager {
 
         if (!is_array($input)) {
             return $clean;
+        }
+
+        if (array_key_exists('supercharge_enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['supercharge_enabled']);
+        } elseif (array_key_exists('enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['enabled']);
         }
 
         $allowed_types = null;
@@ -406,11 +443,47 @@ class MG_Variant_Display_Manager {
         return $clean;
     }
 
-    protected static function get_color_settings($settings, $type_slug, $color_slug) {
-        if (empty($settings['colors'][$type_slug][$color_slug])) {
-            return array();
+    protected static function normalize_boolean_flag($value) {
+        if (is_bool($value)) {
+            return $value;
         }
-        return $settings['colors'][$type_slug][$color_slug];
+
+        if (is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        if (is_string($value)) {
+            $value = strtolower(trim($value));
+            if ($value === '') {
+                return false;
+            }
+
+            if (in_array($value, array('1', 'true', 'yes', 'on'), true)) {
+                return true;
+            }
+
+            if (in_array($value, array('0', 'false', 'no', 'off'), true)) {
+                return false;
+            }
+        }
+
+        return !empty($value);
+    }
+
+    protected static function get_color_settings($settings, $type_slug, $color_slug, $fallback_hex = '') {
+        if (!empty($settings['colors'][$type_slug][$color_slug]) && is_array($settings['colors'][$type_slug][$color_slug])) {
+            $entry = $settings['colors'][$type_slug][$color_slug];
+            if (!empty($entry['swatch'])) {
+                return $entry;
+            }
+        }
+
+        $fallback_hex = sanitize_hex_color($fallback_hex);
+        if ($fallback_hex) {
+            return array('swatch' => $fallback_hex);
+        }
+
+        return array();
     }
 
     protected static function sizes_for_color($type_meta, $color_slug) {

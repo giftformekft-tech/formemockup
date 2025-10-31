@@ -32,7 +32,10 @@ class MG_Variant_Display_Page {
 
     public static function enqueue_assets($hook) {
         $page_slug = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
+        $tab_slug  = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
+        $is_shell_variant = ($page_slug === 'mockup-generator' && $tab_slug === 'variants');
+
+        if (!$is_shell_variant && strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
             return;
         }
 
@@ -76,6 +79,7 @@ class MG_Variant_Display_Page {
         }
 
         $store = self::get_settings_store($catalog);
+        $supercharge_enabled = isset($store['supercharge_enabled']) ? (bool) $store['supercharge_enabled'] : true;
         $selected_type = self::get_selected_type_slug($catalog);
 
         if (!empty($_POST['mg_variant_display_nonce']) && check_admin_referer('mg_variant_display_save', 'mg_variant_display_nonce')) {
@@ -86,6 +90,8 @@ class MG_Variant_Display_Page {
                 $store = self::apply_type_settings($store, $posted_type, $sanitized);
                 $store = MG_Variant_Display_Manager::sanitize_settings_block($store, $catalog);
                 update_option('mg_variant_display', $store);
+                $synced_colors = isset($store['colors'][$posted_type]) ? $store['colors'][$posted_type] : array();
+                MG_Product_Settings_Page::update_product_color_swatches($posted_type, $synced_colors);
                 $selected_type = $posted_type;
                 add_settings_error('mg_variant_display', 'mgvd_saved', __('Beállítások elmentve.', 'mgvd'), 'updated');
             } else {
@@ -125,6 +131,15 @@ class MG_Variant_Display_Page {
         echo '<form method="post" class="mgvd-settings-form">';
         wp_nonce_field('mg_variant_display_save', 'mg_variant_display_nonce');
         echo '<input type="hidden" name="type_slug" value="' . esc_attr($selected_type) . '" />';
+        echo '<div class="mgvd-feature-toggle">';
+        echo '<h2>' . esc_html__('SuperCharge variáns felület', 'mgvd') . '</h2>';
+        echo '<p>' . esc_html__('Kapcsold ki, ha a klasszikus WooCommerce variációs űrlapot szeretnéd használni.', 'mgvd') . '</p>';
+        echo '<label class="mgvd-feature-toggle__control">';
+        echo '<input type="hidden" name="variant_display[supercharge_enabled]" value="0" />';
+        echo '<input type="checkbox" name="variant_display[supercharge_enabled]" value="1" ' . checked($supercharge_enabled, true, false) . ' />';
+        echo '<span>' . esc_html__('SuperCharge engedélyezése', 'mgvd') . '</span>';
+        echo '</label>';
+        echo '</div>';
         echo '<div class="mgvd-type-grid">';
 
         echo '<section class="mgvd-type-card" data-type="' . esc_attr($selected_type) . '">';
@@ -139,7 +154,16 @@ class MG_Variant_Display_Page {
             echo '<div class="mgvd-color-grid">';
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_settings = isset($store['colors'][$selected_type][$color_slug]) ? $store['colors'][$selected_type][$color_slug] : array();
-                $swatch = isset($color_settings['swatch']) && $color_settings['swatch'] ? $color_settings['swatch'] : '#ffffff';
+                $default_hex = isset($color_meta['hex']) ? sanitize_hex_color($color_meta['hex']) : '';
+                $swatch = '';
+                if (!empty($color_settings['swatch'])) {
+                    $swatch = $color_settings['swatch'];
+                } elseif ($default_hex) {
+                    $swatch = $default_hex;
+                }
+                if ($swatch === '') {
+                    $swatch = '#ffffff';
+                }
                 $chip_style = 'background-color:' . esc_attr($swatch) . ';';
                 $color_label = isset($color_meta['label']) && $color_meta['label'] ? $color_meta['label'] : self::get_attribute_label('pa_szin', $color_slug);
 
@@ -201,6 +225,7 @@ class MG_Variant_Display_Page {
         return wp_parse_args($store, array(
             'colors' => array(),
             'size_charts' => array(),
+            'supercharge_enabled' => true,
         ));
     }
 
@@ -240,6 +265,10 @@ class MG_Variant_Display_Page {
             $store['size_charts'][$type_slug] = $sanitized['size_charts'][$type_slug];
         } else {
             unset($store['size_charts'][$type_slug]);
+        }
+
+        if (array_key_exists('supercharge_enabled', $sanitized)) {
+            $store['supercharge_enabled'] = (bool) $sanitized['supercharge_enabled'];
         }
 
         return $store;
