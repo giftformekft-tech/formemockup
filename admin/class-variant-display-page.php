@@ -89,6 +89,8 @@ class MG_Variant_Display_Page {
                 $store = self::apply_type_settings($store, $posted_type, $sanitized);
                 $store = MG_Variant_Display_Manager::sanitize_settings_block($store, $catalog);
                 update_option('mg_variant_display', $store);
+                $synced_colors = isset($store['colors'][$posted_type]) ? $store['colors'][$posted_type] : array();
+                MG_Product_Settings_Page::update_product_color_swatches($posted_type, $synced_colors);
                 $selected_type = $posted_type;
                 add_settings_error('mg_variant_display', 'mgvd_saved', __('Beállítások elmentve.', 'mgvd'), 'updated');
             } else {
@@ -142,7 +144,16 @@ class MG_Variant_Display_Page {
             echo '<div class="mgvd-color-grid">';
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_settings = isset($store['colors'][$selected_type][$color_slug]) ? $store['colors'][$selected_type][$color_slug] : array();
-                $swatch = isset($color_settings['swatch']) && $color_settings['swatch'] ? $color_settings['swatch'] : '#ffffff';
+                $default_hex = isset($color_meta['hex']) ? sanitize_hex_color($color_meta['hex']) : '';
+                $swatch = '';
+                if (!empty($color_settings['swatch'])) {
+                    $swatch = $color_settings['swatch'];
+                } elseif ($default_hex) {
+                    $swatch = $default_hex;
+                }
+                if ($swatch === '') {
+                    $swatch = '#ffffff';
+                }
                 $chip_style = 'background-color:' . esc_attr($swatch) . ';';
                 $color_label = isset($color_meta['label']) && $color_meta['label'] ? $color_meta['label'] : self::get_attribute_label('pa_szin', $color_slug);
 

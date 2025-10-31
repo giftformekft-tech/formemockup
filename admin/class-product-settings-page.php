@@ -258,6 +258,123 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
             }
         }
         update_option('mg_products',$products);
+        self::sync_variant_display_colors($prod);
+    }
+
+    private static function sync_variant_display_colors($prod) {
+        if (!is_array($prod) || empty($prod['key'])) {
+            return;
+        }
+
+        $type_slug = sanitize_title($prod['key']);
+        if ($type_slug === '') {
+            return;
+        }
+
+        $store = get_option('mg_variant_display', array());
+        if (!is_array($store)) {
+            $store = array();
+        }
+
+        if (!isset($store['colors']) || !is_array($store['colors'])) {
+            $store['colors'] = array();
+        }
+
+        $synced = array();
+        if (!empty($prod['colors']) && is_array($prod['colors'])) {
+            foreach ($prod['colors'] as $color) {
+                if (!is_array($color) || empty($color['slug'])) {
+                    continue;
+                }
+                $slug = sanitize_title($color['slug']);
+                if ($slug === '') {
+                    continue;
+                }
+                $hex = '';
+                if (!empty($color['hex'])) {
+                    $candidate = sanitize_hex_color($color['hex']);
+                    if ($candidate) {
+                        $hex = $candidate;
+                    }
+                }
+                $synced[$slug] = array('swatch' => $hex);
+            }
+        }
+
+        if (!empty($synced)) {
+            $store['colors'][$type_slug] = $synced;
+        } else {
+            unset($store['colors'][$type_slug]);
+        }
+
+        update_option('mg_variant_display', $store);
+    }
+
+    public static function update_product_color_swatches($type_slug, $color_settings) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return;
+        }
+
+        $products = get_option('mg_products', array());
+        if (!is_array($products)) {
+            return;
+        }
+
+        $updated = false;
+
+        foreach ($products as $index => $product) {
+            if (!is_array($product) || empty($product['key'])) {
+                continue;
+            }
+
+            if (sanitize_title($product['key']) !== $type_slug) {
+                continue;
+            }
+
+            if (empty($product['colors']) || !is_array($product['colors'])) {
+                $product['colors'] = array();
+            }
+
+            $updated_colors = array();
+            foreach ($product['colors'] as $color) {
+                if (!is_array($color) || empty($color['slug'])) {
+                    $updated_colors[] = $color;
+                    continue;
+                }
+
+                $slug = sanitize_title($color['slug']);
+                if ($slug === '') {
+                    $updated_colors[] = $color;
+                    continue;
+                }
+
+                $hex = '';
+                if (is_array($color_settings) && isset($color_settings[$slug]['swatch'])) {
+                    $candidate = sanitize_hex_color($color_settings[$slug]['swatch']);
+                    if ($candidate) {
+                        $hex = $candidate;
+                    }
+                }
+
+                if ($hex !== '') {
+                    $color['hex'] = $hex;
+                } else {
+                    unset($color['hex']);
+                }
+
+                $updated_colors[] = $color;
+            }
+
+            $product['colors'] = $updated_colors;
+            $products[$index] = $product;
+            $updated = true;
+            break;
+        }
+
+        if ($updated) {
+            update_option('mg_products', $products);
+        }
     }
     public static function render_product() {
         // Enqueue assets for Print Area modal
