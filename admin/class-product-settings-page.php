@@ -1,6 +1,14 @@
 <?php
 if (!defined('ABSPATH')) exit;
 class MG_Product_Settings_Page {
+    /**
+     * Cache for normalized mockup paths during a single request to avoid
+     * repeating expensive filesystem checks while saving large product
+     * configurations.
+     *
+     * @var array<string,string>
+     */
+    private static $normalized_mockup_path_cache = array();
     private static function normalize_size_color_matrix_for_product($sizes, $colors, $input) {
         $size_values = array();
         if (is_array($sizes)) {
@@ -47,10 +55,20 @@ class MG_Product_Settings_Page {
         if (!is_string($path)) {
             return '';
         }
-        $path = wp_normalize_path(trim($path));
+
+        $path = trim($path);
         if ($path === '') {
             return '';
         }
+
+        $normalized_input = wp_normalize_path($path);
+        $cache_key = md5($normalized_input);
+
+        if (isset(self::$normalized_mockup_path_cache[$cache_key])) {
+            return self::$normalized_mockup_path_cache[$cache_key];
+        }
+
+        $path = $normalized_input;
 
         $candidates = array();
         $uploads = wp_upload_dir();
@@ -63,6 +81,7 @@ class MG_Product_Settings_Page {
                 $relative = ltrim(substr($path, strlen($baseurl)), '/');
                 $candidates[] = wp_normalize_path(trailingslashit($basedir) . $relative);
             } else {
+                self::$normalized_mockup_path_cache[$cache_key] = '';
                 return '';
             }
         } else {
@@ -86,10 +105,12 @@ class MG_Product_Settings_Page {
             }
             $checked[] = $candidate;
             if (file_exists($candidate) && is_file($candidate) && is_readable($candidate)) {
+                self::$normalized_mockup_path_cache[$cache_key] = $candidate;
                 return $candidate;
             }
         }
 
+        self::$normalized_mockup_path_cache[$cache_key] = '';
         return '';
     }
 
@@ -116,6 +137,50 @@ class MG_Product_Settings_Page {
             }
         }
         return $count;
+    }
+
+    private static function coerce_mockup_path_list($value) {
+        $paths = array();
+        if (is_array($value)) {
+            foreach ($value as $item) {
+                if (!is_string($item)) {
+                    continue;
+                }
+                $normalized = trim(wp_normalize_path($item));
+                if ($normalized === '' || in_array($normalized, $paths, true)) {
+                    continue;
+                }
+                $paths[] = $normalized;
+            }
+        } elseif (is_string($value)) {
+            $normalized = trim(wp_normalize_path($value));
+            if ($normalized !== '') {
+                $paths[] = $normalized;
+            }
+        }
+        return array_values($paths);
+    }
+
+    private static function coerce_mockup_overrides_structure($input) {
+        $result = array();
+        if (!is_array($input)) {
+            return $result;
+        }
+        foreach ($input as $color_slug => $views) {
+            if (!is_string($color_slug)) { continue; }
+            $color_slug = trim($color_slug);
+            if ($color_slug === '') { continue; }
+            if (!is_array($views)) { $views = array(); }
+            foreach ($views as $view_key => $paths) {
+                if (!is_string($view_key)) { continue; }
+                $view_key = trim($view_key);
+                if ($view_key === '') { continue; }
+                $list = self::coerce_mockup_path_list($paths);
+                if (empty($list)) { continue; }
+                $result[$color_slug][$view_key] = $list;
+            }
+        }
+        return $result;
     }
 
     private static function sanitize_mockup_path_list($value) {
@@ -204,6 +269,8 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         if (!$prod) { echo '<div class="notice notice-error"><p>Ismeretlen termék.</p></div>'; return; }
         if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
 
+        $sanitized_overrides = null;
+
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
             $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
             if (!empty($sizes)) $prod['sizes']=$sizes;
@@ -276,20 +343,15 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
     $prod['size_surcharges'] = $ss;
 }
             $removed_overrides = 0;
-            $raw_overrides = isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides']) ? $prod['mockup_overrides'] : array();
-            $before_initial_clean = self::count_mockup_paths($raw_overrides);
-            $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($raw_overrides);
-            $after_initial_clean = self::count_mockup_paths($prod['mockup_overrides']);
-            if ($after_initial_clean < $before_initial_clean) {
-                $removed_overrides += ($before_initial_clean - $after_initial_clean);
-            }
+            $overrides_dirty = false;
 
-            if (!isset($prod['mockup_overrides']) || !is_array($prod['mockup_overrides'])) {
-                $prod['mockup_overrides'] = array();
-            }
+            $raw_overrides = isset($prod['mockup_overrides']) && is_array($prod['mockup_overrides']) ? $prod['mockup_overrides'] : array();
+            $prod['mockup_overrides'] = self::coerce_mockup_overrides_structure($raw_overrides);
+            $sanitized_overrides = $prod['mockup_overrides'];
 
             $remove_requests = isset($_POST['mockup_remove']) && is_array($_POST['mockup_remove']) ? $_POST['mockup_remove'] : array();
             if (!empty($remove_requests)) {
+                $did_remove = false;
                 foreach ($remove_requests as $color_slug => $views) {
                     $color_key = sanitize_text_field($color_slug);
                     if ($color_key !== $color_slug || $color_key === '' || empty($prod['mockup_overrides'][$color_key]) || !is_array($views)) {
@@ -300,24 +362,33 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         if ($view_key !== $file_key || $view_key === '' || !isset($prod['mockup_overrides'][$color_key][$view_key])) {
                             continue;
                         }
-                        $current = self::sanitize_mockup_path_list($prod['mockup_overrides'][$color_key][$view_key]);
-                        $indexes = array_map('intval', (array) $indexes);
-                        $indexes = array_unique($indexes);
+                        $current = self::coerce_mockup_path_list($prod['mockup_overrides'][$color_key][$view_key]);
+                        $indexes = array_unique(array_map('intval', (array) $indexes));
+                        if (empty($indexes)) {
+                            continue;
+                        }
                         $filtered = array();
                         foreach ($current as $idx => $path) {
                             if (!in_array($idx, $indexes, true)) {
                                 $filtered[] = $path;
                             }
                         }
-                        if (!empty($filtered)) {
-                            $prod['mockup_overrides'][$color_key][$view_key] = array_values($filtered);
-                        } else {
-                            unset($prod['mockup_overrides'][$color_key][$view_key]);
+                        if (count($filtered) !== count($current)) {
+                            if (!empty($filtered)) {
+                                $prod['mockup_overrides'][$color_key][$view_key] = array_values($filtered);
+                            } else {
+                                unset($prod['mockup_overrides'][$color_key][$view_key]);
+                            }
+                            $did_remove = true;
                         }
                     }
                     if (empty($prod['mockup_overrides'][$color_key]) || !is_array($prod['mockup_overrides'][$color_key])) {
                         unset($prod['mockup_overrides'][$color_key]);
+                        $did_remove = true;
                     }
+                }
+                if ($did_remove) {
+                    $overrides_dirty = true;
                 }
             }
 
@@ -355,23 +426,34 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                             );
                             $uploaded = wp_handle_upload($file, array('test_form'=>false, 'mimes'=>array('png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp')));
                             if (!empty($uploaded['error'])) { continue; }
+                            $existing = isset($prod['mockup_overrides'][$color_key][$view_key]) ? $prod['mockup_overrides'][$color_key][$view_key] : array();
+                            $existing = self::coerce_mockup_path_list($existing);
+                            $existing[] = $uploaded['file'];
+                            $new_list = self::sanitize_mockup_path_list($existing);
                             if (!isset($prod['mockup_overrides'][$color_key]) || !is_array($prod['mockup_overrides'][$color_key])) {
                                 $prod['mockup_overrides'][$color_key] = array();
                             }
-                            $existing = isset($prod['mockup_overrides'][$color_key][$view_key]) ? $prod['mockup_overrides'][$color_key][$view_key] : array();
-                            $existing = self::sanitize_mockup_path_list($existing);
-                            $existing[] = $uploaded['file'];
-                            $prod['mockup_overrides'][$color_key][$view_key] = self::sanitize_mockup_path_list($existing);
+                            if (!isset($prod['mockup_overrides'][$color_key][$view_key]) || $prod['mockup_overrides'][$color_key][$view_key] !== $new_list) {
+                                $prod['mockup_overrides'][$color_key][$view_key] = $new_list;
+                                $overrides_dirty = true;
+                            }
                         }
                     }
                 }
             }
 
-            $before_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
-            $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($prod['mockup_overrides']);
-            $after_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
-            if ($after_final_clean < $before_final_clean) {
-                $removed_overrides += ($before_final_clean - $after_final_clean);
+            if ($overrides_dirty) {
+                $before_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
+                $prod['mockup_overrides'] = self::sanitize_mockup_overrides_structure($prod['mockup_overrides']);
+                $after_final_clean = self::count_mockup_paths($prod['mockup_overrides']);
+                if ($after_final_clean < $before_final_clean) {
+                    $removed_overrides += ($before_final_clean - $after_final_clean);
+                }
+                $sanitized_overrides = $prod['mockup_overrides'];
+            }
+
+            if ($sanitized_overrides === null) {
+                $sanitized_overrides = self::coerce_mockup_overrides_structure($prod['mockup_overrides']);
             }
 
             self::save_product($prod);
@@ -390,8 +472,10 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
         $template_base = $prod['template_base'];
         $sku_prefix = $prod['sku_prefix'] ?? '';
         $price = intval($prod['price'] ?? 0);
-        $over = self::sanitize_mockup_overrides_structure($prod['mockup_overrides'] ?? array());
-        $prod['mockup_overrides'] = $over;
+        if ($sanitized_overrides === null) {
+            $sanitized_overrides = self::coerce_mockup_overrides_structure($prod['mockup_overrides'] ?? array());
+        }
+        $prod['mockup_overrides'] = $sanitized_overrides;
 
         $colors_text = implode(PHP_EOL, array_map(function($c){ return $c['name'].':'.$c['slug']; }, $colors));
         $is_primary = !empty($prod['is_primary']);
