@@ -23,12 +23,17 @@ function mgstp_read_products(){
                     $pa = isset($c['print_area']) && is_array($c['print_area']) ? $c['print_area'] : array();
                     $pa_front = isset($pa['front']) ? $pa['front'] : array('x'=>10,'y'=>10,'w'=>60,'h'=>60,'unit'=>'pct');
                     $pa_back  = isset($pa['back'])  ? $pa['back']  : array('x'=>10,'y'=>10,'w'=>60,'h'=>60,'unit'=>'pct');
-                    $colors[] = array(
-                        'slug'=>$slug,
-                        'name'=>$name,
-                        'mockups'=>array('front'=>$front,'back'=>$back),
-                        'print_area'=>array('front'=>$pa_front,'back'=>$pa_back),
+                    $hex = isset($c['hex']) ? sanitize_hex_color($c['hex']) : '';
+                    $color_entry = array(
+                        'slug'      => $slug,
+                        'name'      => $name,
+                        'mockups'   => array('front'=>$front,'back'=>$back),
+                        'print_area'=> array('front'=>$pa_front,'back'=>$pa_back),
                     );
+                    if ($hex) {
+                        $color_entry['hex'] = $hex;
+                    }
+                    $colors[] = $color_entry;
                 }
             }
             $out[$key] = array(
@@ -51,7 +56,8 @@ function mgstp_save_products($products){
         $colors = array();
         if (is_array($p['colors'])) {
             foreach ($p['colors'] as $c) {
-                $colors[] = array(
+                $hex = isset($c['hex']) ? sanitize_hex_color($c['hex']) : '';
+                $color_entry = array(
                     'slug'=>$c['slug'],
                     'name'=>$c['name'],
                     'mockups'=>array(
@@ -75,6 +81,10 @@ function mgstp_save_products($products){
                         ),
                     ),
                 );
+                if ($hex) {
+                    $color_entry['hex'] = $hex;
+                }
+                $colors[] = $color_entry;
             }
         }
         $norm[] = array(
@@ -150,12 +160,17 @@ function mgstp_render_settings(){
                     'h'=> isset($cdata['pa_b_h']) ? floatval($cdata['pa_b_h']) : 60,
                     'unit'=>'pct'
                 );
-                $colors[] = array(
+                $hex = isset($cdata['hex']) ? sanitize_hex_color($cdata['hex']) : '';
+                $color_entry = array(
                     'slug'=> sanitize_title($slug),
                     'name'=> $name,
                     'mockups'=> array('front'=>$front,'back'=>$back),
                     'print_area'=> array('front'=>$pa_f,'back'=>$pa_b),
                 );
+                if ($hex) {
+                    $color_entry['hex'] = $hex;
+                }
+                $colors[] = $color_entry;
             }
         }
 

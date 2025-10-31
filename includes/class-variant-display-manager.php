@@ -149,8 +149,15 @@ class MG_Variant_Display_Manager {
 
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
-                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug);
+                $default_hex = isset($color_meta['hex']) ? $color_meta['hex'] : '';
+                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug, $default_hex);
                 $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
+                if ($swatch === '' && $default_hex !== '') {
+                    $candidate = sanitize_hex_color($default_hex);
+                    if ($candidate) {
+                        $swatch = $candidate;
+                    }
+                }
                 $colors_payload[$color_slug] = array(
                     'label' => $color_meta['label'],
                     'swatch' => $swatch,
@@ -245,8 +252,16 @@ class MG_Variant_Display_Manager {
                     if ($color_slug === '') {
                         continue;
                     }
+                    $hex = '';
+                    if (!empty($color['hex'])) {
+                        $candidate = sanitize_hex_color($color['hex']);
+                        if ($candidate) {
+                            $hex = $candidate;
+                        }
+                    }
                     $colors[$color_slug] = array(
                         'label' => isset($color['name']) ? wp_strip_all_tags($color['name']) : $color_slug,
+                        'hex' => $hex,
                     );
                 }
             }
@@ -406,11 +421,20 @@ class MG_Variant_Display_Manager {
         return $clean;
     }
 
-    protected static function get_color_settings($settings, $type_slug, $color_slug) {
-        if (empty($settings['colors'][$type_slug][$color_slug])) {
-            return array();
+    protected static function get_color_settings($settings, $type_slug, $color_slug, $fallback_hex = '') {
+        if (!empty($settings['colors'][$type_slug][$color_slug]) && is_array($settings['colors'][$type_slug][$color_slug])) {
+            $entry = $settings['colors'][$type_slug][$color_slug];
+            if (!empty($entry['swatch'])) {
+                return $entry;
+            }
         }
-        return $settings['colors'][$type_slug][$color_slug];
+
+        $fallback_hex = sanitize_hex_color($fallback_hex);
+        if ($fallback_hex) {
+            return array('swatch' => $fallback_hex);
+        }
+
+        return array();
     }
 
     protected static function sizes_for_color($type_meta, $color_slug) {
