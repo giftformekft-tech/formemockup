@@ -25,10 +25,19 @@
         $optionsContainer = $box;
     }
 
-    var $variantDisplay = $form.find('.mg-variant-display');
+    var $variantDisplay = null;
     var $messageAnchor = $box;
+    var variantEmbedded = false;
+    var $message = null;
 
-    if ($variantDisplay.length) {
+    function embedIntoVariantDisplay() {
+        if (variantEmbedded) {
+            return true;
+        }
+        var $display = $form.find('.mg-variant-display');
+        if (!$display.length) {
+            return false;
+        }
         var $section = $('<div class="mg-surcharge-box mg-surcharge-box--embedded mg-variant-section mg-variant-section--surcharges" />');
         var contextAttr = $box.attr('data-context');
         if (contextAttr) {
@@ -40,17 +49,46 @@
         var $variantOptions = $('<div class="mg-variant-options mg-variant-options--surcharges" />');
         $variantOptions.append($optionsContainer.children().detach());
         $section.append($variantOptions);
-        $variantDisplay.append($section);
+        var $sizeSection = $display.find('.mg-variant-section--size');
+        if ($sizeSection.length) {
+            $section.insertAfter($sizeSection);
+        } else {
+            $display.append($section);
+        }
         $box.remove();
         $box = $section;
         $optionsContainer = $variantOptions;
         $messageAnchor = $section;
+        $variantDisplay = $display;
+        variantEmbedded = true;
+        if ($message) {
+            $message.addClass('mg-surcharge-warning--embedded');
+            $message.detach().insertAfter($messageAnchor);
+        }
+        return true;
+    }
+
+    if (!embedIntoVariantDisplay()) {
+        if (typeof MutationObserver !== 'undefined') {
+            var observer = new MutationObserver(function() {
+                if (embedIntoVariantDisplay()) {
+                    observer.disconnect();
+                }
+            });
+            observer.observe($form.get(0), { childList: true, subtree: true });
+        } else {
+            var intervalId = setInterval(function(){
+                if (embedIntoVariantDisplay()) {
+                    clearInterval(intervalId);
+                }
+            }, 100);
+        }
     }
 
     var currentVariation = null;
     var messageText = data.messages ? data.messages.required : '';
-    var warningClass = 'mg-surcharge-warning' + ($variantDisplay.length ? ' mg-surcharge-warning--embedded' : '');
-    var $message = $('<div></div>').addClass(warningClass).insertAfter($messageAnchor).hide();
+    var warningClass = 'mg-surcharge-warning' + (variantEmbedded ? ' mg-surcharge-warning--embedded' : '');
+    $message = $('<div></div>').addClass(warningClass).insertAfter($messageAnchor).hide();
 
     function cloneAttributes(obj){
         var clone = {};
