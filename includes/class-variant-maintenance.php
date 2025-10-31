@@ -6,7 +6,6 @@ if (!defined('ABSPATH')) {
 class MG_Variant_Maintenance {
     const OPTION_QUEUE = 'mg_variant_sync_queue';
     const CRON_HOOK = 'mg_variant_sync_process';
-    const REQUEST_TIME_LIMIT = 2.0;
     const CRON_TIME_LIMIT = 8.0;
 
     public static function init() {
@@ -34,7 +33,10 @@ class MG_Variant_Maintenance {
                 continue;
             }
 
-            self::synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions, $is_new_type);
+            $product_ids = $is_new_type ? self::collect_all_products() : self::collect_products_for_type($type_slug);
+            if (!empty($product_ids)) {
+                self::queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids);
+            }
         }
 
         return $new_value;
@@ -177,30 +179,6 @@ class MG_Variant_Maintenance {
             }
         }
         return array_values(array_unique($allowed));
-    }
-
-    private static function synchronize_products_for_type($type_slug, $type_data, $added_colors, $allowed_additions, $force_all_products = false) {
-        $product_ids = $force_all_products ? self::collect_all_products() : self::collect_products_for_type($type_slug);
-        if (empty($product_ids)) {
-            return;
-        }
-
-        $time_limit = self::get_request_time_limit();
-        $start = microtime(true);
-        $pending = [];
-
-        foreach ($product_ids as $product_id) {
-            if ((microtime(true) - $start) >= $time_limit) {
-                $pending[] = $product_id;
-                continue;
-            }
-
-            self::process_single_product($product_id, $type_slug, $type_data, $added_colors, $allowed_additions);
-        }
-
-        if (!empty($pending)) {
-            self::queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $pending);
-        }
     }
 
     private static function process_single_product($product_id, $type_slug, $type_data, $added_colors, $allowed_additions) {
@@ -760,15 +738,6 @@ class MG_Variant_Maintenance {
                 wp_schedule_single_event(time() + 30, self::CRON_HOOK);
             }
         }
-    }
-
-    private static function get_request_time_limit() {
-        $limit = apply_filters('mg_variant_sync_request_time_limit', self::REQUEST_TIME_LIMIT);
-        $limit = is_numeric($limit) ? (float) $limit : self::REQUEST_TIME_LIMIT;
-        if ($limit <= 0) {
-            $limit = self::REQUEST_TIME_LIMIT;
-        }
-        return $limit;
     }
 
     private static function get_cron_time_limit() {
