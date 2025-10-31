@@ -115,7 +115,7 @@ class MG_Surcharge_Options_Page {
         $terms = [
             'product_types' => self::unique_terms(self::get_terms('pa_termektipus')),
             'colors' => self::unique_terms(array_merge(self::get_terms('pa_szin'), self::get_terms('pa_color'))),
-            'sizes' => self::unique_terms(array_merge(self::get_terms('pa_meret'), self::get_terms('pa_size'))),
+            'sizes' => self::unique_terms(array_merge(self::get_terms('pa_meret'), self::get_terms('pa_size'), self::get_plugin_sizes())),
             'categories' => self::unique_terms(self::get_terms('product_cat', true)),
         ];
         echo '<div class="wrap">';
@@ -205,6 +205,52 @@ class MG_Surcharge_Options_Page {
             ];
         }
         return $result;
+    }
+
+    private static function get_plugin_sizes() {
+        $sizes = [];
+        $products = get_option('mg_products', []);
+        if (!is_array($products)) {
+            return $sizes;
+        }
+        foreach ($products as $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $candidates = [];
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                $candidates = array_merge($candidates, $product['sizes']);
+            }
+            if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+                $candidates = array_merge($candidates, array_keys($product['size_color_matrix']));
+            }
+            if (!empty($product['size_surcharges']) && is_array($product['size_surcharges'])) {
+                $candidates = array_merge($candidates, array_keys($product['size_surcharges']));
+            }
+            foreach ($candidates as $size_label) {
+                if (!is_string($size_label)) {
+                    continue;
+                }
+                $name = trim(wp_strip_all_tags($size_label));
+                if ($name === '') {
+                    continue;
+                }
+                $slug = sanitize_title($name);
+                if ($slug === '' || isset($sizes[$slug])) {
+                    continue;
+                }
+                $sizes[$slug] = [
+                    'slug' => $slug,
+                    'name' => $name,
+                ];
+            }
+        }
+        if (!empty($sizes)) {
+            uasort($sizes, function ($a, $b) {
+                return strcasecmp($a['name'], $b['name']);
+            });
+        }
+        return array_values($sizes);
     }
 
     private static function unique_terms($terms) {

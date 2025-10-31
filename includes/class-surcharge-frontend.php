@@ -48,11 +48,16 @@ class MG_Surcharge_Frontend {
                 'required' => __('Kérjük válassz az extra opciók közül.', 'mockup-generator'),
             ],
         ]);
-        echo '<div class="mg-surcharge-box" data-context="product">';
-        echo '<h3>' . esc_html__('Feláras opciók', 'mockup-generator') . '</h3>';
+        $title = esc_html__('Feláras opciók', 'mockup-generator');
+        echo '<div class="mg-surcharge-box" data-context="product" data-title="' . esc_attr($title) . '">';
+        echo '<div class="mg-surcharge-box__header">';
+        echo '<h3 class="mg-surcharge-box__title">' . $title . '</h3>';
+        echo '</div>';
+        echo '<div class="mg-surcharge-box__options">';
         foreach ($available as $option) {
             echo self::render_option_control($option, null, 'product');
         }
+        echo '</div>';
         echo '</div>';
     }
 
@@ -204,10 +209,12 @@ class MG_Surcharge_Frontend {
         }
         wp_enqueue_style('mg-surcharges');
         echo '<div class="mg-surcharge-box mg-surcharge-box--cart" data-context="cart">';
+        echo '<div class="mg-surcharge-box__options">';
         foreach ($available as $option) {
             $data = isset($cart_item['mg_surcharge_data'][$option['id']]) ? $cart_item['mg_surcharge_data'][$option['id']] : null;
             echo self::render_option_control($option, $data, 'cart', $cart_item_key);
         }
+        echo '</div>';
         echo '</div>';
     }
 

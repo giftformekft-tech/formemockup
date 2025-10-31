@@ -5,21 +5,35 @@
     background-color: #fff;
 }
 
-.mg-surcharge-box h3 {
-    margin-top: 0;
+.mg-surcharge-box__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 12px;
+}
+
+.mg-surcharge-box__title {
+    margin: 0;
     font-size: 1.1em;
 }
 
+.mg-surcharge-box__options {
+    display: flex;
+    flex-direction: column;
+}
+
 .mg-surcharge-option {
-    border-top: 1px solid #f0f0f0;
-    padding: 12px 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.mg-surcharge-option:first-of-type {
+.mg-surcharge-box__options > .mg-surcharge-option {
+    border-top: 1px solid #f0f0f0;
+    padding: 12px 0;
+}
+
+.mg-surcharge-box__options > .mg-surcharge-option:first-of-type {
     border-top: none;
 }
 
@@ -32,6 +46,19 @@
 
 .mg-surcharge-option__amount {
     color: #2271b1;
+}
+
+.mg-surcharge-option__control {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    font-size: 0.95em;
+}
+
+.mg-surcharge-option__control label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .mg-surcharge-tooltip {
@@ -60,10 +87,50 @@
     color: #d63638;
 }
 
+.mg-surcharge-warning--embedded {
+    margin-top: 12px;
+}
+
 .mg-surcharge-box--cart {
     margin-top: 8px;
 }
 
 .mg-surcharge-box--cart .mg-surcharge-option__header {
     font-size: 0.95em;
+}
+
+.mg-surcharge-box--embedded {
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+}
+
+.mg-variant-section--surcharges .mg-variant-section__label {
+    margin-bottom: 0.75em;
+}
+
+.mg-variant-options--surcharges {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75em;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option {
+    border: 1px solid #cbd5f5;
+    border-radius: 12px;
+    padding: 0.9em 1em;
+    background: #f8fafc;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option__amount {
+    color: #2563eb;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option.is-disabled {
+    opacity: 0.45;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option__control {
+    font-size: 0.9em;
 }
