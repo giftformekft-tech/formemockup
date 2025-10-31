@@ -280,12 +280,44 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
             $color_lines = array_filter(array_map('trim', explode(PHP_EOL, $colors_text)));
             $colors = array();
             foreach ($color_lines as $line) {
-                if (strpos($line, ':') !== false) {
-                    list($name,$slug) = array_map('trim', explode(':', $line, 2));
-                    $colors[] = array('name'=>$name,'slug'=>sanitize_title($slug));
+                if (strpos($line, ':') === false) {
+                    continue;
                 }
+                list($name_part, $slug_part) = array_map('trim', explode(':', $line, 2));
+                if ($name_part === '' || $slug_part === '') {
+                    continue;
+                }
+                $name_only = $name_part;
+                $hex_value = '';
+                if (strpos($name_part, '|') !== false) {
+                    list($name_only, $hex_value) = array_map('trim', explode('|', $name_part, 2));
+                    if ($name_only === '') {
+                        $name_only = $name_part;
+                    }
+                }
+                $hex_clean = '';
+                if ($hex_value !== '') {
+                    $hex_candidate = sanitize_hex_color($hex_value);
+                    if ($hex_candidate) {
+                        $hex_clean = $hex_candidate;
+                    }
+                }
+                $slug_clean = sanitize_title($slug_part);
+                if ($slug_clean === '') {
+                    continue;
+                }
+                $color_entry = array(
+                    'name' => $name_only,
+                    'slug' => $slug_clean,
+                );
+                if ($hex_clean !== '') {
+                    $color_entry['hex'] = $hex_clean;
+                }
+                $colors[] = $color_entry;
             }
-            if (!empty($colors)) $prod['colors']=$colors;
+            if (!empty($colors)) {
+                $prod['colors'] = $colors;
+            }
 
             $is_primary = !empty($_POST['is_primary']) ? 1 : 0;
             $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
@@ -494,7 +526,32 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
         $prod['mockup_overrides'] = $sanitized_overrides;
         $over = $sanitized_overrides;
 
-        $colors_text = implode(PHP_EOL, array_map(function($c){ return $c['name'].':'.$c['slug']; }, $colors));
+        $colors_text = implode(
+            PHP_EOL,
+            array_filter(
+                array_map(
+                    function ($color) {
+                        if (!is_array($color) || !isset($color['name'], $color['slug'])) {
+                            return '';
+                        }
+                        $name = (string) $color['name'];
+                        $slug = (string) $color['slug'];
+                        $hex  = '';
+                        if (!empty($color['hex'])) {
+                            $hex_candidate = sanitize_hex_color($color['hex']);
+                            if ($hex_candidate) {
+                                $hex = $hex_candidate;
+                            }
+                        }
+                        if ($hex !== '') {
+                            $name .= '|' . $hex;
+                        }
+                        return $name . ':' . $slug;
+                    },
+                    $colors
+                )
+            )
+        );
         $is_primary = !empty($prod['is_primary']);
         $primary_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
         $primary_size = isset($prod['primary_size']) ? $prod['primary_size'] : '';
@@ -603,7 +660,26 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 </table>
 <h2>Színek</h2>
 
-                <p><textarea name="colors" rows="6" class="large-text code"><?php echo esc_textarea($colors_text); ?></textarea></p>
+                <div class="mg-color-field" data-mg-color-manager>
+                    <div class="mg-color-field__chips" role="list"></div>
+                    <button type="button" class="button button-secondary mg-color-field__add">
+                        <?php esc_html_e('Új szín hozzáadása', 'mockup-generator'); ?>
+                    </button>
+                    <textarea
+                        id="mg-color-field-input"
+                        name="colors"
+                        class="mg-color-field__input large-text code"
+                        rows="6"
+                    ><?php echo esc_textarea($colors_text); ?></textarea>
+                    <p class="description mg-color-field__description">
+                        <?php esc_html_e('A színek neve, slugja és opcionális hex értéke kerül mentésre. A sorrend drag and drop módban módosítható.', 'mockup-generator'); ?>
+                    </p>
+                    <noscript>
+                        <p class="description">
+                            <?php esc_html_e('A vizuális színkezelő JavaScriptet igényel. Engedélyezd a böngésződben, vagy szerkeszd a listát közvetlenül a mezőben.', 'mockup-generator'); ?>
+                        </p>
+                    </noscript>
+                </div>
 
                 <h2>Nézetek (views)</h2>
                 <p><textarea id="mg-views-json" name="views" rows="12" class="large-text code"><?php echo esc_textarea(json_encode($views, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></textarea></p>

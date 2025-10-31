@@ -32,7 +32,10 @@ class MG_Variant_Display_Page {
 
     public static function enqueue_assets($hook) {
         $page_slug = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
+        $tab_slug  = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
+        $is_shell_variant = ($page_slug === 'mockup-generator' && $tab_slug === 'variants');
+
+        if (!$is_shell_variant && strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
             return;
         }
 
