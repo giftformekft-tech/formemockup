@@ -15,6 +15,17 @@ class MG_Variant_Display_Manager {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
 
+    protected static function is_supercharge_enabled() {
+        $raw = get_option('mg_variant_display', array());
+        $sanitized = self::sanitize_settings_block($raw, null);
+
+        if (is_array($sanitized) && array_key_exists('supercharge_enabled', $sanitized)) {
+            return !empty($sanitized['supercharge_enabled']);
+        }
+
+        return true;
+    }
+
     public static function enqueue_assets() {
         if (!function_exists('is_product') || !is_product()) {
             return;
@@ -27,6 +38,10 @@ class MG_Variant_Display_Manager {
 
         $product = wc_get_product($post->ID);
         if (!$product || !$product->is_type('variable')) {
+            return;
+        }
+
+        if (!self::is_supercharge_enabled()) {
             return;
         }
 
@@ -330,6 +345,7 @@ class MG_Variant_Display_Manager {
         return wp_parse_args($sanitized, array(
             'colors' => array(),
             'size_charts' => array(),
+            'supercharge_enabled' => true,
         ));
     }
 
@@ -341,6 +357,12 @@ class MG_Variant_Display_Manager {
 
         if (!is_array($input)) {
             return $clean;
+        }
+
+        if (array_key_exists('supercharge_enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['supercharge_enabled']);
+        } elseif (array_key_exists('enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['enabled']);
         }
 
         $allowed_types = null;
@@ -419,6 +441,33 @@ class MG_Variant_Display_Manager {
         }
 
         return $clean;
+    }
+
+    protected static function normalize_boolean_flag($value) {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return ((int) $value) === 1;
+        }
+
+        if (is_string($value)) {
+            $value = strtolower(trim($value));
+            if ($value === '') {
+                return false;
+            }
+
+            if (in_array($value, array('1', 'true', 'yes', 'on'), true)) {
+                return true;
+            }
+
+            if (in_array($value, array('0', 'false', 'no', 'off'), true)) {
+                return false;
+            }
+        }
+
+        return !empty($value);
     }
 
     protected static function get_color_settings($settings, $type_slug, $color_slug, $fallback_hex = '') {
