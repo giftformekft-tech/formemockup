@@ -27,6 +27,7 @@ add_action('plugins_loaded', function(){
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
         'admin/class-mockup-maintenance-page.php',
+        'admin/class-surcharge-options-page.php',
         'includes/class-generator.php',
         'includes/class-product-creator.php',
         'includes/class-custom-fields-manager.php',
@@ -34,6 +35,8 @@ add_action('plugins_loaded', function(){
         'includes/class-mockup-maintenance.php',
         'includes/class-variant-maintenance.php',
         'includes/class-variant-display-manager.php',
+        'includes/class-surcharge-manager.php',
+        'includes/class-surcharge-frontend.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -58,6 +61,9 @@ add_action('plugins_loaded', function(){
         }
         if (class_exists('MG_Variant_Display_Page')) {
             MG_Variant_Display_Page::add_submenu_page();
+        }
+        if (class_exists('MG_Surcharge_Options_Page')) {
+            MG_Surcharge_Options_Page::add_submenu_page();
         }
         });
 
@@ -94,6 +100,9 @@ add_action('load-toplevel_page_mockup-generator', function(){
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
+    }
+    if (class_exists('MG_Surcharge_Frontend')) {
+        MG_Surcharge_Frontend::init();
     }
 }, 20);
 
