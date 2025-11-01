@@ -1,33 +1,28 @@
 .mg-custom-fields {
-    margin: 1.5em 0;
-    padding: 1.5em;
-    border: 1px solid #e2e2e2;
-    border-radius: 6px;
-    background: #fafafa;
+    margin: 0;
+    padding: 0;
 }
 
 .mg-custom-fields__title {
-    margin-top: 0;
-    margin-bottom: 1em;
-    font-size: 1.2em;
-}
-
-.mg-custom-fields--placement-above_variants {
-    margin-top: 0;
-}
-
-.mg-custom-fields--placement-above_variants + .mg-custom-fields--placement-below_variants {
-    margin-top: 1em;
+    margin: 0 0 0.75em;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
 }
 
 .mg-custom-field {
-    margin-bottom: 1em;
+    margin-bottom: 0.85em;
+}
+
+.mg-custom-field:last-child {
+    margin-bottom: 0;
 }
 
 .mg-custom-field label {
     font-weight: 600;
     display: block;
-    margin-bottom: 0.3em;
+    margin-bottom: 0.35em;
+    color: #0f172a;
 }
 
 .mg-custom-field input[type="text"],
@@ -35,7 +30,7 @@
 .mg-custom-field input[type="date"],
 .mg-custom-field select {
     width: 100%;
-    max-width: 360px;
+    max-width: 420px;
 }
 
 .mg-custom-field__surcharge {

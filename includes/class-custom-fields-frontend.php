@@ -14,8 +14,7 @@ class MG_Custom_Fields_Frontend {
      */
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'));
-        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields_above'), 5);
-        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields_below'), 20);
+        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_fields'), 12);
         add_filter('woocommerce_add_to_cart_validation', array(__CLASS__, 'validate_fields'), 10, 5);
         add_filter('woocommerce_add_cart_item_data', array(__CLASS__, 'add_cart_item_data'), 10, 3);
         add_filter('woocommerce_get_item_data', array(__CLASS__, 'display_cart_item_data'), 10, 2);
@@ -38,10 +37,23 @@ class MG_Custom_Fields_Frontend {
             return;
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
+        $style_path = dirname(__DIR__) . '/assets/css/custom-fields.css';
         $style_url = plugins_url('assets/css/custom-fields.css', $base_file);
-        wp_enqueue_style('mg-custom-fields', $style_url, array(), '1.0.0');
+        $script_path = dirname(__DIR__) . '/assets/js/custom-fields-frontend.js';
         $script_url = plugins_url('assets/js/custom-fields-frontend.js', $base_file);
-        wp_enqueue_script('mg-custom-fields-frontend', $script_url, array(), '1.0.0', true);
+        wp_enqueue_style(
+            'mg-custom-fields',
+            $style_url,
+            array(),
+            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+        );
+        wp_enqueue_script(
+            'mg-custom-fields-frontend',
+            $script_url,
+            array(),
+            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            true
+        );
     }
 
     protected static function ensure_fields_loaded($product_id) {
@@ -58,7 +70,58 @@ class MG_Custom_Fields_Frontend {
         return !empty(self::$cached_fields);
     }
 
-    protected static function render_fields_for_placement($placement) {
+    protected static function group_fields_by_placement() {
+        $groups = array();
+        foreach (self::$cached_fields as $field) {
+            $field_placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'variant_bottom';
+            if (!isset($groups[$field_placement])) {
+                $groups[$field_placement] = array();
+            }
+            $groups[$field_placement][] = $field;
+        }
+        return $groups;
+    }
+
+    protected static function determine_group_order($fields) {
+        $order = 0;
+        $has_order = false;
+        foreach ($fields as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            if (isset($field['position'])) {
+                $position = intval($field['position']);
+                if (!$has_order || $position < $order) {
+                    $order = $position;
+                    $has_order = true;
+                }
+            }
+        }
+        return $has_order ? $order : 0;
+    }
+
+    protected static function render_field_group($placement, $fields) {
+        if (empty($fields)) {
+            return;
+        }
+        if (!self::$nonce_rendered) {
+            wp_nonce_field('mg_custom_fields', 'mg_custom_fields_nonce');
+            self::$nonce_rendered = true;
+        }
+        $classes = array('mg-custom-fields', 'mg-custom-fields--placement-' . sanitize_html_class($placement));
+        $order = self::determine_group_order($fields);
+        echo '<div class="' . esc_attr(implode(' ', $classes)) . '" data-mgcf-placement="' . esc_attr($placement) . '" data-mgcf-order="' . esc_attr($order) . '">';
+        if (!self::$heading_rendered) {
+            echo '<h3 class="mg-custom-fields__title mg-variant-section__label">' . esc_html__('Egyedi mezők', 'mgcf') . '</h3>';
+            self::$heading_rendered = true;
+        }
+        foreach ($fields as $field) {
+            self::render_single_field($field);
+        }
+        echo '</div>';
+    }
+
+    public static function render_fields() {
         global $product;
         if (!$product) {
             return;
@@ -70,39 +133,31 @@ class MG_Custom_Fields_Frontend {
         if (!self::ensure_fields_loaded($product_id)) {
             return;
         }
-        $normalized = MG_Custom_Fields_Manager::normalize_placement($placement);
-        $group = array();
-        foreach (self::$cached_fields as $field) {
-            $field_placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'below_variants';
-            if ($field_placement === $normalized) {
-                $group[] = $field;
-            }
-        }
-        if (empty($group)) {
+        $groups = self::group_fields_by_placement();
+        if (empty($groups)) {
             return;
         }
-        if (!self::$nonce_rendered) {
-            wp_nonce_field('mg_custom_fields', 'mg_custom_fields_nonce');
-            self::$nonce_rendered = true;
-        }
-        $classes = array('mg-custom-fields', 'mg-custom-fields--placement-' . sanitize_html_class($normalized));
-        echo '<div class="' . esc_attr(implode(' ', $classes)) . '" data-mgcf-placement="' . esc_attr($normalized) . '">';
-        if (!self::$heading_rendered) {
-            echo '<h3 class="mg-custom-fields__title">' . esc_html__('Egyedi mezők', 'mgcf') . '</h3>';
-            self::$heading_rendered = true;
-        }
-        foreach ($group as $field) {
-            self::render_single_field($field);
-        }
-        echo '</div>';
-    }
 
-    public static function render_fields_above() {
-        self::render_fields_for_placement('above_variants');
-    }
+        $order = array(
+            'variant_top'    => 10,
+            'after_type'     => 20,
+            'after_color'    => 30,
+            'after_size'     => 40,
+            'variant_bottom' => 50,
+        );
 
-    public static function render_fields_below() {
-        self::render_fields_for_placement('below_variants');
+        uksort($groups, function($a, $b) use ($order) {
+            $a_rank = isset($order[$a]) ? $order[$a] : 999;
+            $b_rank = isset($order[$b]) ? $order[$b] : 999;
+            if ($a_rank === $b_rank) {
+                return strcmp($a, $b);
+            }
+            return ($a_rank < $b_rank) ? -1 : 1;
+        });
+
+        foreach ($groups as $placement => $fields) {
+            self::render_field_group($placement, $fields);
+        }
     }
 
     protected static function render_single_field($field) {
@@ -115,10 +170,11 @@ class MG_Custom_Fields_Frontend {
         $min = isset($field['validation_min']) ? $field['validation_min'] : '';
         $max = isset($field['validation_max']) ? $field['validation_max'] : '';
         $description = isset($field['description']) ? $field['description'] : '';
-        $placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'below_variants';
+        $placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'variant_bottom';
         $options = isset($field['options']) && is_array($field['options']) ? $field['options'] : array();
         $surcharge_type = isset($field['surcharge_type']) ? $field['surcharge_type'] : 'none';
         $surcharge_amount = isset($field['surcharge_amount']) ? floatval($field['surcharge_amount']) : 0.0;
+        $position = isset($field['position']) ? intval($field['position']) : 0;
 
         $input_id = sanitize_html_class('mgcf_' . $id);
         $name_attr = 'mg_custom_fields[' . $id . ']';
@@ -127,7 +183,7 @@ class MG_Custom_Fields_Frontend {
         if ($placement !== '') {
             $wrapper_classes[] = 'mg-custom-field--placement-' . sanitize_html_class($placement);
         }
-        echo '<div class="' . esc_attr(implode(' ', $wrapper_classes)) . '" data-field-id="' . esc_attr($id) . '">';
+        echo '<div class="' . esc_attr(implode(' ', $wrapper_classes)) . '" data-field-id="' . esc_attr($id) . '" data-mgcf-order="' . esc_attr($position) . '">';
         echo '<label for="' . esc_attr($input_id) . '">' . esc_html($label);
         if ($required) {
             echo ' <span class="mg-required">*</span>';

@@ -5,6 +5,7 @@
         this.$typeSelect = $form.find('select[name="attribute_pa_termektipus"]');
         this.$colorSelect = $form.find('select[name="attribute_pa_szin"]');
         this.$sizeSelect = $form.find('select[name="attribute_meret"]');
+        this.$variantWrapper = null;
         this.state = {
             type: '',
             color: '',
@@ -50,15 +51,43 @@
             return;
         }
         this.isReady = true;
+        this.relocateCustomFields();
         this.$form.addClass('mg-variant-form--enhanced');
         if (typeof document !== 'undefined' && document.documentElement) {
             document.documentElement.classList.remove('mg-variant-preparing');
+            document.documentElement.classList.remove('mg-variant-preload');
+            document.documentElement.classList.remove('mg-variant-fallback');
             document.documentElement.classList.add('mg-variant-ready');
+        }
+        if (typeof window !== 'undefined' && window.__mgVariantPreloadCleanup) {
+            window.clearTimeout(window.__mgVariantPreloadCleanup);
+            window.__mgVariantPreloadCleanup = null;
+        }
+        var detail = {
+            form: (this.$form && this.$form.length) ? this.$form[0] : null
+        };
+        if (typeof document !== 'undefined') {
+            var nativeEvent;
+            if (typeof window !== 'undefined' && typeof window.CustomEvent === 'function') {
+                nativeEvent = new CustomEvent('mgVariantReady', { detail: detail });
+            } else if (document.createEvent) {
+                nativeEvent = document.createEvent('CustomEvent');
+                if (nativeEvent && nativeEvent.initCustomEvent) {
+                    nativeEvent.initCustomEvent('mgVariantReady', true, true, detail);
+                }
+            }
+            if (nativeEvent) {
+                document.dispatchEvent(nativeEvent);
+            }
+        }
+        if (typeof jQuery !== 'undefined' && jQuery && jQuery(document)) {
+            jQuery(document).trigger('mgVariantReady', [this.$form]);
         }
     };
 
     VariantDisplay.prototype.buildLayout = function() {
         var wrapper = $('<div class="mg-variant-display" />');
+        this.$variantWrapper = wrapper;
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
         typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('type', 'Terméktípus')));
         this.$typeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
@@ -82,6 +111,7 @@
         this.$form.find('.variations').addClass('mg-variant-hidden').before(wrapper);
 
         this.createSizeChartModal();
+        this.relocateCustomFields();
 
         var typeOrder = (this.config.order && this.config.order.types && this.config.order.types.length) ? this.config.order.types : Object.keys(this.config.types);
         var self = this;
@@ -94,6 +124,173 @@
             $btn.attr('data-value', typeSlug);
             $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || typeSlug));
             self.$typeOptions.append($btn);
+        });
+    };
+
+    VariantDisplay.prototype.getCustomFieldOrder = function($block) {
+        if (!$block || !$block.length) {
+            return 0;
+        }
+        var order = parseInt($block.attr('data-mgcf-order'), 10);
+        return isNaN(order) ? 0 : order;
+    };
+
+    VariantDisplay.prototype.findPlacementBlocks = function(placement) {
+        if (!this.$variantWrapper || !this.$variantWrapper.length) {
+            return $();
+        }
+        return this.$variantWrapper.children('.mg-custom-fields[data-mgcf-placement="' + placement + '"]');
+    };
+
+    VariantDisplay.prototype.insertBeforeHigherOrder = function($block, $collection, order) {
+        var self = this;
+        var inserted = false;
+        $collection.each(function(){
+            var $candidate = $(this);
+            var candidateOrder = self.getCustomFieldOrder($candidate);
+            if (candidateOrder > order) {
+                $block.insertBefore($candidate);
+                inserted = true;
+                return false;
+            }
+        });
+        return inserted;
+    };
+
+    VariantDisplay.prototype.insertAfterSection = function($block, placement, selector, order) {
+        if (!this.$variantWrapper || !this.$variantWrapper.length) {
+            return false;
+        }
+        var $existing = this.findPlacementBlocks(placement);
+        if ($existing.length && this.insertBeforeHigherOrder($block, $existing, order)) {
+            return true;
+        }
+        if ($existing.length) {
+            $block.insertAfter($existing.last());
+            return true;
+        }
+        var $anchor = this.$variantWrapper.children(selector).last();
+        if ($anchor.length) {
+            $block.insertAfter($anchor);
+            return true;
+        }
+        return false;
+    };
+
+    VariantDisplay.prototype.applyCustomFieldSectionClasses = function($block, placement) {
+        if (!$block || !$block.length) {
+            return;
+        }
+        $block.addClass('mg-variant-section mg-variant-section--custom');
+        var sanitized = (placement || '').toString().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (sanitized) {
+            $block.addClass('mg-variant-section--custom-' + sanitized);
+        }
+        if (placement === 'variant_top') {
+            $block.addClass('mg-variant-section--custom-top');
+        }
+        if (placement === 'variant_bottom') {
+            $block.addClass('mg-variant-section--custom-bottom');
+        }
+        var $heading = $block.find('.mg-custom-fields__title').first();
+        if ($heading.length) {
+            $heading.addClass('mg-variant-section__label');
+        }
+    };
+
+    VariantDisplay.prototype.insertCustomFieldBlock = function($block, placement) {
+        if (!$block || !$block.length || !this.$variantWrapper || !this.$variantWrapper.length) {
+            return;
+        }
+        var order = this.getCustomFieldOrder($block);
+        var inserted = false;
+        var $existing;
+
+        switch (placement) {
+            case 'variant_top':
+                $existing = this.findPlacementBlocks('variant_top');
+                if ($existing.length) {
+                    inserted = this.insertBeforeHigherOrder($block, $existing, order);
+                    if (!inserted) {
+                        $block.insertAfter($existing.last());
+                        inserted = true;
+                    }
+                }
+                if (!inserted) {
+                    var $firstSection = this.$variantWrapper.children('.mg-variant-section').first();
+                    if ($firstSection.length) {
+                        $block.insertBefore($firstSection);
+                    } else {
+                        this.$variantWrapper.prepend($block);
+                    }
+                    inserted = true;
+                }
+                break;
+            case 'after_type':
+                inserted = this.insertAfterSection($block, 'after_type', '.mg-variant-section--type', order);
+                break;
+            case 'after_color':
+                inserted = this.insertAfterSection($block, 'after_color', '.mg-variant-section--color', order);
+                break;
+            case 'after_size':
+                inserted = this.insertAfterSection($block, 'after_size', '.mg-variant-section--size', order);
+                break;
+            case 'variant_bottom':
+            default:
+                $existing = this.findPlacementBlocks('variant_bottom');
+                if ($existing.length && this.insertBeforeHigherOrder($block, $existing, order)) {
+                    inserted = true;
+                    break;
+                }
+                if ($existing.length) {
+                    $block.insertAfter($existing.last());
+                    inserted = true;
+                    break;
+                }
+                this.$variantWrapper.append($block);
+                inserted = true;
+                break;
+        }
+
+        if (!inserted) {
+            this.$variantWrapper.append($block);
+        }
+    };
+
+    VariantDisplay.prototype.relocateCustomFields = function() {
+        if (!this.$form || !this.$form.length) {
+            return;
+        }
+        if (!this.$variantWrapper || !this.$variantWrapper.length) {
+            return;
+        }
+        var $blocks = this.$form.find('.mg-custom-fields').filter(function(){
+            return $(this).attr('data-mgcf-relocated') !== '1';
+        });
+        if (!$blocks.length) {
+            return;
+        }
+        var blocks = $blocks.toArray();
+        var self = this;
+        blocks.sort(function(a, b){
+            var $a = $(a);
+            var $b = $(b);
+            var orderA = self.getCustomFieldOrder($a);
+            var orderB = self.getCustomFieldOrder($b);
+            if (orderA === orderB) {
+                var idA = ($a.attr('data-field-id') || '').toString();
+                var idB = ($b.attr('data-field-id') || '').toString();
+                return idA.localeCompare(idB);
+            }
+            return orderA - orderB;
+        });
+
+        blocks.forEach(function(block){
+            var $block = $(block);
+            var placement = ($block.attr('data-mgcf-placement') || 'variant_bottom').toString();
+            self.applyCustomFieldSectionClasses($block, placement);
+            self.insertCustomFieldBlock($block, placement);
+            $block.attr('data-mgcf-relocated', '1');
         });
     };
 
