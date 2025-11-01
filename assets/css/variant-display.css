@@ -1,3 +1,16 @@
+html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .variations,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .woocommerce-variation,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .single_variation,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .woocommerce-variation-add-to-cart {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .variations {
+    display: none;
+}
+
 .mg-variant-hidden {
     display: none !important;
 }
