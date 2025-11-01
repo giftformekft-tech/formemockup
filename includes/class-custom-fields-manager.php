@@ -8,7 +8,13 @@ class MG_Custom_Fields_Manager {
     const OPTION_KEY = 'mg_custom_fields';
     const PRESET_OPTION_KEY = 'mg_custom_field_presets';
 
-    protected static $placement_keys = array('below_variants', 'above_variants');
+    protected static $placement_keys = array(
+        'variant_top',
+        'after_type',
+        'after_color',
+        'after_size',
+        'variant_bottom',
+    );
 
     protected static $cached_presets = null;
 
@@ -44,17 +50,27 @@ class MG_Custom_Fields_Manager {
 
     public static function get_placement_options() {
         return array(
-            'below_variants' => __('Variánsok alatt', 'mgcf'),
-            'above_variants' => __('Variánsok felett', 'mgcf'),
+            'variant_top'    => __('Variáns doboz tetején', 'mgcf'),
+            'after_type'     => __('Terméktípus rész után', 'mgcf'),
+            'after_color'    => __('Szín rész után', 'mgcf'),
+            'after_size'     => __('Méret rész után', 'mgcf'),
+            'variant_bottom' => __('Variáns doboz alján', 'mgcf'),
         );
     }
 
     public static function normalize_placement($placement) {
         $placement = sanitize_key($placement);
+        $legacy_map = array(
+            'above_variants' => 'variant_top',
+            'below_variants' => 'variant_bottom',
+        );
+        if (isset($legacy_map[$placement])) {
+            return $legacy_map[$placement];
+        }
         if (in_array($placement, self::$placement_keys, true)) {
             return $placement;
         }
-        return 'below_variants';
+        return 'variant_bottom';
     }
 
     /**
@@ -349,7 +365,7 @@ class MG_Custom_Fields_Manager {
         $default = isset($field['default']) ? self::sanitize_field_value($field['default'], $type) : '';
         $validation_min = isset($field['validation_min']) ? sanitize_text_field($field['validation_min']) : '';
         $validation_max = isset($field['validation_max']) ? sanitize_text_field($field['validation_max']) : '';
-        $placement = isset($field['placement']) ? self::normalize_placement($field['placement']) : 'below_variants';
+        $placement = isset($field['placement']) ? self::normalize_placement($field['placement']) : 'variant_bottom';
         $options = array();
         if ($type === 'select') {
             if (!empty($field['options']) && is_array($field['options'])) {
