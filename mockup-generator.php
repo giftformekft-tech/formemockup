@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.19
+Version: 1.2.20
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -67,25 +67,41 @@ add_action('plugins_loaded', function(){
         }
         });
 
-// Redirect top-level menu to the working manual dashboard slug
-add_action('load-toplevel_page_mockup-generator', function(){
-    wp_redirect( admin_url('admin.php?page=mockup-generator-dashboard') );
-    exit;
-});
-
-
     add_action('admin_enqueue_scripts', function($hook){
-        if (strpos($hook, 'mockup-generator') !== false) {
-            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.19');
-            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.19', true);
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        $tab  = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
+        $is_shell = ($hook === 'toplevel_page_mockup-generator') || ($page === 'mockup-generator');
+
+        if (strpos($hook, 'mockup-generator') !== false || $is_shell) {
+            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.20');
+            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.20', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')
             ));
-            if ($hook === 'mockup-generator_page_mockup-generator-maintenance') {
-                wp_enqueue_style('mg-mockup-maintenance', plugins_url('assets/css/mockup-maintenance.css', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . 'assets/css/mockup-maintenance.css'));
-                wp_enqueue_script('mg-mockup-maintenance', plugins_url('assets/js/mockup-maintenance.js', __FILE__), [], filemtime(plugin_dir_path(__FILE__) . 'assets/js/mockup-maintenance.js'), true);
-            }
+        }
+
+        $needs_maintenance_assets = ($hook === 'mockup-generator_page_mockup-generator-maintenance') || ($is_shell && $tab === 'regenerate');
+        if ($needs_maintenance_assets) {
+            $maintenance_css = plugin_dir_path(__FILE__) . 'assets/css/mockup-maintenance.css';
+            $maintenance_js  = plugin_dir_path(__FILE__) . 'assets/js/mockup-maintenance.js';
+            wp_enqueue_style(
+                'mg-mockup-maintenance',
+                plugins_url('assets/css/mockup-maintenance.css', __FILE__),
+                [],
+                file_exists($maintenance_css) ? filemtime($maintenance_css) : '1.0.0'
+            );
+            wp_enqueue_script(
+                'mg-mockup-maintenance',
+                plugins_url('assets/js/mockup-maintenance.js', __FILE__),
+                [],
+                file_exists($maintenance_js) ? filemtime($maintenance_js) : '1.0.0',
+                true
+            );
+        }
+
+        if ($is_shell && $tab === 'variants' && class_exists('MG_Variant_Display_Page')) {
+            MG_Variant_Display_Page::enqueue_assets($hook);
         }
     });
 

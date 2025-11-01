@@ -8,6 +8,10 @@ class MG_Surcharge_Frontend {
     const CART_FIELD_NAME = 'mg_surcharge_cart';
 
     public static function init() {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
+
         add_action('wp_enqueue_scripts', [__CLASS__, 'register_assets']);
         add_action('woocommerce_before_add_to_cart_button', [__CLASS__, 'render_product_options'], 25);
         add_filter('woocommerce_add_to_cart_validation', [__CLASS__, 'validate_add_to_cart'], 10, 5);

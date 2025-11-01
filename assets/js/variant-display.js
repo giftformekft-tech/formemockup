@@ -148,7 +148,7 @@
                 return;
             }
             self.state.type = $(this).val() || '';
-            self.updateTypeUI();
+            self.updateTypeUI(true);
         });
 
         this.$colorSelect.on('change', function(){
@@ -156,7 +156,7 @@
                 return;
             }
             self.state.color = $(this).val() || '';
-            self.updateColorUI();
+            self.updateColorUI(true);
         });
 
         this.$sizeSelect.on('change', function(){
@@ -194,7 +194,7 @@
         this.setColor(colorVal, false);
         this.setSize(sizeVal, false);
 
-        this.updateTypeUI();
+        this.updateTypeUI(false);
     };
 
     VariantDisplay.prototype.setType = function(value, triggerChange) {
@@ -205,7 +205,7 @@
                 this.$typeSelect.trigger('change');
                 this.syncing.type = false;
             }
-            this.updateTypeUI();
+            this.updateTypeUI(triggerChange !== false);
             return;
         }
         this.state.type = value;
@@ -221,7 +221,7 @@
         if (this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open')) {
             this.hideSizeChart();
         }
-        this.updateTypeUI();
+        this.updateTypeUI(triggerChange !== false);
     };
 
     VariantDisplay.prototype.setColor = function(value, triggerChange) {
@@ -235,7 +235,7 @@
                 this.$colorSelect.trigger('change');
                 this.syncing.color = false;
             }
-            this.updateColorUI();
+            this.updateColorUI(triggerChange !== false);
             return;
         }
         this.state.color = value;
@@ -248,7 +248,7 @@
         if (!value) {
             this.setSize('', triggerChange);
         }
-        this.updateColorUI();
+        this.updateColorUI(triggerChange !== false);
     };
 
     VariantDisplay.prototype.setSize = function(value, triggerChange) {
@@ -275,7 +275,7 @@
         this.updateSizeUI();
     };
 
-    VariantDisplay.prototype.updateTypeUI = function() {
+    VariantDisplay.prototype.updateTypeUI = function(shouldTriggerChildren) {
         var self = this;
         this.$typeOptions.find('.mg-variant-option').each(function(){
             var $btn = $(this);
@@ -284,12 +284,12 @@
             $btn.toggleClass('is-selected', isActive);
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
-        this.rebuildColorOptions();
+        this.rebuildColorOptions(shouldTriggerChildren !== false);
         this.updateSizeChartLink();
         this.updateDescription();
     };
 
-    VariantDisplay.prototype.updateColorUI = function() {
+    VariantDisplay.prototype.updateColorUI = function(shouldTriggerSizes) {
         var self = this;
         this.$colorOptions.find('.mg-variant-option').each(function(){
             var $btn = $(this);
@@ -298,7 +298,7 @@
             $btn.toggleClass('is-selected', isActive);
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
-        this.rebuildSizeOptions();
+        this.rebuildSizeOptions(shouldTriggerSizes !== false);
     };
 
     VariantDisplay.prototype.updateSizeUI = function() {
@@ -312,12 +312,12 @@
         });
     };
 
-    VariantDisplay.prototype.rebuildColorOptions = function() {
+    VariantDisplay.prototype.rebuildColorOptions = function(shouldTriggerSizeSync) {
         this.$colorOptions.empty();
         if (!this.state.type || !this.config.types[this.state.type]) {
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
-            this.setColor('', this.state.color ? true : false);
-            this.rebuildSizeOptions();
+            this.setColor('', shouldTriggerSizeSync);
+            this.rebuildSizeOptions(shouldTriggerSizeSync);
             return;
         }
 
@@ -325,11 +325,12 @@
         var colors = typeMeta.colors || {};
         var order = (typeMeta.color_order && typeMeta.color_order.length) ? typeMeta.color_order : Object.keys(colors);
         var self = this;
+        var fallbackColor = '';
 
         if (!order.length) {
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noColors', 'Ehhez a terméktípushoz nincs elérhető szín.')));
-            this.setColor('', this.state.color ? true : false);
-            this.rebuildSizeOptions();
+            this.setColor('', shouldTriggerSizeSync);
+            this.rebuildSizeOptions(shouldTriggerSizeSync);
             return;
         }
 
@@ -349,28 +350,40 @@
             $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || colorSlug));
             if (!availableSizes.length) {
                 $btn.addClass('is-disabled').attr('aria-disabled', 'true');
+            } else if (!fallbackColor) {
+                fallbackColor = colorSlug;
             }
             self.$colorOptions.append($btn);
         });
 
-        if (!colors[this.state.color]) {
-            this.setColor('', this.state.color ? true : false);
+        var currentValid = !!(this.state.color && colors[this.state.color]);
+        if (currentValid) {
+            currentValid = this.getAvailableSizes(this.state.type, this.state.color).length > 0;
         }
 
-        this.updateColorUI();
+        if (!currentValid) {
+            if (fallbackColor) {
+                this.setColor(fallbackColor, shouldTriggerSizeSync);
+            } else {
+                this.setColor('', shouldTriggerSizeSync);
+            }
+            return;
+        }
+
+        this.updateColorUI(shouldTriggerSizeSync);
     };
 
-    VariantDisplay.prototype.rebuildSizeOptions = function() {
+    VariantDisplay.prototype.rebuildSizeOptions = function(shouldTriggerSizeChange) {
         this.$sizeOptions.empty();
         if (!this.state.type) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
-            this.setSize('', false);
+            this.setSize('', shouldTriggerSizeChange);
             this.updateSizeChartLink();
             return;
         }
         if (!this.state.color || !this.config.types[this.state.type] || !this.config.types[this.state.type].colors[this.state.color]) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseColorFirst', 'Először válassz színt.')));
-            this.setSize('', false);
+            this.setSize('', shouldTriggerSizeChange);
             this.updateSizeChartLink();
             return;
         }
@@ -378,10 +391,11 @@
         var colorMeta = this.config.types[this.state.type].colors[this.state.color];
         var sizes = colorMeta.sizes || [];
         var self = this;
+        var fallbackSize = '';
 
         if (!sizes.length) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noSizes', 'Ehhez a kombinációhoz nincs elérhető méret.')));
-            this.setSize('', false);
+            this.setSize('', shouldTriggerSizeChange);
             this.updateSizeChartLink();
             return;
         }
@@ -393,12 +407,26 @@
             var availability = self.getAvailability(self.state.type, self.state.color, sizeValue);
             if (!availability.in_stock && !availability.is_purchasable) {
                 $btn.addClass('is-disabled').attr('aria-disabled', 'true');
+            } else if (!fallbackSize) {
+                fallbackSize = sizeValue;
             }
             self.$sizeOptions.append($btn);
         });
 
-        if (sizes.indexOf(this.state.size) === -1) {
-            this.setSize('', false);
+        var currentValidSize = this.state.size && sizes.indexOf(this.state.size) !== -1;
+        if (currentValidSize) {
+            var currentAvailability = this.getAvailability(this.state.type, this.state.color, this.state.size);
+            if (!currentAvailability.in_stock && !currentAvailability.is_purchasable) {
+                currentValidSize = false;
+            }
+        }
+
+        if (!currentValidSize) {
+            if (fallbackSize) {
+                this.setSize(fallbackSize, shouldTriggerSizeChange);
+            } else {
+                this.setSize('', shouldTriggerSizeChange);
+            }
         }
 
         this.updateSizeUI();

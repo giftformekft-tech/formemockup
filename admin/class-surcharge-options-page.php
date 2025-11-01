@@ -27,6 +27,9 @@ class MG_Surcharge_Options_Page {
             MG_Surcharge_Manager::delete_surcharge(sanitize_key(wp_unslash($_GET['surcharge_id'])));
             add_settings_error('mg_surcharges', 'deleted', __('Felár opció törölve.', 'mockup-generator'), 'updated');
         }
+        if (!empty($_POST['mg_surcharge_toggle_nonce'])) {
+            self::handle_surcharge_toggle();
+        }
         if (!empty($_POST['mg_surcharge_nonce'])) {
             self::handle_save();
         }
@@ -37,6 +40,19 @@ class MG_Surcharge_Options_Page {
         } else {
             self::render_list();
         }
+    }
+
+    private static function handle_surcharge_toggle() {
+        check_admin_referer('mg_surcharge_toggle', 'mg_surcharge_toggle_nonce');
+        $enabled = !empty($_POST['surcharge_enabled']);
+
+        MG_Surcharge_Manager::set_enabled($enabled);
+
+        $message = $enabled
+            ? __('A felár funkció engedélyezve lett.', 'mockup-generator')
+            : __('A felár funkció le lett tiltva.', 'mockup-generator');
+
+        add_settings_error('mg_surcharges', 'surcharge_toggle', $message, 'updated');
     }
 
     private static function handle_save() {
@@ -72,6 +88,11 @@ class MG_Surcharge_Options_Page {
         echo '<h1 class="wp-heading-inline">' . esc_html__('Feláras opciók', 'mockup-generator') . '</h1> ';
         echo '<a href="' . esc_url(self::get_form_url()) . '" class="page-title-action">' . esc_html__('Új opció', 'mockup-generator') . '</a>';
         echo '<hr class="wp-header-end" />';
+        self::render_surcharge_toggle();
+
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            echo '<div class="notice notice-warning"><p>' . esc_html__('A felár opciók jelenleg nem aktívak a webáruházban.', 'mockup-generator') . '</p></div>';
+        }
         if (empty($surcharges)) {
             echo '<p>' . esc_html__('Még nincs felár opció.', 'mockup-generator') . '</p>';
         } else {
@@ -105,6 +126,24 @@ class MG_Surcharge_Options_Page {
             }
             echo '</tbody></table>';
         }
+        echo '</div>';
+    }
+
+    private static function render_surcharge_toggle() {
+        $enabled = MG_Surcharge_Manager::is_enabled();
+        $action = add_query_arg(['page' => self::MENU_SLUG], admin_url('admin.php'));
+
+        echo '<div class="mg-surcharge-toggle card">';
+        echo '<h2>' . esc_html__('Felár funkció', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('Teljesen kapcsold ki vagy be a felár opciókat a webáruházban.', 'mockup-generator') . '</p>';
+        echo '<form method="post" action="' . esc_url($action) . '" class="mg-surcharge-toggle__form">';
+        wp_nonce_field('mg_surcharge_toggle', 'mg_surcharge_toggle_nonce');
+        echo '<label class="mg-surcharge-toggle__switch">';
+        echo '<input type="checkbox" name="surcharge_enabled" value="1" ' . checked($enabled, true, false) . ' /> ';
+        echo esc_html__('Felárak engedélyezése', 'mockup-generator');
+        echo '</label>';
+        submit_button(__('Mentés', 'mockup-generator'), 'primary', 'submit', false);
+        echo '</form>';
         echo '</div>';
     }
 
