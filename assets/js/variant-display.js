@@ -53,7 +53,33 @@
         this.$form.addClass('mg-variant-form--enhanced');
         if (typeof document !== 'undefined' && document.documentElement) {
             document.documentElement.classList.remove('mg-variant-preparing');
+            document.documentElement.classList.remove('mg-variant-preload');
+            document.documentElement.classList.remove('mg-variant-fallback');
             document.documentElement.classList.add('mg-variant-ready');
+        }
+        if (typeof window !== 'undefined' && window.__mgVariantPreloadCleanup) {
+            window.clearTimeout(window.__mgVariantPreloadCleanup);
+            window.__mgVariantPreloadCleanup = null;
+        }
+        var detail = {
+            form: (this.$form && this.$form.length) ? this.$form[0] : null
+        };
+        if (typeof document !== 'undefined') {
+            var nativeEvent;
+            if (typeof window !== 'undefined' && typeof window.CustomEvent === 'function') {
+                nativeEvent = new CustomEvent('mgVariantReady', { detail: detail });
+            } else if (document.createEvent) {
+                nativeEvent = document.createEvent('CustomEvent');
+                if (nativeEvent && nativeEvent.initCustomEvent) {
+                    nativeEvent.initCustomEvent('mgVariantReady', true, true, detail);
+                }
+            }
+            if (nativeEvent) {
+                document.dispatchEvent(nativeEvent);
+            }
+        }
+        if (typeof jQuery !== 'undefined' && jQuery && jQuery(document)) {
+            jQuery(document).trigger('mgVariantReady', [this.$form]);
         }
     };
 
