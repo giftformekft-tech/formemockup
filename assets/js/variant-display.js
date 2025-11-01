@@ -25,6 +25,7 @@
             $close: null
         };
         this.descriptionTargets = [];
+        this.$colorLabelValue = $();
         this.init();
     }
 
@@ -95,7 +96,12 @@
         wrapper.append(typeSection);
 
         var colorSection = $('<div class="mg-variant-section mg-variant-section--color" />');
-        colorSection.append($('<div class="mg-variant-section__label" />').text(this.getText('color', 'Szín')));
+        var colorLabelText = this.getText('color', 'Szín');
+        var $colorLabel = $('<div class="mg-variant-section__label" />');
+        $colorLabel.append($('<span class="mg-variant-section__label-text" />').text(colorLabelText + ': '));
+        this.$colorLabelValue = $('<span class="mg-variant-section__label-value" />').text('""');
+        $colorLabel.append(this.$colorLabelValue);
+        colorSection.append($colorLabel);
         this.$colorOptions = $('<div class="mg-variant-options" role="radiogroup" />');
         colorSection.append(this.$colorOptions);
         wrapper.append(colorSection);
@@ -318,6 +324,30 @@
             self.setColor(value, true);
         });
 
+        this.$colorOptions.on('mouseenter', '.mg-variant-option', function(){
+            if (!self.state.type || $(this).hasClass('is-disabled')) {
+                return;
+            }
+            var label = $(this).attr('data-label') || '';
+            self.setColorLabelText(label);
+        });
+
+        this.$colorOptions.on('mouseleave', '.mg-variant-option', function(){
+            self.refreshColorLabel();
+        });
+
+        this.$colorOptions.on('focus', '.mg-variant-option', function(){
+            if (!self.state.type || $(this).hasClass('is-disabled')) {
+                return;
+            }
+            var label = $(this).attr('data-label') || '';
+            self.setColorLabelText(label);
+        });
+
+        this.$colorOptions.on('blur', '.mg-variant-option', function(){
+            self.refreshColorLabel();
+        });
+
         this.$sizeOptions.on('click', '.mg-variant-option', function(e){
             e.preventDefault();
             if (!self.state.type || !self.state.color) {
@@ -496,6 +526,7 @@
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
         this.rebuildSizeOptions(shouldTriggerSizes !== false);
+        this.refreshColorLabel();
     };
 
     VariantDisplay.prototype.updateSizeUI = function() {
@@ -507,6 +538,29 @@
             $btn.toggleClass('is-selected', isActive);
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
+    };
+
+    VariantDisplay.prototype.setColorLabelText = function(label) {
+        if (!this.$colorLabelValue || !this.$colorLabelValue.length) {
+            return;
+        }
+        var text = label ? '"' + label + '"' : '""';
+        this.$colorLabelValue.text(text);
+    };
+
+    VariantDisplay.prototype.refreshColorLabel = function() {
+        if (!this.$colorLabelValue || !this.$colorLabelValue.length) {
+            return;
+        }
+        var label = '';
+        if (this.state.type && this.state.color && this.config.types && this.config.types[this.state.type]) {
+            var typeMeta = this.config.types[this.state.type];
+            if (typeMeta.colors && typeMeta.colors[this.state.color]) {
+                var colorMeta = typeMeta.colors[this.state.color];
+                label = colorMeta.label || this.state.color;
+            }
+        }
+        this.setColorLabelText(label);
     };
 
     VariantDisplay.prototype.rebuildColorOptions = function(shouldTriggerSizeSync) {
@@ -538,13 +592,17 @@
             }
             var availableSizes = self.getAvailableSizes(self.state.type, colorSlug);
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--color" aria-pressed="false" />');
+            var colorLabel = meta.label || colorSlug;
             $btn.attr('data-value', colorSlug);
+            $btn.attr('data-label', colorLabel);
+            $btn.attr('aria-label', colorLabel);
+            $btn.attr('title', colorLabel);
             var $swatch = $('<span class="mg-variant-swatch" />');
             if (meta.swatch) {
                 $swatch.css('background-color', meta.swatch);
             }
             $btn.append($swatch);
-            $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || colorSlug));
+            $btn.append($('<span class="mg-variant-option__label mg-variant-option__label--sr-only" />').text(colorLabel));
             if (!availableSizes.length) {
                 $btn.addClass('is-disabled').attr('aria-disabled', 'true');
             } else if (!fallbackColor) {
