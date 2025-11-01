@@ -1,5 +1,6 @@
 /* Bulk UI — wide layout & anti-overlap */
-.wrap .card {
+.wrap .card,
+.mg-panel-body--bulk .card {
   background:#fff;
   padding:16px;
   border:1px solid #ccd0d4;
@@ -7,6 +8,8 @@
   max-width: 100%;
 }
 .mg-row { margin-bottom:12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.mg-defaults { display:flex; flex-wrap:wrap; gap:16px; }
+.mg-defaults label { display:flex; flex-direction:column; gap:6px; font-weight:600; }
 .mg-types { display:flex; flex-wrap:wrap; gap:12px; }
 .mg-type { background:#f6f7f7; padding:6px 8px; border-radius:3px; }
 .mg-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #ccd0d4; border-radius: 4px; background: #fff; }
