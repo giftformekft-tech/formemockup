@@ -82,6 +82,24 @@ class MG_Custom_Fields_Frontend {
         return $groups;
     }
 
+    protected static function determine_group_order($fields) {
+        $order = 0;
+        $has_order = false;
+        foreach ($fields as $field) {
+            if (!is_array($field)) {
+                continue;
+            }
+            if (isset($field['position'])) {
+                $position = intval($field['position']);
+                if (!$has_order || $position < $order) {
+                    $order = $position;
+                    $has_order = true;
+                }
+            }
+        }
+        return $has_order ? $order : 0;
+    }
+
     protected static function render_field_group($placement, $fields) {
         if (empty($fields)) {
             return;
@@ -91,7 +109,8 @@ class MG_Custom_Fields_Frontend {
             self::$nonce_rendered = true;
         }
         $classes = array('mg-custom-fields', 'mg-custom-fields--placement-' . sanitize_html_class($placement));
-        echo '<div class="' . esc_attr(implode(' ', $classes)) . '" data-mgcf-placement="' . esc_attr($placement) . '">';
+        $order = self::determine_group_order($fields);
+        echo '<div class="' . esc_attr(implode(' ', $classes)) . '" data-mgcf-placement="' . esc_attr($placement) . '" data-mgcf-order="' . esc_attr($order) . '">';
         if (!self::$heading_rendered) {
             echo '<h3 class="mg-custom-fields__title mg-variant-section__label">' . esc_html__('Egyedi mezők', 'mgcf') . '</h3>';
             self::$heading_rendered = true;
@@ -155,6 +174,7 @@ class MG_Custom_Fields_Frontend {
         $options = isset($field['options']) && is_array($field['options']) ? $field['options'] : array();
         $surcharge_type = isset($field['surcharge_type']) ? $field['surcharge_type'] : 'none';
         $surcharge_amount = isset($field['surcharge_amount']) ? floatval($field['surcharge_amount']) : 0.0;
+        $position = isset($field['position']) ? intval($field['position']) : 0;
 
         $input_id = sanitize_html_class('mgcf_' . $id);
         $name_attr = 'mg_custom_fields[' . $id . ']';
@@ -163,7 +183,7 @@ class MG_Custom_Fields_Frontend {
         if ($placement !== '') {
             $wrapper_classes[] = 'mg-custom-field--placement-' . sanitize_html_class($placement);
         }
-        echo '<div class="' . esc_attr(implode(' ', $wrapper_classes)) . '" data-field-id="' . esc_attr($id) . '">';
+        echo '<div class="' . esc_attr(implode(' ', $wrapper_classes)) . '" data-field-id="' . esc_attr($id) . '" data-mgcf-order="' . esc_attr($position) . '">';
         echo '<label for="' . esc_attr($input_id) . '">' . esc_html($label);
         if ($required) {
             echo ' <span class="mg-required">*</span>';

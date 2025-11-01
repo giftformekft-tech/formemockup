@@ -96,9 +96,26 @@
         if (!blocks.length) {
             return true;
         }
+        var blockArray = Array.prototype.slice.call(blocks);
+        blockArray.sort(function (a, b) {
+            var orderA = parseInt(a.getAttribute('data-mgcf-order'), 10);
+            var orderB = parseInt(b.getAttribute('data-mgcf-order'), 10);
+            if (isNaN(orderA)) {
+                orderA = 0;
+            }
+            if (isNaN(orderB)) {
+                orderB = 0;
+            }
+            if (orderA === orderB) {
+                var idA = (a.getAttribute('data-field-id') || '').toString();
+                var idB = (b.getAttribute('data-field-id') || '').toString();
+                return idA.localeCompare(idB);
+            }
+            return orderA - orderB;
+        });
         var variantDisplay = form.querySelector('.mg-variant-display');
         var movedAny = false;
-        Array.prototype.forEach.call(blocks, function (block) {
+        blockArray.forEach(function (block) {
             var moved = moveBlockToPlacement(block, form, variantDisplay);
             movedAny = movedAny || moved;
         });
