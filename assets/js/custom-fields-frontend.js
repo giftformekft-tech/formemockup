@@ -92,7 +92,7 @@
         if (!form) {
             return false;
         }
-        var blocks = form.querySelectorAll('.mg-custom-fields[data-mgcf-relocated!="1"]');
+        var blocks = form.querySelectorAll('.mg-custom-fields:not([data-mgcf-relocated="1"])');
         if (!blocks.length) {
             return true;
         }
@@ -113,7 +113,7 @@
         var pending = false;
         Array.prototype.forEach.call(forms, function (form) {
             var variantDisplay = form.querySelector('.mg-variant-display');
-            var blocks = form.querySelectorAll('.mg-custom-fields[data-mgcf-relocated!="1"]');
+            var blocks = form.querySelectorAll('.mg-custom-fields:not([data-mgcf-relocated="1"])');
             if (!blocks.length) {
                 return;
             }
