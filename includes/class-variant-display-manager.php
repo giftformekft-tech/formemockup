@@ -479,33 +479,6 @@ class MG_Variant_Display_Manager {
         return $clean;
     }
 
-    protected static function normalize_boolean_flag($value) {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_numeric($value)) {
-            return ((int) $value) === 1;
-        }
-
-        if (is_string($value)) {
-            $value = strtolower(trim($value));
-            if ($value === '') {
-                return false;
-            }
-
-            if (in_array($value, array('1', 'true', 'yes', 'on'), true)) {
-                return true;
-            }
-
-            if (in_array($value, array('0', 'false', 'no', 'off'), true)) {
-                return false;
-            }
-        }
-
-        return !empty($value);
-    }
-
     protected static function get_color_settings($settings, $type_slug, $color_slug, $fallback_hex = '') {
         if (!empty($settings['colors'][$type_slug][$color_slug]) && is_array($settings['colors'][$type_slug][$color_slug])) {
             $entry = $settings['colors'][$type_slug][$color_slug];
