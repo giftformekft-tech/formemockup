@@ -381,6 +381,7 @@ class MG_Variant_Display_Manager {
         return wp_parse_args($sanitized, array(
             'colors' => array(),
             'size_charts' => array(),
+            'supercharge_enabled' => true,
         ));
     }
 
@@ -392,6 +393,12 @@ class MG_Variant_Display_Manager {
 
         if (!is_array($input)) {
             return $clean;
+        }
+
+        if (array_key_exists('supercharge_enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['supercharge_enabled']);
+        } elseif (array_key_exists('enabled', $input)) {
+            $clean['supercharge_enabled'] = self::normalize_boolean_flag($input['enabled']);
         }
 
         $allowed_types = null;
