@@ -19,6 +19,13 @@ class MG_Admin_Page {
     const MAIN_SLUG = 'mockup-generator';
 
     /**
+     * Cached dataset for the bulk upload panel.
+     *
+     * @var array|null
+     */
+    private static $bulk_data = null;
+
+    /**
      * Registers the top-level admin menu entry and hooks the asset loader.
      */
     public static function add_menu_page() {
@@ -78,6 +85,11 @@ class MG_Admin_Page {
         $product = self::get_requested_product_key();
         if ($product !== '') {
             $data['currentProduct'] = $product;
+        }
+
+        $bulk_data = self::prepare_bulk_data();
+        if (!empty($bulk_data['products'])) {
+            self::enqueue_bulk_assets($bulk_data);
         }
 
         wp_localize_script('mg-admin-ui', 'MG_ADMIN_UI', $data);
@@ -300,6 +312,9 @@ class MG_Admin_Page {
             case 'legacy':
                 self::render_legacy_panel($tab);
                 break;
+            case 'bulk':
+                self::render_bulk_panel();
+                break;
             case 'custom':
                 self::render_mockups_panel();
                 break;
@@ -370,75 +385,437 @@ class MG_Admin_Page {
      * Outputs the streamlined bulk upload tools inside the SPA layout.
      */
     private static function render_bulk_panel() {
-        $products = get_option('mg_products', array());
-        $products = is_array($products) ? $products : array();
-
+        $data = self::prepare_bulk_data();
         echo '<div class="mg-panel-body mg-panel-body--bulk">';
 
         echo '<section class="mg-panel-section">';
         echo '<div class="mg-panel-section__header">';
-        echo '<h2>' . esc_html__('Bulk minta feltöltés', 'mockup-generator') . '</h2>';
-        echo '<p>' . esc_html__('Válassz terméktípusokat, majd tölts fel egyszerre több mintaképet. A rendszer automatikusan létrehozza a kombinációkat.', 'mockup-generator') . '</p>';
+        echo '<h2>' . esc_html__('Bulk feltöltés – kényelmes mód', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('Tölts fel egyszerre több mintaképet, válaszd ki a terméktípusokat és kövesd a létrejövő termékek állapotát.', 'mockup-generator') . '</p>';
         echo '</div>';
 
-        if (empty($products)) {
+        if (empty($data['products'])) {
             echo '<div class="mg-empty">';
-            echo '<p>' . esc_html__('Még nincs konfigurált terméktípus. A Beállítások fülön adhatsz hozzá újat, mielőtt bulk feltöltést indítanál.', 'mockup-generator') . '</p>';
+            echo '<p>' . esc_html__('Még nincs konfigurált terméktípus. A Beállítások fülön hozd létre őket, hogy használhasd a bulk feltöltést.', 'mockup-generator') . '</p>';
             echo '</div>';
-        } else {
-            echo '<div class="mg-bulk-grid">';
-
-            echo '<div class="mg-bulk-card">';
-            echo '<label for="mg-bulk-files">' . esc_html__('Mintafájlok kiválasztása', 'mockup-generator') . '</label>';
-            echo '<input type="file" id="mg-bulk-files" name="mg-bulk-files[]" accept=".png,.jpg,.jpeg,.webp" multiple />';
-            echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP fájlokat tölthetsz fel. A fájlnév alapján javasolt nevet kap az új termék.', 'mockup-generator') . '</p>';
+            echo '</section>';
             echo '</div>';
-
-            echo '<div class="mg-bulk-card">';
-            echo '<span>' . esc_html__('Terméktípusok', 'mockup-generator') . '</span>';
-            echo '<div class="mg-bulk-product-list">';
-            foreach ($products as $product) {
-                if (!is_array($product) || empty($product['key'])) {
-                    continue;
-                }
-                $key = self::sanitize_product_key($product['key']);
-                if ($key === '') {
-                    continue;
-                }
-                $label = isset($product['label']) && $product['label'] ? $product['label'] : $key;
-                echo '<label>';
-                echo '<input type="checkbox" class="mg-bulk-type" value="' . esc_attr($key) . '" />';
-                echo '<span>' . esc_html($label) . '</span>';
-                echo '</label>';
-            }
-            echo '</div>';
-            echo '<p class="description">' . esc_html__('Jelöld meg, mely terméktípusokra készüljön el a feltöltött minta.', 'mockup-generator') . '</p>';
-            echo '</div>';
-
-            echo '</div>';
-
-            echo '<div class="mg-bulk-actions">';
-            echo '<button type="button" class="button button-primary" id="mg-bulk-start">' . esc_html__('Feltöltés indítása', 'mockup-generator') . '</button>';
-            echo '<p class="description">' . esc_html__('A feltöltés a háttérben fut. Az alábbi naplóban követheted az előrehaladást.', 'mockup-generator') . '</p>';
-            echo '</div>';
+            return;
         }
+
+        echo '<div class="card">';
+        echo '<div class="mg-row">';
+        echo '<div id="mg-drop-zone" class="mg-drop-zone">';
+        echo '<div class="mg-drop-inner">';
+        /* translators: Heading shown inside the bulk upload drop zone. */
+        echo '<strong>' . esc_html__('Húzd ide a mintákat', 'mockup-generator') . '</strong>';
+        echo '<p>' . esc_html__('…vagy', 'mockup-generator') . ' <a href="#" class="button-link">' . esc_html__('válaszd ki a fájlokat', 'mockup-generator') . '</a></p>';
+        echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP képeket adhatsz hozzá. A fájlnév alapján készül az alap terméknév.', 'mockup-generator') . '</p>';
+        echo '</div>';
+        echo '</div>';
+        echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp" multiple style="display:none" />';
+        echo '</div>';
+
+        echo '<div class="mg-row">';
+        echo '<h3>' . esc_html__('Terméktípusok', 'mockup-generator') . '</h3>';
+        echo '<div class="mg-types">';
+        foreach ($data['products'] as $product) {
+            $checked = !empty($product['is_primary']);
+            echo '<label class="mg-type">';
+            echo '<input type="checkbox" class="mg-type-cb" value="' . esc_attr($product['key']) . '"' . checked($checked, true, false) . ' />';
+            echo '<span>' . esc_html($product['label']) . '</span>';
+            echo '</label>';
+        }
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('Jelöld be, mely terméktípusokra készüljön el minden feltöltött minta.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        echo '<div class="mg-row">';
+        echo '<h3>' . esc_html__('Alapértelmezett variáció', 'mockup-generator') . '</h3>';
+        echo '<div class="mg-defaults">';
+        echo '<label>' . esc_html__('Terméktípus', 'mockup-generator');
+        echo '<select id="mg-default-type">';
+        foreach ($data['products'] as $product) {
+            $selected = selected($product['key'], $data['default_type'], false);
+            echo '<option value="' . esc_attr($product['key']) . '"' . $selected . '>' . esc_html($product['label']) . '</option>';
+        }
+        echo '</select>';
+        echo '</label>';
+
+        echo '<label>' . esc_html__('Szín', 'mockup-generator');
+        echo '<select id="mg-default-color"></select>';
+        echo '</label>';
+
+        echo '<label>' . esc_html__('Méret', 'mockup-generator');
+        echo '<select id="mg-default-size"></select>';
+        echo '</label>';
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('Ezek az értékek kerülnek az új termékek első variációjába. A listák a kiválasztott típushoz igazodnak.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        echo '</div>'; // .card
 
         echo '</section>';
 
         echo '<section class="mg-panel-section">';
         echo '<div class="mg-panel-section__header">';
-        echo '<h3>' . esc_html__('Folyamat naplója', 'mockup-generator') . '</h3>';
+        echo '<h3>' . esc_html__('Fájlnevek és sorok', 'mockup-generator') . '</h3>';
+        echo '<p>' . esc_html__('Minden sorhoz beállíthatod a kategóriákat, meglévő terméket, tageket és az „Egyedi” jelölést.', 'mockup-generator') . '</p>';
         echo '</div>';
-        echo '<div id="mg-bulk-status" class="mg-bulk-status" aria-live="polite">';
-        echo '<div class="mg-bulk-progress">';
-        echo '<div id="mg-bulk-bar" class="mg-bulk-progress__bar"></div>';
+
+        echo '<div class="mg-table-wrap">';
+        echo '<table class="widefat fixed striped mg-bulk-table">';
+        echo '<thead><tr>';
+        echo '<th>#</th>';
+        echo '<th>' . esc_html__('Előnézet', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Fájl', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Főkategória', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Alkategóriák', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Terméknév', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Meglévő termék keresése', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Egyedi termék', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Tag-ek', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Állapot', 'mockup-generator') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody id="mg-bulk-rows">';
+        echo '<tr class="no-items"><td colspan="10">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
+        echo '</tbody>';
+        echo '</table>';
         echo '</div>';
-        echo '<div><strong><span id="mg-bulk-count">0</span> / <span id="mg-bulk-total">0</span></strong> <span>(<span id="mg-bulk-percent">0</span>%)</span></div>';
+
+        echo '<div class="mg-actions">';
+        echo '<button type="button" class="button" id="mg-bulk-apply-first">' . esc_html__('Első sor beállításainak másolása az összes sorba', 'mockup-generator') . '</button>';
         echo '</div>';
-        echo '<div id="mg-bulk-log" class="mg-bulk-log" aria-live="polite"></div>';
+
+        echo '<div class="mg-worker-control">';
+        echo '<span class="mg-worker-label">' . esc_html__('Párhuzamos generáló folyamatok', 'mockup-generator') . '</span>';
+        echo '<div class="mg-worker-toggle-group">';
+        if (!empty($data['worker_options'])) {
+            foreach ($data['worker_options'] as $option) {
+                $is_active = intval($option) === intval($data['worker_count']);
+                $classes = 'button mg-worker-toggle' . ($is_active ? ' is-active' : '');
+                echo '<button type="button" class="' . esc_attr($classes) . '" data-workers="' . esc_attr($option) . '" aria-pressed="' . ($is_active ? 'true' : 'false') . '">' . sprintf(esc_html__('%d worker', 'mockup-generator'), intval($option)) . '</button>';
+            }
+        }
+        echo '</div>';
+        $worker_summary = sprintf(
+            /* translators: %s: selected worker count. */
+            __('Aktív: %s', 'mockup-generator'),
+            '<span class="mg-worker-active-count">' . esc_html(intval($data['worker_count'])) . '</span>'
+        );
+        echo '<p class="mg-worker-summary">' . wp_kses_post($worker_summary) . '</p>';
+        echo '<p class="mg-worker-feedback" aria-live="polite"></p>';
+        echo '</div>';
+
+        echo '<div class="mg-actions">';
+        echo '<button type="button" class="button button-primary" id="mg-bulk-start">' . esc_html__('Bulk generálás indítása', 'mockup-generator') . '</button>';
+        echo '<div class="mg-progress" aria-hidden="true"><div class="mg-bar" id="mg-bulk-bar"></div></div>';
+        echo '<span id="mg-bulk-status" class="mg-bulk-status" aria-live="polite">0%</span>';
+        echo '</div>';
+
         echo '</section>';
 
         echo '</div>';
+    }
+
+    /**
+     * Prepares the dataset used by the bulk upload panel and JS helpers.
+     *
+     * @return array<string,mixed>
+     */
+    private static function prepare_bulk_data() {
+        if (self::$bulk_data !== null) {
+            return self::$bulk_data;
+        }
+
+        $products_raw = get_option('mg_products', array());
+        $products_raw = is_array($products_raw) ? $products_raw : array();
+
+        $products = array();
+        $default_type = '';
+        $default_color = '';
+        $default_size = '';
+
+        foreach ($products_raw as $product) {
+            if (!is_array($product) || empty($product['key'])) {
+                continue;
+            }
+            $key = self::sanitize_product_key($product['key']);
+            if ($key === '') {
+                continue;
+            }
+
+            $label = isset($product['label']) && $product['label'] !== '' ? wp_strip_all_tags($product['label']) : $key;
+            $is_primary = !empty($product['is_primary']);
+
+            $colors = array();
+            if (!empty($product['colors']) && is_array($product['colors'])) {
+                foreach ($product['colors'] as $color) {
+                    if (is_array($color)) {
+                        $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                        if ($slug === '' && isset($color['name'])) {
+                            $slug = sanitize_title($color['name']);
+                        }
+                        if ($slug === '') {
+                            continue;
+                        }
+                        $name = isset($color['name']) && $color['name'] !== '' ? wp_strip_all_tags($color['name']) : $slug;
+                        $colors[] = array(
+                            'slug' => $slug,
+                            'name' => $name,
+                        );
+                    } elseif (is_string($color)) {
+                        $slug = sanitize_title($color);
+                        if ($slug === '') {
+                            continue;
+                        }
+                        $colors[] = array(
+                            'slug' => $slug,
+                            'name' => $color,
+                        );
+                    }
+                }
+            }
+
+            $sizes = array();
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) {
+                        continue;
+                    }
+                    $size_value = trim($size_value);
+                    if ($size_value === '' || in_array($size_value, $sizes, true)) {
+                        continue;
+                    }
+                    $sizes[] = $size_value;
+                }
+            }
+
+            $color_sizes = array();
+            if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
+                foreach ($product['size_color_matrix'] as $size_label => $color_list) {
+                    if (!is_string($size_label)) {
+                        continue;
+                    }
+                    $size_label = trim($size_label);
+                    if ($size_label === '') {
+                        continue;
+                    }
+                    if (!is_array($color_list)) {
+                        continue;
+                    }
+                    foreach ($color_list as $color_slug_raw) {
+                        $color_slug = sanitize_title($color_slug_raw);
+                        if ($color_slug === '') {
+                            continue;
+                        }
+                        if (!isset($color_sizes[$color_slug])) {
+                            $color_sizes[$color_slug] = array();
+                        }
+                        if (!in_array($size_label, $color_sizes[$color_slug], true)) {
+                            $color_sizes[$color_slug][] = $size_label;
+                        }
+                    }
+                }
+            }
+
+            $primary_color = isset($product['primary_color']) ? sanitize_title($product['primary_color']) : '';
+            if ($primary_color !== '' && !self::bulk_color_exists($colors, $primary_color)) {
+                $primary_color = '';
+            }
+
+            $primary_size = isset($product['primary_size']) ? sanitize_text_field($product['primary_size']) : '';
+            if ($primary_size !== '' && !in_array($primary_size, $sizes, true)) {
+                $primary_size = '';
+            }
+
+            if ($default_type === '' && $is_primary) {
+                $default_type = $key;
+                $default_color = $primary_color;
+                $default_size = $primary_size;
+            }
+
+            $products[] = array(
+                'key'            => $key,
+                'label'          => $label,
+                'colors'         => $colors,
+                'sizes'          => $sizes,
+                'primary_color'  => $primary_color,
+                'primary_size'   => $primary_size,
+                'color_sizes'    => $color_sizes,
+                'is_primary'     => $is_primary ? 1 : 0,
+            );
+        }
+
+        if ($default_type === '' && !empty($products)) {
+            $default_type = $products[0]['key'];
+            if ($default_color === '' && !empty($products[0]['primary_color'])) {
+                $default_color = $products[0]['primary_color'];
+            } elseif ($default_color === '' && !empty($products[0]['colors'])) {
+                $default_color = $products[0]['colors'][0]['slug'];
+            }
+            if ($default_size === '' && !empty($products[0]['primary_size'])) {
+                $default_size = $products[0]['primary_size'];
+            } elseif ($default_size === '' && !empty($products[0]['sizes'])) {
+                $default_size = $products[0]['sizes'][0];
+            }
+        }
+
+        if ($default_type !== '') {
+            foreach ($products as $product) {
+                if ($product['key'] !== $default_type) {
+                    continue;
+                }
+                if ($default_color === '' && !empty($product['colors'])) {
+                    $default_color = $product['colors'][0]['slug'];
+                }
+                if ($default_size === '') {
+                    if ($default_color !== '' && !empty($product['color_sizes']) && isset($product['color_sizes'][$default_color]) && !empty($product['color_sizes'][$default_color])) {
+                        $default_size = $product['color_sizes'][$default_color][0];
+                    } elseif (!empty($product['sizes'])) {
+                        $default_size = $product['sizes'][0];
+                    }
+                }
+                break;
+            }
+        }
+
+        $mains = array();
+        $subs = array();
+        if (taxonomy_exists('product_cat')) {
+            $main_terms = get_terms(
+                array(
+                    'taxonomy'   => 'product_cat',
+                    'hide_empty' => false,
+                    'parent'     => 0,
+                )
+            );
+            if (!is_wp_error($main_terms)) {
+                foreach ($main_terms as $term) {
+                    $mains[] = array(
+                        'id'   => (int) $term->term_id,
+                        'name' => wp_strip_all_tags($term->name),
+                    );
+                    $children = get_terms(
+                        array(
+                            'taxonomy'   => 'product_cat',
+                            'hide_empty' => false,
+                            'parent'     => $term->term_id,
+                        )
+                    );
+                    if (!is_wp_error($children) && !empty($children)) {
+                        foreach ($children as $child) {
+                            $subs[(int) $term->term_id][] = array(
+                                'id'   => (int) $child->term_id,
+                                'name' => wp_strip_all_tags($child->name),
+                            );
+                        }
+                    } else {
+                        $subs[(int) $term->term_id] = array();
+                    }
+                }
+            }
+        }
+
+        $worker_options = array();
+        $worker_count = 1;
+        if (class_exists('MG_Bulk_Queue')) {
+            $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();
+            $worker_count = MG_Bulk_Queue::get_configured_worker_count();
+        }
+
+        self::$bulk_data = array(
+            'products'       => $products,
+            'default_type'   => $default_type,
+            'default_color'  => $default_color,
+            'default_size'   => $default_size,
+            'mains'          => $mains,
+            'subs'           => $subs,
+            'worker_options' => $worker_options,
+            'worker_count'   => $worker_count,
+        );
+
+        return self::$bulk_data;
+    }
+
+    /**
+     * Ensures the bulk upload scripts and styles are registered with the prepared payload.
+     *
+     * @param array $bulk_data
+     */
+    private static function enqueue_bulk_assets($bulk_data) {
+        $css_path = plugin_dir_path(__FILE__) . '../assets/css/bulk-upload.css';
+        $search_js = plugin_dir_path(__FILE__) . '../assets/js/product-search.js';
+        $bulk_js = plugin_dir_path(__FILE__) . '../assets/js/bulk-upload-advanced.js';
+
+        wp_enqueue_style(
+            'mg-bulk-upload',
+            plugins_url('../assets/css/bulk-upload.css', __FILE__),
+            array(),
+            file_exists($css_path) ? filemtime($css_path) : '1.0.0'
+        );
+
+        wp_enqueue_script(
+            'mg-product-search',
+            plugins_url('../assets/js/product-search.js', __FILE__),
+            array('jquery'),
+            file_exists($search_js) ? filemtime($search_js) : '1.0.0',
+            true
+        );
+
+        wp_enqueue_script(
+            'mg-bulk-advanced',
+            plugins_url('../assets/js/bulk-upload-advanced.js', __FILE__),
+            array('jquery'),
+            file_exists($bulk_js) ? filemtime($bulk_js) : '1.0.0',
+            true
+        );
+
+        $payload = array(
+            'ajax_url'              => admin_url('admin-ajax.php'),
+            'nonce'                 => wp_create_nonce('mg_bulk_nonce'),
+            'products'              => $bulk_data['products'],
+            'mains'                 => $bulk_data['mains'],
+            'subs'                  => $bulk_data['subs'],
+            'default_type'          => $bulk_data['default_type'],
+            'default_color'         => $bulk_data['default_color'],
+            'default_size'          => $bulk_data['default_size'],
+            'worker_options'        => $bulk_data['worker_options'],
+            'worker_count'          => $bulk_data['worker_count'],
+            'worker_feedback_saving'=> __('Mentés folyamatban…', 'mockup-generator'),
+            'worker_feedback_saved' => __('Beállítva: %d worker.', 'mockup-generator'),
+            'worker_feedback_error' => __('Nem sikerült menteni. Próbáld újra.', 'mockup-generator'),
+        );
+
+        wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', $payload);
+
+        wp_localize_script(
+            'mg-product-search',
+            'MG_SEARCH',
+            array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce'    => wp_create_nonce('mg_search_nonce'),
+            )
+        );
+    }
+
+    /**
+     * Checks whether the provided slug exists in the color list.
+     *
+     * @param array  $colors
+     * @param string $slug
+     * @return bool
+     */
+    private static function bulk_color_exists($colors, $slug) {
+        if ($slug === '' || empty($colors)) {
+            return false;
+        }
+        foreach ($colors as $color) {
+            if (isset($color['slug']) && $color['slug'] === $slug) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
