@@ -420,7 +420,7 @@ class MG_Admin_Page {
         echo '<h3>' . esc_html__('Terméktípusok', 'mockup-generator') . '</h3>';
         echo '<div class="mg-types">';
         foreach ($data['products'] as $product) {
-            $checked = !empty($product['is_primary']);
+            $checked = true;
             echo '<label class="mg-type">';
             echo '<input type="checkbox" class="mg-type-cb" value="' . esc_attr($product['key']) . '"' . checked($checked, true, false) . ' />';
             echo '<span>' . esc_html($product['label']) . '</span>';
