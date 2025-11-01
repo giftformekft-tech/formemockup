@@ -27,6 +27,9 @@ class MG_Surcharge_Options_Page {
             MG_Surcharge_Manager::delete_surcharge(sanitize_key(wp_unslash($_GET['surcharge_id'])));
             add_settings_error('mg_surcharges', 'deleted', __('Felár opció törölve.', 'mockup-generator'), 'updated');
         }
+        if (!empty($_POST['mg_supercharge_toggle_nonce'])) {
+            self::handle_supercharge_toggle();
+        }
         if (!empty($_POST['mg_surcharge_nonce'])) {
             self::handle_save();
         }
@@ -37,6 +40,23 @@ class MG_Surcharge_Options_Page {
         } else {
             self::render_list();
         }
+    }
+
+    private static function handle_supercharge_toggle() {
+        check_admin_referer('mg_supercharge_toggle', 'mg_supercharge_toggle_nonce');
+        $enabled = !empty($_POST['supercharge_enabled']);
+
+        if (class_exists('MG_Variant_Display_Manager')) {
+            MG_Variant_Display_Manager::set_supercharge_enabled($enabled);
+        } else {
+            update_option('mg_supercharge_settings', array('enabled' => (bool) $enabled), false);
+        }
+
+        $message = $enabled
+            ? __('A SuperCharge felület engedélyezve lett.', 'mockup-generator')
+            : __('A SuperCharge felület letiltva lett.', 'mockup-generator');
+
+        add_settings_error('mg_surcharges', 'supercharge_toggle', $message, 'updated');
     }
 
     private static function handle_save() {
@@ -72,6 +92,7 @@ class MG_Surcharge_Options_Page {
         echo '<h1 class="wp-heading-inline">' . esc_html__('Feláras opciók', 'mockup-generator') . '</h1> ';
         echo '<a href="' . esc_url(self::get_form_url()) . '" class="page-title-action">' . esc_html__('Új opció', 'mockup-generator') . '</a>';
         echo '<hr class="wp-header-end" />';
+        self::render_supercharge_toggle();
         if (empty($surcharges)) {
             echo '<p>' . esc_html__('Még nincs felár opció.', 'mockup-generator') . '</p>';
         } else {
@@ -105,6 +126,24 @@ class MG_Surcharge_Options_Page {
             }
             echo '</tbody></table>';
         }
+        echo '</div>';
+    }
+
+    private static function render_supercharge_toggle() {
+        $enabled = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::is_supercharge_enabled() : true;
+        $action = add_query_arg(['page' => self::MENU_SLUG], admin_url('admin.php'));
+
+        echo '<div class="mg-supercharge-toggle card">';
+        echo '<h2>' . esc_html__('SuperCharge variáns felület', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('Kapcsold ki, ha a klasszikus WooCommerce variációs űrlapot szeretnéd használni.', 'mockup-generator') . '</p>';
+        echo '<form method="post" action="' . esc_url($action) . '" class="mg-supercharge-toggle__form">';
+        wp_nonce_field('mg_supercharge_toggle', 'mg_supercharge_toggle_nonce');
+        echo '<label class="mg-supercharge-toggle__switch">';
+        echo '<input type="checkbox" name="supercharge_enabled" value="1" ' . checked($enabled, true, false) . ' /> ';
+        echo esc_html__('SuperCharge engedélyezése', 'mockup-generator');
+        echo '</label>';
+        submit_button(__('Mentés', 'mockup-generator'), 'primary', 'submit', false);
+        echo '</form>';
         echo '</div>';
     }
 

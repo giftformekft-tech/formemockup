@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 class MG_Variant_Display_Manager {
+    const SUPERCHARGE_OPTION = 'mg_supercharge_settings';
     /**
      * Whether the preload assets have already been hooked for the current request.
      *
@@ -15,15 +16,50 @@ class MG_Variant_Display_Manager {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
 
-    protected static function is_supercharge_enabled() {
-        $raw = get_option('mg_variant_display', array());
-        $sanitized = self::sanitize_settings_block($raw, null);
+    public static function is_supercharge_enabled() {
+        $settings = self::get_supercharge_settings();
 
-        if (is_array($sanitized) && array_key_exists('supercharge_enabled', $sanitized)) {
-            return !empty($sanitized['supercharge_enabled']);
+        return !empty($settings['enabled']);
+    }
+
+    public static function get_supercharge_settings() {
+        $raw = get_option(self::SUPERCHARGE_OPTION, null);
+        if ($raw === null) {
+            $raw = array();
         }
 
-        return true;
+        if (!is_array($raw)) {
+            $raw = array();
+        }
+
+        if (!array_key_exists('enabled', $raw)) {
+            $legacy = get_option('mg_variant_display', array());
+            if (is_array($legacy) && array_key_exists('supercharge_enabled', $legacy)) {
+                $raw['enabled'] = self::normalize_boolean_flag($legacy['supercharge_enabled']);
+                unset($legacy['supercharge_enabled']);
+                update_option('mg_variant_display', $legacy, false);
+            } else {
+                $raw['enabled'] = true;
+            }
+
+            update_option(self::SUPERCHARGE_OPTION, $raw, false);
+        }
+
+        $raw['enabled'] = self::normalize_boolean_flag($raw['enabled']);
+
+        return array(
+            'enabled' => $raw['enabled'],
+        );
+    }
+
+    public static function set_supercharge_enabled($enabled) {
+        $clean = array(
+            'enabled' => self::normalize_boolean_flag($enabled),
+        );
+
+        update_option(self::SUPERCHARGE_OPTION, $clean, false);
+
+        return $clean;
     }
 
     public static function enqueue_assets() {

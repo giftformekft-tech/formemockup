@@ -101,9 +101,15 @@ class MG_Variant_Display_Page {
 
         settings_errors('mg_variant_display');
 
+        $supercharge_active = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::is_supercharge_enabled() : true;
+
         echo '<div class="wrap mgvd-admin">';
         echo '<h1>' . esc_html__('Variáns megjelenítés', 'mgvd') . '</h1>';
         echo '<p>' . esc_html__('Állítsd be, hogyan jelenjenek meg a terméktípusok, színek és méretek a termékoldalon.', 'mgvd') . '</p>';
+
+        if (!$supercharge_active) {
+            echo '<div class="notice notice-warning"><p>' . esc_html__('A SuperCharge felület jelenleg ki van kapcsolva. Engedélyezd a Felárak fülön a használatához.', 'mgvd') . '</p></div>';
+        }
 
         if (!$selected_type || !isset($catalog[$selected_type])) {
             echo '<div class="notice notice-warning"><p>' . esc_html__('Nem található a kiválasztott terméktípus.', 'mgvd') . '</p></div>';
