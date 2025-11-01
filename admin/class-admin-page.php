@@ -1,414 +1,663 @@
 <?php
-if (!defined('ABSPATH')) exit;
+if (!defined('ABSPATH')) {
+    exit;
+}
 
-// Always load AJAX handlers so admin-ajax.php has the hooks
-$ajax_bulk = plugin_dir_path(__FILE__).'ajax-bulk.php';
-if (file_exists($ajax_bulk)) { require_once $ajax_bulk; }
+$ajax_bulk = plugin_dir_path(__FILE__) . 'ajax-bulk.php';
+if (file_exists($ajax_bulk)) {
+    require_once $ajax_bulk;
+}
 
-// Keep product search if present
-$ajax_search = plugin_dir_path(__FILE__).'ajax-product-search.php';
-if (file_exists($ajax_search)) { require_once $ajax_search; }
+$ajax_search = plugin_dir_path(__FILE__) . 'ajax-product-search.php';
+if (file_exists($ajax_search)) {
+    require_once $ajax_search;
+}
 
-require_once plugin_dir_path(__FILE__).'class-dashboard-page.php';
+require_once plugin_dir_path(__FILE__) . 'class-dashboard-page.php';
 
 class MG_Admin_Page {
-    private static function sanitize_size_list($product) {
-        $sizes = array();
-        if (is_array($product)) {
-            if (!empty($product['sizes']) && is_array($product['sizes'])) {
-                foreach ($product['sizes'] as $size_value) {
-                    if (!is_string($size_value)) { continue; }
-                    $size_value = trim($size_value);
-                    if ($size_value === '') { continue; }
-                    $sizes[] = $size_value;
-                }
-            }
-            if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
-                foreach ($product['size_color_matrix'] as $size_label => $colors) {
-                    if (!is_string($size_label)) { continue; }
-                    $size_label = trim($size_label);
-                    if ($size_label === '') { continue; }
-                    $sizes[] = $size_label;
-                }
-            }
-        }
-        return array_values(array_unique($sizes));
-    }
+    const MAIN_SLUG = 'mockup-generator';
 
-    private static function normalize_size_color_matrix($product) {
-        $matrix = array();
-        $has_entries = false;
-        if (is_array($product) && !empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
-            foreach ($product['size_color_matrix'] as $size_label => $colors) {
-                if (!is_string($size_label)) { continue; }
-                $size_label = trim($size_label);
-                if ($size_label === '') { continue; }
-                $clean_colors = array();
-                if (is_array($colors)) {
-                    foreach ($colors as $slug) {
-                        $slug = sanitize_title($slug);
-                        if ($slug === '') { continue; }
-                        if (!in_array($slug, $clean_colors, true)) {
-                            $clean_colors[] = $slug;
-                        }
-                    }
-                }
-                $matrix[$size_label] = $clean_colors;
-                $has_entries = true;
-            }
-        }
-        return array($matrix, $has_entries);
-    }
-
-    private static function allowed_sizes_for_color($product, $color_slug) {
-        $color_slug = sanitize_title($color_slug ?? '');
-        $base_sizes = self::sanitize_size_list($product);
-        list($matrix, $has_entries) = self::normalize_size_color_matrix($product);
-        if (!$has_entries) {
-            return $base_sizes;
-        }
-        if ($color_slug === '') {
-            return $base_sizes;
-        }
-        $allowed = array();
-        foreach ($matrix as $size_label => $colors) {
-            if (in_array($color_slug, $colors, true)) {
-                $allowed[] = $size_label;
-            }
-        }
-        return array_values(array_unique($allowed));
-    }
-
+    /**
+     * Registers the top-level admin menu entry and hooks the asset loader.
+     */
     public static function add_menu_page() {
-        add_menu_page('Mockup Generator','Mockup Generator','edit_products','mockup-generator',[ 'MG_Dashboard_Page','render_page' ],'dashicons-art');
+        add_menu_page(
+            'Mockup Generator',
+            'Mockup Generator',
+            'edit_products',
+            self::MAIN_SLUG,
+            [self::class, 'render_page'],
+            'dashicons-art'
+        );
 
-        add_submenu_page('mockup-generator','Dashboard','Dashboard','edit_products','mockup-generator-dashboard',[ 'MG_Dashboard_Page','render_page' ]);
-        add_submenu_page('mockup-generator','Bulk feltöltés','Bulk feltöltés','edit_products','mockup-generator-bulk',[ self::class,'render_page' ]);
+        add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
+        add_action('admin_init', [self::class, 'redirect_legacy_requests']);
+    }
 
+    /**
+     * Enqueues the consolidated admin shell assets when the shell or one of
+     * the legacy single-page endpoints is requested.
+     *
+     * @param string $hook Current admin page hook.
+     */
+    public static function enqueue_assets($hook) {
+        $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : 'GET';
+        if ($method !== 'GET') {
+            return;
+        }
 
-}
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        $valid_hook = $hook === 'toplevel_page_' . self::MAIN_SLUG;
 
+        $eligible_pages = array_merge(
+            [self::MAIN_SLUG],
+            array_keys(self::get_legacy_slug_map())
+        );
+        $valid_request = in_array($page, $eligible_pages, true);
+
+        if (!$valid_hook && !$valid_request) {
+            return;
+        }
+
+        $css_path = plugin_dir_path(__FILE__) . '../assets/css/admin-ui.css';
+        $js_path  = plugin_dir_path(__FILE__) . '../assets/js/admin-ui.js';
+
+        wp_enqueue_style(
+            'mg-admin-ui',
+            plugins_url('../assets/css/admin-ui.css', __FILE__),
+            array(),
+            file_exists($css_path) ? filemtime($css_path) : '1.0.0'
+        );
+
+        wp_enqueue_script(
+            'mg-admin-ui',
+            plugins_url('../assets/js/admin-ui.js', __FILE__),
+            array('jquery'),
+            file_exists($js_path) ? filemtime($js_path) : '1.0.0',
+            true
+        );
+
+        $tabs = self::get_tabs();
+        $active = self::determine_active_tab($tabs);
+        $data = array(
+            'defaultTab' => $active,
+            'legacyMap'  => self::get_legacy_slug_map(),
+            'pageSlug'   => self::MAIN_SLUG,
+        );
+
+        $product = self::get_requested_product_key();
+        if ($product !== '') {
+            $data['currentProduct'] = $product;
+        }
+
+        wp_localize_script('mg-admin-ui', 'MG_ADMIN_UI', $data);
+    }
+
+    /**
+     * Redirects legacy submenu slugs to the SPA shell so the WordPress admin
+     * menu keeps working even without the JavaScript link rewriter.
+     */
+    public static function redirect_legacy_requests() {
+        if (!is_admin()) {
+            return;
+        }
+
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        if (!$page) {
+            return;
+        }
+
+        if ($page === self::MAIN_SLUG) {
+            return;
+        }
+
+        $map = self::get_legacy_slug_map();
+        if (!isset($map[$page])) {
+            return;
+        }
+
+        $target_tab = $map[$page];
+        $args = array(
+            'page'   => self::MAIN_SLUG,
+            'mg_tab' => $target_tab,
+        );
+
+        if ($page === 'mockup-generator-product') {
+            $product = isset($_GET['product']) ? sanitize_key(wp_unslash($_GET['product'])) : '';
+            if ($product) {
+                $args['mg_product'] = $product;
+            }
+        }
+
+        $current_tab = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
+        $current_product = isset($_GET['mg_product']) ? sanitize_key(wp_unslash($_GET['mg_product'])) : '';
+
+        $needs_redirect = ($current_tab !== $target_tab) || ($page === 'mockup-generator-product' && (!isset($_GET['mg_product']) || $current_product === ''));
+        if (!$needs_redirect) {
+            return;
+        }
+
+        $url = add_query_arg($args, admin_url('admin.php'));
+        wp_safe_redirect($url);
+        exit;
+    }
+
+    /**
+     * Returns the list of admin tabs rendered inside the SPA shell.
+     *
+     * @return array<string,array<string,string>>
+     */
+    private static function get_tabs() {
+        return array(
+            'dashboard' => array(
+                'label'     => __('Dashboard', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-dashboard',
+            ),
+            'mockups' => array(
+                'label' => __('Mockupok', 'mockup-generator'),
+                'type'  => 'custom',
+            ),
+            'variants' => array(
+                'label'     => __('Variánsok', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-variant-display',
+            ),
+            'regenerate' => array(
+                'label'     => __('Regenerálás', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-maintenance',
+            ),
+            'surcharges' => array(
+                'label'     => __('Felárak', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-surcharges',
+            ),
+            'settings' => array(
+                'label'     => __('Beállítások', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-settings',
+            ),
+            'logs' => array(
+                'label' => __('Logok', 'mockup-generator'),
+                'type'  => 'placeholder',
+            ),
+        );
+    }
+
+    /**
+     * Determines which tab should be active for the current request.
+     *
+     * @param array $tabs
+     * @return string
+     */
+    private static function determine_active_tab($tabs) {
+        $requested = '';
+
+        if (isset($_REQUEST['mg_tab'])) {
+            $requested = sanitize_key(wp_unslash($_REQUEST['mg_tab']));
+        } elseif (!empty($_GET['mg_tab'])) {
+            $requested = sanitize_key(wp_unslash($_GET['mg_tab']));
+        }
+
+        if ($requested && isset($tabs[$requested])) {
+            return $requested;
+        }
+
+        $page = isset($_REQUEST['page']) ? sanitize_key(wp_unslash($_REQUEST['page'])) : '';
+        if ($page) {
+            foreach ($tabs as $key => $tab) {
+                if (!empty($tab['page_slug']) && $tab['page_slug'] === $page) {
+                    return $key;
+                }
+            }
+        }
+
+        return self::get_default_tab();
+    }
+
+    /**
+     * Returns the default tab key.
+     *
+     * @return string
+     */
+    private static function get_default_tab() {
+        return 'dashboard';
+    }
+
+    /**
+     * Collects the mapping between legacy submenu slugs and the SPA tab IDs.
+     *
+     * @return array<string,string>
+     */
+    private static function get_legacy_slug_map() {
+        return array(
+            'mockup-generator-dashboard'        => 'dashboard',
+            'mockup-generator-variant-display'  => 'variants',
+            'mockup-generator-maintenance'      => 'regenerate',
+            'mockup-generator-surcharges'       => 'surcharges',
+            'mockup-generator-settings'         => 'settings',
+            'mockup-generator-product'          => 'mockups',
+        );
+    }
+
+    /**
+     * Legacy page callback registry used by the shell to embed existing screens.
+     *
+     * @return array<string,callable>
+     */
+    private static function get_legacy_callbacks() {
+        $callbacks = array();
+
+        if (class_exists('MG_Dashboard_Page')) {
+            $callbacks['mockup-generator-dashboard'] = array('MG_Dashboard_Page', 'render_page');
+        }
+        if (class_exists('MG_Variant_Display_Page')) {
+            $callbacks['mockup-generator-variant-display'] = array('MG_Variant_Display_Page', 'render_page');
+        }
+        if (class_exists('MG_Mockup_Maintenance_Page')) {
+            $callbacks['mockup-generator-maintenance'] = array('MG_Mockup_Maintenance_Page', 'render_page');
+        }
+        if (class_exists('MG_Surcharge_Options_Page')) {
+            $callbacks['mockup-generator-surcharges'] = array('MG_Surcharge_Options_Page', 'render');
+        }
+        if (class_exists('MG_Settings_Page')) {
+            $callbacks['mockup-generator-settings'] = array('MG_Settings_Page', 'render_settings');
+        }
+        if (class_exists('MG_Product_Settings_Page')) {
+            $callbacks['mockup-generator-product'] = array('MG_Product_Settings_Page', 'render_product');
+        }
+
+        return $callbacks;
+    }
+
+    /**
+     * Renders the main admin shell with tab navigation and panels.
+     */
     public static function render_page() {
-        if (isset($_GET['status'])) {
-            if ($_GET['status'] === 'success') {
-                echo '<div class="notice notice-success is-dismissible"><p>Sikeres generálás.</p></div>';
-            } elseif ($_GET['status'] === 'error') {
-                $msg = isset($_GET['mg_error']) ? sanitize_text_field(wp_unslash($_GET['mg_error'])) : 'Ismeretlen hiba.';
-                echo '<div class="notice notice-error"><p><strong>Hiba:</strong> '.esc_html($msg).'</p></div>';
-            }
+        if (!current_user_can('edit_products')) {
+            wp_die(__('Nincs jogosultságod a Mockup Generator megnyitásához.', 'mockup-generator'));
         }
 
-        // Enqueue assets
-        wp_enqueue_style('mg-bulk-css', plugin_dir_url(__FILE__).'../assets/css/bulk-upload.css', array(), filemtime(plugin_dir_path(__FILE__).'../assets/css/bulk-upload.css'));
-if (file_exists(plugin_dir_path(__FILE__).'../assets/js/product-search.js')) {
-            wp_enqueue_script('mg-product-search', plugin_dir_url(__FILE__).'../assets/js/product-search.js', array('jquery'), '1.0.1', true);
-            wp_localize_script('mg-product-search', 'MG_SEARCH', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce'    => wp_create_nonce('mg_search_nonce'),
-            ));
-        }
+        $tabs    = self::get_tabs();
+        $current = self::determine_active_tab($tabs);
+        $product = self::get_requested_product_key();
 
-        // Data for categories
-        $mains = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>0));
-        $subs_map = array();
-        if (!is_wp_error($mains)) {
-            foreach ($mains as $c) {
-                $subs = get_terms(array('taxonomy'=>'product_cat','hide_empty'=>false,'parent'=>$c->term_id));
-                $subs_map[$c->term_id] = !is_wp_error($subs) ? array_map(function($t){
-                    return array('id'=>$t->term_id,'name'=>$t->name);
-                }, $subs) : array();
-            }
-        }
-        $products = get_option('mg_products', array());
-        $products = is_array($products) ? array_values(array_filter($products, function($p){ return is_array($p) && !empty($p['key']); })) : array();
-        $default_type = '';
-        $default_color = '';
-        $default_size = '';
-        foreach ($products as &$prod) {
-            if (!isset($prod['colors']) || !is_array($prod['colors'])) { $prod['colors'] = array(); }
-            if (!isset($prod['label'])) { $prod['label'] = $prod['key']; }
-            if (!$default_type && !empty($prod['is_primary'])) {
-                $default_type = $prod['key'];
-                $default_color = isset($prod['primary_color']) ? $prod['primary_color'] : '';
-                $default_size = isset($prod['primary_size']) ? $prod['primary_size'] : '';
-            }
-        }
-        unset($prod);
-        if (!$default_type && !empty($products)) {
-            $default_type = $products[0]['key'];
-            $default_color = isset($products[0]['primary_color']) ? $products[0]['primary_color'] : '';
-            $default_size = isset($products[0]['primary_size']) ? $products[0]['primary_size'] : '';
-        }
-        $default_color = is_string($default_color) ? $default_color : '';
-        $default_size = is_string($default_size) ? $default_size : '';
-        $default_colors_available = array();
-        $default_sizes_available = array();
-        $default_product = null;
-        foreach ($products as $prod) {
-            if ($prod['key'] === $default_type) { $default_product = $prod; break; }
-        }
-        if ($default_product) {
-            if (!empty($default_product['colors']) && is_array($default_product['colors'])) {
-                foreach ($default_product['colors'] as $c) {
-                    if (isset($c['slug'])) { $default_colors_available[] = sanitize_title($c['slug']); }
-                }
-            }
-            if ($default_color && !in_array($default_color, $default_colors_available, true)) {
-                $default_color = '';
-            }
-            if (!$default_color && !empty($default_colors_available)) {
-                $preferred_color = isset($default_product['primary_color']) ? sanitize_title($default_product['primary_color']) : '';
-                if ($preferred_color && in_array($preferred_color, $default_colors_available, true)) {
-                    $default_color = $preferred_color;
-                } else {
-                    $default_color = $default_colors_available[0];
-                }
-            }
-            $default_sizes_available = self::allowed_sizes_for_color($default_product, $default_color);
-            if ($default_color && empty($default_sizes_available) && !empty($default_colors_available)) {
-                foreach ($default_colors_available as $color_candidate) {
-                    $candidate_sizes = self::allowed_sizes_for_color($default_product, $color_candidate);
-                    if (!empty($candidate_sizes)) {
-                        $default_color = $color_candidate;
-                        $default_sizes_available = $candidate_sizes;
-                        break;
-                    }
-                }
-            }
-            if (empty($default_sizes_available)) {
-                $default_sizes_available = self::sanitize_size_list($default_product);
-            }
-            if ($default_size && !in_array($default_size, $default_sizes_available, true)) {
-                $default_size = '';
-            }
-            if (!$default_size && !empty($default_sizes_available)) {
-                $preferred_size = isset($default_product['primary_size']) ? $default_product['primary_size'] : '';
-                if (!is_string($preferred_size)) { $preferred_size = ''; }
-                if ($preferred_size && in_array($preferred_size, $default_sizes_available, true)) {
-                    $default_size = $preferred_size;
-                } else {
-                    $default_size = $default_sizes_available[0];
-                }
-            }
-        }
-        if ($default_type) {
-            $primary_index = null;
-            foreach ($products as $idx => $prod) {
-                if ($prod['key'] === $default_type) { $primary_index = $idx; break; }
-            }
-            if ($primary_index !== null && $primary_index > 0) {
-                $primary_item = $products[$primary_index];
-                array_splice($products, $primary_index, 1);
-                array_unshift($products, $primary_item);
-            }
-        }
-        $products_for_js = array_map(function($p){
-            $colors = array();
-            if (!empty($p['colors']) && is_array($p['colors'])) {
-                foreach ($p['colors'] as $c) {
-                    if (!isset($c['slug'])) continue;
-                    $colors[] = array(
-                        'slug' => $c['slug'],
-                        'name' => isset($c['name']) ? $c['name'] : $c['slug'],
-                    );
-                }
-            }
-            $sizes = MG_Admin_Page::sanitize_size_list($p);
-            $color_size_map = array();
-            foreach ($colors as $c) {
-                if (!isset($c['slug'])) { continue; }
-                $slug = sanitize_title($c['slug']);
-                $color_size_map[$slug] = MG_Admin_Page::allowed_sizes_for_color($p, $slug);
-            }
-            return array(
-                'key' => $p['key'],
-                'label' => isset($p['label']) ? $p['label'] : $p['key'],
-                'colors' => $colors,
-                'primary_color' => isset($p['primary_color']) ? $p['primary_color'] : '',
-                'is_primary' => !empty($p['is_primary']) ? 1 : 0,
-                'sizes' => $sizes,
-                'primary_size' => isset($p['primary_size']) ? $p['primary_size'] : '',
-                'color_sizes' => $color_size_map,
+        echo '<div class="mg-admin-shell">';
+        echo '<header class="mg-admin-header">';
+        echo '<div class="mg-admin-title">';
+        echo '<span class="dashicons dashicons-art" aria-hidden="true"></span>';
+        echo '<div class="mg-admin-heading">';
+        echo '<h1>Mockup Generator</h1>';
+        echo '<p class="mg-admin-sub">' . esc_html__('Egységes admin felület gyors tabváltással.', 'mockup-generator') . '</p>';
+        echo '</div>';
+        echo '</div>';
+        $cta_url = esc_url(self::build_panel_url('settings'));
+        echo '<div class="mg-admin-actions">';
+        echo '<a class="button button-primary mg-primary-action" href="' . $cta_url . '">' . esc_html__('Új mockup hozzáadása', 'mockup-generator') . '</a>';
+        echo '</div>';
+        echo '</header>';
+
+        echo '<nav class="mg-tabbar" role="tablist">';
+        foreach ($tabs as $id => $tab) {
+            $is_active = $id === $current ? ' is-active' : '';
+            $url = esc_url(self::build_panel_url($id, $id === 'mockups' && $product ? array('mg_product' => $product) : array()));
+            printf(
+                '<button type="button" id="mg-tab-%1$s" class="mg-tab%4$s" data-tab="%1$s" role="tab" data-url="%3$s">%2$s</button>',
+                esc_attr($id),
+                esc_html($tab['label']),
+                $url,
+                esc_attr($is_active)
             );
-        }, $products);
-
-        $worker_count = 1;
-        $worker_options = array(1, 2, 3, 4, 6, 8);
-        if (class_exists('MG_Bulk_Queue')) {
-            $worker_count = MG_Bulk_Queue::get_configured_worker_count();
-            $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();
         }
+        echo '</nav>';
 
-        wp_enqueue_script('mg-bulk-advanced', plugin_dir_url(__FILE__).'../assets/js/bulk-upload-advanced.js', array('jquery'), filemtime(plugin_dir_path(__FILE__).'../assets/js/bulk-upload-advanced.js'), true);
-        wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', array(
-            'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce'    => wp_create_nonce('mg_bulk_nonce'),
-            'mains'    => !is_wp_error($mains) ? array_map(function($t){ return array('id'=>$t->term_id,'name'=>$t->name); }, $mains) : array(),
-            'subs'     => $subs_map,
-            'products' => $products_for_js,
-            'default_type' => $default_type,
-            'default_color' => $default_color,
-            'default_size' => $default_size,
-            'worker_count' => $worker_count,
-            'worker_options' => $worker_options,
-            'worker_feedback_saving' => 'Mentés…',
-            'worker_feedback_saved' => 'Beállítva: %d worker.',
-            'worker_feedback_error' => 'Nem sikerült menteni. Próbáld újra.',
-        ));
+        echo '<div class="mg-tabpanels">';
+        foreach ($tabs as $id => $tab) {
+            $panel_classes = 'mg-panel' . ($id === $current ? ' is-active' : '');
+            $attrs = array(
+                'id'            => 'tab-' . $id,
+                'class'         => $panel_classes,
+                'role'          => 'tabpanel',
+                'aria-labelledby' => 'mg-tab-' . $id,
+                'data-tab-id'   => $id,
+            );
 
-        $default_colors_render = array();
-        foreach ($products as $prod) {
-            if ($prod['key'] === $default_type) {
-                $default_colors_render = is_array($prod['colors']) ? $prod['colors'] : array();
+            if ($id === 'mockups') {
+                $attrs['data-product-key'] = $product;
+            }
+
+            echo '<section' . self::compile_attributes($attrs) . '>';
+            self::render_panel_body($id, $tab);
+            echo '</section>';
+        }
+        echo '</div>';
+
+        echo '<footer class="mg-save-bar" aria-hidden="true">';
+        echo '<div class="mg-save-bar__inner">';
+        echo '<span class="mg-save-bar__message">' . esc_html__('Nem mentett módosítások', 'mockup-generator') . '</span>';
+        echo '<button type="button" class="button button-primary mg-save-bar__submit">' . esc_html__('Mentés', 'mockup-generator') . '</button>';
+        echo '</div>';
+        echo '</footer>';
+        echo '</div>';
+    }
+
+    /**
+     * Outputs the panel body markup for a given tab definition.
+     *
+     * @param string $id
+     * @param array  $tab
+     */
+    private static function render_panel_body($id, $tab) {
+        switch ($tab['type']) {
+            case 'legacy':
+                self::render_legacy_panel($tab);
                 break;
+            case 'custom':
+                self::render_mockups_panel();
+                break;
+            case 'placeholder':
+            default:
+                self::render_placeholder_panel();
+                break;
+        }
+    }
+
+    /**
+     * Wraps the legacy PHP pages inside the SPA panel shell.
+     *
+     * @param array $tab
+     */
+    private static function render_legacy_panel($tab) {
+        $slug = isset($tab['page_slug']) ? $tab['page_slug'] : '';
+        $callbacks = self::get_legacy_callbacks();
+
+        if (!$slug || empty($callbacks[$slug])) {
+            self::render_placeholder_panel();
+            return;
+        }
+
+        $original_get_page = isset($_GET['page']) ? $_GET['page'] : null;
+        $original_request_page = isset($_REQUEST['page']) ? $_REQUEST['page'] : null;
+
+        $_GET['page'] = $slug;
+        $_REQUEST['page'] = $slug;
+
+        ob_start();
+        call_user_func($callbacks[$slug]);
+        $content = ob_get_clean();
+
+        if ($original_get_page === null) {
+            unset($_GET['page']);
+        } else {
+            $_GET['page'] = $original_get_page;
+        }
+
+        if ($original_request_page === null) {
+            unset($_REQUEST['page']);
+        } else {
+            $_REQUEST['page'] = $original_request_page;
+        }
+
+        echo self::decorate_legacy_markup($content, $slug); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+    }
+
+    /**
+     * Handles the custom mockup management panel.
+     */
+    private static function render_mockups_panel() {
+        $product_key = self::get_requested_product_key();
+        echo '<div class="mg-panel-body mg-panel-body--mockups" data-legacy-slug="mockup-generator-product">';
+        if ($product_key) {
+            self::render_product_editor($product_key);
+        } else {
+            self::render_mockup_overview();
+        }
+        echo '</div>';
+    }
+
+    /**
+     * Outputs the mockup overview cards and quick stats.
+     */
+    private static function render_mockup_overview() {
+        $products = get_option('mg_products', array());
+        $total_products = is_array($products) ? count($products) : 0;
+        $colors = 0;
+        $views = 0;
+        $templates = 0;
+
+        if (is_array($products)) {
+            foreach ($products as $product) {
+                if (!is_array($product)) {
+                    continue;
+                }
+                if (!empty($product['colors']) && is_array($product['colors'])) {
+                    $colors += count($product['colors']);
+                }
+                if (!empty($product['views']) && is_array($product['views'])) {
+                    $views += count($product['views']);
+                }
+                if (!empty($product['template_base'])) {
+                    $templates++;
+                }
             }
         }
-        $default_sizes_render = array();
-        if ($default_product) {
-            $default_sizes_render = self::allowed_sizes_for_color($default_product, $default_color);
-            if (empty($default_sizes_render)) {
-                $default_sizes_render = self::sanitize_size_list($default_product);
-            }
+
+        echo '<div class="mg-panel-section">';
+        echo '<div class="mg-panel-section__header">';
+        echo '<h2>' . esc_html__('Mockup áttekintés', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('Terméktípusok, színek és nézetek egy helyen.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        echo '<div class="mg-stats-grid">';
+        self::render_stat_chip($total_products, __('Terméktípus', 'mockup-generator'), __('Aktív konfigurációk a rendszerben.', 'mockup-generator'));
+        self::render_stat_chip($colors, __('Szín variáció', 'mockup-generator'), __('Színek összesen a terméktípusokban.', 'mockup-generator'));
+        self::render_stat_chip($views, __('Mockup nézet', 'mockup-generator'), __('Elérhető nézetek száma a mockup sablonokban.', 'mockup-generator'));
+        self::render_stat_chip($templates, __('Sablon útvonal', 'mockup-generator'), __('Mockup könyvtárak a feltöltések között.', 'mockup-generator'));
+        echo '</div>';
+        echo '</div>';
+
+        echo '<div class="mg-panel-section">';
+        echo '<div class="mg-panel-section__header">';
+        echo '<h3>' . esc_html__('Terméktípusok kezelése', 'mockup-generator') . '</h3>';
+        echo '<p>' . esc_html__('Válassz egy terméket a részletes mockup beállításokhoz.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        if (empty($products)) {
+            echo '<div class="mg-empty">';
+            echo '<p>' . esc_html__('Még nincs konfigurált terméktípus. A Beállítások fülön adhatsz hozzá újat.', 'mockup-generator') . '</p>';
+            echo '</div>';
+            echo '</div>';
+            return;
         }
 
-        ?>
-        <div class="wrap">
-          <h1>Mockup Generator</h1>
-          <p><a href="<?php echo admin_url('admin.php?page=mockup-generator-settings'); ?>" class="button">Beállítások</a></p>
+        echo '<div class="mg-card-grid">';
+        foreach ($products as $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $key   = isset($product['key']) ? self::sanitize_product_key($product['key']) : '';
+            $label = isset($product['label']) ? $product['label'] : $key;
+            $price = isset($product['price']) ? intval($product['price']) : 0;
+            $sku   = isset($product['sku_prefix']) ? $product['sku_prefix'] : '';
+            $color_count = !empty($product['colors']) && is_array($product['colors']) ? count($product['colors']) : 0;
+            $size_count  = !empty($product['sizes']) && is_array($product['sizes']) ? count($product['sizes']) : 0;
+            $view_count  = !empty($product['views']) && is_array($product['views']) ? count($product['views']) : 0;
 
-          <h2>Bulk feltöltés – kényelmes mód</h2>
-          <div class="card">
-            <p>Több mintát tölthetsz fel egyszerre, és <strong>soronként</strong> beállíthatod a főkategóriát, több alkategóriát, terméknevet, és a (meglévő) szülő terméket is.</p>
-            <div class="mg-row">
-              <label><strong>Mintafájlok</strong></label>
-              <div id="mg-drop-zone" class="mg-drop-zone"><div class="mg-drop-inner">Húzd ide a mintákat vagy <button type="button" class="button-link">válaszd ki</button></div><input type="file" id="mg-bulk-files-adv" accept=".png,.jpg,.jpeg,.webp" multiple style="display:none"></div>
-            </div>
-            <div class="mg-row">
-              <label><strong>Terméktípusok (globális)</strong></label>
-              <div class="mg-types">
-              <?php if (empty($products)): ?>
-                  <em>Még nincs felvéve terméktípus. Menj a Beállítások oldalra.</em>
-              <?php else: foreach ($products as $p): ?>
-                  <label class="mg-type"><input type="checkbox" class="mg-type-cb" value="<?php echo esc_attr($p['key']); ?>" checked="checked"> <?php echo esc_html($p['label']); ?></label>
-              <?php endforeach; endif; ?>
-              </div>
-              <?php if (!empty($products)): ?>
-              <div class="mg-default-selects">
-                <label><strong>Alapértelmezett terméktípus</strong></label>
-                <select id="mg-default-type">
-                  <?php foreach ($products as $p): ?>
-                    <option value="<?php echo esc_attr($p['key']); ?>" <?php selected($default_type, $p['key']); ?>><?php echo esc_html($p['label']); ?></option>
-                  <?php endforeach; ?>
-                </select>
-              </div>
-              <div class="mg-default-selects">
-                <label><strong>Alapértelmezett szín</strong></label>
-                <select id="mg-default-color">
-                  <?php if (!empty($default_colors_render)): ?>
-                    <?php foreach ($default_colors_render as $color): if (!isset($color['slug'], $color['name'])) continue; ?>
-                      <option value="<?php echo esc_attr($color['slug']); ?>" <?php selected($default_color, $color['slug']); ?>><?php echo esc_html($color['name']); ?></option>
-                    <?php endforeach; ?>
-                  <?php else: ?>
-                    <option value="">— Ehhez a típushoz nincs szín —</option>
-                  <?php endif; ?>
-                </select>
-              </div>
-              <div class="mg-default-selects">
-                <label><strong>Alapértelmezett méret</strong></label>
-                <select id="mg-default-size">
-                  <?php if (!empty($default_sizes_render)): ?>
-                    <?php foreach ($default_sizes_render as $size_label): if (!is_string($size_label) || $size_label === '') continue; ?>
-                      <option value="<?php echo esc_attr($size_label); ?>" <?php selected($default_size, $size_label); ?>><?php echo esc_html($size_label); ?></option>
-                    <?php endforeach; ?>
-                  <?php else: ?>
-                    <option value="">— Ehhez a típushoz nincs méret —</option>
-                  <?php endif; ?>
-                </select>
-            </div>
-            <p class="description" style="margin-top:8px;">Az itt megadott kombináció lesz előre kiválasztva a bulk feltöltés elindításakor.</p>
-            <?php endif; ?>
-          </div>
+            echo '<article class="mg-card">';
+            echo '<header class="mg-card__header">';
+            echo '<div class="mg-card__title">';
+            echo '<h4>' . esc_html($label) . '</h4>';
+            if ($sku) {
+                echo '<span class="mg-badge">' . esc_html($sku) . '</span>';
+            }
+            echo '</div>';
+            if ($price > 0) {
+                echo '<span class="mg-card__price">' . esc_html(number_format_i18n($price)) . ' Ft</span>';
+            }
+            echo '</header>';
 
-          <div class="mg-worker-control" id="mg-worker-control">
-            <span class="mg-worker-label"><strong>Párhuzamos feldolgozás</strong></span>
-            <div class="mg-worker-toggle-group" role="group" aria-label="Párhuzamos worker szám kiválasztása">
-              <?php foreach ($worker_options as $option): ?>
-                <?php $is_active = (intval($worker_count) === intval($option)); ?>
-                <button type="button" class="button mg-worker-toggle<?php if ($is_active) { echo ' is-active'; } ?>" data-workers="<?php echo esc_attr($option); ?>" aria-pressed="<?php echo $is_active ? 'true' : 'false'; ?>"><?php echo esc_html($option); ?> worker</button>
-              <?php endforeach; ?>
-            </div>
-            <p class="mg-worker-summary">Aktív: <span class="mg-worker-active-count"><?php echo esc_html($worker_count); ?></span> worker</p>
-            <p class="description">A több worker egyszerre több mockupot készít el, de jelentősen növelheti a szerver terhelését (CPU, memória).</p>
-            <p class="mg-worker-feedback" aria-live="polite"></p>
-          </div>
+            echo '<ul class="mg-card__meta">';
+            echo '<li><strong>' . esc_html($size_count) . '</strong> <span>' . esc_html__('Méret', 'mockup-generator') . '</span></li>';
+            echo '<li><strong>' . esc_html($color_count) . '</strong> <span>' . esc_html__('Szín', 'mockup-generator') . '</span></li>';
+            echo '<li><strong>' . esc_html($view_count) . '</strong> <span>' . esc_html__('Nézet', 'mockup-generator') . '</span></li>';
+            echo '</ul>';
 
-          <h3>Tételek</h3>
-          <p>
-            <button type="button" class="button" id="mg-bulk-apply-first">Első sor beállításainak másolása a többire</button>
-          </p>
-            <div class="mg-table-wrap">
-              <table class="widefat fixed striped mg-bulk-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Előnézet</th>
-                    <th>Fájlnév</th>
-                    <th>Főkategória</th>
-                    <th>Alkategóriák</th>
-                    <th>Terméknév</th>
-                    <th>Szülő keresése</th>
-                    <th>Egyedi termék</th>
-                    <th>Tag-ek</th>
-                    <th class="mg-state">Állapot</th>
-                  </tr>
-                </thead>
-                <tbody id="mg-bulk-rows">
-                  <tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>
-                </tbody>
-              </table>
-            </div>
+            echo '<footer class="mg-card__footer">';
+            $edit_url = self::build_panel_url('mockups', array(
+                'mg_product' => $key,
+            ));
+            echo '<a class="button button-primary" href="' . esc_url($edit_url) . '">' . esc_html__('Szerkesztés', 'mockup-generator') . '</a>';
+            $settings_url = self::build_panel_url('settings');
+            echo '<a class="button mg-card__secondary" href="' . esc_url($settings_url) . '">' . esc_html__('Beállítások', 'mockup-generator') . '</a>';
+            echo '</footer>';
+            echo '</article>';
+        }
+        echo '</div>';
+        echo '</div>';
+    }
 
-            <div class="mg-actions">
-              <button class="button button-primary" id="mg-bulk-start">Bulk generálás indítása</button>
-              <div class="mg-progress"><div class="mg-bar" id="mg-bulk-bar" style="width:0%"></div></div>
-              <span id="mg-bulk-status">0%</span>
-            </div>
-          </div>
-        </div>
-        <?php
+    /**
+     * Renders the legacy product editor inside the SPA layout.
+     *
+     * @param string $product_key
+     */
+    private static function render_product_editor($product_key) {
+        $back_url = self::build_panel_url('mockups');
+        echo '<div class="mg-panel-section mg-panel-section--breadcrumb">';
+        echo '<a class="mg-breadcrumb" href="' . esc_url($back_url) . '">' . esc_html__('← Vissza a listához', 'mockup-generator') . '</a>';
+        echo '</div>';
+
+        $callbacks = self::get_legacy_callbacks();
+        if (empty($callbacks['mockup-generator-product'])) {
+            self::render_placeholder_panel();
+            return;
+        }
+
+        $original_product_get = isset($_GET['product']) ? $_GET['product'] : null;
+        $original_product_request = isset($_REQUEST['product']) ? $_REQUEST['product'] : null;
+        $sanitized_key = self::sanitize_product_key($product_key);
+
+        $_GET['page'] = 'mockup-generator-product';
+        $_REQUEST['page'] = 'mockup-generator-product';
+        $_GET['product'] = $sanitized_key;
+        $_REQUEST['product'] = $sanitized_key;
+
+        ob_start();
+        call_user_func($callbacks['mockup-generator-product']);
+        $content = ob_get_clean();
+
+        if ($original_product_get === null) {
+            unset($_GET['product']);
+        } else {
+            $_GET['product'] = $original_product_get;
+        }
+
+        if ($original_product_request === null) {
+            unset($_REQUEST['product']);
+        } else {
+            $_REQUEST['product'] = $original_product_request;
+        }
+
+        echo self::decorate_legacy_markup($content, 'mockup-generator-product'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+    }
+
+    /**
+     * Outputs a badge-like statistic chip used in the overview.
+     *
+     * @param int    $value
+     * @param string $label
+     * @param string $description
+     */
+    private static function render_stat_chip($value, $label, $description) {
+        echo '<div class="mg-stat">';
+        echo '<strong>' . esc_html(number_format_i18n($value)) . '</strong>';
+        echo '<span>' . esc_html($label) . '</span>';
+        echo '<p>' . esc_html($description) . '</p>';
+        echo '</div>';
+    }
+
+    /**
+     * Fallback content for tabs that do not yet have a dedicated screen.
+     */
+    private static function render_placeholder_panel() {
+        echo '<div class="mg-panel-body mg-panel-body--empty">';
+        echo '<h2>' . esc_html__('Logok', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('A naplók a wp-content/uploads/mockup-generator könyvtárban találhatók. A következő frissítésben itt is elérhető lesz egy kényelmes nézet.', 'mockup-generator') . '</p>';
+        echo '</div>';
+    }
+
+    /**
+     * Wraps legacy markup in a uniform container to align with the SPA styling.
+     *
+     * @param string $content
+     * @param string $slug
+     * @return string
+     */
+    private static function decorate_legacy_markup($content, $slug) {
+        $content = trim((string) $content);
+        if ($content === '') {
+            return '<div class="mg-panel-body mg-panel-body--empty"><p>' . esc_html__('Nincs megjeleníthető tartalom.', 'mockup-generator') . '</p></div>';
+        }
+
+        return '<div class="mg-panel-body mg-panel-body--legacy" data-legacy-slug="' . esc_attr($slug) . '">' . $content . '</div>';
+    }
+
+    /**
+     * Compiles an associative array of HTML attributes into a string.
+     *
+     * @param array<string,string> $attributes
+     * @return string
+     */
+    private static function compile_attributes($attributes) {
+        $compiled = '';
+        foreach ($attributes as $attr => $value) {
+            $compiled .= ' ' . esc_attr($attr) . '="' . esc_attr($value) . '"';
+        }
+        return $compiled;
+    }
+
+    /**
+     * Normalizes the requested product key.
+     *
+     * @return string
+     */
+    private static function get_requested_product_key() {
+        if (empty($_REQUEST['mg_product'])) {
+            return '';
+        }
+        return self::sanitize_product_key(wp_unslash($_REQUEST['mg_product']));
+    }
+
+    /**
+     * Sanitizes product keys while keeping dashes and underscores intact.
+     *
+     * @param string $key
+     * @return string
+     */
+    private static function sanitize_product_key($key) {
+        $key = is_string($key) ? $key : '';
+        $key = strtolower($key);
+        return preg_replace('/[^a-z0-9_-]/', '', $key);
+    }
+
+    /**
+     * Builds a URL pointing back to the SPA shell with the selected tab.
+     *
+     * @param string $tab
+     * @param array  $args
+     * @return string
+     */
+    private static function build_panel_url($tab, $args = array()) {
+        $args = array_merge(
+            array(
+                'page'   => self::MAIN_SLUG,
+                'mg_tab' => $tab,
+            ),
+            $args
+        );
+
+        return add_query_arg($args, admin_url('admin.php'));
     }
 }
-
-add_action('admin_menu', ['MG_Dashboard_Page','add_menu_page']);
-
-// Cleanup: remove auto mirror submenu that points to 'mockup-generator'
-add_action('admin_menu', function(){
-    global $submenu;
-    if (isset($submenu['mockup-generator'])){
-        foreach ($submenu['mockup-generator'] as $i => $item){
-            if (isset($item[2]) && $item[2] === 'mockup-generator'){
-                unset($submenu['mockup-generator'][$i]);
-                break;
-            }
-        }
-    }
-}, 999);
-
-// Final cleanup: remove duplicated first 'Dashboard' submenu automatically created by WP
-add_action('admin_menu', function(){
-    global $submenu;
-    if (isset($submenu['mockup-generator'])){
-        $seen_dashboard = false;
-        foreach ($submenu['mockup-generator'] as $i => $item){
-            if (isset($item[2]) && ($item[2] === 'mockup-generator' || stripos($item[0],'dashboard') !== false)){
-                if ($seen_dashboard){
-                    unset($submenu['mockup-generator'][$i]);
-                } else {
-                    $seen_dashboard = true;
-                }
-            }
-        }
-        // Reindex
-        $submenu['mockup-generator'] = array_values($submenu['mockup-generator']);
-    }
-}, 999);
