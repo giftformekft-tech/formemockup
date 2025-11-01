@@ -11,6 +11,13 @@ class MG_Variant_Display_Manager {
      */
     protected static $preload_hooked = false;
 
+    /**
+     * Whether the language_attributes filter has already been hooked.
+     *
+     * @var bool
+     */
+    protected static $language_attributes_hooked = false;
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
@@ -67,15 +74,20 @@ class MG_Variant_Display_Manager {
         self::$preload_hooked = true;
 
         add_action('wp_head', array(__CLASS__, 'output_preload_markup'), 1);
+
+        if (!self::$language_attributes_hooked) {
+            self::$language_attributes_hooked = true;
+            add_filter('language_attributes', array(__CLASS__, 'ensure_preload_language_attributes'), 20, 2);
+        }
     }
 
     public static function output_preload_markup() {
         ?>
         <style id="mg-variant-preload-css">
-            html.mg-variant-preparing form.variations_form .variations,
-            html.mg-variant-preparing form.variations_form .woocommerce-variation,
-            html.mg-variant-preparing form.variations_form .single_variation,
-            html.mg-variant-preparing form.variations_form .woocommerce-variation-add-to-cart {
+            html.mg-variant-preload form.variations_form .variations,
+            html.mg-variant-preload form.variations_form .woocommerce-variation,
+            html.mg-variant-preload form.variations_form .single_variation,
+            html.mg-variant-preload form.variations_form .woocommerce-variation-add-to-cart {
                 opacity: 0;
                 pointer-events: none;
             }
@@ -83,16 +95,65 @@ class MG_Variant_Display_Manager {
         <script id="mg-variant-preload-script">
             (function () {
                 var doc = document.documentElement;
-                if (!doc || doc.classList.contains('mg-variant-preparing')) {
+                if (!doc) {
                     return;
                 }
-                doc.classList.add('mg-variant-preparing');
-                window.setTimeout(function () {
-                    doc.classList.remove('mg-variant-preparing');
-                }, 2000);
+                if (!doc.classList.contains('mg-variant-preparing')) {
+                    doc.classList.add('mg-variant-preparing');
+                }
+                doc.classList.add('mg-variant-preload');
+                if (typeof window !== 'undefined') {
+                    if (window.__mgVariantPreloadCleanup) {
+                        window.clearTimeout(window.__mgVariantPreloadCleanup);
+                    }
+                    window.__mgVariantPreloadCleanup = window.setTimeout(function () {
+                        doc.classList.remove('mg-variant-preload');
+                        doc.classList.remove('mg-variant-preparing');
+                        window.__mgVariantPreloadCleanup = null;
+                    }, 4000);
+                }
             })();
         </script>
+        <noscript>
+            <style>
+                html form.variations_form .variations,
+                html form.variations_form .woocommerce-variation,
+                html form.variations_form .single_variation,
+                html form.variations_form .woocommerce-variation-add-to-cart {
+                    opacity: 1 !important;
+                    pointer-events: auto !important;
+                }
+            </style>
+        </noscript>
         <?php
+    }
+
+    public static function ensure_preload_language_attributes($output, $doctype) {
+        $required_classes = array('mg-variant-preparing', 'mg-variant-preload');
+
+        if (stripos($output, 'class=') !== false) {
+            $pattern = "/\\bclass=([\"\'])([^\"\']*)([\"\'])/i";
+            if (preg_match($pattern, $output, $matches)) {
+                $quote = $matches[1];
+                $existing = preg_split('/\\s+/', trim($matches[2]));
+                if (!is_array($existing)) {
+                    $existing = array();
+                }
+                foreach ($required_classes as $class) {
+                    if (!in_array($class, $existing, true)) {
+                        $existing[] = $class;
+                    }
+                }
+                $clean = implode(' ', array_filter(array_unique($existing)));
+                $clean_attr = function_exists('esc_attr') ? esc_attr($clean) : htmlspecialchars($clean, ENT_QUOTES, 'UTF-8');
+                $replacement = 'class=' . $quote . $clean_attr . $quote;
+                $output = preg_replace($pattern, $replacement, $output, 1);
+            }
+            return $output;
+        }
+
+        $class_attr = function_exists('esc_attr') ? esc_attr(implode(' ', $required_classes)) : htmlspecialchars(implode(' ', $required_classes), ENT_QUOTES, 'UTF-8');
+        return trim($output) . ' class="' . $class_attr . '"';
     }
 
     protected static function build_frontend_config($product) {
