@@ -53,7 +53,13 @@
         this.$form.addClass('mg-variant-form--enhanced');
         if (typeof document !== 'undefined' && document.documentElement) {
             document.documentElement.classList.remove('mg-variant-preparing');
+            document.documentElement.classList.remove('mg-variant-preload');
+            document.documentElement.classList.remove('mg-variant-fallback');
             document.documentElement.classList.add('mg-variant-ready');
+        }
+        if (typeof window !== 'undefined' && window.__mgVariantPreloadCleanup) {
+            window.clearTimeout(window.__mgVariantPreloadCleanup);
+            window.__mgVariantPreloadCleanup = null;
         }
     };
 
