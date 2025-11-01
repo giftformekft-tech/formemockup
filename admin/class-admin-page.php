@@ -32,7 +32,6 @@ class MG_Admin_Page {
         );
 
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_assets']);
-        add_action('admin_init', [self::class, 'redirect_legacy_requests']);
     }
 
     /**
@@ -42,19 +41,9 @@ class MG_Admin_Page {
      * @param string $hook Current admin page hook.
      */
     public static function enqueue_assets($hook) {
-        $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper($_SERVER['REQUEST_METHOD']) : 'GET';
-        if ($method !== 'GET') {
-            return;
-        }
-
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
         $valid_hook = $hook === 'toplevel_page_' . self::MAIN_SLUG;
-
-        $eligible_pages = array_merge(
-            [self::MAIN_SLUG],
-            array_keys(self::get_legacy_slug_map())
-        );
-        $valid_request = in_array($page, $eligible_pages, true);
+        $valid_request = $page === self::MAIN_SLUG;
 
         if (!$valid_hook && !$valid_request) {
             return;
@@ -92,55 +81,6 @@ class MG_Admin_Page {
         }
 
         wp_localize_script('mg-admin-ui', 'MG_ADMIN_UI', $data);
-    }
-
-    /**
-     * Redirects legacy submenu slugs to the SPA shell so the WordPress admin
-     * menu keeps working even without the JavaScript link rewriter.
-     */
-    public static function redirect_legacy_requests() {
-        if (!is_admin()) {
-            return;
-        }
-
-        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        if (!$page) {
-            return;
-        }
-
-        if ($page === self::MAIN_SLUG) {
-            return;
-        }
-
-        $map = self::get_legacy_slug_map();
-        if (!isset($map[$page])) {
-            return;
-        }
-
-        $target_tab = $map[$page];
-        $args = array(
-            'page'   => self::MAIN_SLUG,
-            'mg_tab' => $target_tab,
-        );
-
-        if ($page === 'mockup-generator-product') {
-            $product = isset($_GET['product']) ? sanitize_key(wp_unslash($_GET['product'])) : '';
-            if ($product) {
-                $args['mg_product'] = $product;
-            }
-        }
-
-        $current_tab = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
-        $current_product = isset($_GET['mg_product']) ? sanitize_key(wp_unslash($_GET['mg_product'])) : '';
-
-        $needs_redirect = ($current_tab !== $target_tab) || ($page === 'mockup-generator-product' && (!isset($_GET['mg_product']) || $current_product === ''));
-        if (!$needs_redirect) {
-            return;
-        }
-
-        $url = add_query_arg($args, admin_url('admin.php'));
-        wp_safe_redirect($url);
-        exit;
     }
 
     /**
@@ -279,7 +219,6 @@ class MG_Admin_Page {
         if (!current_user_can('edit_products')) {
             wp_die(__('Nincs jogosultságod a Mockup Generator megnyitásához.', 'mockup-generator'));
         }
-        echo '</div>';
 
         $tabs    = self::get_tabs();
         $current = self::determine_active_tab($tabs);

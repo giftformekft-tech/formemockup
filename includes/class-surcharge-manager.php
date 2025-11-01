@@ -7,13 +7,8 @@ class MG_Surcharge_Manager {
     const OPTION_KEY = 'mg_mockup_surcharges';
     const CACHE_KEY = 'mg_mockup_surcharges_cache';
     const CACHE_GROUP = 'mg_mockup';
-    const SETTINGS_OPTION = 'mg_surcharge_settings';
 
     public static function get_surcharges($only_active = false) {
-        if ($only_active && !self::is_enabled()) {
-            return [];
-        }
-
         $cached = wp_cache_get(self::CACHE_KEY, self::CACHE_GROUP);
         if ($cached === false) {
             $data = get_option(self::OPTION_KEY, []);
@@ -29,38 +24,6 @@ class MG_Surcharge_Manager {
         return array_values(array_filter($cached, function ($item) {
             return !empty($item['active']);
         }));
-    }
-
-    public static function get_settings() {
-        $raw = get_option(self::SETTINGS_OPTION, []);
-        if (!is_array($raw)) {
-            $raw = [];
-        }
-
-        $defaults = [
-            'enabled' => true,
-        ];
-
-        $settings = array_merge($defaults, $raw);
-        $settings['enabled'] = self::normalize_bool_flag($settings['enabled']);
-
-        return $settings;
-    }
-
-    public static function is_enabled() {
-        $settings = self::get_settings();
-
-        return !empty($settings['enabled']);
-    }
-
-    public static function set_enabled($enabled) {
-        $settings = [
-            'enabled' => self::normalize_bool_flag($enabled),
-        ];
-
-        update_option(self::SETTINGS_OPTION, $settings, false);
-
-        return $settings;
     }
 
     public static function get_surcharge($id) {
@@ -260,18 +223,5 @@ class MG_Surcharge_Manager {
             }
         }
         return $slugs;
-    }
-
-    private static function normalize_bool_flag($value) {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_string($value)) {
-            $value = strtolower($value);
-            return in_array($value, ['1', 'true', 'yes', 'on'], true);
-        }
-
-        return !empty($value);
     }
 }

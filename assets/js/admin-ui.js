@@ -654,24 +654,8 @@
     }
 
     function rewriteLegacyLinks(scope) {
-        let $root;
-        if (scope) {
-            $root = $(scope);
-            if (!$root.length) {
-                return;
-            }
-            if (!$root.is('.mg-admin-shell')) {
-                $root = $root.closest('.mg-admin-shell');
-            }
-        } else {
-            $root = $('.mg-admin-shell');
-        }
-
-        if (!$root || !$root.length) {
-            return;
-        }
-
-        $root.find('a[href*="admin.php"]').each(function () {
+        const $scope = scope ? $(scope) : $(document);
+        $scope.find('a[href*="admin.php"]').each(function () {
             const href = this.getAttribute('href');
             if (!href) {
                 return;
@@ -823,7 +807,7 @@
         window.addEventListener('hashchange', handleHashChange);
         window.addEventListener('popstate', handlePopState);
 
-        rewriteLegacyLinks('.mg-admin-shell');
+        rewriteLegacyLinks(document);
         initColorManagers(document);
     });
 })(jQuery);
