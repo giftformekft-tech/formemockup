@@ -73,7 +73,7 @@ class MG_Variant_Display_Manager {
 
         self::$preload_hooked = true;
 
-        add_action('wp_head', array(__CLASS__, 'output_preload_markup'), 1);
+        add_action('wp_head', array(__CLASS__, 'output_preload_markup'), 0);
 
         if (!self::$language_attributes_hooked) {
             self::$language_attributes_hooked = true;
@@ -88,8 +88,19 @@ class MG_Variant_Display_Manager {
             html.mg-variant-preload form.variations_form .woocommerce-variation,
             html.mg-variant-preload form.variations_form .single_variation,
             html.mg-variant-preload form.variations_form .woocommerce-variation-add-to-cart {
-                opacity: 0;
-                pointer-events: none;
+                opacity: 0 !important;
+            }
+
+            html.mg-variant-preload form.variations_form .variations,
+            html.mg-variant-preload form.variations_form .woocommerce-variation,
+            html.mg-variant-preload form.variations_form .single_variation,
+            html.mg-variant-preload form.variations_form .woocommerce-variation-add-to-cart {
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+
+            html.mg-variant-preload form.variations_form .variations {
+                display: none !important;
             }
         </style>
         <script id="mg-variant-preload-script">
@@ -101,6 +112,7 @@ class MG_Variant_Display_Manager {
                 if (!doc.classList.contains('mg-variant-preparing')) {
                     doc.classList.add('mg-variant-preparing');
                 }
+                doc.classList.remove('mg-variant-fallback');
                 doc.classList.add('mg-variant-preload');
                 if (typeof window !== 'undefined') {
                     if (window.__mgVariantPreloadCleanup) {
@@ -109,6 +121,7 @@ class MG_Variant_Display_Manager {
                     window.__mgVariantPreloadCleanup = window.setTimeout(function () {
                         doc.classList.remove('mg-variant-preload');
                         doc.classList.remove('mg-variant-preparing');
+                        doc.classList.add('mg-variant-fallback');
                         window.__mgVariantPreloadCleanup = null;
                     }, 4000);
                 }
@@ -121,7 +134,18 @@ class MG_Variant_Display_Manager {
                 html form.variations_form .single_variation,
                 html form.variations_form .woocommerce-variation-add-to-cart {
                     opacity: 1 !important;
+                    visibility: visible !important;
                     pointer-events: auto !important;
+                }
+
+                html form.variations_form .variations {
+                    display: table !important;
+                }
+
+                html form.variations_form .woocommerce-variation,
+                html form.variations_form .single_variation,
+                html form.variations_form .woocommerce-variation-add-to-cart {
+                    display: block !important;
                 }
             </style>
         </noscript>
