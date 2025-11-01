@@ -10,6 +10,10 @@ class MG_Surcharge_Manager {
     const SETTINGS_OPTION = 'mg_surcharge_settings';
 
     public static function get_surcharges($only_active = false) {
+        if ($only_active && !self::is_enabled()) {
+            return [];
+        }
+
         $cached = wp_cache_get(self::CACHE_KEY, self::CACHE_GROUP);
         if ($cached === false) {
             $data = get_option(self::OPTION_KEY, []);

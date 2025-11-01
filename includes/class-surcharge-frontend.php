@@ -34,6 +34,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function render_product_options() {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         global $product;
         if (!$product instanceof WC_Product) {
             return;
@@ -66,6 +69,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function validate_add_to_cart($passed, $product_id, $quantity, $variation_id = 0, $variations = []) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return $passed;
+        }
         $product = wc_get_product($variation_id ? $variation_id : $product_id);
         if (!$product) {
             return $passed;
@@ -89,6 +95,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function add_cart_item_data($cart_item_data, $product_id, $variation_id, $quantity) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return $cart_item_data;
+        }
         $product = wc_get_product($product_id);
         $variation = $variation_id ? wc_get_product($variation_id) : null;
         if (!$product instanceof WC_Product) {
@@ -104,6 +113,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function restore_cart_item($cart_item, $values) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return $cart_item;
+        }
         if (isset($values['mg_surcharge_data'])) {
             $cart_item['mg_surcharge_data'] = $values['mg_surcharge_data'];
         }
@@ -111,6 +123,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function render_cart_item_data($item_data, $cart_item) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return $item_data;
+        }
         if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
             return $item_data;
         }
@@ -127,6 +142,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         if (empty($values['mg_surcharge_data']) || !is_array($values['mg_surcharge_data'])) {
             return;
         }
@@ -139,6 +157,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function apply_fees($cart) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
         }
@@ -162,6 +183,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function validate_cart_items($cart) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
         }
@@ -199,6 +223,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function render_cart_item_controls($cart_item, $cart_item_key) {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         if (is_cart() === false) {
             return;
         }
@@ -223,6 +250,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function handle_cart_update() {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return;
+        }
         if (!isset($_POST[self::CART_FIELD_NAME]) || !WC()->cart) {
             return;
         }
@@ -249,6 +279,9 @@ class MG_Surcharge_Frontend {
     }
 
     private static function get_applicable_surcharges($product, $variation = null, $location = 'product') {
+        if (!MG_Surcharge_Manager::is_enabled()) {
+            return [];
+        }
         if (!$product instanceof WC_Product) {
             return [];
         }
