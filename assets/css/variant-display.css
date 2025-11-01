@@ -32,6 +32,36 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     margin-bottom: 0;
 }
 
+.mg-variant-section--custom {
+    margin-top: 1.25em;
+    padding-top: 1em;
+    border-top: 1px solid #e2e8f0;
+}
+
+.mg-variant-section--custom-top {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+.mg-variant-section--custom .mg-custom-fields__title {
+    margin: 0 0 0.75em;
+    font-size: 0.95rem;
+    color: #1e293b;
+}
+
+.mg-variant-section--custom .mg-custom-field {
+    margin-bottom: 0.85em;
+}
+
+.mg-variant-section--custom .mg-custom-field:last-child {
+    margin-bottom: 0;
+}
+
+.mg-variant-section--custom .mg-custom-field label {
+    color: #0f172a;
+}
+
 .mg-variant-section__label {
     font-weight: 600;
     margin-bottom: 0.5em;

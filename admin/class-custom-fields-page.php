@@ -28,7 +28,13 @@ class MG_Custom_Fields_Page {
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_url = plugins_url('assets/css/custom-fields.css', $base_file);
-        wp_enqueue_style('mg-custom-fields-admin', $style_url, array(), '1.0.0');
+        $style_path = dirname(__DIR__) . '/assets/css/custom-fields.css';
+        wp_enqueue_style(
+            'mg-custom-fields-admin',
+            $style_url,
+            array(),
+            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+        );
     }
 
     protected static function handle_post() {
@@ -142,7 +148,7 @@ class MG_Custom_Fields_Page {
         $field['default'] = isset($_POST['field_default']) ? sanitize_text_field($_POST['field_default']) : '';
         $field['validation_min'] = isset($_POST['field_validation_min']) ? sanitize_text_field($_POST['field_validation_min']) : '';
         $field['validation_max'] = isset($_POST['field_validation_max']) ? sanitize_text_field($_POST['field_validation_max']) : '';
-        $field['placement'] = isset($_POST['field_placement']) ? MG_Custom_Fields_Manager::normalize_placement($_POST['field_placement']) : 'below_variants';
+        $field['placement'] = isset($_POST['field_placement']) ? MG_Custom_Fields_Manager::normalize_placement($_POST['field_placement']) : 'variant_bottom';
         $field['position'] = isset($_POST['field_position']) ? intval($_POST['field_position']) : 0;
         $field['description'] = isset($_POST['field_description']) ? sanitize_textarea_field($_POST['field_description']) : '';
         $options_raw = isset($_POST['field_options']) ? wp_kses_post($_POST['field_options']) : '';
@@ -249,7 +255,7 @@ class MG_Custom_Fields_Page {
         $default = isset($field['default']) ? $field['default'] : '';
         $validation_min = isset($field['validation_min']) ? $field['validation_min'] : '';
         $validation_max = isset($field['validation_max']) ? $field['validation_max'] : '';
-        $placement = isset($field['placement']) ? $field['placement'] : 'below_variants';
+        $placement = isset($field['placement']) ? $field['placement'] : 'variant_bottom';
         $position = isset($field['position']) ? intval($field['position']) : 0;
         $description = isset($field['description']) ? $field['description'] : '';
         $options = isset($field['options']) ? $field['options'] : array();
