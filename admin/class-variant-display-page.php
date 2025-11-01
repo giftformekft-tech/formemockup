@@ -79,6 +79,7 @@ class MG_Variant_Display_Page {
         }
 
         $store = self::get_settings_store($catalog);
+        $supercharge_enabled = isset($store['supercharge_enabled']) ? (bool) $store['supercharge_enabled'] : true;
         $selected_type = self::get_selected_type_slug($catalog);
 
         if (!empty($_POST['mg_variant_display_nonce']) && check_admin_referer('mg_variant_display_save', 'mg_variant_display_nonce')) {
@@ -100,9 +101,15 @@ class MG_Variant_Display_Page {
 
         settings_errors('mg_variant_display');
 
+        $supercharge_active = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::is_supercharge_enabled() : true;
+
         echo '<div class="wrap mgvd-admin">';
         echo '<h1>' . esc_html__('Variáns megjelenítés', 'mgvd') . '</h1>';
         echo '<p>' . esc_html__('Állítsd be, hogyan jelenjenek meg a terméktípusok, színek és méretek a termékoldalon.', 'mgvd') . '</p>';
+
+        if (!$supercharge_active) {
+            echo '<div class="notice notice-warning"><p>' . esc_html__('A SuperCharge felület jelenleg ki van kapcsolva. Engedélyezd a Felárak fülön a használatához.', 'mgvd') . '</p></div>';
+        }
 
         if (!$selected_type || !isset($catalog[$selected_type])) {
             echo '<div class="notice notice-warning"><p>' . esc_html__('Nem található a kiválasztott terméktípus.', 'mgvd') . '</p></div>';
@@ -130,6 +137,15 @@ class MG_Variant_Display_Page {
         echo '<form method="post" class="mgvd-settings-form">';
         wp_nonce_field('mg_variant_display_save', 'mg_variant_display_nonce');
         echo '<input type="hidden" name="type_slug" value="' . esc_attr($selected_type) . '" />';
+        echo '<div class="mgvd-feature-toggle">';
+        echo '<h2>' . esc_html__('SuperCharge variáns felület', 'mgvd') . '</h2>';
+        echo '<p>' . esc_html__('Kapcsold ki, ha a klasszikus WooCommerce variációs űrlapot szeretnéd használni.', 'mgvd') . '</p>';
+        echo '<label class="mgvd-feature-toggle__control">';
+        echo '<input type="hidden" name="variant_display[supercharge_enabled]" value="0" />';
+        echo '<input type="checkbox" name="variant_display[supercharge_enabled]" value="1" ' . checked($supercharge_enabled, true, false) . ' />';
+        echo '<span>' . esc_html__('SuperCharge engedélyezése', 'mgvd') . '</span>';
+        echo '</label>';
+        echo '</div>';
         echo '<div class="mgvd-type-grid">';
 
         echo '<section class="mgvd-type-card" data-type="' . esc_attr($selected_type) . '">';
@@ -215,6 +231,7 @@ class MG_Variant_Display_Page {
         return wp_parse_args($store, array(
             'colors' => array(),
             'size_charts' => array(),
+            'supercharge_enabled' => true,
         ));
     }
 
@@ -254,6 +271,10 @@ class MG_Variant_Display_Page {
             $store['size_charts'][$type_slug] = $sanitized['size_charts'][$type_slug];
         } else {
             unset($store['size_charts'][$type_slug]);
+        }
+
+        if (array_key_exists('supercharge_enabled', $sanitized)) {
+            $store['supercharge_enabled'] = (bool) $sanitized['supercharge_enabled'];
         }
 
         return $store;

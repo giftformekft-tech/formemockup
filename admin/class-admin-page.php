@@ -279,6 +279,7 @@ class MG_Admin_Page {
         if (!current_user_can('edit_products')) {
             wp_die(__('Nincs jogosultságod a Mockup Generator megnyitásához.', 'mockup-generator'));
         }
+        echo '</div>';
 
         $tabs    = self::get_tabs();
         $current = self::determine_active_tab($tabs);
