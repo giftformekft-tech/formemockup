@@ -99,6 +99,10 @@ class MG_Admin_Page {
                 'label' => __('Mockupok', 'mockup-generator'),
                 'type'  => 'custom',
             ),
+            'bulk' => array(
+                'label' => __('Bulk feltöltés', 'mockup-generator'),
+                'type'  => 'bulk',
+            ),
             'variants' => array(
                 'label'     => __('Variánsok', 'mockup-generator'),
                 'type'      => 'legacy',
@@ -233,9 +237,11 @@ class MG_Admin_Page {
         echo '<p class="mg-admin-sub">' . esc_html__('Egységes admin felület gyors tabváltással.', 'mockup-generator') . '</p>';
         echo '</div>';
         echo '</div>';
-        $cta_url = esc_url(self::build_panel_url('settings'));
+        $cta_url  = esc_url(self::build_panel_url('settings'));
+        $bulk_url = esc_url(self::build_panel_url('bulk'));
         echo '<div class="mg-admin-actions">';
         echo '<a class="button button-primary mg-primary-action" href="' . $cta_url . '">' . esc_html__('Új mockup hozzáadása', 'mockup-generator') . '</a>';
+        echo '<a class="button" href="' . $bulk_url . '">' . esc_html__('Bulk minta feltöltés', 'mockup-generator') . '</a>';
         echo '</div>';
         echo '</header>';
 
@@ -297,6 +303,9 @@ class MG_Admin_Page {
             case 'custom':
                 self::render_mockups_panel();
                 break;
+            case 'bulk':
+                self::render_bulk_panel();
+                break;
             case 'placeholder':
             default:
                 self::render_placeholder_panel();
@@ -354,6 +363,81 @@ class MG_Admin_Page {
         } else {
             self::render_mockup_overview();
         }
+        echo '</div>';
+    }
+
+    /**
+     * Outputs the streamlined bulk upload tools inside the SPA layout.
+     */
+    private static function render_bulk_panel() {
+        $products = get_option('mg_products', array());
+        $products = is_array($products) ? $products : array();
+
+        echo '<div class="mg-panel-body mg-panel-body--bulk">';
+
+        echo '<section class="mg-panel-section">';
+        echo '<div class="mg-panel-section__header">';
+        echo '<h2>' . esc_html__('Bulk minta feltöltés', 'mockup-generator') . '</h2>';
+        echo '<p>' . esc_html__('Válassz terméktípusokat, majd tölts fel egyszerre több mintaképet. A rendszer automatikusan létrehozza a kombinációkat.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        if (empty($products)) {
+            echo '<div class="mg-empty">';
+            echo '<p>' . esc_html__('Még nincs konfigurált terméktípus. A Beállítások fülön adhatsz hozzá újat, mielőtt bulk feltöltést indítanál.', 'mockup-generator') . '</p>';
+            echo '</div>';
+        } else {
+            echo '<div class="mg-bulk-grid">';
+
+            echo '<div class="mg-bulk-card">';
+            echo '<label for="mg-bulk-files">' . esc_html__('Mintafájlok kiválasztása', 'mockup-generator') . '</label>';
+            echo '<input type="file" id="mg-bulk-files" name="mg-bulk-files[]" accept=".png,.jpg,.jpeg,.webp" multiple />';
+            echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP fájlokat tölthetsz fel. A fájlnév alapján javasolt nevet kap az új termék.', 'mockup-generator') . '</p>';
+            echo '</div>';
+
+            echo '<div class="mg-bulk-card">';
+            echo '<span>' . esc_html__('Terméktípusok', 'mockup-generator') . '</span>';
+            echo '<div class="mg-bulk-product-list">';
+            foreach ($products as $product) {
+                if (!is_array($product) || empty($product['key'])) {
+                    continue;
+                }
+                $key = self::sanitize_product_key($product['key']);
+                if ($key === '') {
+                    continue;
+                }
+                $label = isset($product['label']) && $product['label'] ? $product['label'] : $key;
+                echo '<label>';
+                echo '<input type="checkbox" class="mg-bulk-type" value="' . esc_attr($key) . '" />';
+                echo '<span>' . esc_html($label) . '</span>';
+                echo '</label>';
+            }
+            echo '</div>';
+            echo '<p class="description">' . esc_html__('Jelöld meg, mely terméktípusokra készüljön el a feltöltött minta.', 'mockup-generator') . '</p>';
+            echo '</div>';
+
+            echo '</div>';
+
+            echo '<div class="mg-bulk-actions">';
+            echo '<button type="button" class="button button-primary" id="mg-bulk-start">' . esc_html__('Feltöltés indítása', 'mockup-generator') . '</button>';
+            echo '<p class="description">' . esc_html__('A feltöltés a háttérben fut. Az alábbi naplóban követheted az előrehaladást.', 'mockup-generator') . '</p>';
+            echo '</div>';
+        }
+
+        echo '</section>';
+
+        echo '<section class="mg-panel-section">';
+        echo '<div class="mg-panel-section__header">';
+        echo '<h3>' . esc_html__('Folyamat naplója', 'mockup-generator') . '</h3>';
+        echo '</div>';
+        echo '<div id="mg-bulk-status" class="mg-bulk-status" aria-live="polite">';
+        echo '<div class="mg-bulk-progress">';
+        echo '<div id="mg-bulk-bar" class="mg-bulk-progress__bar"></div>';
+        echo '</div>';
+        echo '<div><strong><span id="mg-bulk-count">0</span> / <span id="mg-bulk-total">0</span></strong> <span>(<span id="mg-bulk-percent">0</span>%)</span></div>';
+        echo '</div>';
+        echo '<div id="mg-bulk-log" class="mg-bulk-log" aria-live="polite"></div>';
+        echo '</section>';
+
         echo '</div>';
     }
 

@@ -5,7 +5,7 @@
   var queue = [], active = 0, done = 0, total = 0;
 
   function startBulk(files, keys){
-    $('#mg-bulk-status').show();
+    $('#mg-bulk-status').addClass('is-visible').show();
     total = files.length;
     $('#mg-bulk-total').text(total);
     queue = Array.from(files);
