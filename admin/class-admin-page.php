@@ -318,6 +318,9 @@ class MG_Admin_Page {
             case 'custom':
                 self::render_mockups_panel();
                 break;
+            case 'bulk':
+                self::render_bulk_panel();
+                break;
             case 'placeholder':
             default:
                 self::render_placeholder_panel();
