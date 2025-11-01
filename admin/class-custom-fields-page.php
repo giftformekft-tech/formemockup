@@ -23,7 +23,12 @@ class MG_Custom_Fields_Page {
     }
 
     public static function enqueue_assets($hook) {
-        if ($hook !== 'mockup-generator_page_mockup-generator-custom-fields') {
+        $valid_hooks = array(
+            'mockup-generator_page_mockup-generator-custom-fields',
+            'toplevel_page_mockup-generator',
+        );
+
+        if (!in_array($hook, $valid_hooks, true)) {
             return;
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
