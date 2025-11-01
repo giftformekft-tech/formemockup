@@ -23,7 +23,12 @@ class MG_Custom_Fields_Page {
     }
 
     public static function enqueue_assets($hook) {
-        if ($hook !== 'mockup-generator_page_mockup-generator-custom-fields') {
+        $valid_hooks = array(
+            'mockup-generator_page_mockup-generator-custom-fields',
+            'toplevel_page_mockup-generator',
+        );
+
+        if (!in_array($hook, $valid_hooks, true)) {
             return;
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
@@ -171,28 +176,73 @@ class MG_Custom_Fields_Page {
         if (!current_user_can('edit_products')) {
             wp_die(__('Nincs jogosultság.', 'mgcf'));
         }
+
         self::handle_post();
-        settings_errors('mg_custom_fields_admin');
+
         $current_product_id = isset($_GET['product_id']) ? intval($_GET['product_id']) : 0;
-        echo '<div class="wrap mg-custom-fields-admin">';
-        echo '<h1>' . esc_html__('Egyedi mezők', 'mgcf') . '</h1>';
+        $product = ($current_product_id > 0) ? get_post($current_product_id) : null;
+
+        echo '<div class="wrap mg-custom-fields-admin mgcf-admin">';
+        self::render_header($current_product_id, $product);
+        echo '<div class="mgcf-notices">';
+        settings_errors('mg_custom_fields_admin');
+        echo '</div>';
+
         if ($current_product_id > 0) {
-            self::render_product_editor($current_product_id);
+            self::render_product_editor($current_product_id, $product);
         } else {
             self::render_product_list();
         }
+
         echo '</div>';
+    }
+
+    protected static function render_header($product_id, $product = null) {
+        $title = __('Egyedi mezők', 'mgcf');
+        $description = __('Állítsd be, hogy a termékoldalon milyen mezők és beviteli lehetőségek jelenjenek meg.', 'mgcf');
+
+        echo '<header class="mgcf-hero">';
+        echo '<div class="mgcf-hero__text">';
+        echo '<h1>' . esc_html($title) . '</h1>';
+        echo '<p>' . esc_html($description) . '</p>';
+        echo '</div>';
+
+        echo '<div class="mgcf-hero__actions">';
+        if ($product_id > 0 && $product instanceof WP_Post) {
+            $product_title = get_the_title($product);
+            echo '<span class="mgcf-hero__badge">' . esc_html($product_title) . '</span>';
+            $edit_link = get_edit_post_link($product_id);
+            if ($edit_link) {
+                echo '<a class="button" href="' . esc_url($edit_link) . '">' . esc_html__('Termék szerkesztése', 'mgcf') . '</a>';
+            }
+        } else {
+            $bulk_url = admin_url('admin.php?page=mockup-generator');
+            echo '<a class="button button-primary" href="' . esc_url($bulk_url) . '">' . esc_html__('Ugrás a Mockup Generatorra', 'mgcf') . '</a>';
+        }
+        echo '</div>';
+        echo '</header>';
     }
 
     protected static function render_product_list() {
         $products = MG_Custom_Fields_Manager::get_custom_products();
-        echo '<p>' . esc_html__('Az alábbi listában azok a termékek szerepelnek, amelyeket az egyedi jelölővel láttál el.', 'mgcf') . '</p>';
+
+        echo '<section class="mgcf-section">';
+        echo '<div class="mgcf-section__header">';
+        echo '<h2>' . esc_html__('Egyedi termékek listája', 'mgcf') . '</h2>';
+        echo '<p>' . esc_html__('Itt találod azokat a termékeket, amelyeknél egyedi mezők megadását engedélyezted.', 'mgcf') . '</p>';
+        echo '</div>';
+
         if (empty($products)) {
-            echo '<p><em>' . esc_html__('Még nincs egyedi termék kijelölve. A bulk feltöltő oldalon pipáld be a „Egyedi termék” jelölőt.', 'mgcf') . '</em></p>';
+            echo '<div class="mgcf-empty">';
+            echo '<p>' . esc_html__('Még nincs egyedi termék kijelölve. A bulk feltöltő oldalon pipáld be a „Egyedi termék” jelölőt.', 'mgcf') . '</p>';
+            echo '</div>';
+            echo '</section>';
             return;
         }
-        echo '<table class="widefat striped">';
-        echo '<thead><tr><th>' . esc_html__('Termék', 'mgcf') . '</th><th>' . esc_html__('Állapot', 'mgcf') . '</th><th>' . esc_html__('Művelet', 'mgcf') . '</th></tr></thead>';
+
+        echo '<div class="mgcf-table-wrap">';
+        echo '<table class="widefat striped mgcf-table">';
+        echo '<thead><tr><th>' . esc_html__('Termék', 'mgcf') . '</th><th>' . esc_html__('Állapot', 'mgcf') . '</th><th class="mgcf-table__actions">' . esc_html__('Művelet', 'mgcf') . '</th></tr></thead>';
         echo '<tbody>';
         foreach ($products as $product) {
             $status = get_post_status_object($product->post_status);
@@ -201,49 +251,84 @@ class MG_Custom_Fields_Page {
             echo '<tr>';
             echo '<td>' . esc_html(get_the_title($product)) . '</td>';
             echo '<td>' . esc_html($status_label) . '</td>';
-            echo '<td><a class="button" href="' . esc_url($edit_link) . '">' . esc_html__('Mezők szerkesztése', 'mgcf') . '</a></td>';
+            echo '<td class="mgcf-table__actions"><a class="button button-secondary" href="' . esc_url($edit_link) . '">' . esc_html__('Mezők szerkesztése', 'mgcf') . '</a></td>';
             echo '</tr>';
         }
         echo '</tbody></table>';
+        echo '</div>';
+        echo '</section>';
     }
 
-    protected static function render_product_editor($product_id) {
-        $product = get_post($product_id);
+    protected static function render_product_editor($product_id, $product = null) {
+        if (!$product instanceof WP_Post) {
+            $product = get_post($product_id);
+        }
         if (!$product) {
-            echo '<p><em>' . esc_html__('A megadott termék nem található.', 'mgcf') . '</em></p>';
+            echo '<div class="mgcf-empty">';
+            echo '<p>' . esc_html__('A megadott termék nem található.', 'mgcf') . '</p>';
+            echo '</div>';
             return;
         }
         $is_custom = MG_Custom_Fields_Manager::is_custom_product($product_id);
         $back_link = remove_query_arg('product_id');
-        echo '<p><a class="button" href="' . esc_url($back_link) . '">' . esc_html__('Vissza a listához', 'mgcf') . '</a></p>';
-        echo '<h2>' . esc_html(get_the_title($product)) . '</h2>';
-        echo '<p>' . esc_html__('Itt adhatod meg, hogy milyen mezők jelenjenek meg a termékoldalon.', 'mgcf') . '</p>';
+        echo '<nav class="mgcf-breadcrumb">';
+        echo '<a class="mgcf-breadcrumb__link" href="' . esc_url($back_link) . '">' . esc_html__('Egyedi mezők listája', 'mgcf') . '</a>';
+        echo '<span class="mgcf-breadcrumb__divider">›</span>';
+        echo '<span class="mgcf-breadcrumb__current">' . esc_html(get_the_title($product)) . '</span>';
+        echo '</nav>';
 
-        echo '<form method="post" class="mg-custom-toggle-form">';
+        echo '<section class="mgcf-section">';
+        echo '<div class="mgcf-section__header">';
+        echo '<h2>' . esc_html__('Termék státusza', 'mgcf') . '</h2>';
+        echo '<p>' . esc_html__('Kapcsold be vagy ki az egyedi mezők használatát ehhez a termékhez.', 'mgcf') . '</p>';
+        echo '</div>';
+
+        echo '<form method="post" class="mg-custom-toggle-form mgcf-toggle">';
         wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
         echo '<input type="hidden" name="mg_custom_fields_action" value="toggle_custom" />';
         echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
         if ($is_custom) {
             echo '<input type="hidden" name="make_custom" value="0" />';
-            echo '<button type="submit" class="button">' . esc_html__('Egyedi státusz eltávolítása', 'mgcf') . '</button>';
+            echo '<button type="submit" class="button button-secondary">' . esc_html__('Egyedi státusz eltávolítása', 'mgcf') . '</button>';
         } else {
             echo '<input type="hidden" name="make_custom" value="1" />';
             echo '<button type="submit" class="button button-primary">' . esc_html__('Egyedi státusz beállítása', 'mgcf') . '</button>';
         }
         echo '</form>';
 
+        echo '</section>';
+
         $fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
         self::render_presets_section($product_id, $fields);
         if (empty($fields)) {
+            echo '<section class="mgcf-section">';
+            echo '<div class="mgcf-section__header">';
             echo '<h3>' . esc_html__('Még nincs mező konfigurálva', 'mgcf') . '</h3>';
+            echo '<p>' . esc_html__('Adj hozzá új mezőt az alábbi űrlap segítségével.', 'mgcf') . '</p>';
+            echo '</div>';
+            echo '</section>';
         } else {
+            echo '<section class="mgcf-section">';
+            echo '<div class="mgcf-section__header">';
             echo '<h3>' . esc_html__('Meglévő mezők', 'mgcf') . '</h3>';
+            echo '<p>' . esc_html__('Szerkeszd vagy töröld a termékhez tartozó mezőket.', 'mgcf') . '</p>';
+            echo '</div>';
+            echo '<div class="mgcf-field-grid">';
             foreach ($fields as $field) {
                 self::render_field_editor_form($product_id, $field);
             }
+            echo '</div>';
+            echo '</section>';
         }
+        echo '<section class="mgcf-section">';
+        echo '<div class="mgcf-section__header">';
         echo '<h3>' . esc_html__('Új mező hozzáadása', 'mgcf') . '</h3>';
+        echo '<p>' . esc_html__('Állítsd be a mező típusát, elhelyezését és megjelenését.', 'mgcf') . '</p>';
+        echo '</div>';
+        echo '<div class="mgcf-field-grid">';
         self::render_field_editor_form($product_id, null, true);
+        echo '</div>';
+        echo '</section>';
     }
 
     protected static function render_field_editor_form($product_id, $field = null, $is_new = false) {
@@ -276,25 +361,36 @@ class MG_Custom_Fields_Page {
         $mockup_view = isset($mockup['view']) ? $mockup['view'] : '';
         $mockup_additional = isset($mockup['additional']) ? $mockup['additional'] : '';
 
-        echo '<div class="mg-custom-field-card">';
-        echo '<form method="post">';
+        $type_labels = array(
+            'text'   => __('Szöveg', 'mgcf'),
+            'number' => __('Szám', 'mgcf'),
+            'select' => __('Választólista', 'mgcf'),
+            'date'   => __('Dátum', 'mgcf'),
+            'color'  => __('Szín', 'mgcf'),
+        );
+
+        $card_classes = 'mg-custom-field-card' . ($is_new ? ' is-new' : '');
+        echo '<div class="' . esc_attr($card_classes) . '">';
+        echo '<form method="post" class="mg-custom-field-form">';
         wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
         echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
         echo '<input type="hidden" name="mg_custom_fields_action" value="' . ($is_new ? 'add_field' : 'update_field') . '" />';
         if (!$is_new) {
             echo '<input type="hidden" name="field_id" value="' . esc_attr($field_id) . '" />';
         }
+        $headline = $is_new ? __('Új mező', 'mgcf') : ($label ? $label : __('Névtelen mező', 'mgcf'));
+        echo '<header class="mg-custom-field-card__header">';
+        echo '<div class="mg-custom-field-card__title">' . esc_html($headline) . '</div>';
+        $badge_text = $is_new ? __('Új', 'mgcf') : (isset($type_labels[$type]) ? $type_labels[$type] : strtoupper($type));
+        $badge_class = $is_new ? 'mg-custom-field-card__badge is-accent' : 'mg-custom-field-card__badge';
+        echo '<span class="' . esc_attr($badge_class) . '">' . esc_html($badge_text) . '</span>';
+        echo '</header>';
+
+        echo '<div class="mg-custom-field-card__body">';
         echo '<table class="form-table mg-custom-field-table">';
         echo '<tr><th scope="row"><label>' . esc_html__('Mező neve', 'mgcf') . '</label></th><td><input type="text" name="field_label" value="' . esc_attr($label) . '" class="regular-text" required /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Típus', 'mgcf') . '</label></th><td><select name="field_type">';
-        $types = array(
-            'text' => __('Szöveg', 'mgcf'),
-            'number' => __('Szám', 'mgcf'),
-            'select' => __('Választólista', 'mgcf'),
-            'date' => __('Dátum', 'mgcf'),
-            'color' => __('Szín', 'mgcf'),
-        );
-        foreach ($types as $key => $label_text) {
+        foreach ($type_labels as $key => $label_text) {
             echo '<option value="' . esc_attr($key) . '"' . selected($type, $key, false) . '>' . esc_html($label_text) . '</option>';
         }
         echo '</select></td></tr>';
@@ -333,6 +429,7 @@ class MG_Custom_Fields_Page {
         echo '<tr><th scope="row"><label>' . esc_html__('Mockup nézet', 'mgcf') . '</label></th><td><input type="text" name="field_mockup_view" value="' . esc_attr($mockup_view) . '" class="regular-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Mockup megjegyzés', 'mgcf') . '</label></th><td><input type="text" name="field_mockup_additional" value="' . esc_attr($mockup_additional) . '" class="regular-text" /></td></tr>';
         echo '</table>';
+        echo '</div>';
         echo '<p class="submit">';
         echo '<button type="submit" class="button button-primary">' . esc_html($is_new ? __('Mező hozzáadása', 'mgcf') : __('Mező frissítése', 'mgcf')) . '</button>';
         if (!$is_new) {
@@ -344,9 +441,15 @@ class MG_Custom_Fields_Page {
     }
 
     protected static function render_presets_section($product_id, $fields) {
-        echo '<div class="mg-custom-presets">';
+        echo '<section class="mgcf-section">';
+        echo '<div class="mgcf-section__header">';
         echo '<h3>' . esc_html__('Presetek', 'mgcf') . '</h3>';
+        echo '<p>' . esc_html__('Mentheted a mezőkonfigurációt későbbi felhasználásra, vagy alkalmazhatod egy korábbi preset beállításait.', 'mgcf') . '</p>';
+        echo '</div>';
+
         $presets = MG_Custom_Fields_Manager::get_presets();
+
+        echo '<div class="mgcf-presets-grid">';
 
         if (!empty($fields)) {
             echo '<div class="mg-custom-presets__block">';
@@ -382,7 +485,7 @@ class MG_Custom_Fields_Page {
             echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Preset hozzárendelése', 'mgcf') . '</button></p>';
             echo '</form>';
         } else {
-            echo '<p><em>' . esc_html__('Még nincs elmentett preset.', 'mgcf') . '</em></p>';
+            echo '<p class="mgcf-empty">' . esc_html__('Még nincs elmentett preset.', 'mgcf') . '</p>';
         }
         echo '</div>';
 
@@ -395,6 +498,7 @@ class MG_Custom_Fields_Page {
                 $id = isset($preset['id']) ? $preset['id'] : '';
                 $updated = isset($preset['updated']) ? $preset['updated'] : '';
                 echo '<li>';
+                echo '<div class="mgcf-preset-item">';
                 echo '<span class="mg-custom-preset-name">' . esc_html($name) . '</span>';
                 if ($updated !== '') {
                     $formatted = $updated;
@@ -403,6 +507,7 @@ class MG_Custom_Fields_Page {
                     }
                     echo '<span class="mg-custom-preset-meta">' . esc_html(sprintf(__('Utolsó frissítés: %s', 'mgcf'), $formatted)) . '</span>';
                 }
+                echo '</div>';
                 echo '<form method="post" class="mg-custom-preset-delete">';
                 wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
                 echo '<input type="hidden" name="product_id" value="' . esc_attr($product_id) . '" />';
@@ -417,5 +522,6 @@ class MG_Custom_Fields_Page {
         }
 
         echo '</div>';
+        echo '</section>';
     }
 }
