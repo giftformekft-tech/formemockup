@@ -11,13 +11,23 @@ class MG_Settings_Page {
             $max_w = max(0, intval($_POST['resize_max_w'] ?? 0));
             $max_h = max(0, intval($_POST['resize_max_h'] ?? 0));
             $mode  = in_array(($_POST['resize_mode'] ?? 'fit'), array('fit','width','height'), true) ? $_POST['resize_mode'] : 'fit';
+
+            $quality = isset($_POST['webp_quality']) ? max(0, min(100, intval($_POST['webp_quality']))) : 78;
+            $alpha_quality = isset($_POST['webp_alpha']) ? max(0, min(100, intval($_POST['webp_alpha']))) : 92;
+            $method = isset($_POST['webp_method']) ? max(0, min(6, intval($_POST['webp_method']))) : 3;
+
             update_option('mg_output_resize', array(
                 'enabled' => $enabled,
                 'max_w'   => $max_w,
                 'max_h'   => $max_h,
                 'mode'    => $mode
             ));
-            echo '<div class="notice notice-success is-dismissible"><p>Kimeneti méretezés elmentve.</p></div>';
+            update_option('mg_webp_options', array(
+                'quality' => $quality,
+                'alpha'   => $alpha_quality,
+                'method'  => $method,
+            ));
+            echo '<div class="notice notice-success is-dismissible"><p>Beállítások elmentve.</p></div>';
         }
 
         if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
@@ -59,6 +69,11 @@ class MG_Settings_Page {
         $r_w = intval($resize['max_w'] ?? 0);
         $r_h = intval($resize['max_h'] ?? 0);
         $r_mode = $resize['mode'] ?? 'fit';
+        $webp_defaults = array('quality'=>78,'alpha'=>92,'method'=>3);
+        $webp = get_option('mg_webp_options', $webp_defaults);
+        $w_quality = max(0, min(100, intval($webp['quality'] ?? $webp_defaults['quality'])));
+        $w_alpha = max(0, min(100, intval($webp['alpha'] ?? $webp_defaults['alpha'])));
+        $w_method = max(0, min(6, intval($webp['method'] ?? $webp_defaults['method'])));
         ?>
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
@@ -89,6 +104,27 @@ class MG_Settings_Page {
                     <tr>
                         <th scope="row">Max. magasság (px)</th>
                         <td><input type="number" name="resize_max_h" min="0" step="1" value="<?php echo esc_attr($r_h); ?>" class="small-text" /> px</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">WebP minőség</th>
+                        <td>
+                            <input type="number" name="webp_quality" min="0" max="100" step="1" value="<?php echo esc_attr($w_quality); ?>" class="small-text" />
+                            <p class="description">Általános tömörítési minőség (0–100). Nagyobb érték = jobb minőség, nagyobb fájl.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">WebP alfa minőség</th>
+                        <td>
+                            <input type="number" name="webp_alpha" min="0" max="100" step="1" value="<?php echo esc_attr($w_alpha); ?>" class="small-text" />
+                            <p class="description">Átlátszóság minősége (0–100). Magasabb érték megőrzi jobban az alfa csatornát.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">WebP módszer</th>
+                        <td>
+                            <input type="number" name="webp_method" min="0" max="6" step="1" value="<?php echo esc_attr($w_method); ?>" class="small-text" />
+                            <p class="description">0 = leggyorsabb, 6 = legjobb minőség (lassabb feldolgozás).</p>
+                        </td>
                     </tr>
                 </table>
                 <?php submit_button('Mentés'); ?>
