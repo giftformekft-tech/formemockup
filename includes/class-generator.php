@@ -557,17 +557,23 @@ class MG_Generator {
                 }
             }
 
+            $webp_defaults = array('quality'=>78,'alpha'=>92,'method'=>3);
+            $webp_settings = get_option('mg_webp_options', $webp_defaults);
+            $webp_quality = max(0, min(100, intval($webp_settings['quality'] ?? $webp_defaults['quality'])));
+            $webp_alpha = max(0, min(100, intval($webp_settings['alpha'] ?? $webp_defaults['alpha'])));
+            $webp_method = max(0, min(6, intval($webp_settings['method'] ?? $webp_defaults['method'])));
+
             if (method_exists($mockup,'setImageFormat')) $mockup->setImageFormat('webp');
             if (method_exists($mockup,'setOption')) {
-                $mockup->setOption('webp:method', '3');
+                $mockup->setOption('webp:method', (string)$webp_method);
                 $mockup->setOption('webp:thread-level', '1');
                 $mockup->setOption('webp:auto-filter', '0');
-                $mockup->setOption('webp:alpha-quality', '92');
+                $mockup->setOption('webp:alpha-quality', (string)$webp_alpha);
             }
             if ($mockup_started_with_alpha === false) {
                 $this->force_imagick_alpha_channel_opaque($mockup);
             }
-            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality(78);
+            if (method_exists($mockup,'setImageCompressionQuality')) $mockup->setImageCompressionQuality($webp_quality);
             $mockup->writeImage($outfile);
             return true;
         } catch (Throwable $e) {
