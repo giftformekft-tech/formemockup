@@ -1,0 +1,23 @@
+/* basic admin styles */
+
+/* Dashboard tweaks */
+.wrap .mg-filters{margin:10px 0;}
+.wrap .mg-filters input[type=date]{width:150px}
+
+.mg-mockup-existing-list{
+    margin-bottom:8px;
+}
+.mg-mockup-existing-item{
+    background:#fff;
+    border:1px solid #dcdcde;
+    padding:8px;
+    margin-bottom:6px;
+    border-radius:4px;
+}
+.mg-mockup-existing-item:last-child{
+    margin-bottom:0;
+}
+.mg-mockup-existing-item label{
+    display:inline-block;
+    margin-top:6px;
+}

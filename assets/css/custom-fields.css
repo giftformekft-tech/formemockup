@@ -1,0 +1,439 @@
+.mgcf-admin {
+    --mgcf-bg: #f5f7fb;
+    --mgcf-surface: #ffffff;
+    --mgcf-border: #d8e3f0;
+    --mgcf-border-strong: #c3d2e7;
+    --mgcf-muted: #64748b;
+    --mgcf-primary: #2563eb;
+    --mgcf-shadow: 0 22px 46px rgba(15, 23, 42, 0.08);
+    background: var(--mgcf-bg);
+    margin: 0;
+    padding: 32px;
+    box-sizing: border-box;
+}
+
+.mgcf-admin h1,
+.mgcf-admin h2,
+.mgcf-admin h3 {
+    color: #0f172a;
+}
+
+.mgcf-hero {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 24px;
+    padding: 26px 30px;
+    background: var(--mgcf-surface);
+    border-radius: 20px;
+    border: 1px solid rgba(37, 99, 235, 0.12);
+    box-shadow: var(--mgcf-shadow);
+}
+
+.mgcf-hero__text h1 {
+    margin: 0;
+    font-size: 26px;
+    line-height: 1.2;
+}
+
+.mgcf-hero__text p {
+    margin: 8px 0 0;
+    color: var(--mgcf-muted);
+    font-size: 14px;
+}
+
+.mgcf-hero__actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mgcf-hero__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.12);
+    color: var(--mgcf-primary);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.mgcf-notices .notice {
+    border-radius: 14px;
+    box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+    margin-top: 0;
+}
+
+.mgcf-section {
+    margin-top: 24px;
+    padding: 26px 30px;
+    background: var(--mgcf-surface);
+    border-radius: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    box-shadow: 0 22px 40px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.mgcf-section__header h2,
+.mgcf-section__header h3 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.3;
+}
+
+.mgcf-section__header p {
+    margin: 6px 0 0;
+    font-size: 14px;
+    color: var(--mgcf-muted);
+}
+
+.mgcf-empty {
+    padding: 18px 22px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(15, 23, 42, 0.06));
+    border: 1px dashed rgba(37, 99, 235, 0.3);
+    color: var(--mgcf-muted);
+    font-style: italic;
+}
+
+.mgcf-table-wrap {
+    overflow-x: auto;
+}
+
+.mgcf-table {
+    width: 100%;
+    border: none;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+}
+
+.mgcf-table thead th {
+    background: rgba(37, 99, 235, 0.1);
+    color: #0f172a;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 14px 18px;
+}
+
+.mgcf-table tbody td {
+    padding: 14px 18px;
+    background: var(--mgcf-surface);
+}
+
+.mgcf-table__actions {
+    text-align: right;
+}
+
+.mgcf-table__actions .button {
+    border-radius: 999px;
+    padding: 0 18px;
+}
+
+.mgcf-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 24px 0 12px;
+    font-size: 13px;
+    color: var(--mgcf-muted);
+}
+
+.mgcf-breadcrumb__link {
+    color: var(--mgcf-primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.mgcf-breadcrumb__link:hover {
+    text-decoration: underline;
+}
+
+.mgcf-breadcrumb__current {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.mgcf-field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.mg-custom-field-card {
+    position: relative;
+    background: var(--mgcf-surface);
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    box-shadow: 0 20px 44px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mg-custom-field-card.is-new {
+    border-style: dashed;
+    border-color: rgba(37, 99, 235, 0.4);
+}
+
+.mg-custom-field-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 26px 10px;
+}
+
+.mg-custom-field-card__title {
+    font-weight: 600;
+    font-size: 17px;
+    color: #0f172a;
+}
+
+.mg-custom-field-card__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.24);
+    color: #1e293b;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.mg-custom-field-card__badge.is-accent {
+    background: rgba(37, 99, 235, 0.18);
+    color: var(--mgcf-primary);
+}
+
+.mg-custom-field-card__body {
+    padding: 0 26px 6px;
+}
+
+.mg-custom-field-form .submit {
+    margin: 0;
+    padding: 0 26px 24px;
+    display: flex;
+    gap: 12px;
+}
+
+.mg-custom-field-form .button {
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.mg-custom-field-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 14px;
+}
+
+.mg-custom-field-table th {
+    width: 220px;
+    padding: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #475569;
+    font-weight: 700;
+    vertical-align: top;
+}
+
+.mg-custom-field-table td {
+    padding: 0;
+}
+
+.mg-custom-field-table input[type="text"],
+.mg-custom-field-table input[type="number"],
+.mg-custom-field-table input[type="date"],
+.mg-custom-field-table input[type="color"],
+.mg-custom-field-table select,
+.mg-custom-field-table textarea {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--mgcf-border);
+    padding: 10px 14px;
+    background: #fff;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
+    font-size: 14px;
+    color: #0f172a;
+}
+
+.mg-custom-field-table textarea {
+    min-height: 70px;
+}
+
+.mg-custom-field-table .description {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--mgcf-muted);
+}
+
+.mgcf-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.mgcf-toggle .button {
+    border-radius: 999px;
+    padding: 0 24px;
+    height: 40px;
+}
+
+.mgcf-presets-grid {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.mg-custom-presets__block {
+    background: var(--mgcf-surface);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 16px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.mg-custom-presets__block h4 {
+    margin: 0;
+    font-size: 16px;
+    color: #0f172a;
+}
+
+.mg-custom-preset-form select,
+.mg-custom-preset-form input[type="text"] {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--mgcf-border);
+    padding: 10px 14px;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
+    background: #fff;
+}
+
+.mg-custom-preset-form .submit {
+    margin: 0;
+}
+
+.mg-custom-preset-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.mg-custom-preset-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.mg-custom-preset-list li:first-child {
+    border-top: none;
+}
+
+.mgcf-preset-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mg-custom-preset-name {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.mg-custom-preset-meta {
+    font-size: 12px;
+    color: var(--mgcf-muted);
+}
+
+.mg-custom-preset-delete {
+    margin: 0;
+}
+
+.mg-custom-preset-delete .button-link.delete {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+@media (max-width: 782px) {
+    .mgcf-admin {
+        padding: 20px;
+    }
+
+    .mgcf-hero,
+    .mgcf-section {
+        padding: 20px;
+    }
+
+    .mgcf-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .mgcf-field-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Frontend legacy layout */
+.mg-custom-fields {
+    margin: 0;
+    padding: 0;
+}
+
+.mg-custom-fields__title {
+    margin: 0 0 0.75em;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.mg-custom-field {
+    margin-bottom: 0.85em;
+}
+
+.mg-custom-field:last-child {
+    margin-bottom: 0;
+}
+
+.mg-custom-field label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 0.35em;
+    color: #0f172a;
+}
+
+.mg-custom-field input[type="text"],
+.mg-custom-field input[type="number"],
+.mg-custom-field input[type="date"],
+.mg-custom-field select {
+    width: 100%;
+    max-width: 420px;
+}
+
+.mg-custom-field__surcharge {
+    margin-left: 0.5em;
+    color: #555;
+    font-size: 0.9em;
+}
+
+.mg-required {
+    color: #c00;
+}
