@@ -44,6 +44,26 @@
     font-weight: 600;
 }
 
+.mg-surcharge-option__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mg-surcharge-option__title--toggle {
+    cursor: pointer;
+}
+
+.mg-surcharge-option__title--toggle input {
+    margin: 0;
+}
+
+.mg-surcharge-option__label-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .mg-surcharge-option__amount {
     color: #2271b1;
 }
