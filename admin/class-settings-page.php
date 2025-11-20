@@ -8,6 +8,7 @@ class MG_Settings_Page {
         // --- ÚJ: kimeneti méretezés mentése ---
         if (isset($_POST['mg_resize_nonce']) && wp_verify_nonce($_POST['mg_resize_nonce'],'mg_save_resize')) {
             $enabled = isset($_POST['resize_enabled']) ? (bool)$_POST['resize_enabled'] : false;
+            $smart_crop = isset($_POST['smart_crop']) ? (bool)$_POST['smart_crop'] : false;
             $max_w = max(0, intval($_POST['resize_max_w'] ?? 0));
             $max_h = max(0, intval($_POST['resize_max_h'] ?? 0));
             $mode  = in_array(($_POST['resize_mode'] ?? 'fit'), array('fit','width','height'), true) ? $_POST['resize_mode'] : 'fit';
@@ -17,10 +18,11 @@ class MG_Settings_Page {
             $method = isset($_POST['webp_method']) ? max(0, min(6, intval($_POST['webp_method']))) : 3;
 
             update_option('mg_output_resize', array(
-                'enabled' => $enabled,
-                'max_w'   => $max_w,
-                'max_h'   => $max_h,
-                'mode'    => $mode
+                'enabled'    => $enabled,
+                'smart_crop' => $smart_crop,
+                'max_w'      => $max_w,
+                'max_h'      => $max_h,
+                'mode'       => $mode
             ));
             update_option('mg_webp_options', array(
                 'quality' => $quality,
@@ -64,8 +66,9 @@ class MG_Settings_Page {
         }
 
         $products = get_option('mg_products', array());
-        $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit'));
+        $resize = get_option('mg_output_resize', array('enabled'=>false,'smart_crop'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit'));
         $r_enabled = !empty($resize['enabled']);
+        $r_smart_crop = !empty($resize['smart_crop']);
         $r_w = intval($resize['max_w'] ?? 0);
         $r_h = intval($resize['max_h'] ?? 0);
         $r_mode = $resize['mode'] ?? 'fit';
@@ -78,10 +81,17 @@ class MG_Settings_Page {
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
 
-            <h2>Kimeneti maximum méret</h2>
+            <h2>Képfeldolgozás</h2>
             <form method="post">
                 <?php wp_nonce_field('mg_save_resize','mg_resize_nonce'); ?>
                 <table class="form-table">
+                    <tr>
+                        <th scope="row">Intelligens vágás (Smart Crop)</th>
+                        <td>
+                            <label><input type="checkbox" name="smart_crop" <?php checked($r_smart_crop); ?> /> Engedélyezve</label>
+                            <p class="description">A feltöltött minta felesleges átlátszó széleinek automatikus levágása (trim).</p>
+                        </td>
+                    </tr>
                     <tr>
                         <th scope="row">Méretezés engedélyezése</th>
                         <td><label><input type="checkbox" name="resize_enabled" <?php checked($r_enabled); ?> /> Engedélyezve</label></td>

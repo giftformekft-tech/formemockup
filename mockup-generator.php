@@ -22,21 +22,6 @@ add_action('plugins_loaded', function(){
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
-        'admin/class-variant-display-page.php',
-        'admin/upload-handler.php',
-        'admin/bulk-handler.php',
-        'admin/class-custom-fields-page.php',
-        'admin/class-mockup-maintenance-page.php',
-        'admin/class-surcharge-options-page.php',
-        'includes/class-generator.php',
-        'includes/class-product-creator.php',
-        'includes/class-custom-fields-manager.php',
-        'includes/class-custom-fields-frontend.php',
-        'includes/class-mockup-maintenance.php',
-        'includes/class-variant-maintenance.php',
-        'includes/class-variant-display-manager.php',
-        'includes/class-surcharge-manager.php',
-        'includes/class-surcharge-frontend.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
