@@ -1294,9 +1294,10 @@ class MG_Mockup_Maintenance {
             return;
         }
         $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+        $seo_text = self::compose_image_seo_text($product, $type, $color_slug);
         $new_attachment_ids = [];
         foreach ($files as $file) {
-            $attachment_id = self::attach_image($file);
+            $attachment_id = self::attach_image($file, $seo_text);
             if ($attachment_id) {
                 $new_attachment_ids[] = $attachment_id;
             }
@@ -1327,7 +1328,34 @@ class MG_Mockup_Maintenance {
         do_action('mg_mockup_regenerated', $index[$key]);
     }
 
-    private static function attach_image($path) {
+    private static function compose_image_seo_text($product, $type, $color_slug) {
+        $product_name = '';
+        if (is_object($product) && method_exists($product, 'get_name')) {
+            $product_name = sanitize_text_field($product->get_name());
+        }
+
+        $type_label = '';
+        if (is_array($type)) {
+            if (!empty($type['label'])) {
+                $type_label = sanitize_text_field($type['label']);
+            } elseif (!empty($type['name'])) {
+                $type_label = sanitize_text_field($type['name']);
+            } elseif (!empty($type['key'])) {
+                $type_label = sanitize_text_field($type['key']);
+            }
+        }
+
+        $color_label = sanitize_title($color_slug);
+        $colors = self::normalize_colors_from_type($type);
+        if (!empty($colors[$color_label]['name'])) {
+            $color_label = sanitize_text_field($colors[$color_label]['name']);
+        }
+
+        $parts = array_filter([$product_name, $type_label, $color_label], 'strlen');
+        return implode(' - ', $parts);
+    }
+
+    private static function attach_image($path, $seo_text = '') {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
@@ -1338,10 +1366,11 @@ class MG_Mockup_Maintenance {
             $filetype['type'] = 'image/webp';
         }
         $wp_upload_dir = wp_upload_dir();
+        $title = $seo_text !== '' ? sanitize_text_field($seo_text) : preg_replace('/\.[^.]+$/', '', basename($path));
         $attachment = [
             'guid'           => trailingslashit($wp_upload_dir['url']) . basename($path),
             'post_mime_type' => $filetype['type'] ?? 'image/webp',
-            'post_title'     => preg_replace('/\.[^.]+$/', '', basename($path)),
+            'post_title'     => $title,
             'post_content'   => '',
             'post_status'    => 'inherit',
         ];
@@ -1349,6 +1378,9 @@ class MG_Mockup_Maintenance {
         require_once ABSPATH . 'wp-admin/includes/image.php';
         $attach_data = ['file' => _wp_relative_upload_path($path)];
         wp_update_attachment_metadata($attach_id, $attach_data);
+        if ($attach_id && $seo_text !== '') {
+            update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
+        }
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
