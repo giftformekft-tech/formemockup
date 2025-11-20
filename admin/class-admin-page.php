@@ -306,10 +306,15 @@ class MG_Admin_Page {
         $storage_usage = 0;
         $file_count = 0;
         if (file_exists($mockup_dir)) {
-            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($mockup_dir, RecursiveDirectoryIterator::SKIP_DOTS));
-            foreach ($iterator as $file) {
-                $storage_usage += $file->getSize();
-                $file_count++;
+            try {
+                $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($mockup_dir, RecursiveDirectoryIterator::SKIP_DOTS));
+                foreach ($iterator as $file) {
+                    $storage_usage += $file->getSize();
+                    $file_count++;
+                }
+            } catch (Exception $e) {
+                // Fail silently or log error, but allow page to render
+                error_log('Mockup Generator Dashboard Error: ' . $e->getMessage());
             }
         }
         $storage_formatted = size_format($storage_usage);
