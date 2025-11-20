@@ -324,18 +324,23 @@ class MG_Surcharge_Frontend {
         ob_start();
         echo '<div class="mg-surcharge-option" data-id="' . esc_attr($id) . '" data-required="' . ($is_required ? '1' : '0') . '">';
         echo '<div class="mg-surcharge-option__header">';
-        echo '<span class="mg-surcharge-option__title">' . esc_html($option['name']) . $tooltip . '</span>';
-        echo '<span class="mg-surcharge-option__amount">+' . esc_html($price) . '</span>';
-        echo '</div>';
-        echo '<div class="mg-surcharge-option__control">';
         if ($is_required) {
-            echo '<label><input type="radio" value="' . esc_attr($value_yes) . '" name="' . esc_attr($field_name) . '" ' . checked($is_checked, true, false) . ' /> ' . esc_html__('Igen', 'mockup-generator') . '</label> ';
-            echo '<label><input type="radio" value="' . esc_attr($value_no) . '" name="' . esc_attr($field_name) . '" ' . checked(!$is_checked && $has_choice, true, false) . ' /> ' . esc_html__('Nem', 'mockup-generator') . '</label>';
+            echo '<span class="mg-surcharge-option__title">' . esc_html($option['name']) . $tooltip . '</span>';
         } else {
             echo '<input type="hidden" name="' . esc_attr($field_name) . '" value="0" />';
-            echo '<label><input type="checkbox" value="' . esc_attr($value_yes) . '" name="' . esc_attr($field_name) . '" ' . checked($is_checked, true, false) . ' /> ' . esc_html__('Bekapcsolva', 'mockup-generator') . '</label>';
+            echo '<label class="mg-surcharge-option__title mg-surcharge-option__title--toggle">';
+            echo '<input type="checkbox" value="' . esc_attr($value_yes) . '" name="' . esc_attr($field_name) . '" ' . checked($is_checked, true, false) . ' />';
+            echo '<span class="mg-surcharge-option__label-text">' . esc_html($option['name']) . '</span>' . $tooltip;
+            echo '</label>';
         }
+        echo '<span class="mg-surcharge-option__amount">+' . esc_html($price) . '</span>';
         echo '</div>';
+        if ($is_required) {
+            echo '<div class="mg-surcharge-option__control">';
+            echo '<label><input type="radio" value="' . esc_attr($value_yes) . '" name="' . esc_attr($field_name) . '" ' . checked($is_checked, true, false) . ' /> ' . esc_html__('Igen', 'mockup-generator') . '</label> ';
+            echo '<label><input type="radio" value="' . esc_attr($value_no) . '" name="' . esc_attr($field_name) . '" ' . checked(!$is_checked && $has_choice, true, false) . ' /> ' . esc_html__('Nem', 'mockup-generator') . '</label>';
+            echo '</div>';
+        }
         echo '</div>';
         return ob_get_clean();
     }
