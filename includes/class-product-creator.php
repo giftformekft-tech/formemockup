@@ -231,17 +231,52 @@ class MG_Product_Creator {
         }
         return $ids;
     }
-    private function attach_image($path) {
+    private function compose_image_seo_text($product_name, $type_slug, $color_slug, $selected_products) {
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+
+        $type_label = '';
+        $color_label = $color_slug;
+        foreach ($selected_products as $product) {
+            $slug = isset($product['key']) ? sanitize_title($product['key']) : '';
+            if ($slug !== $type_slug) { continue; }
+            if (!empty($product['label'])) {
+                $type_label = sanitize_text_field($product['label']);
+            } elseif (!empty($product['name'])) {
+                $type_label = sanitize_text_field($product['name']);
+            }
+            if (!empty($product['colors']) && is_array($product['colors'])) {
+                foreach ($product['colors'] as $color) {
+                    $cslug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                    if ($cslug === $color_slug && !empty($color['name'])) {
+                        $color_label = sanitize_text_field($color['name']);
+                        break 2;
+                    }
+                }
+            }
+        }
+
+        $parts = array_filter([
+            sanitize_text_field($product_name),
+            $type_label,
+            $color_label,
+        ], 'strlen');
+        return implode(' - ', $parts);
+    }
+
+    private function attach_image($path, $seo_text = '') {
         add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) $filetype['type'] = 'image/webp';
         $wp_upload_dir = wp_upload_dir();
-        $attachment = array('guid'=>$wp_upload_dir['url'].'/'.basename($path),'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>preg_replace('/\.[^.]+$/','',basename($path)),'post_content'=>'','post_status'=>'inherit');
+        $title = $seo_text !== '' ? sanitize_text_field($seo_text) : preg_replace('/\.[^.]+$/','',basename($path));
+        $attachment = array('guid'=>$wp_upload_dir['url'].'/'.basename($path),'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>$title,'post_content'=>'','post_status'=>'inherit');
         $attach_id = wp_insert_attachment($attachment, $path);
         require_once(ABSPATH.'wp-admin/includes/image.php');
         $attach_data = ['file'=>_wp_relative_upload_path($path)];
         wp_update_attachment_metadata($attach_id, $attach_data);
+        if ($attach_id && $seo_text !== '') update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
@@ -296,7 +331,8 @@ class MG_Product_Creator {
         $color_term_ids = $this->ensure_terms_and_get_ids($tax_color, $color_pairs);
         $image_ids=array(); $gallery=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $id=$this->attach_image($file); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
+            $seo_text = $this->compose_image_seo_text($parent_name, $type_slug, $color_slug, $selected_products);
+            $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
         }
         $product = new WC_Product_Variable();
         $product->set_name($parent_name);
@@ -479,7 +515,8 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
 
         $image_ids=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $id=$this->attach_image($file); $image_ids[$type_slug][$color_slug][]=$id;
+            $seo_text = $this->compose_image_seo_text($product->get_name() ?: $fallback_parent_name, $type_slug, $color_slug, $selected_products);
+            $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id;
         }
         $existing=array();
         foreach ($product->get_children() as $vid){
