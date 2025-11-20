@@ -734,8 +734,7 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 if (empty($available_sizes) || empty($available_colors)) {
                     echo '<p class="description">Adj meg legalább egy méretet és színt, hogy korlátozni tudd a kombinációkat.</p>';
                 } else {
-                    wp_enqueue_script('mg-matrix-editor', plugin_dir_url(__FILE__).'../assets/js/matrix-editor.js', array('jquery'), '1.0.0', true);
-                    echo '<table class="widefat striped mg-matrix-table" style="max-width:100%;width:auto">';
+                    echo '<table class="widefat striped" style="max-width:100%;width:auto">';
                     echo '<thead><tr><th>Méret</th>';
                     foreach ($available_colors as $color) {
                         echo '<th>'.esc_html($color['name']).'<br><code>'.esc_html($color['slug']).'</code></th>';

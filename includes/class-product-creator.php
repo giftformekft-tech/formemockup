@@ -231,32 +231,17 @@ class MG_Product_Creator {
         }
         return $ids;
     }
-    private function attach_image($path, $seo_title = '') {
+    private function attach_image($path) {
         add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) $filetype['type'] = 'image/webp';
         $wp_upload_dir = wp_upload_dir();
-        
-        $title = $seo_title ? $seo_title : preg_replace('/\.[^.]+$/','',basename($path));
-        
-        $attachment = array(
-            'guid'           => $wp_upload_dir['url'].'/'.basename($path),
-            'post_mime_type' => $filetype['type'] ?? 'image/webp',
-            'post_title'     => $title,
-            'post_excerpt'   => $title, // Caption
-            'post_content'   => '',
-            'post_status'    => 'inherit'
-        );
+        $attachment = array('guid'=>$wp_upload_dir['url'].'/'.basename($path),'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>preg_replace('/\.[^.]+$/','',basename($path)),'post_content'=>'','post_status'=>'inherit');
         $attach_id = wp_insert_attachment($attachment, $path);
         require_once(ABSPATH.'wp-admin/includes/image.php');
         $attach_data = ['file'=>_wp_relative_upload_path($path)];
         wp_update_attachment_metadata($attach_id, $attach_data);
-        
-        if ($seo_title) {
-            update_post_meta($attach_id, '_wp_attachment_image_alt', $seo_title);
-        }
-        
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
@@ -311,12 +296,7 @@ class MG_Product_Creator {
         $color_term_ids = $this->ensure_terms_and_get_ids($tax_color, $color_pairs);
         $image_ids=array(); $gallery=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $type_label = '';
-            foreach ($type_terms as $tt) { if ($tt['slug'] === $type_slug) { $type_label = $tt['name']; break; } }
-            $color_label = isset($color_terms[$color_slug]) ? $color_terms[$color_slug] : $color_slug;
-            $seo_title = $parent_name . ' - ' . $type_label . ' - ' . $color_label;
-            
-            $id=$this->attach_image($file, $seo_title); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
+            $id=$this->attach_image($file); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
         }
         $product = new WC_Product_Variable();
         $product->set_name($parent_name);
@@ -499,12 +479,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
 
         $image_ids=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $type_label = '';
-            foreach ($type_terms as $tt) { if ($tt['slug'] === $type_slug) { $type_label = $tt['name']; break; } }
-            $color_label = isset($color_terms[$color_slug]) ? $color_terms[$color_slug] : $color_slug;
-            $seo_title = $product->get_name() . ' - ' . $type_label . ' - ' . $color_label;
-            
-            $id=$this->attach_image($file, $seo_title); $image_ids[$type_slug][$color_slug][]=$id;
+            $id=$this->attach_image($file); $image_ids[$type_slug][$color_slug][]=$id;
         }
         $existing=array();
         foreach ($product->get_children() as $vid){

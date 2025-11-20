@@ -294,17 +294,6 @@ class MG_Generator {
             if (method_exists($design_base, 'stripImage')) {
                 $design_base->stripImage();
             }
-            
-            // Smart Crop
-            $resize_opts = get_option('mg_output_resize', array());
-            if (!empty($resize_opts['smart_crop'])) {
-                try {
-                    $design_base->trimImage(0);
-                    $design_base->setImagePage(0, 0, 0, 0);
-                } catch (Throwable $e) {
-                    // Ignore trimming errors
-                }
-            }
             $this->prepare_imagick_image_for_compositing($design_base);
         } catch (Throwable $e) {
             return new WP_Error('design_load_failed', $e->getMessage());
