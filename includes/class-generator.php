@@ -273,6 +273,22 @@ class MG_Generator {
         return $had_alpha;
     }
 
+    private function trim_imagick_image_bounds($image) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        if (!method_exists($image, 'trimImage')) {
+            return;
+        }
+        try {
+            $image->trimImage(0);
+            if (method_exists($image, 'setImagePage')) {
+                $image->setImagePage(0, 0, 0, 0);
+            }
+        } catch (Throwable $ignored) {
+        }
+    }
+
     public function generate_for_product($product_key, $design_path) {
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
@@ -295,6 +311,7 @@ class MG_Generator {
                 $design_base->stripImage();
             }
             $this->prepare_imagick_image_for_compositing($design_base);
+            $this->trim_imagick_image_bounds($design_base);
         } catch (Throwable $e) {
             return new WP_Error('design_load_failed', $e->getMessage());
         }
@@ -517,6 +534,8 @@ class MG_Generator {
             }
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_ACTIVATE') ? Imagick::ALPHACHANNEL_ACTIVATE : null);
             if (method_exists($design,'setBackgroundColor')) $design->setBackgroundColor(new ImagickPixel('transparent'));
+
+            $this->trim_imagick_image_bounds($design);
 
             if (method_exists($design,'thumbnailImage')) $design->thumbnailImage($design_width_px, $design_height_px, true, false);
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
