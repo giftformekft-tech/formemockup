@@ -519,7 +519,7 @@ class MG_Generator {
             $target_x = $has_explicit_x ? (float)$cfg['x'] : null;
             $target_y = $has_explicit_y ? (float)$cfg['y'] : null;
 
-            if ($target_x === null && $target_w > 0 && $template_width > 0) {
+            if (($target_x === null || $target_x === 0.0) && $target_w > 0 && $template_width > 0) {
                 $target_x = max(0.0, ($template_width - $target_w) / 2);
             }
             if ($target_y === null) {
