@@ -215,9 +215,6 @@ class MG_Design_Gallery {
                             </div>
                             <div class="mg-design-gallery__meta">
                                 <div class="mg-design-gallery__type"><?php echo esc_html($item['type_label']); ?></div>
-                                <?php if (!empty($item['color_label'])) : ?>
-                                    <div class="mg-design-gallery__color"><?php echo esc_html($item['color_label']); ?></div>
-                                <?php endif; ?>
                             </div>
                         </article>
                     <?php endforeach; ?>
@@ -305,16 +302,15 @@ class MG_Design_Gallery {
                 continue;
             }
 
-            $color_label = self::resolve_color_label($color_slug, $by_color[$color_slug], $type_meta);
             $type_label = self::resolve_type_label($type_slug, $type_meta);
+            $alt = $type_label;
 
             $items[] = array(
                 'image' => $image,
                 'type_label' => $type_label,
-                'color_label' => $color_label,
                 'type_slug' => $type_slug,
                 'color_slug' => $color_slug,
-                'alt' => trim($type_label . ' – ' . $color_label),
+                'alt' => $alt,
             );
 
             if ($limit > 0 && count($items) >= $limit) {
@@ -422,26 +418,6 @@ class MG_Design_Gallery {
         }
         $relative = ltrim(str_replace($normalized_base, '', $normalized_path), '/');
         return trailingslashit($uploads['baseurl']) . str_replace('\\', '/', $relative);
-    }
-
-    /**
-     * Resolve the color label for a given entry.
-     *
-     * @param string $color_slug
-     * @param array $entry
-     * @param array $type_meta
-     * @return string
-     */
-    protected static function resolve_color_label($color_slug, $entry, $type_meta) {
-        $color_slug = sanitize_title($color_slug);
-        $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
-        if (!empty($source['color_label'])) {
-            return sanitize_text_field($source['color_label']);
-        }
-        if (!empty($type_meta['colors'][$color_slug]['label'])) {
-            return sanitize_text_field($type_meta['colors'][$color_slug]['label']);
-        }
-        return self::get_attribute_term_label('pa_szin', $color_slug);
     }
 
     /**

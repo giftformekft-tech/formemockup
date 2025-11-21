@@ -139,11 +139,6 @@
     margin-bottom: 0.25rem;
 }
 
-.mg-design-gallery__color {
-    color: #4b5563;
-    font-size: 0.9rem;
-}
-
 @media (max-width: 600px) {
     .mg-design-gallery__item {
         min-width: 70%;
