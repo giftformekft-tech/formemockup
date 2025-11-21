@@ -215,7 +215,9 @@ class MG_Design_Gallery {
                             </div>
                             <div class="mg-design-gallery__meta">
                                 <div class="mg-design-gallery__type"><?php echo esc_html($item['type_label']); ?></div>
-                                <div class="mg-design-gallery__color"><?php echo esc_html($item['color_label']); ?></div>
+                                <?php if (!empty($item['color_label'])) : ?>
+                                    <div class="mg-design-gallery__color"><?php echo esc_html($item['color_label']); ?></div>
+                                <?php endif; ?>
                             </div>
                         </article>
                     <?php endforeach; ?>

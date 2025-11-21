@@ -100,6 +100,7 @@
     padding-top: 75%;
     background: #f8fafc;
     flex: 1 1 auto;
+    overflow: hidden;
 }
 
 .mg-design-gallery--list .mg-design-gallery__thumb {
@@ -121,9 +122,12 @@
 }
 
 .mg-design-gallery__meta {
-    padding: 0.75rem 1rem 1rem;
+    padding: 0.75rem 1rem;
     font-size: 0.95rem;
     color: #111827;
+    background: #fff;
+    border-top: 1px solid #e5e7eb;
+    flex: 0 0 auto;
 }
 
 .mg-design-gallery--list .mg-design-gallery__meta {
