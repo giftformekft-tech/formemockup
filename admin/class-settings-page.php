@@ -1,6 +1,13 @@
 <?php
 if (!defined('ABSPATH')) exit;
 class MG_Settings_Page {
+    /**
+     * Stores the last quick add product feedback for reuse across renders.
+     *
+     * @var array|null
+     */
+    private static $add_product_result = null;
+
     public static function add_submenu_page() {
         add_submenu_page('mockup-generator','Beállítások – Termékek','Beállítások','manage_options','mockup-generator-settings',[self::class,'render_settings']);
     }
@@ -36,37 +43,10 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Mintagalléria beállítások elmentve.</p></div>';
         }
 
-        if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
-            $products = get_option('mg_products', array());
-            $key = sanitize_title($_POST['product_key'] ?? '');
-            $label = sanitize_text_field($_POST['product_label'] ?? '');
-            $price = intval($_POST['product_price'] ?? 0);
-            $sku_prefix = strtoupper(sanitize_text_field($_POST['sku_prefix'] ?? 'SKU'));
-            if ($key && $label) {
-                foreach ($products as $p) { if ($p['key']===$key) { $key .= '-' . wp_generate_password(4,false,false); break; } }
-                $products[] = array(
-                    'key'=>$key,'label'=>$label,
-                    'sizes'=>array('S','M','L','XL'),
-                    'colors'=>array(
-                        array('name'=>'Fekete','slug'=>'fekete'),
-                        array('name'=>'Fehér','slug'=>'feher'),
-                        array('name'=>'Szürke','slug'=>'szurke'),
-                    ),
-                    'views'=>array(
-                        array('key'=>'front','label'=>'Előlap','file'=>$key.'_front.png','x'=>420,'y'=>600,'w'=>1200,'h'=>900)
-                    ),
-                    'template_base'=>"templates/$key",
-                    'mockup_overrides'=>array(),
-                    'price'=>$price,
-                    'size_surcharges'=>array(),
-                    'color_surcharges'=>array(),
-                    'sku_prefix'=>$sku_prefix,
-                    'categories'=>array(),
-                    'tags'=>array()
-                );
-                update_option('mg_products', $products);
-                echo '<div class="notice notice-success is-dismissible"><p>Termék hozzáadva: '.esc_html($label).'</p></div>';
-            }
+        $add_product_feedback = self::maybe_handle_add_product_submission();
+        if ($add_product_feedback && isset($add_product_feedback['message'])) {
+            $class = !empty($add_product_feedback['success']) ? 'notice-success' : 'notice-error';
+            echo '<div class="notice ' . esc_attr($class) . ' is-dismissible"><p>' . esc_html($add_product_feedback['message']) . '</p></div>';
         }
 
         $products = get_option('mg_products', array());
@@ -207,17 +187,130 @@ class MG_Settings_Page {
             </table>
 
             <h2>Új termék hozzáadása</h2>
-            <form method="post">
-                <?php wp_nonce_field('mg_add_product','mg_add_product_nonce'); ?>
-                <table class="form-table">
-                    <tr><th>Kulcs (slug)</th><td><input type="text" name="product_key" placeholder="pl. polo" required /></td></tr>
-                    <tr><th>Megjelenített név</th><td><input type="text" name="product_label" placeholder="pl. Póló" required /></td></tr>
-                    <tr><th>Alap ár (HUF)</th><td><input type="number" name="product_price" class="small-text" min="0" step="1" value="0" /></td></tr>
-                    <tr><th>SKU prefix</th><td><input type="text" name="sku_prefix" class="regular-text" placeholder="pl. POLO" /></td></tr>
-                </table>
+            <form method="post" class="mg-product-add-form">
+                <?php echo self::render_add_product_form_fields(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 <?php submit_button('Hozzáadás'); ?>
             </form>
         </div>
         <?php
+    }
+    /**
+     * Handles the creation of a new product from a quick add submission.
+     *
+     * @return array{success:bool,message:string}|null
+     */
+    public static function maybe_handle_add_product_submission() {
+        static $processed = false;
+
+        if ($processed) {
+            return self::$add_product_result;
+        }
+
+        $processed = true;
+
+        $nonce_valid = false;
+        if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mg_add_product_nonce'])), 'mg_add_product')) {
+            $nonce_valid = true;
+        }
+
+        if (isset($_POST['mg_quick_add_nonce']) && wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mg_quick_add_nonce'])), 'mg_quick_add_product')) {
+            $nonce_valid = true;
+        }
+
+        if (!$nonce_valid) {
+            return null;
+        }
+
+        if (!current_user_can('manage_options')) {
+            self::$add_product_result = array(
+                'success' => false,
+                'message' => __('Nincs jogosultságod új termék hozzáadásához.', 'mockup-generator'),
+            );
+
+            return self::$add_product_result;
+        }
+
+        self::$add_product_result = self::create_product_from_request($_POST);
+
+        return self::$add_product_result;
+    }
+
+    /**
+     * Creates a new product entry from request data.
+     *
+     * @param array $data Raw request array.
+     * @return array{success:bool,message:string}
+     */
+    private static function create_product_from_request($data) {
+        $products = get_option('mg_products', array());
+
+        $key = sanitize_title($data['product_key'] ?? '');
+        $label = sanitize_text_field($data['product_label'] ?? '');
+        $price = intval($data['product_price'] ?? 0);
+        $sku_prefix = strtoupper(sanitize_text_field($data['sku_prefix'] ?? 'SKU'));
+
+        if (!$key || !$label) {
+            return array(
+                'success' => false,
+                'message' => __('A kulcs és a megjelenített név megadása kötelező.', 'mockup-generator'),
+            );
+        }
+
+        foreach ($products as $p) {
+            if (!empty($p['key']) && $p['key'] === $key) {
+                $key .= '-' . wp_generate_password(4, false, false);
+                break;
+            }
+        }
+
+        $products[] = array(
+            'key'            => $key,
+            'label'          => $label,
+            'sizes'          => array('S', 'M', 'L', 'XL'),
+            'colors'         => array(
+                array('name' => 'Fekete', 'slug' => 'fekete'),
+                array('name' => 'Fehér', 'slug' => 'feher'),
+                array('name' => 'Szürke', 'slug' => 'szurke'),
+            ),
+            'views'          => array(
+                array('key' => 'front', 'label' => 'Előlap', 'file' => $key . '_front.png', 'x' => 420, 'y' => 600, 'w' => 1200, 'h' => 900),
+            ),
+            'template_base'  => "templates/$key",
+            'mockup_overrides' => array(),
+            'price'          => $price,
+            'size_surcharges' => array(),
+            'color_surcharges' => array(),
+            'sku_prefix'     => $sku_prefix,
+            'categories'     => array(),
+            'tags'           => array(),
+        );
+
+        update_option('mg_products', $products);
+
+        return array(
+            'success' => true,
+            'message' => sprintf(__('Termék hozzáadva: %s', 'mockup-generator'), $label),
+        );
+    }
+
+    /**
+     * Returns the shared quick add product form fields.
+     *
+     * @return string
+     */
+    public static function render_add_product_form_fields() {
+        ob_start();
+        wp_nonce_field('mg_add_product', 'mg_add_product_nonce');
+        wp_nonce_field('mg_quick_add_product', 'mg_quick_add_nonce');
+        ?>
+        <input type="hidden" name="mg_tab" value="settings" />
+        <table class="form-table">
+            <tr><th>Kulcs (slug)</th><td><input type="text" name="product_key" placeholder="pl. polo" required /></td></tr>
+            <tr><th>Megjelenített név</th><td><input type="text" name="product_label" placeholder="pl. Póló" required /></td></tr>
+            <tr><th>Alap ár (HUF)</th><td><input type="number" name="product_price" class="small-text" min="0" step="1" value="0" /></td></tr>
+            <tr><th>SKU prefix</th><td><input type="text" name="sku_prefix" class="regular-text" placeholder="pl. POLO" /></td></tr>
+        </table>
+        <?php
+        return (string) ob_get_clean();
     }
 }
