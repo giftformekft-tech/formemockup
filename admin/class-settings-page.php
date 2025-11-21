@@ -43,10 +43,37 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Mintagalléria beállítások elmentve.</p></div>';
         }
 
-        $add_product_feedback = self::maybe_handle_add_product_submission();
-        if ($add_product_feedback && isset($add_product_feedback['message'])) {
-            $class = !empty($add_product_feedback['success']) ? 'notice-success' : 'notice-error';
-            echo '<div class="notice ' . esc_attr($class) . ' is-dismissible"><p>' . esc_html($add_product_feedback['message']) . '</p></div>';
+        if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
+            $products = get_option('mg_products', array());
+            $key = sanitize_title($_POST['product_key'] ?? '');
+            $label = sanitize_text_field($_POST['product_label'] ?? '');
+            $price = intval($_POST['product_price'] ?? 0);
+            $sku_prefix = strtoupper(sanitize_text_field($_POST['sku_prefix'] ?? 'SKU'));
+            if ($key && $label) {
+                foreach ($products as $p) { if ($p['key']===$key) { $key .= '-' . wp_generate_password(4,false,false); break; } }
+                $products[] = array(
+                    'key'=>$key,'label'=>$label,
+                    'sizes'=>array('S','M','L','XL'),
+                    'colors'=>array(
+                        array('name'=>'Fekete','slug'=>'fekete'),
+                        array('name'=>'Fehér','slug'=>'feher'),
+                        array('name'=>'Szürke','slug'=>'szurke'),
+                    ),
+                    'views'=>array(
+                        array('key'=>'front','label'=>'Előlap','file'=>$key.'_front.png','x'=>420,'y'=>600,'w'=>1200,'h'=>900)
+                    ),
+                    'template_base'=>"templates/$key",
+                    'mockup_overrides'=>array(),
+                    'price'=>$price,
+                    'size_surcharges'=>array(),
+                    'color_surcharges'=>array(),
+                    'sku_prefix'=>$sku_prefix,
+                    'categories'=>array(),
+                    'tags'=>array()
+                );
+                update_option('mg_products', $products);
+                echo '<div class="notice notice-success is-dismissible"><p>Termék hozzáadva: '.esc_html($label).'</p></div>';
+            }
         }
 
         $products = get_option('mg_products', array());
