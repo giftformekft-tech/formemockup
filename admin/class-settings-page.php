@@ -30,6 +30,12 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Beállítások elmentve.</p></div>';
         }
 
+        if (class_exists('MG_Design_Gallery') && isset($_POST['mg_design_gallery_nonce']) && wp_verify_nonce($_POST['mg_design_gallery_nonce'], 'mg_design_gallery_save')) {
+            $input = isset($_POST['mg_design_gallery']) ? wp_unslash($_POST['mg_design_gallery']) : array();
+            MG_Design_Gallery::sanitize_settings($input);
+            echo '<div class="notice notice-success is-dismissible"><p>Mintagalléria beállítások elmentve.</p></div>';
+        }
+
         if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
             $products = get_option('mg_products', array());
             $key = sanitize_title($_POST['product_key'] ?? '');
@@ -74,6 +80,8 @@ class MG_Settings_Page {
         $w_quality = max(0, min(100, intval($webp['quality'] ?? $webp_defaults['quality'])));
         $w_alpha = max(0, min(100, intval($webp['alpha'] ?? $webp_defaults['alpha'])));
         $w_method = max(0, min(6, intval($webp['method'] ?? $webp_defaults['method'])));
+        $gallery_settings = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_settings() : array('enabled' => false, 'position' => 'after_summary', 'max_items' => 6, 'layout' => 'grid', 'title' => '', 'show_title' => true);
+        $position_choices = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_position_choices() : array();
         ?>
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
@@ -131,6 +139,54 @@ class MG_Settings_Page {
             </form>
 
             <hr/>
+
+            <?php if (class_exists('MG_Design_Gallery')): ?>
+            <h2>Mintagalléria blokk</h2>
+            <p>Automatikusan megjeleníthető modul, ami a legutóbbi mockup képeket listázza az összes terméktípus alapértelmezett színén. Gutenberg blokkban is használható.</p>
+            <form method="post">
+                <?php wp_nonce_field('mg_design_gallery_save','mg_design_gallery_nonce'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Automatikus megjelenítés</th>
+                        <td><label><input type="checkbox" name="mg_design_gallery[enabled]" value="1" <?php checked(!empty($gallery_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Pozíció</th>
+                        <td>
+                            <select name="mg_design_gallery[position]">
+                                <?php foreach ($position_choices as $key => $data): ?>
+                                    <option value="<?php echo esc_attr($key); ?>" <?php selected($gallery_settings['position'], $key); ?>><?php echo esc_html($data['label'] ?? $key); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cím</th>
+                        <td><input type="text" name="mg_design_gallery[title]" value="<?php echo esc_attr($gallery_settings['title'] ?? ''); ?>" class="regular-text" placeholder="Minta az összes terméken" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Cím megjelenítése</th>
+                        <td><label><input type="checkbox" name="mg_design_gallery[show_title]" value="1" <?php checked(!empty($gallery_settings['show_title'])); ?> /> Igen</label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Max. elemek száma</th>
+                        <td><input type="number" name="mg_design_gallery[max_items]" min="1" step="1" value="<?php echo esc_attr(intval($gallery_settings['max_items'] ?? 6)); ?>" class="small-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Elrendezés</th>
+                        <td>
+                            <select name="mg_design_gallery[layout]">
+                                <option value="grid" <?php selected($gallery_settings['layout'] ?? '', 'grid'); ?>>Rács</option>
+                                <option value="list" <?php selected($gallery_settings['layout'] ?? '', 'list'); ?>>Lista</option>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button('Mintagalléria mentése'); ?>
+            </form>
+
+            <hr/>
+            <?php endif; ?>
 
             <table class="widefat striped">
                 <thead><tr><th>Kulcs</th><th>Név</th><th>Ár (HUF)</th><th>SKU prefix</th><th>Almenü</th></tr></thead>
