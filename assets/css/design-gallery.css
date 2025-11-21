@@ -1,0 +1,110 @@
+.mg-design-gallery {
+    margin: 2rem 0;
+}
+
+.mg-design-gallery__header {
+    margin-bottom: 1rem;
+}
+
+.mg-design-gallery__title {
+    font-size: 1.3rem;
+    margin: 0;
+}
+
+.mg-design-gallery__items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.mg-design-gallery--list .mg-design-gallery__items {
+    grid-template-columns: 1fr;
+}
+
+.mg-design-gallery__item {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+}
+
+.mg-design-gallery--list .mg-design-gallery__item {
+    flex-direction: row;
+    align-items: center;
+}
+
+.mg-design-gallery__thumb {
+    position: relative;
+    padding-top: 75%;
+    background: #f8fafc;
+    flex: 1 1 auto;
+}
+
+.mg-design-gallery--list .mg-design-gallery__thumb {
+    max-width: 200px;
+    padding-top: 0;
+    aspect-ratio: 4 / 3;
+}
+
+.mg-design-gallery__thumb img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.mg-design-gallery--list .mg-design-gallery__thumb img {
+    position: relative;
+}
+
+.mg-design-gallery__meta {
+    padding: 0.75rem 1rem 1rem;
+    font-size: 0.95rem;
+    color: #111827;
+}
+
+.mg-design-gallery--list .mg-design-gallery__meta {
+    min-width: 180px;
+}
+
+.mg-design-gallery__type {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.mg-design-gallery__color {
+    color: #4b5563;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 600px) {
+    .mg-design-gallery__items {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+    .mg-design-gallery--list .mg-design-gallery__items {
+        grid-template-columns: 1fr;
+    }
+
+    .mg-design-gallery--list .mg-design-gallery__item {
+        flex-direction: column;
+    }
+
+    .mg-design-gallery--list .mg-design-gallery__thumb {
+        max-width: none;
+        aspect-ratio: auto;
+        padding-top: 75%;
+    }
+
+    .mg-design-gallery--list .mg-design-gallery__thumb img {
+        position: absolute;
+    }
+
+    .mg-design-gallery--list .mg-design-gallery__meta {
+        min-width: 0;
+    }
+}
