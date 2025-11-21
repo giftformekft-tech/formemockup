@@ -102,6 +102,77 @@
         }
     }
 
+    function toggleModalState(isOpen) {
+        $('body').toggleClass('mg-modal-open', !!isOpen);
+    }
+
+    function openModalById(id) {
+        const $modal = $('#' + id);
+        if (!$modal.length) {
+            return;
+        }
+
+        $modal.attr('aria-hidden', 'false').addClass('is-visible');
+        toggleModalState(true);
+
+        const $firstField = $modal.find('input, select, textarea, button').filter(':visible').first();
+        if ($firstField.length) {
+            $firstField.trigger('focus');
+        }
+    }
+
+    function closeModal($modal) {
+        if (!$modal || !$modal.length) {
+            return;
+        }
+
+        $modal.attr('aria-hidden', 'true').removeClass('is-visible');
+        toggleModalState(false);
+    }
+
+    function initModals() {
+        $(document).on('click', '[data-mg-open-modal]', function (e) {
+            const target = sanitizeTab($(this).data('mgOpenModal'));
+            if (!target) {
+                return;
+            }
+            const modalId = 'mg-' + target + '-modal';
+            if ($('#' + modalId).length) {
+                e.preventDefault();
+                openModalById(modalId);
+                return;
+            }
+
+            const fallbackUrl = $(this).data('fallbackUrl');
+            if (fallbackUrl) {
+                window.location.href = fallbackUrl;
+            }
+        });
+
+        $(document).on('click', '[data-mg-close-modal]', function (e) {
+            e.preventDefault();
+            closeModal($(this).closest('.mg-modal'));
+        });
+
+        $(document).on('click', '.mg-modal__backdrop', function (e) {
+            e.preventDefault();
+            closeModal($(this).closest('.mg-modal'));
+        });
+
+        $(document).on('click', '.mg-modal', function (e) {
+            if ($(e.target).closest('.mg-modal__dialog').length) {
+                return;
+            }
+            closeModal($(this));
+        });
+
+        $(document).on('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeModal($('.mg-modal.is-visible'));
+            }
+        });
+    }
+
     const colorLabels = {
         addTitle: 'Új szín',
         editTitle: 'Szín szerkesztése',
@@ -807,6 +878,7 @@
         window.addEventListener('hashchange', handleHashChange);
         window.addEventListener('popstate', handlePopState);
 
+        initModals();
         rewriteLegacyLinks(document);
         initColorManagers(document);
     });

@@ -261,10 +261,12 @@ class MG_Admin_Page {
         $cta_url  = esc_url(self::build_panel_url('settings'));
         $bulk_url = esc_url(self::build_panel_url('bulk'));
         echo '<div class="mg-admin-actions">';
-        echo '<a class="button button-primary mg-primary-action" href="' . $cta_url . '">' . esc_html__('Új mockup hozzáadása', 'mockup-generator') . '</a>';
+        echo '<button type="button" class="button button-primary mg-primary-action" data-mg-open-modal="quick-add" data-fallback-url="' . $cta_url . '">' . esc_html__('Új mockup hozzáadása', 'mockup-generator') . '</button>';
         echo '<a class="button" href="' . $bulk_url . '">' . esc_html__('Bulk minta feltöltés', 'mockup-generator') . '</a>';
         echo '</div>';
         echo '</header>';
+
+        self::render_quick_add_modal();
 
         echo '<nav class="mg-tabbar" role="tablist">';
         foreach ($tabs as $id => $tab) {
@@ -1038,6 +1040,28 @@ class MG_Admin_Page {
             return '';
         }
         return self::sanitize_product_key(wp_unslash($_REQUEST['mg_product']));
+    }
+
+    /**
+     * Outputs the quick add modal markup so the primary CTA can open it inline.
+     */
+    private static function render_quick_add_modal() {
+        if (!class_exists('MG_Settings_Page') || !method_exists('MG_Settings_Page', 'render_add_product_form_fields')) {
+            return;
+        }
+
+        echo '<div class="mg-modal" id="mg-quick-add-modal" aria-hidden="true">';
+        echo '<div class="mg-modal__backdrop" data-mg-close-modal></div>';
+        echo '<div class="mg-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="mg-quick-add-title">';
+        echo '<button type="button" class="mg-modal__close" aria-label="' . esc_attr__('Bezárás', 'mockup-generator') . '" data-mg-close-modal>&times;</button>';
+        echo '<h2 id="mg-quick-add-title">' . esc_html__('Új termék hozzáadása', 'mockup-generator') . '</h2>';
+        echo '<p class="description">' . esc_html__('Gyors terméktípus hozzáadása. Mentés után a Beállítások fülön szerkesztheted a részleteket.', 'mockup-generator') . '</p>';
+        echo '<form method="post" class="mg-quick-add-form">';
+        echo MG_Settings_Page::render_add_product_form_fields(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        submit_button(__('Hozzáadás', 'mockup-generator'));
+        echo '</form>';
+        echo '</div>';
+        echo '</div>';
     }
 
     /**
