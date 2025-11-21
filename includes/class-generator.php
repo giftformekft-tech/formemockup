@@ -513,8 +513,24 @@ class MG_Generator {
 
             $target_w = isset($cfg['w']) ? (float)$cfg['w'] : 0.0;
             $target_h = isset($cfg['h']) ? (float)$cfg['h'] : 0.0;
-            $target_x = isset($cfg['x']) ? (float)$cfg['x'] : 0.0;
-            $target_y = isset($cfg['y']) ? (float)$cfg['y'] : 0.0;
+
+            $has_explicit_x = array_key_exists('x', $cfg);
+            $has_explicit_y = array_key_exists('y', $cfg);
+            $target_x = $has_explicit_x ? (float)$cfg['x'] : null;
+            $target_y = $has_explicit_y ? (float)$cfg['y'] : null;
+
+            $auto_center_x = (!$has_explicit_x || $target_x === null || $target_x === 0.0);
+
+            if ($auto_center_x && $target_w > 0 && $template_width > 0) {
+                $target_x = max(0.0, ($template_width - $target_w) / 2);
+            }
+            if ($target_y === null) {
+                $target_y = 0.0;
+            }
+
+            if ($target_x === null) {
+                $target_x = 0.0;
+            }
 
             if ($placement_scale !== 1.0) {
                 $target_w *= $placement_scale;
@@ -539,6 +555,14 @@ class MG_Generator {
 
             if (method_exists($design,'thumbnailImage')) $design->thumbnailImage($design_width_px, $design_height_px, true, false);
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
+
+            if ($auto_center_x && method_exists($mockup, 'getImageWidth') && method_exists($design, 'getImageWidth')) {
+                $final_mockup_w = (int)$mockup->getImageWidth();
+                $final_design_w = (int)$design->getImageWidth();
+                if ($final_mockup_w > 0 && $final_design_w > 0) {
+                    $design_x_px = max(0, (int)round(($final_mockup_w - $final_design_w) / 2));
+                }
+            }
 
             if (method_exists($mockup,'compositeImage')) $mockup->compositeImage($design, Imagick::COMPOSITE_OVER, $design_x_px, $design_y_px);
 
