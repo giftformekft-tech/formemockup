@@ -12,13 +12,59 @@
 }
 
 .mg-design-gallery__items {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    display: flex;
     gap: 1rem;
+    overflow-x: auto;
+    padding: 0.25rem 0.5rem 0.5rem;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
 }
 
-.mg-design-gallery--list .mg-design-gallery__items {
-    grid-template-columns: 1fr;
+.mg-design-gallery__viewport {
+    position: relative;
+}
+
+.mg-design-gallery__nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #111827;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+    z-index: 2;
+}
+
+.mg-design-gallery__nav span {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.mg-design-gallery__nav:disabled {
+    opacity: 0.4;
+    cursor: default;
+    box-shadow: none;
+}
+
+.mg-design-gallery__nav:hover:not(:disabled) {
+    transform: translateY(-50%) scale(1.05);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.12);
+}
+
+.mg-design-gallery__nav--prev { left: 0.25rem; }
+.mg-design-gallery__nav--next { right: 0.25rem; }
+
+.mg-design-gallery__item {
+    min-width: 240px;
+    scroll-snap-align: start;
 }
 
 .mg-design-gallery__item {
@@ -29,11 +75,24 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
     display: flex;
     flex-direction: column;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mg-design-gallery__item:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 3px;
+}
+
+.mg-design-gallery__item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
 }
 
 .mg-design-gallery--list .mg-design-gallery__item {
     flex-direction: row;
     align-items: center;
+    min-width: 320px;
 }
 
 .mg-design-gallery__thumb {
@@ -82,15 +141,12 @@
 }
 
 @media (max-width: 600px) {
-    .mg-design-gallery__items {
-        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    }
-
-    .mg-design-gallery--list .mg-design-gallery__items {
-        grid-template-columns: 1fr;
+    .mg-design-gallery__item {
+        min-width: 70%;
     }
 
     .mg-design-gallery--list .mg-design-gallery__item {
+        min-width: 85%;
         flex-direction: column;
     }
 

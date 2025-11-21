@@ -170,7 +170,10 @@ class MG_Settings_Page {
                     </tr>
                     <tr>
                         <th scope="row">Max. elemek száma</th>
-                        <td><input type="number" name="mg_design_gallery[max_items]" min="1" step="1" value="<?php echo esc_attr(intval($gallery_settings['max_items'] ?? 6)); ?>" class="small-text" /></td>
+                        <td>
+                            <input type="number" name="mg_design_gallery[max_items]" min="0" step="1" value="<?php echo esc_attr(intval($gallery_settings['max_items'] ?? 0)); ?>" class="small-text" />
+                            <p class="description">0 = az összes elérhető terméktípus megjelenítése</p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row">Elrendezés</th>

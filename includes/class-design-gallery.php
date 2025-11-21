@@ -22,12 +22,21 @@ class MG_Design_Gallery {
     public static function register_assets() {
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_path = dirname(__DIR__) . '/assets/css/design-gallery.css';
+        $script_path = dirname(__DIR__) . '/assets/js/design-gallery.js';
 
         wp_register_style(
             'mg-design-gallery',
             plugins_url('assets/css/design-gallery.css', $base_file),
             array(),
             file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+        );
+
+        wp_register_script(
+            'mg-design-gallery',
+            plugins_url('assets/js/design-gallery.js', $base_file),
+            array(),
+            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            true
         );
     }
 
@@ -65,7 +74,7 @@ class MG_Design_Gallery {
         $atts = shortcode_atts(
             array(
                 'title' => isset($settings['title']) ? $settings['title'] : '',
-                'max_items' => isset($settings['max_items']) ? $settings['max_items'] : 6,
+                'max_items' => isset($settings['max_items']) ? $settings['max_items'] : 0,
                 'layout' => isset($settings['layout']) ? $settings['layout'] : 'grid',
                 'product_id' => 0,
                 'show_title' => true,
@@ -99,7 +108,7 @@ class MG_Design_Gallery {
 
         $merged_settings = array_merge($settings, array(
             'title' => isset($attributes['title']) ? sanitize_text_field($attributes['title']) : (isset($settings['title']) ? $settings['title'] : ''),
-            'max_items' => isset($attributes['maxItems']) ? absint($attributes['maxItems']) : (isset($settings['max_items']) ? absint($settings['max_items']) : 6),
+            'max_items' => isset($attributes['maxItems']) ? absint($attributes['maxItems']) : (isset($settings['max_items']) ? absint($settings['max_items']) : 0),
             'layout' => isset($attributes['layout']) ? sanitize_key($attributes['layout']) : (isset($settings['layout']) ? $settings['layout'] : 'grid'),
             'show_title' => array_key_exists('showTitle', $attributes) ? (bool) $attributes['showTitle'] : (isset($settings['show_title']) ? (bool) $settings['show_title'] : true),
         ));
@@ -139,7 +148,7 @@ class MG_Design_Gallery {
                 ),
                 'maxItems' => array(
                     'type' => 'number',
-                    'default' => 6,
+                    'default' => 0,
                 ),
                 'layout' => array(
                     'type' => 'string',
@@ -173,12 +182,13 @@ class MG_Design_Gallery {
             return '';
         }
 
-        $items = self::collect_items($product_id, isset($settings['max_items']) ? absint($settings['max_items']) : 6);
+        $items = self::collect_items($product_id, isset($settings['max_items']) ? absint($settings['max_items']) : 0);
         if (empty($items)) {
             return '';
         }
 
         wp_enqueue_style('mg-design-gallery');
+        wp_enqueue_script('mg-design-gallery');
 
         $layout = isset($settings['layout']) ? sanitize_key($settings['layout']) : 'grid';
         $layout_class = 'mg-design-gallery--' . $layout;
@@ -187,24 +197,32 @@ class MG_Design_Gallery {
 
         ob_start();
         ?>
-        <section class="mg-design-gallery <?php echo esc_attr($layout_class); ?>">
+        <section class="mg-design-gallery <?php echo esc_attr($layout_class); ?>" data-mg-gallery="true">
             <?php if ($show_title && $title !== '') : ?>
                 <header class="mg-design-gallery__header">
                     <h2 class="mg-design-gallery__title"><?php echo esc_html($title); ?></h2>
                 </header>
             <?php endif; ?>
-            <div class="mg-design-gallery__items">
-                <?php foreach ($items as $item) : ?>
-                    <article class="mg-design-gallery__item">
-                        <div class="mg-design-gallery__thumb">
-                            <img src="<?php echo esc_url($item['image']); ?>" alt="<?php echo esc_attr($item['alt']); ?>" loading="lazy" decoding="async" />
-                        </div>
-                        <div class="mg-design-gallery__meta">
-                            <div class="mg-design-gallery__type"><?php echo esc_html($item['type_label']); ?></div>
-                            <div class="mg-design-gallery__color"><?php echo esc_html($item['color_label']); ?></div>
-                        </div>
-                    </article>
-                <?php endforeach; ?>
+            <div class="mg-design-gallery__viewport">
+                <button type="button" class="mg-design-gallery__nav mg-design-gallery__nav--prev" aria-label="<?php esc_attr_e('Előző termék', 'mgdg'); ?>" data-mg-gallery-prev>
+                    <span aria-hidden="true">‹</span>
+                </button>
+                <div class="mg-design-gallery__items" role="list">
+                    <?php foreach ($items as $item) : ?>
+                        <article class="mg-design-gallery__item" role="button" tabindex="0" data-type="<?php echo esc_attr($item['type_slug']); ?>" data-color="<?php echo esc_attr($item['color_slug']); ?>" aria-label="<?php echo esc_attr($item['alt']); ?>">
+                            <div class="mg-design-gallery__thumb">
+                                <img src="<?php echo esc_url($item['image']); ?>" alt="<?php echo esc_attr($item['alt']); ?>" loading="lazy" decoding="async" />
+                            </div>
+                            <div class="mg-design-gallery__meta">
+                                <div class="mg-design-gallery__type"><?php echo esc_html($item['type_label']); ?></div>
+                                <div class="mg-design-gallery__color"><?php echo esc_html($item['color_label']); ?></div>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="mg-design-gallery__nav mg-design-gallery__nav--next" aria-label="<?php esc_attr_e('Következő termék', 'mgdg'); ?>" data-mg-gallery-next>
+                    <span aria-hidden="true">›</span>
+                </button>
             </div>
         </section>
         <?php
@@ -218,7 +236,7 @@ class MG_Design_Gallery {
      * @param int $limit
      * @return array
      */
-    protected static function collect_items($product_id, $limit = 6) {
+    protected static function collect_items($product_id, $limit = 0) {
         if (!function_exists('wc_get_product')) {
             return array();
         }
@@ -292,6 +310,8 @@ class MG_Design_Gallery {
                 'image' => $image,
                 'type_label' => $type_label,
                 'color_label' => $color_label,
+                'type_slug' => $type_slug,
+                'color_slug' => $color_slug,
                 'alt' => trim($type_label . ' – ' . $color_label),
             );
 
@@ -468,7 +488,7 @@ class MG_Design_Gallery {
         $defaults = array(
             'enabled' => false,
             'position' => 'after_summary',
-            'max_items' => 6,
+            'max_items' => 0,
             'layout' => 'grid',
             'title' => __('Minta az összes terméken', 'mgdg'),
             'show_title' => true,
@@ -491,7 +511,7 @@ class MG_Design_Gallery {
         $clean = array(
             'enabled' => !empty($input['enabled']),
             'position' => isset($input['position']) ? sanitize_key($input['position']) : 'after_summary',
-            'max_items' => isset($input['max_items']) ? absint($input['max_items']) : 6,
+            'max_items' => isset($input['max_items']) ? absint($input['max_items']) : 0,
             'layout' => isset($input['layout']) ? sanitize_key($input['layout']) : 'grid',
             'title' => isset($input['title']) ? sanitize_text_field($input['title']) : '',
             'show_title' => isset($input['show_title']) ? (bool) $input['show_title'] : true,
@@ -502,8 +522,8 @@ class MG_Design_Gallery {
             $clean['position'] = 'after_summary';
         }
 
-        if ($clean['max_items'] <= 0) {
-            $clean['max_items'] = 6;
+        if ($clean['max_items'] < 0) {
+            $clean['max_items'] = 0;
         }
 
         if ($clean['layout'] === '') {

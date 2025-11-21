@@ -16,7 +16,7 @@
             },
             maxItems: {
                 type: 'number',
-                default: 6,
+                default: 0,
             },
             layout: {
                 type: 'string',
@@ -62,8 +62,9 @@
                             onChange: function (value) {
                                 setAttributes({ maxItems: value });
                             },
-                            min: 1,
+                            min: 0,
                             max: 12,
+                            help: __('0 = az összes elérhető termék', 'mgdg'),
                         }),
                         element.createElement(SelectControl, {
                             label: __('Elrendezés', 'mgdg'),
