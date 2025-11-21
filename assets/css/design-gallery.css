@@ -51,6 +51,11 @@
     isolation: isolate;
 }
 
+.mg-design-gallery .mg-design-gallery__nav::before,
+.mg-design-gallery .mg-design-gallery__nav::after {
+    content: '';
+}
+
 .mg-design-gallery .mg-design-gallery__nav span {
     font-size: 1.1rem;
     line-height: 1;
@@ -72,6 +77,12 @@
 
 .mg-design-gallery__nav--prev { left: 0.25rem; }
 .mg-design-gallery__nav--next { right: 0.25rem; }
+
+@media (max-width: 768px) {
+    .mg-design-gallery .mg-design-gallery__nav {
+        display: none !important;
+    }
+}
 
 .mg-design-gallery__item {
     min-width: 240px;
