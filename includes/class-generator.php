@@ -513,8 +513,22 @@ class MG_Generator {
 
             $target_w = isset($cfg['w']) ? (float)$cfg['w'] : 0.0;
             $target_h = isset($cfg['h']) ? (float)$cfg['h'] : 0.0;
-            $target_x = isset($cfg['x']) ? (float)$cfg['x'] : 0.0;
-            $target_y = isset($cfg['y']) ? (float)$cfg['y'] : 0.0;
+
+            $has_explicit_x = array_key_exists('x', $cfg);
+            $has_explicit_y = array_key_exists('y', $cfg);
+            $target_x = $has_explicit_x ? (float)$cfg['x'] : null;
+            $target_y = $has_explicit_y ? (float)$cfg['y'] : null;
+
+            if (($target_x === null || $target_x === 0.0) && $target_w > 0 && $template_width > 0) {
+                $target_x = max(0.0, ($template_width - $target_w) / 2);
+            }
+            if ($target_y === null) {
+                $target_y = 0.0;
+            }
+
+            if ($target_x === null) {
+                $target_x = 0.0;
+            }
 
             if ($placement_scale !== 1.0) {
                 $target_w *= $placement_scale;
