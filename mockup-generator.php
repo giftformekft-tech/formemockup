@@ -37,6 +37,7 @@ add_action('plugins_loaded', function(){
         'includes/class-variant-display-manager.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
+        'includes/class-design-gallery.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -119,6 +120,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Surcharge_Frontend')) {
         MG_Surcharge_Frontend::init();
+    }
+    if (class_exists('MG_Design_Gallery')) {
+        MG_Design_Gallery::init();
     }
 }, 20);
 
