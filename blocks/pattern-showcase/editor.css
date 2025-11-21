@@ -1,0 +1,101 @@
+/**
+ * Pattern Showcase Block - Editor Styles
+ *
+ * @package MockupGenerator
+ * @since 1.3.0
+ */
+
+.mg-pattern-showcase-editor-preview {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 20px;
+    min-height: 200px;
+}
+
+.mg-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.mg-preview-header h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.mg-preview-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    background: #2271b1;
+    color: #fff;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mg-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.mg-preview-item {
+    aspect-ratio: 1;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mg-preview-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.mg-preview-more {
+    aspect-ratio: 1;
+    background: #fff;
+    border: 2px dashed #ddd;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    color: #666;
+}
+
+.mg-preview-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #666;
+    font-style: italic;
+}
+
+.mg-showcase-info {
+    font-size: 13px;
+}
+
+.mg-showcase-info p {
+    margin: 8px 0;
+}
+
+.mg-showcase-info strong {
+    color: #1e1e1e;
+}
+
+/* Inspector Controls Overrides */
+.components-panel__body .mg-showcase-info p {
+    margin: 8px 0;
+    font-size: 13px;
+}

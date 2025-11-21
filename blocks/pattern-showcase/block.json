@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "mockup-generator/pattern-showcase",
+  "version": "1.0.0",
+  "title": "Pattern Showcase",
+  "category": "media",
+  "icon": "images-alt2",
+  "description": "Display a pattern across multiple product mockups in a carousel or grid layout",
+  "keywords": ["mockup", "pattern", "showcase", "carousel", "grid"],
+  "textdomain": "mockup-generator",
+  "attributes": {
+    "showcaseId": {
+      "type": "string",
+      "default": ""
+    },
+    "layout": {
+      "type": "string",
+      "enum": ["carousel", "grid"],
+      "default": ""
+    },
+    "columns": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "supports": {
+    "align": true,
+    "html": false
+  },
+  "editorScript": "file:./index.js",
+  "editorStyle": "file:./editor.css",
+  "style": "file:./style.css"
+}

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.24
+Version: 1.3.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -37,6 +37,10 @@ add_action('plugins_loaded', function(){
         'includes/class-variant-display-manager.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
+        'includes/class-pattern-showcase-manager.php',
+        'includes/class-pattern-showcase-frontend.php',
+        'includes/class-pattern-showcase-api.php',
+        'admin/class-pattern-showcase-page.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -64,6 +68,9 @@ add_action('plugins_loaded', function(){
         }
         if (class_exists('MG_Surcharge_Options_Page')) {
             MG_Surcharge_Options_Page::add_submenu_page();
+        }
+        if (class_exists('MG_Pattern_Showcase_Page')) {
+            MG_Pattern_Showcase_Page::add_submenu_page();
         }
         });
 
@@ -120,8 +127,40 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Surcharge_Frontend')) {
         MG_Surcharge_Frontend::init();
     }
+    if (class_exists('MG_Pattern_Showcase_Frontend')) {
+        MG_Pattern_Showcase_Frontend::init();
+    }
+
+    // Register Pattern Showcase REST API
+    add_action('rest_api_init', function() {
+        if (class_exists('MG_Pattern_Showcase_API')) {
+            MG_Pattern_Showcase_API::register_routes();
+        }
+    });
+
+    // Register Pattern Showcase AJAX handlers
+    if (class_exists('MG_Pattern_Showcase_Page')) {
+        MG_Pattern_Showcase_Page::handle_ajax();
+    }
+
+    // Register Gutenberg block
+    add_action('init', function() {
+        if (!function_exists('register_block_type')) {
+            return;
+        }
+        register_block_type(
+            plugin_dir_path(__FILE__) . 'blocks/pattern-showcase',
+            array(
+                'render_callback' => array('MG_Pattern_Showcase_Frontend', 'render_block'),
+            )
+        );
+    });
 }, 20);
 
 if (class_exists('MG_Variant_Display_Page')) {
     add_action('admin_enqueue_scripts', array('MG_Variant_Display_Page', 'enqueue_assets'));
+}
+
+if (class_exists('MG_Pattern_Showcase_Page')) {
+    add_action('admin_enqueue_scripts', array('MG_Pattern_Showcase_Page', 'enqueue_assets'));
 }

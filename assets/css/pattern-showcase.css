@@ -1,0 +1,490 @@
+/**
+ * Pattern Showcase Frontend Styles
+ *
+ * Mobile-first responsive design
+ *
+ * @package MockupGenerator
+ * @since 1.3.0
+ */
+
+/* ===================================
+   Base Styles (Mobile First)
+   =================================== */
+
+.mg-pattern-showcase {
+    width: 100%;
+    margin: 2rem 0;
+    position: relative;
+}
+
+.mg-showcase-category {
+    margin-bottom: 3rem;
+}
+
+.mg-category-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e0e0e0;
+    color: #333;
+}
+
+/* ===================================
+   Mockup Card (Shared)
+   =================================== */
+
+.mg-mockup-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.mg-mockup-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.mg-mockup-image {
+    width: 100%;
+    position: relative;
+    padding-top: 100%; /* Square aspect ratio */
+    background: #f5f5f5;
+    overflow: hidden;
+}
+
+.mg-mockup-image img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: opacity 0.3s ease;
+}
+
+.mg-mockup-image img:not(.loaded) {
+    opacity: 0.5;
+}
+
+.mg-mockup-image img.loaded {
+    opacity: 1;
+}
+
+.mg-mockup-info {
+    padding: 1rem;
+    text-align: center;
+}
+
+.mg-mockup-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    color: #333;
+}
+
+.mg-mockup-color {
+    font-size: 0.875rem;
+    color: #666;
+    margin: 0;
+}
+
+/* ===================================
+   Carousel Layout
+   =================================== */
+
+.mg-carousel-wrapper {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    padding: 0 2rem; /* Space for nav buttons on mobile */
+}
+
+.mg-carousel-container {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    transition: height 0.3s ease;
+}
+
+.mg-carousel-track {
+    display: flex;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+}
+
+.mg-carousel-track.dragging {
+    cursor: grabbing;
+    transition: none; /* Disable transition during drag */
+}
+
+.mg-carousel-item {
+    flex: 0 0 100%;
+    min-width: 0;
+    padding: 0 0.5rem;
+}
+
+/* Carousel Navigation Buttons */
+.mg-carousel-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ddd;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.mg-carousel-nav:hover:not(:disabled) {
+    background: #fff;
+    border-color: #333;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.mg-carousel-nav:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.mg-carousel-prev {
+    left: 0;
+}
+
+.mg-carousel-next {
+    right: 0;
+}
+
+.mg-nav-icon {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #333;
+    line-height: 1;
+}
+
+/* Carousel Dots */
+.mg-carousel-dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.mg-carousel-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ddd;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.mg-carousel-dot:hover {
+    background: #999;
+}
+
+.mg-carousel-dot.active {
+    background: #333;
+    width: 12px;
+    height: 12px;
+}
+
+/* ===================================
+   Grid Layout
+   =================================== */
+
+.mg-grid-container {
+    display: grid;
+    grid-template-columns: repeat(var(--mg-grid-columns, 4), 1fr);
+    gap: 1.5rem;
+    width: 100%;
+}
+
+.mg-grid-item {
+    /* Grid items are auto-sized */
+}
+
+/* ===================================
+   Responsive Breakpoints
+   =================================== */
+
+/* Small Mobile (< 480px) */
+@media (max-width: 479px) {
+    .mg-category-title {
+        font-size: 1.25rem;
+    }
+
+    .mg-carousel-wrapper {
+        padding: 0 1.5rem;
+    }
+
+    .mg-carousel-nav {
+        width: 36px;
+        height: 36px;
+    }
+
+    .mg-nav-icon {
+        font-size: 1.125rem;
+    }
+
+    .mg-grid-container {
+        grid-template-columns: 1fr; /* Single column on small mobile */
+        gap: 1rem;
+    }
+
+    .mg-mockup-card {
+        max-width: 320px;
+        margin: 0 auto;
+    }
+}
+
+/* Mobile (480px - 767px) */
+@media (min-width: 480px) and (max-width: 767px) {
+    .mg-grid-container {
+        grid-template-columns: repeat(2, 1fr); /* 2 columns */
+        gap: 1.25rem;
+    }
+
+    .mg-carousel-item {
+        padding: 0 0.75rem;
+    }
+}
+
+/* Tablet (768px - 1023px) */
+@media (min-width: 768px) {
+    .mg-category-title {
+        font-size: 1.75rem;
+    }
+
+    .mg-carousel-wrapper {
+        padding: 0 3rem;
+    }
+
+    .mg-carousel-nav {
+        width: 48px;
+        height: 48px;
+    }
+
+    .mg-nav-icon {
+        font-size: 1.5rem;
+    }
+
+    .mg-carousel-item {
+        padding: 0 1rem;
+    }
+
+    .mg-grid-container {
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 2rem;
+    }
+
+    /* Override grid columns on tablet if specified */
+    .mg-grid-container[style*="--mg-grid-columns: 2"] {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .mg-grid-container[style*="--mg-grid-columns: 3"] {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* Desktop (1024px+) */
+@media (min-width: 1024px) {
+    .mg-carousel-wrapper {
+        padding: 0 4rem;
+    }
+
+    .mg-carousel-nav {
+        width: 52px;
+        height: 52px;
+    }
+
+    /* Show multiple items in carousel on large screens (optional) */
+    .mg-layout-carousel.mg-multi-item .mg-carousel-item {
+        flex: 0 0 33.333%;
+    }
+
+    .mg-grid-container {
+        gap: 2.5rem;
+    }
+
+    /* Respect custom grid columns on desktop */
+    .mg-grid-container[style*="--mg-grid-columns: 4"] {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .mg-grid-container[style*="--mg-grid-columns: 5"] {
+        grid-template-columns: repeat(5, 1fr);
+    }
+
+    .mg-grid-container[style*="--mg-grid-columns: 6"] {
+        grid-template-columns: repeat(6, 1fr);
+    }
+}
+
+/* Large Desktop (1400px+) */
+@media (min-width: 1400px) {
+    .mg-pattern-showcase {
+        max-width: 1400px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .mg-carousel-wrapper {
+        padding: 0 5rem;
+    }
+}
+
+/* ===================================
+   Touch Optimization
+   =================================== */
+
+@media (hover: none) and (pointer: coarse) {
+    /* Touch devices - larger tap targets */
+    .mg-carousel-nav {
+        width: 48px;
+        height: 48px;
+    }
+
+    .mg-carousel-dot {
+        width: 12px;
+        height: 12px;
+    }
+
+    .mg-carousel-dot.active {
+        width: 14px;
+        height: 14px;
+    }
+
+    /* Remove hover effects on touch devices */
+    .mg-mockup-card:hover {
+        transform: none;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+}
+
+/* ===================================
+   Loading States
+   =================================== */
+
+.mg-mockup-image img[loading="lazy"] {
+    background: linear-gradient(
+        90deg,
+        #f0f0f0 25%,
+        #e0e0e0 50%,
+        #f0f0f0 75%
+    );
+    background-size: 200% 100%;
+    animation: mg-loading 1.5s infinite;
+}
+
+@keyframes mg-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* ===================================
+   Accessibility
+   =================================== */
+
+.mg-carousel-nav:focus,
+.mg-carousel-dot:focus {
+    outline: 2px solid #4A90E2;
+    outline-offset: 2px;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    .mg-carousel-track,
+    .mg-mockup-card,
+    .mg-carousel-nav,
+    .mg-carousel-dot {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* ===================================
+   Print Styles
+   =================================== */
+
+@media print {
+    .mg-carousel-nav,
+    .mg-carousel-dots {
+        display: none;
+    }
+
+    .mg-carousel-track {
+        display: block;
+    }
+
+    .mg-carousel-item {
+        page-break-inside: avoid;
+        margin-bottom: 1rem;
+    }
+
+    .mg-grid-container {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ===================================
+   Dark Mode Support (Optional)
+   =================================== */
+
+@media (prefers-color-scheme: dark) {
+    .mg-mockup-card {
+        background: #1e1e1e;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .mg-mockup-image {
+        background: #2a2a2a;
+    }
+
+    .mg-mockup-title {
+        color: #f0f0f0;
+    }
+
+    .mg-mockup-color {
+        color: #b0b0b0;
+    }
+
+    .mg-category-title {
+        color: #f0f0f0;
+        border-bottom-color: #444;
+    }
+
+    .mg-carousel-nav {
+        background: rgba(30, 30, 30, 0.95);
+        border-color: #444;
+    }
+
+    .mg-nav-icon {
+        color: #f0f0f0;
+    }
+
+    .mg-carousel-dot {
+        background: #555;
+    }
+
+    .mg-carousel-dot.active {
+        background: #f0f0f0;
+    }
+}

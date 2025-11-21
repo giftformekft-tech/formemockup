@@ -1,0 +1,23 @@
+/**
+ * Pattern Showcase Block - Frontend Styles
+ *
+ * These styles are loaded both in editor and frontend
+ *
+ * @package MockupGenerator
+ * @since 1.3.0
+ */
+
+/* Block alignment support */
+.wp-block-mockup-generator-pattern-showcase {
+    margin-bottom: 2rem;
+}
+
+.wp-block-mockup-generator-pattern-showcase.alignwide {
+    max-width: var(--wp--style--global--wide-size, 1200px);
+}
+
+.wp-block-mockup-generator-pattern-showcase.alignfull {
+    max-width: 100%;
+}
+
+/* Additional frontend styles are loaded via pattern-showcase.css */
