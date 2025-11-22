@@ -811,6 +811,8 @@
         var hasColor = !!colorHex;
         var watermarkText = this.getText('previewWatermark', 'www.forme.hu');
 
+        var usingCanvas = this.preview.useCanvas && hasPattern;
+
         if (this.preview.$content) {
             this.preview.$content.css('background-color', hasColor ? colorHex : '');
         }
@@ -819,16 +821,24 @@
             this.applyPreviewWatermark(hasPattern, colorHex, watermarkText);
         }
 
-        if (this.preview.useCanvas) {
+        if (usingCanvas) {
             this.queueCanvasRender(pattern, colorHex, watermarkText);
+            if (this.preview.$canvas) {
+                this.preview.$canvas.show();
+            }
             if (this.preview.$image) {
                 this.preview.$image.hide();
             }
-        } else if (hasPattern && this.preview.$image) {
-            this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
-            this.preview.$image.show();
-        } else if (this.preview.$image) {
-            this.preview.$image.hide();
+        } else {
+            if (this.preview.$canvas) {
+                this.preview.$canvas.hide();
+            }
+            if (hasPattern && this.preview.$image) {
+                this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
+                this.preview.$image.show();
+            } else if (this.preview.$image) {
+                this.preview.$image.hide();
+            }
         }
 
         if (this.preview.$fallback) {
