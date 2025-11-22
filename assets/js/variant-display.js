@@ -822,13 +822,10 @@
             return;
         }
 
-        var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
-        if (!$galleryAnchor.length) {
-            $galleryAnchor = this.$variantWrapper || this.$form;
-        }
-
         var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
         this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
 
         var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
         var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
@@ -872,8 +869,17 @@
             }
         });
 
-        if ($galleryAnchor && $galleryAnchor.length) {
-            $galleryAnchor.after($button);
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
         }
 
         this.refreshPreviewState();
