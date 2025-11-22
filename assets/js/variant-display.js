@@ -767,16 +767,16 @@
         return '';
     };
 
-    VariantDisplay.prototype.getVariationMockup = function(variationId) {
+    VariantDisplay.prototype.getVariationPattern = function(variationId) {
         var visuals = this.config && this.config.visuals ? this.config.visuals : {};
-        if (variationId && visuals.variationMockups && visuals.variationMockups[variationId]) {
-            return visuals.variationMockups[variationId];
+        if (variationId && visuals.variationPatterns && visuals.variationPatterns[variationId]) {
+            return visuals.variationPatterns[variationId];
         }
         var defaults = this.getVisualDefaults();
-        if (defaults && defaults.mockup) {
-            return defaults.mockup;
+        if (defaults && defaults.pattern) {
+            return defaults.pattern;
         }
-        return this.preview.fallbackImage || '';
+        return '';
     };
 
     VariantDisplay.prototype.refreshPreviewState = function() {
@@ -786,16 +786,16 @@
 
         var variationId = this.preview.activeVariationId || 0;
         var colorHex = this.getVariationColor(variationId, this.state.type, this.state.color);
-        var mockup = this.getVariationMockup(variationId);
-        var hasMockup = !!mockup;
+        var pattern = this.getVariationPattern(variationId);
+        var hasPattern = !!pattern;
         var hasColor = !!colorHex;
 
         if (this.preview.$content) {
             this.preview.$content.css('background-color', hasColor ? colorHex : '');
         }
 
-        if (hasMockup && this.preview.$image) {
-            this.preview.$image.attr('src', mockup).attr('alt', this.getText('previewButton', 'Minta nagyban'));
+        if (hasPattern && this.preview.$image) {
+            this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
             this.preview.$image.show();
         } else if (this.preview.$image) {
             this.preview.$image.hide();
@@ -803,7 +803,7 @@
 
         if (this.preview.$fallback) {
             var message = '';
-            if (!hasMockup) {
+            if (!hasPattern) {
                 message = this.getText('previewUnavailable', 'Ehhez a variációhoz nem érhető el minta.');
             } else if (!hasColor) {
                 message = this.getText('previewNoColor', 'Ehhez a variációhoz nem található háttérszín.');
@@ -812,8 +812,8 @@
         }
 
         if (this.preview.$button) {
-            this.preview.$button.toggleClass('is-disabled', !hasMockup);
-            this.preview.$button.attr('aria-disabled', hasMockup ? 'false' : 'true');
+            this.preview.$button.toggleClass('is-disabled', !hasPattern);
+            this.preview.$button.attr('aria-disabled', hasPattern ? 'false' : 'true');
         }
     };
 
@@ -876,11 +876,6 @@
             $galleryAnchor.after($button);
         }
 
-        var $fallbackImage = $('.woocommerce-product-gallery__image img').first();
-        if ($fallbackImage && $fallbackImage.attr('src')) {
-            this.preview.fallbackImage = $fallbackImage.attr('src');
-        }
-
         this.refreshPreviewState();
     };
 
@@ -911,12 +906,6 @@
         }
         if (variation.variation_id) {
             this.preview.activeVariationId = variation.variation_id;
-        }
-        if (variation.image && (variation.image.full_src || variation.image.src)) {
-            var url = variation.image.full_src || variation.image.src;
-            if (this.config && this.config.visuals && this.config.visuals.variationMockups) {
-                this.config.visuals.variationMockups[variation.variation_id] = url;
-            }
         }
         this.refreshPreviewState();
     };

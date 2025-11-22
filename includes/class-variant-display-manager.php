@@ -322,10 +322,14 @@ class MG_Variant_Display_Manager {
             'defaults' => array(
                 'color' => '',
                 'mockup' => '',
+                'pattern' => '',
             ),
             'variationColors' => array(),
             'variationMockups' => array(),
+            'variationPatterns' => array(),
         );
+
+        $base_pattern = self::resolve_design_url($product->get_id());
 
         $available = $product->get_available_variations();
         if (is_array($available)) {
@@ -351,6 +355,14 @@ class MG_Variant_Display_Manager {
                         $visuals['variationMockups'][$variation_id] = $mockup;
                     }
                 }
+
+                $pattern_url = self::resolve_design_url($variation_id);
+                if ($pattern_url === '' && $base_pattern !== '') {
+                    $pattern_url = $base_pattern;
+                }
+                if ($pattern_url !== '') {
+                    $visuals['variationPatterns'][$variation_id] = $pattern_url;
+                }
             }
         }
 
@@ -369,7 +381,44 @@ class MG_Variant_Display_Manager {
             $visuals['defaults']['mockup'] = $visuals['variationMockups'][$default_variation_id];
         }
 
+        if ($default_variation_id && isset($visuals['variationPatterns'][$default_variation_id])) {
+            $visuals['defaults']['pattern'] = $visuals['variationPatterns'][$default_variation_id];
+        } elseif ($visuals['defaults']['pattern'] === '' && $base_pattern !== '') {
+            $visuals['defaults']['pattern'] = $base_pattern;
+        }
+
         return $visuals;
+    }
+
+    protected static function resolve_design_url($post_id) {
+        $post_id = absint($post_id);
+        if ($post_id <= 0) {
+            return '';
+        }
+
+        $attachment_id = (int) get_post_meta($post_id, '_mg_last_design_attachment', true);
+        if ($attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+            $attachment_url = wp_get_attachment_url($attachment_id);
+            if ($attachment_url) {
+                return esc_url_raw($attachment_url);
+            }
+        }
+
+        $design_path = get_post_meta($post_id, '_mg_last_design_path', true);
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        if ($design_path !== '' && file_exists($design_path)) {
+            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+            $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
+            if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
+                $relative = ltrim(str_replace($base_dir, '', $design_path), '/');
+                $relative = str_replace('\\', '/', $relative);
+                $url = trailingslashit($base_url) . $relative;
+                return esc_url_raw($url);
+            }
+        }
+
+        return '';
     }
 
     protected static function find_matching_variation_id($available, $defaults) {
