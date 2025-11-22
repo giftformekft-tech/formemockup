@@ -18,8 +18,17 @@ class MG_Variant_Display_Manager {
      */
     protected static $language_attributes_hooked = false;
 
+    /**
+     * Archive product previews prepared for the current query.
+     *
+     * @var array
+     */
+    protected static $archive_products = array();
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
+        add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_archive_assets'), 15);
+        add_action('woocommerce_before_shop_loop_item', array(__CLASS__, 'render_archive_marker'), 5);
     }
 
     public static function enqueue_assets() {
@@ -64,6 +73,91 @@ class MG_Variant_Display_Manager {
         );
 
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
+    }
+
+    public static function enqueue_archive_assets() {
+        if (!function_exists('is_shop') || (function_exists('is_product') && is_product())) {
+            return;
+        }
+
+        $is_catalog = is_shop();
+        if (function_exists('is_product_taxonomy') && is_product_taxonomy()) {
+            $is_catalog = true;
+        }
+        if (function_exists('is_product_category') && is_product_category()) {
+            $is_catalog = true;
+        }
+        if (function_exists('is_product_tag') && is_product_tag()) {
+            $is_catalog = true;
+        }
+
+        if (!$is_catalog) {
+            return;
+        }
+
+        global $wp_query;
+        if (!$wp_query || empty($wp_query->posts)) {
+            return;
+        }
+
+        $product_ids = array();
+        foreach ($wp_query->posts as $post) {
+            if (!isset($post->post_type) || $post->post_type !== 'product') {
+                continue;
+            }
+            $product_ids[] = absint($post->ID);
+        }
+
+        $product_ids = array_values(array_filter(array_unique($product_ids)));
+        if (empty($product_ids)) {
+            return;
+        }
+
+        $config = self::build_archive_config($product_ids);
+        self::$archive_products = isset($config['products']) ? $config['products'] : array();
+
+        if (empty(self::$archive_products)) {
+            return;
+        }
+
+        $base_file = dirname(__DIR__) . '/mockup-generator.php';
+        $style_path = dirname(__DIR__) . '/assets/css/variant-display.css';
+        $script_path = dirname(__DIR__) . '/assets/js/archive-view-toggle.js';
+
+        wp_enqueue_style(
+            'mg-variant-display',
+            plugins_url('assets/css/variant-display.css', $base_file),
+            array(),
+            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+        );
+
+        wp_enqueue_script(
+            'mg-archive-view-toggle',
+            plugins_url('assets/js/archive-view-toggle.js', $base_file),
+            array('jquery'),
+            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            true
+        );
+
+        wp_localize_script('mg-archive-view-toggle', 'MG_ARCHIVE_PREVIEW', $config);
+    }
+
+    public static function render_archive_marker() {
+        if (empty(self::$archive_products)) {
+            return;
+        }
+
+        global $product;
+        if (!$product || !is_a($product, 'WC_Product')) {
+            return;
+        }
+
+        $product_id = $product->get_id();
+        if (!$product_id || !isset(self::$archive_products[$product_id])) {
+            return;
+        }
+
+        echo '<span class="mg-archive-product-marker" data-product-id="' . esc_attr($product_id) . '" aria-hidden="true"></span>';
     }
 
     protected static function hook_preload_assets() {
@@ -316,6 +410,290 @@ class MG_Variant_Display_Manager {
             'descriptionTargets' => $description_targets,
             'visuals' => $visuals,
         );
+    }
+
+    protected static function build_archive_config($product_ids) {
+        $products = array();
+        if (!is_array($product_ids)) {
+            return array('products' => $products);
+        }
+
+        $catalog = self::get_catalog_index();
+        if (empty($catalog)) {
+            return array('products' => $products);
+        }
+
+        $settings = self::get_settings($catalog);
+
+        foreach ($product_ids as $product_id) {
+            $product = wc_get_product($product_id);
+            if (!$product || !$product->is_type('variable')) {
+                continue;
+            }
+
+            $entry = self::build_archive_entry($product, $catalog, $settings);
+            if (!empty($entry)) {
+                $products[$product_id] = $entry;
+            }
+        }
+
+        return array(
+            'products' => $products,
+            'text' => array(
+                'viewLabel' => __('Nézet', 'mgvd'),
+                'mockup' => __('Mockup', 'mgvd'),
+                'pattern' => __('Minta', 'mgvd'),
+                'patternMissing' => __('Ehhez a termékhez nem érhető el minta.', 'mgvd'),
+                'colorMissing' => __('Ehhez a termékhez nem található háttérszín.', 'mgvd'),
+            ),
+            'storageKey' => 'mgArchiveViewMode',
+        );
+
+        $base_pattern = self::resolve_design_url($product->get_id());
+
+        $available = $product->get_available_variations();
+        if (is_array($available)) {
+            foreach ($available as $variation) {
+                if (!is_array($variation)) {
+                    continue;
+                }
+                $variation_id = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+                $attributes = isset($variation['attributes']) ? $variation['attributes'] : array();
+                $type_slug = isset($attributes['attribute_pa_termektipus']) ? sanitize_title($attributes['attribute_pa_termektipus']) : '';
+                $color_slug = isset($attributes['attribute_pa_szin']) ? sanitize_title($attributes['attribute_pa_szin']) : '';
+
+                if ($variation_id && $type_slug && $color_slug && isset($types_payload[$type_slug]['colors'][$color_slug]['swatch'])) {
+                    $swatch = $types_payload[$type_slug]['colors'][$color_slug]['swatch'];
+                    if ($swatch !== '') {
+                        $visuals['variationColors'][$variation_id] = $swatch;
+                    }
+                }
+
+                if ($variation_id) {
+                    $mockup = self::extract_variation_image($variation);
+                    if ($mockup !== '') {
+                        $visuals['variationMockups'][$variation_id] = $mockup;
+                    }
+                }
+
+                $pattern_url = self::resolve_design_url($variation_id);
+                if ($pattern_url === '' && $base_pattern !== '') {
+                    $pattern_url = $base_pattern;
+                }
+                if ($pattern_url !== '') {
+                    $visuals['variationPatterns'][$variation_id] = $pattern_url;
+                }
+            }
+        }
+
+        $default_color = '';
+        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
+        $default_color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
+        if ($default_type && $default_color_slug && isset($types_payload[$default_type]['colors'][$default_color_slug]['swatch'])) {
+            $default_color = $types_payload[$default_type]['colors'][$default_color_slug]['swatch'];
+        }
+        if ($default_color !== '') {
+            $visuals['defaults']['color'] = $default_color;
+        }
+
+        $default_variation_id = self::find_matching_variation_id($available, $defaults);
+        if ($default_variation_id && isset($visuals['variationMockups'][$default_variation_id])) {
+            $visuals['defaults']['mockup'] = $visuals['variationMockups'][$default_variation_id];
+        }
+
+        if ($default_variation_id && isset($visuals['variationPatterns'][$default_variation_id])) {
+            $visuals['defaults']['pattern'] = $visuals['variationPatterns'][$default_variation_id];
+        } elseif ($visuals['defaults']['pattern'] === '' && $base_pattern !== '') {
+            $visuals['defaults']['pattern'] = $base_pattern;
+        }
+
+        return $visuals;
+    }
+
+    protected static function resolve_design_url($post_id) {
+        $post_id = absint($post_id);
+        if ($post_id <= 0) {
+            return '';
+        }
+
+        $attachment_id = (int) get_post_meta($post_id, '_mg_last_design_attachment', true);
+        if ($attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+            $attachment_url = wp_get_attachment_url($attachment_id);
+            if ($attachment_url) {
+                return esc_url_raw($attachment_url);
+            }
+        }
+
+        $design_path = get_post_meta($post_id, '_mg_last_design_path', true);
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        if ($design_path !== '' && file_exists($design_path)) {
+            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+            $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
+            if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
+                $relative = ltrim(str_replace($base_dir, '', $design_path), '/');
+                $relative = str_replace('\\', '/', $relative);
+                $url = trailingslashit($base_url) . $relative;
+                return esc_url_raw($url);
+            }
+        }
+
+        return '';
+    }
+
+    protected static function find_matching_variation_id($available, $defaults) {
+        if (!is_array($available) || empty($defaults)) {
+            return 0;
+        }
+
+        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
+        $default_color = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
+        $default_size = isset($defaults['meret']) ? sanitize_text_field($defaults['meret']) : '';
+
+        foreach ($available as $variation) {
+            if (!is_array($variation)) {
+                continue;
+            }
+            $variation_id = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+            if (!$variation_id) {
+                continue;
+            }
+            $attributes = isset($variation['attributes']) ? $variation['attributes'] : array();
+            $type_slug = isset($attributes['attribute_pa_termektipus']) ? sanitize_title($attributes['attribute_pa_termektipus']) : '';
+            $color_slug = isset($attributes['attribute_pa_szin']) ? sanitize_title($attributes['attribute_pa_szin']) : '';
+            $size_label = isset($attributes['attribute_meret']) ? sanitize_text_field($attributes['attribute_meret']) : '';
+
+            if ($default_type && $type_slug !== $default_type) {
+                continue;
+            }
+            if ($default_color && $color_slug !== $default_color) {
+                continue;
+            }
+            if ($default_size && $size_label !== $default_size) {
+                continue;
+            }
+
+            return $variation_id;
+        }
+
+        return 0;
+    }
+
+    protected static function extract_variation_image($variation) {
+        if (!is_array($variation)) {
+            return '';
+        }
+
+        if (!empty($variation['image']) && is_array($variation['image'])) {
+            if (!empty($variation['image']['full_src'])) {
+                return esc_url_raw($variation['image']['full_src']);
+            }
+            if (!empty($variation['image']['src'])) {
+                return esc_url_raw($variation['image']['src']);
+            }
+        }
+
+        if (!empty($variation['image_id'])) {
+            $image_url = wp_get_attachment_image_url($variation['image_id'], 'full');
+            if ($image_url) {
+                return esc_url_raw($image_url);
+            }
+        }
+
+        return '';
+    }
+
+    protected static function build_archive_entry($product, $catalog, $settings) {
+        $defaults = $product->get_default_attributes();
+        $available = $product->get_available_variations();
+
+        $variation_id = self::determine_archive_default_variation($available, $defaults);
+        $variation = self::find_variation_array_by_id($available, $variation_id);
+
+        $pattern = '';
+        $mockup = '';
+        $base_pattern = self::resolve_design_url($product->get_id());
+        if (!empty($variation)) {
+            $pattern = self::resolve_design_url($variation_id);
+            $mockup = self::extract_variation_image($variation);
+        }
+
+        if ($pattern === '' && $base_pattern !== '') {
+            $pattern = $base_pattern;
+        }
+
+        $color = self::lookup_archive_color($defaults, $catalog, $settings);
+
+        if ($pattern === '' && $mockup === '' && $color === '') {
+            return array();
+        }
+
+        return array(
+            'pattern' => $pattern,
+            'color' => $color,
+            'mockup' => $mockup,
+        );
+    }
+
+    protected static function determine_archive_default_variation($available, $defaults) {
+        $default = self::find_matching_variation_id($available, $defaults);
+        if ($default) {
+            return $default;
+        }
+
+        if (is_array($available)) {
+            foreach ($available as $variation) {
+                if (!is_array($variation)) {
+                    continue;
+                }
+                $candidate = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+                if ($candidate) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    protected static function lookup_archive_color($defaults, $catalog, $settings) {
+        $type_slug = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
+        $color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
+
+        if ($type_slug === '' || $color_slug === '') {
+            return '';
+        }
+
+        if (!isset($catalog[$type_slug]['colors'][$color_slug])) {
+            return '';
+        }
+
+        $default_hex = isset($catalog[$type_slug]['colors'][$color_slug]['hex']) ? $catalog[$type_slug]['colors'][$color_slug]['hex'] : '';
+        $color_settings = self::get_color_settings($settings, $type_slug, $color_slug, $default_hex);
+
+        if (!empty($color_settings['swatch'])) {
+            return $color_settings['swatch'];
+        }
+
+        return '';
+    }
+
+    protected static function find_variation_array_by_id($available, $variation_id) {
+        if (!is_array($available) || !$variation_id) {
+            return array();
+        }
+
+        foreach ($available as $variation) {
+            if (!is_array($variation)) {
+                continue;
+            }
+            $candidate = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+            if ($candidate === $variation_id) {
+                return $variation;
+            }
+        }
+
+        return array();
     }
 
     protected static function build_visual_map($product, $types_payload, $defaults) {
