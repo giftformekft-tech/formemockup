@@ -16,6 +16,7 @@
             $modal: null,
             $backdrop: null,
             $content: null,
+            $watermark: null,
             $image: null,
             $fallback: null,
             $close: null,
@@ -794,6 +795,10 @@
             this.preview.$content.css('background-color', hasColor ? colorHex : '');
         }
 
+        if (this.preview.$watermark) {
+            this.applyPreviewWatermark(hasPattern, colorHex);
+        }
+
         if (hasPattern && this.preview.$image) {
             this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
             this.preview.$image.show();
@@ -830,12 +835,13 @@
         var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
         var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
         var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
         var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
         var $body = $('<div class="mg-pattern-preview__body" />');
-        var $image = $('<img class="mg-pattern-preview__image" alt="Minta nagy felbontásban" />');
+        var $image = $('<img class="mg-pattern-preview__image" alt="Minta nagy felbontásban" draggable="false" />');
         var $fallback = $('<div class="mg-pattern-preview__fallback" />');
 
-        $body.append($image).append($fallback);
+        $body.append($image).append($fallback).append($watermark);
         $content.append($close).append($body);
         $modal.append($backdrop).append($content);
 
@@ -844,6 +850,7 @@
         this.preview.$modal = $modal;
         this.preview.$backdrop = $backdrop;
         this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
         this.preview.$image = $image;
         this.preview.$fallback = $fallback;
         this.preview.$close = $close;
@@ -869,6 +876,10 @@
             }
         });
 
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
         var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
         if ($typeSection && $typeSection.length) {
             $typeSection.before($buttonWrap);
@@ -883,6 +894,39 @@
         }
 
         this.refreshPreviewState();
+    };
+
+    VariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex) {
+        if (!this.preview.$watermark) {
+            return;
+        }
+
+        var watermarkText = this.getText('previewWatermark', 'Mintavédelem');
+        if (!hasPattern) {
+            this.preview.$watermark.removeAttr('style').removeClass('is-visible');
+            return;
+        }
+
+        var fillColor = '#0f172a';
+        if (colorHex && typeof colorHex === 'string') {
+            fillColor = colorHex;
+        }
+
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">' +
+            '<rect width="360" height="260" fill="' + fillColor + '" fill-opacity="0" />' +
+            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="rgba(255,255,255,0.18)" font-family="sans-serif" font-size="26" font-weight="600" transform="rotate(-24 180 130)">' +
+            watermarkText +
+            '</text>' +
+            '</svg>';
+
+        var dataUrl = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+
+        this.preview.$watermark
+            .addClass('is-visible')
+            .css({
+                'background-image': dataUrl,
+                'background-size': '360px 260px'
+            });
     };
 
     VariantDisplay.prototype.showPatternPreview = function() {
