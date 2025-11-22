@@ -42,7 +42,7 @@
         return null;
     }
 
-    function buildToggle(entry) {
+    function buildToggle(hasPatterns) {
         var $wrapper = $('<div class="mg-archive-toggle" role="group" />');
         var $label = $('<span class="mg-archive-toggle__label" />').text(texts.viewLabel || 'Nézet');
         var $mockupBtn = $('<button type="button" class="mg-archive-toggle__btn" />')
@@ -52,7 +52,7 @@
             .attr('data-mode', 'pattern')
             .text(texts.pattern || 'Minta');
 
-        if (!entry.pattern) {
+        if (!hasPatterns) {
             $patternBtn.attr('aria-disabled', 'true').addClass('is-disabled');
         }
 
@@ -183,14 +183,13 @@
         img.src = entry.pattern;
     }
 
-    function applyMode($card, mode, entry, toggle) {
+    function applyMode($card, mode, entry) {
         var isPattern = (mode === 'pattern' && entry.pattern);
         $card.toggleClass('mg-archive-mode-pattern', !!isPattern);
         $card.toggleClass('mg-archive-mode-mockup', !isPattern);
-        applyActive(toggle, isPattern ? 'pattern' : 'mockup');
     }
 
-    function initCard($card, initialMode) {
+    function initCard($card) {
         var productId = findProductId($card);
         if (!productId || !products[productId]) {
             return;
@@ -208,36 +207,11 @@
         $card.addClass('mg-archive-view-card');
         $link.addClass('mg-archive-view__link');
 
-        var toggle = buildToggle(entry);
-        $card.prepend(toggle.container);
-
         var $mockup = wrapThumbnail($link);
         var pattern = createPatternContainer($link, $mockup);
 
-        var mode = initialMode === 'pattern' && entry.pattern ? 'pattern' : 'mockup';
-
-        function setMode(nextMode) {
-            mode = (nextMode === 'pattern' && entry.pattern) ? 'pattern' : 'mockup';
-            saveMode(mode);
-            applyMode($card, mode, entry, toggle);
-            if (mode === 'pattern') {
-                renderPattern(entry, pattern.canvas, pattern.fallback);
-            }
-        }
-
-        toggle.mockupBtn.on('click', function(event){
-            event.preventDefault();
-            setMode('mockup');
-        });
-        toggle.patternBtn.on('click', function(event){
-            event.preventDefault();
-            if ($(this).is('[aria-disabled="true"]')) {
-                return;
-            }
-            setMode('pattern');
-        });
-
-        setMode(mode);
+        $card.data('mgArchivePattern', pattern);
+        $card.data('mgArchiveEntry', entry);
         $card.data('mgArchiveBound', true);
     }
 
@@ -247,8 +221,63 @@
         }
 
         var initialMode = getStoredMode();
-        $('.woocommerce ul.products li.product, ul.products li.product, .products li.product').each(function(){
-            initCard($(this), initialMode);
+        var hasPatterns = false;
+        var $cards = $('.woocommerce ul.products li.product, ul.products li.product, .products li.product');
+
+        $cards.each(function(){
+            var $card = $(this);
+            var productId = findProductId($card);
+            if (productId && products[productId] && products[productId].pattern) {
+                hasPatterns = true;
+            }
+            initCard($card);
         });
+
+        if (!hasPatterns) {
+            saveMode('mockup');
+            initialMode = 'mockup';
+        }
+
+        var toggle = buildToggle(hasPatterns);
+        var $grid = $('.woocommerce ul.products, ul.products, .products').first();
+
+        if ($grid.length) {
+            $grid.before(toggle.container);
+        }
+
+        function setMode(mode) {
+            var targetMode = (mode === 'pattern' && hasPatterns) ? 'pattern' : 'mockup';
+            saveMode(targetMode);
+            applyActive(toggle, targetMode);
+
+            $cards.each(function(){
+                var $card = $(this);
+                if (!$card.data('mgArchiveBound')) {
+                    return;
+                }
+                var entry = $card.data('mgArchiveEntry');
+                var pattern = $card.data('mgArchivePattern');
+                var cardMode = (targetMode === 'pattern' && entry.pattern) ? 'pattern' : 'mockup';
+                applyMode($card, cardMode, entry);
+                if (cardMode === 'pattern' && pattern && pattern.canvas) {
+                    renderPattern(entry, pattern.canvas, pattern.fallback);
+                }
+            });
+        }
+
+        toggle.mockupBtn.on('click', function(event){
+            event.preventDefault();
+            setMode('mockup');
+        });
+
+        toggle.patternBtn.on('click', function(event){
+            event.preventDefault();
+            if ($(this).is('[aria-disabled="true"]')) {
+                return;
+            }
+            setMode('pattern');
+        });
+
+        setMode(initialMode);
     });
 })(jQuery);
