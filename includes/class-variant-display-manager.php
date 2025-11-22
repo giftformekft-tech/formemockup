@@ -76,7 +76,12 @@ class MG_Variant_Display_Manager {
     }
 
     public static function enqueue_archive_assets() {
-        if (!function_exists('is_shop') || (function_exists('is_product') && is_product())) {
+        $is_ajax = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
+        if (is_admin() && !$is_ajax) {
+            return;
+        }
+
+        if (!function_exists('is_shop') || !function_exists('wc_get_product') || (function_exists('is_product') && is_product())) {
             return;
         }
 
@@ -96,7 +101,7 @@ class MG_Variant_Display_Manager {
         }
 
         global $wp_query;
-        if (!$wp_query || empty($wp_query->posts)) {
+        if (!$wp_query || empty($wp_query->posts) || !$wp_query->is_main_query()) {
             return;
         }
 
@@ -448,6 +453,112 @@ class MG_Variant_Display_Manager {
             ),
             'storageKey' => 'mgArchiveViewMode',
         );
+    }
+
+    protected static function build_archive_entry($product, $catalog, $settings) {
+        $defaults = $product->get_default_attributes();
+        $available = $product->get_available_variations();
+
+        $variation_id = self::determine_archive_default_variation($available, $defaults);
+        $variation = self::find_variation_array_by_id($available, $variation_id);
+
+        $pattern = '';
+        $mockup = '';
+        $base_pattern = self::resolve_design_url($product->get_id());
+        if (!empty($variation)) {
+            $pattern = self::resolve_design_url($variation_id);
+            $mockup = self::extract_variation_image($variation);
+        }
+
+        if ($pattern === '' && $base_pattern !== '') {
+            $pattern = $base_pattern;
+        }
+
+        $color = self::lookup_archive_color($defaults, $catalog, $settings);
+
+        if ($pattern === '' && $mockup === '' && $color === '') {
+            return array();
+        }
+
+        return array(
+            'pattern' => $pattern,
+            'color' => $color,
+            'mockup' => $mockup,
+        );
+    }
+
+    protected static function determine_archive_default_variation($available, $defaults) {
+        $default = self::find_matching_variation_id($available, $defaults);
+        if ($default) {
+            return $default;
+        }
+
+        if (is_array($available)) {
+            foreach ($available as $variation) {
+                if (!is_array($variation)) {
+                    continue;
+                }
+                $candidate = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+                if ($candidate) {
+                    return $candidate;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    protected static function lookup_archive_color($defaults, $catalog, $settings) {
+        $type_slug = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
+        $color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
+
+        if ($type_slug === '' || $color_slug === '') {
+            return '';
+        }
+
+        if (!isset($catalog[$type_slug]['colors'][$color_slug])) {
+            return '';
+        }
+
+        $default_hex = isset($catalog[$type_slug]['colors'][$color_slug]['hex']) ? $catalog[$type_slug]['colors'][$color_slug]['hex'] : '';
+        $color_settings = self::get_color_settings($settings, $type_slug, $color_slug, $default_hex);
+
+        if (!empty($color_settings['swatch'])) {
+            return $color_settings['swatch'];
+        }
+
+        return '';
+    }
+
+    protected static function find_variation_array_by_id($available, $variation_id) {
+        if (!is_array($available) || !$variation_id) {
+            return array();
+        }
+
+        foreach ($available as $variation) {
+            if (!is_array($variation)) {
+                continue;
+            }
+            $candidate = isset($variation['variation_id']) ? absint($variation['variation_id']) : 0;
+            if ($candidate === $variation_id) {
+                return $variation;
+            }
+        }
+
+        return array();
+    }
+
+    protected static function build_visual_map($product, $types_payload, $defaults) {
+        $visuals = array(
+            'defaults' => array(
+                'color' => '',
+                'mockup' => '',
+                'pattern' => '',
+            ),
+            'variationColors' => array(),
+            'variationMockups' => array(),
+            'variationPatterns' => array(),
+        );
 
         $base_pattern = self::resolve_design_url($product->get_id());
 
@@ -601,38 +712,6 @@ class MG_Variant_Display_Manager {
         }
 
         return '';
-    }
-
-    protected static function build_archive_entry($product, $catalog, $settings) {
-        $defaults = $product->get_default_attributes();
-        $available = $product->get_available_variations();
-
-        $variation_id = self::determine_archive_default_variation($available, $defaults);
-        $variation = self::find_variation_array_by_id($available, $variation_id);
-
-        $pattern = '';
-        $mockup = '';
-        $base_pattern = self::resolve_design_url($product->get_id());
-        if (!empty($variation)) {
-            $pattern = self::resolve_design_url($variation_id);
-            $mockup = self::extract_variation_image($variation);
-        }
-
-        if ($pattern === '' && $base_pattern !== '') {
-            $pattern = $base_pattern;
-        }
-
-        $color = self::lookup_archive_color($defaults, $catalog, $settings);
-
-        if ($pattern === '' && $mockup === '' && $color === '') {
-            return array();
-        }
-
-        return array(
-            'pattern' => $pattern,
-            'color' => $color,
-            'mockup' => $mockup,
-        );
     }
 
     protected static function determine_archive_default_variation($available, $defaults) {
