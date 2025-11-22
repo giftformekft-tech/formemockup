@@ -353,22 +353,39 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     align-items: center;
     justify-content: center;
     overflow: auto;
+    user-select: none;
 }
 
 .mg-pattern-preview__watermark {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.38;
+    opacity: 0.52;
     background-repeat: repeat;
-    mix-blend-mode: multiply;
-    filter: saturate(0.65);
+    background-position: center;
+    mix-blend-mode: soft-light;
+    filter: saturate(0.65) contrast(1.1);
     transition: opacity 0.2s ease;
     z-index: 1;
 }
 
 .mg-pattern-preview__watermark:not(.is-visible) {
     opacity: 0;
+}
+
+.mg-pattern-preview__canvas {
+    max-width: 100%;
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    display: block;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.28);
+    border-radius: 12px;
+    position: relative;
+    z-index: 0;
+    background: transparent;
+    image-rendering: auto;
+    pointer-events: none;
 }
 
 .mg-pattern-preview__image {
@@ -381,6 +398,7 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     border-radius: 12px;
     position: relative;
     z-index: 0;
+    pointer-events: none;
 }
 
 .mg-pattern-preview__fallback {

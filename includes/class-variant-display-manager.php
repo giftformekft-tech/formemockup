@@ -306,7 +306,7 @@ class MG_Variant_Display_Manager {
                 'previewClose' => __('Bezárás', 'mgvd'),
                 'previewUnavailable' => __('Ehhez a variációhoz nem érhető el minta.', 'mgvd'),
                 'previewNoColor' => __('Ehhez a variációhoz nem található háttérszín.', 'mgvd'),
-                'previewWatermark' => __('Mintavédelem', 'mgvd'),
+                'previewWatermark' => __('www.forme.hu', 'mgvd'),
             ),
             'default' => array(
                 'type' => isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '',

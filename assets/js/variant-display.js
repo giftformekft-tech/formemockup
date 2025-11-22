@@ -17,11 +17,18 @@
             $backdrop: null,
             $content: null,
             $watermark: null,
+            $canvas: null,
             $image: null,
             $fallback: null,
             $close: null,
             fallbackImage: '',
-            activeVariationId: 0
+            activeVariationId: 0,
+            useCanvas: false,
+            renderTimer: null,
+            renderQueued: false,
+            pendingPattern: '',
+            pendingColor: '',
+            pendingWatermark: ''
         };
         this.isReady = false;
         this.syncing = {
@@ -46,6 +53,18 @@
             return this.config.text[key];
         }
         return fallback;
+    };
+
+    VariantDisplay.prototype.supportsCanvas = function() {
+        if (typeof document === 'undefined') {
+            return false;
+        }
+        try {
+            var canvas = document.createElement('canvas');
+            return !!(canvas && canvas.getContext && canvas.getContext('2d'));
+        } catch (err) {
+            return false;
+        }
     };
 
     VariantDisplay.prototype.init = function() {
@@ -790,16 +809,22 @@
         var pattern = this.getVariationPattern(variationId);
         var hasPattern = !!pattern;
         var hasColor = !!colorHex;
+        var watermarkText = this.getText('previewWatermark', 'www.forme.hu');
 
         if (this.preview.$content) {
             this.preview.$content.css('background-color', hasColor ? colorHex : '');
         }
 
         if (this.preview.$watermark) {
-            this.applyPreviewWatermark(hasPattern, colorHex);
+            this.applyPreviewWatermark(hasPattern, colorHex, watermarkText);
         }
 
-        if (hasPattern && this.preview.$image) {
+        if (this.preview.useCanvas) {
+            this.queueCanvasRender(pattern, colorHex, watermarkText);
+            if (this.preview.$image) {
+                this.preview.$image.hide();
+            }
+        } else if (hasPattern && this.preview.$image) {
             this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
             this.preview.$image.show();
         } else if (this.preview.$image) {
@@ -838,10 +863,11 @@
         var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
         var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
         var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
         var $image = $('<img class="mg-pattern-preview__image" alt="Minta nagy felbontásban" draggable="false" />');
         var $fallback = $('<div class="mg-pattern-preview__fallback" />');
 
-        $body.append($image).append($fallback).append($watermark);
+        $body.append($canvas).append($image).append($fallback).append($watermark);
         $content.append($close).append($body);
         $modal.append($backdrop).append($content);
 
@@ -851,9 +877,11 @@
         this.preview.$backdrop = $backdrop;
         this.preview.$content = $content;
         this.preview.$watermark = $watermark;
+        this.preview.$canvas = $canvas;
         this.preview.$image = $image;
         this.preview.$fallback = $fallback;
         this.preview.$close = $close;
+        this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
         $button.on('click', function(){
@@ -880,6 +908,10 @@
             event.preventDefault();
         });
 
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
         var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
         if ($typeSection && $typeSection.length) {
             $typeSection.before($buttonWrap);
@@ -896,12 +928,12 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex) {
+    VariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex, watermarkText) {
         if (!this.preview.$watermark) {
             return;
         }
 
-        var watermarkText = this.getText('previewWatermark', 'Mintavédelem');
+        var safeText = watermarkText || this.getText('previewWatermark', 'www.forme.hu');
         if (!hasPattern) {
             this.preview.$watermark.removeAttr('style').removeClass('is-visible');
             return;
@@ -914,8 +946,8 @@
 
         var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">' +
             '<rect width="360" height="260" fill="' + fillColor + '" fill-opacity="0" />' +
-            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="rgba(255,255,255,0.18)" font-family="sans-serif" font-size="26" font-weight="600" transform="rotate(-24 180 130)">' +
-            watermarkText +
+            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="rgba(255,255,255,0.32)" font-family="sans-serif" font-size="26" font-weight="700" transform="rotate(-24 180 130)">' +
+            safeText +
             '</text>' +
             '</svg>';
 
@@ -923,10 +955,128 @@
 
         this.preview.$watermark
             .addClass('is-visible')
+            .text(safeText)
             .css({
                 'background-image': dataUrl,
-                'background-size': '360px 260px'
+                'background-size': '240px 180px'
             });
+    };
+
+    VariantDisplay.prototype.queueCanvasRender = function(patternUrl, colorHex, watermarkText) {
+        if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
+            return;
+        }
+
+        this.preview.pendingPattern = patternUrl || '';
+        this.preview.pendingColor = colorHex || '#0f172a';
+        this.preview.pendingWatermark = watermarkText || this.getText('previewWatermark', 'www.forme.hu');
+
+        if (this.preview.renderQueued) {
+            return;
+        }
+
+        this.preview.renderQueued = true;
+        var self = this;
+        var delay = 120;
+        this.preview.renderTimer = window.setTimeout(function(){
+            self.preview.renderQueued = false;
+            self.renderCanvasPattern();
+        }, delay);
+    };
+
+    VariantDisplay.prototype.paintCanvasWatermark = function(ctx, width, height, text) {
+        if (!ctx || !text) {
+            return;
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.24;
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+        ctx.lineWidth = 0.75;
+        ctx.font = '600 26px sans-serif';
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(-Math.PI / 8);
+        ctx.translate(-width / 2, -height / 2);
+        var stepX = 180;
+        var stepY = 140;
+        for (var y = -stepY; y < height + stepY; y += stepY) {
+            for (var x = -stepX; x < width + stepX; x += stepX) {
+                ctx.fillText(text, x, y);
+                ctx.strokeText(text, x, y);
+            }
+        }
+        ctx.restore();
+    };
+
+    VariantDisplay.prototype.renderCanvasPattern = function() {
+        if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
+            return;
+        }
+
+        var canvas = this.preview.$canvas[0];
+        if (!canvas || typeof canvas.getContext !== 'function') {
+            return;
+        }
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        var patternUrl = this.preview.pendingPattern;
+        var colorHex = this.preview.pendingColor || '#0f172a';
+        var watermarkText = this.preview.pendingWatermark || this.getText('previewWatermark', 'www.forme.hu');
+
+        if (!patternUrl) {
+            ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+            return;
+        }
+
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        var self = this;
+        var renderStart = (typeof window !== 'undefined' && window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
+
+        img.onload = function() {
+            var naturalWidth = img.naturalWidth || img.width || 1024;
+            var naturalHeight = img.naturalHeight || img.height || 1024;
+            var maxWidth = 1400;
+            var maxHeight = 1400;
+            var scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
+            if (!isFinite(scale) || scale <= 0) {
+                scale = 1;
+            }
+
+            var drawWidth = Math.max(1, Math.round(naturalWidth * scale));
+            var drawHeight = Math.max(1, Math.round(naturalHeight * scale));
+
+            canvas.width = drawWidth;
+            canvas.height = drawHeight;
+
+            ctx.clearRect(0, 0, drawWidth, drawHeight);
+            ctx.fillStyle = colorHex || '#0f172a';
+            ctx.fillRect(0, 0, drawWidth, drawHeight);
+
+            ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+
+            self.paintCanvasWatermark(ctx, drawWidth, drawHeight, watermarkText);
+
+            var renderEnd = (typeof window !== 'undefined' && window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
+            if (renderEnd - renderStart > 280) {
+                self.preview.useCanvas = false;
+                self.refreshPreviewState();
+            }
+        };
+
+        img.onerror = function() {
+            self.preview.useCanvas = false;
+            if (self.preview.$image) {
+                self.preview.$image.show();
+            }
+            self.refreshPreviewState();
+        };
+
+        img.src = patternUrl;
     };
 
     VariantDisplay.prototype.showPatternPreview = function() {
@@ -947,6 +1097,11 @@
         this.preview.$modal.removeClass('is-open').attr('aria-hidden', 'true');
         if (this.preview.$button) {
             this.preview.$button.trigger('focus');
+        }
+        if (this.preview.renderTimer) {
+            window.clearTimeout(this.preview.renderTimer);
+            this.preview.renderTimer = null;
+            this.preview.renderQueued = false;
         }
     };
 
