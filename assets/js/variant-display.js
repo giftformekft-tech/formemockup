@@ -18,7 +18,6 @@
             $content: null,
             $watermark: null,
             $canvas: null,
-            $image: null,
             $fallback: null,
             $close: null,
             fallbackImage: '',
@@ -28,7 +27,9 @@
             renderQueued: false,
             pendingPattern: '',
             pendingColor: '',
-            pendingWatermark: ''
+            pendingWatermark: '',
+            loadFailed: false,
+            failedPattern: ''
         };
         this.isReady = false;
         this.syncing = {
@@ -811,14 +812,17 @@
         var hasColor = !!colorHex;
         var watermarkText = this.getText('previewWatermark', 'www.forme.hu');
 
-        var usingCanvas = this.preview.useCanvas && hasPattern;
+        var patternFailed = this.preview.loadFailed && this.preview.failedPattern === pattern;
+        var patternReady = hasPattern && !patternFailed;
+
+        var usingCanvas = this.preview.useCanvas && patternReady;
 
         if (this.preview.$content) {
             this.preview.$content.css('background-color', hasColor ? colorHex : '');
         }
 
         if (this.preview.$watermark) {
-            this.applyPreviewWatermark(hasPattern, colorHex, watermarkText);
+            this.applyPreviewWatermark(patternReady, colorHex, watermarkText);
         }
 
         if (usingCanvas) {
@@ -826,19 +830,8 @@
             if (this.preview.$canvas) {
                 this.preview.$canvas.show();
             }
-            if (this.preview.$image) {
-                this.preview.$image.hide();
-            }
-        } else {
-            if (this.preview.$canvas) {
-                this.preview.$canvas.hide();
-            }
-            if (hasPattern && this.preview.$image) {
-                this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
-                this.preview.$image.show();
-            } else if (this.preview.$image) {
-                this.preview.$image.hide();
-            }
+        } else if (this.preview.$canvas) {
+            this.preview.$canvas.hide();
         }
 
         if (this.preview.$fallback) {
@@ -847,13 +840,17 @@
                 message = this.getText('previewUnavailable', 'Ehhez a variációhoz nem érhető el minta.');
             } else if (!hasColor) {
                 message = this.getText('previewNoColor', 'Ehhez a variációhoz nem található háttérszín.');
+            } else if (patternFailed) {
+                message = this.getText('previewUnavailable', 'A minta előnézet nem tölthető be.');
+            } else if (!this.preview.useCanvas) {
+                message = this.getText('previewUnavailable', 'A böngésző nem támogatja a vízjeles előnézetet.');
             }
             this.preview.$fallback.text(message).toggle(message !== '');
         }
 
         if (this.preview.$button) {
-            this.preview.$button.toggleClass('is-disabled', !hasPattern);
-            this.preview.$button.attr('aria-disabled', hasPattern ? 'false' : 'true');
+            this.preview.$button.toggleClass('is-disabled', !patternReady);
+            this.preview.$button.attr('aria-disabled', patternReady ? 'false' : 'true');
         }
     };
 
@@ -874,10 +871,9 @@
         var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
         var $body = $('<div class="mg-pattern-preview__body" />');
         var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
-        var $image = $('<img class="mg-pattern-preview__image" alt="Minta nagy felbontásban" draggable="false" />');
         var $fallback = $('<div class="mg-pattern-preview__fallback" />');
 
-        $body.append($canvas).append($image).append($fallback).append($watermark);
+        $body.append($canvas).append($fallback).append($watermark);
         $content.append($close).append($body);
         $modal.append($backdrop).append($content);
 
@@ -888,7 +884,6 @@
         this.preview.$content = $content;
         this.preview.$watermark = $watermark;
         this.preview.$canvas = $canvas;
-        this.preview.$image = $image;
         this.preview.$fallback = $fallback;
         this.preview.$close = $close;
         this.preview.useCanvas = this.supportsCanvas();
@@ -980,6 +975,8 @@
         this.preview.pendingPattern = patternUrl || '';
         this.preview.pendingColor = colorHex || '#0f172a';
         this.preview.pendingWatermark = watermarkText || this.getText('previewWatermark', 'www.forme.hu');
+        this.preview.loadFailed = false;
+        this.preview.failedPattern = '';
 
         if (this.preview.renderQueued) {
             return;
@@ -1045,7 +1042,6 @@
         var img = new Image();
         img.crossOrigin = 'anonymous';
         var self = this;
-        var renderStart = (typeof window !== 'undefined' && window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
 
         img.onload = function() {
             var naturalWidth = img.naturalWidth || img.width || 1024;
@@ -1070,19 +1066,11 @@
             ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
 
             self.paintCanvasWatermark(ctx, drawWidth, drawHeight, watermarkText);
-
-            var renderEnd = (typeof window !== 'undefined' && window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now();
-            if (renderEnd - renderStart > 280) {
-                self.preview.useCanvas = false;
-                self.refreshPreviewState();
-            }
         };
 
         img.onerror = function() {
-            self.preview.useCanvas = false;
-            if (self.preview.$image) {
-                self.preview.$image.show();
-            }
+            self.preview.loadFailed = true;
+            self.preview.failedPattern = patternUrl;
             self.refreshPreviewState();
         };
 
