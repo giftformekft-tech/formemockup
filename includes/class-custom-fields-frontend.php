@@ -10,6 +10,26 @@ class MG_Custom_Fields_Frontend {
     protected static $nonce_rendered = false;
 
     /**
+     * Maximum allowed download attempts per short and long window.
+     *
+     * @var int[]
+     */
+    protected static $download_rate_limits = array(
+        'short' => 12,
+        'long'  => 50,
+    );
+
+    /**
+     * Download rate limit windows in seconds.
+     *
+     * @var int[]
+     */
+    protected static $download_rate_windows = array(
+        'short' => 900,   // 15 minutes
+        'long'  => 43200, // 12 hours
+    );
+
+    /**
      * Register front-end hooks.
      */
     public static function init() {
@@ -808,10 +828,16 @@ class MG_Custom_Fields_Frontend {
             return '';
         }
 
+        $token = self::issue_download_token($item_id);
+        if ($token === '') {
+            return '';
+        }
+
         $url = add_query_arg(
             array(
-                'action'  => 'mgcf_download_design',
+                'action' => 'mgcf_download_design',
                 'item_id' => $item_id,
+                'token' => rawurlencode($token),
             ),
             admin_url('admin-post.php')
         );
@@ -827,6 +853,11 @@ class MG_Custom_Fields_Frontend {
         $item_id = isset($_GET['item_id']) ? absint($_GET['item_id']) : 0;
         if ($item_id <= 0 || !isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'mgcf_download_design_' . $item_id)) {
             wp_die(esc_html__('Érvénytelen letöltési hivatkozás.', 'mgcf'));
+        }
+
+        $token = isset($_GET['token']) ? sanitize_text_field(wp_unslash($_GET['token'])) : '';
+        if ($token === '' || !self::validate_download_token($item_id, $token)) {
+            wp_die(esc_html__('Érvénytelen vagy lejárt letöltési token.', 'mgcf'));
         }
 
         if (!class_exists('WC_Order_Factory')) {
@@ -870,6 +901,8 @@ class MG_Custom_Fields_Frontend {
         }
 
         if ($resolved_path !== '' && file_exists($resolved_path) && is_readable($resolved_path)) {
+            self::enforce_download_rate_limit();
+
             if ($filename === '') {
                 $filename = function_exists('wp_basename') ? wp_basename($resolved_path) : basename($resolved_path);
             }
@@ -905,6 +938,7 @@ class MG_Custom_Fields_Frontend {
         }
 
         if ($design_url !== '') {
+            self::enforce_download_rate_limit();
             wp_safe_redirect($design_url);
             exit;
         }
@@ -946,5 +980,222 @@ class MG_Custom_Fields_Frontend {
             $cart->cart_contents[$cart_item_key]['data'] = $product_object;
             $cart->cart_contents[$cart_item_key]['mg_custom_fields_total_surcharge'] = $total_extra;
         }
+    }
+
+    /**
+     * Generate a short-lived download token for a specific order item.
+     *
+     * @param int $item_id Order item ID.
+     * @return string Token value.
+     */
+    protected static function issue_download_token($item_id) {
+        $item_id = absint($item_id);
+        if ($item_id <= 0) {
+            return '';
+        }
+
+        $fingerprint = self::get_download_client_fingerprint();
+        $ttl = self::get_download_token_ttl($fingerprint);
+        $now = time();
+
+        $key = 'mgcf_download_tokens_' . $item_id;
+        $tokens = get_transient($key);
+        if (!is_array($tokens)) {
+            $tokens = array();
+        }
+
+        foreach ($tokens as $stored_token => $meta) {
+            $expires = isset($meta['expires']) ? intval($meta['expires']) : 0;
+            if ($expires <= $now) {
+                unset($tokens[$stored_token]);
+            }
+        }
+
+        $token = wp_generate_password(24, false, false);
+        $tokens[$token] = array(
+            'expires'     => $now + $ttl,
+            'fingerprint' => $fingerprint,
+        );
+
+        set_transient($key, $tokens, $ttl);
+
+        return $token;
+    }
+
+    /**
+     * Validate a download token against stored metadata and client fingerprint.
+     *
+     * @param int    $item_id Order item ID.
+     * @param string $token   Token value from the request.
+     * @return bool Whether the token is valid.
+     */
+    protected static function validate_download_token($item_id, $token) {
+        $item_id = absint($item_id);
+        $token = is_string($token) ? trim($token) : '';
+        if ($item_id <= 0 || $token === '') {
+            return false;
+        }
+
+        $key = 'mgcf_download_tokens_' . $item_id;
+        $tokens = get_transient($key);
+        if (empty($tokens) || !is_array($tokens)) {
+            return false;
+        }
+
+        $now = time();
+        $fingerprint = self::get_download_client_fingerprint();
+
+        $valid = false;
+
+        foreach ($tokens as $stored_token => $meta) {
+            $expires = isset($meta['expires']) ? intval($meta['expires']) : 0;
+            $token_fingerprint = isset($meta['fingerprint']) ? $meta['fingerprint'] : '';
+
+            if ($expires <= $now) {
+                unset($tokens[$stored_token]);
+                continue;
+            }
+
+            if (hash_equals($stored_token, $token) && ($token_fingerprint === '' || hash_equals($token_fingerprint, $fingerprint))) {
+                $valid = true;
+                unset($tokens[$stored_token]);
+                break;
+            }
+        }
+
+        if (empty($tokens)) {
+            delete_transient($key);
+        } else {
+            $remaining = 0;
+            foreach ($tokens as $meta) {
+                if (isset($meta['expires'])) {
+                    $remaining = max($remaining, intval($meta['expires']) - $now);
+                }
+            }
+            if ($remaining > 0) {
+                set_transient($key, $tokens, $remaining);
+            } else {
+                delete_transient($key);
+            }
+        }
+
+        return $valid;
+    }
+
+    /**
+     * Enforce download rate limits per client fingerprint and shorten token lifetimes on suspicious patterns.
+     */
+    protected static function enforce_download_rate_limit() {
+        $fingerprint = self::get_download_client_fingerprint();
+        if ($fingerprint === '') {
+            return;
+        }
+
+        $state_key = 'mgcf_download_rate_' . md5($fingerprint);
+        $state = get_transient($state_key);
+        if (!is_array($state)) {
+            $state = array(
+                'short' => array('count' => 0, 'start' => time()),
+                'long'  => array('count' => 0, 'start' => time()),
+            );
+        }
+
+        $now = time();
+        $updated = false;
+
+        foreach (array('short', 'long') as $window) {
+            $limit = isset(self::$download_rate_limits[$window]) ? intval(self::$download_rate_limits[$window]) : 0;
+            $length = isset(self::$download_rate_windows[$window]) ? intval(self::$download_rate_windows[$window]) : 0;
+
+            if ($limit <= 0 || $length <= 0) {
+                continue;
+            }
+
+            if (!isset($state[$window]['count'], $state[$window]['start']) || !is_numeric($state[$window]['count']) || !is_numeric($state[$window]['start'])) {
+                $state[$window] = array('count' => 0, 'start' => $now);
+            }
+
+            $elapsed = $now - intval($state[$window]['start']);
+            if ($elapsed < 0 || $elapsed > $length) {
+                $state[$window] = array('count' => 0, 'start' => $now);
+            }
+
+            $state[$window]['count'] = intval($state[$window]['count']) + 1;
+            $updated = true;
+
+            $suspicious_threshold = max(1, ceil($limit * 0.6));
+            if ($state[$window]['count'] >= $suspicious_threshold) {
+                self::flag_short_token_ttl($fingerprint);
+            }
+
+            if ($state[$window]['count'] > $limit) {
+                set_transient($state_key, $state, max(self::$download_rate_windows));
+                wp_die(esc_html__('Túl sok letöltési próbálkozás rövid időn belül. Próbáld meg később.', 'mgcf'));
+            }
+        }
+
+        if ($updated) {
+            set_transient($state_key, $state, max(self::$download_rate_windows));
+        }
+    }
+
+    /**
+     * Mark the current client as suspicious and shorten token lifetimes temporarily.
+     *
+     * @param string $fingerprint Client fingerprint.
+     */
+    protected static function flag_short_token_ttl($fingerprint) {
+        if ($fingerprint === '') {
+            return;
+        }
+
+        set_transient('mgcf_download_short_ttl_' . md5($fingerprint), 1, HOUR_IN_SECONDS);
+    }
+
+    /**
+     * Determine the token lifetime for the current client, shortening it when recent activity was elevated.
+     *
+     * @param string $fingerprint Client fingerprint.
+     * @return int Token lifetime in seconds.
+     */
+    protected static function get_download_token_ttl($fingerprint) {
+        $base_ttl = MINUTE_IN_SECONDS * 15;
+        if ($fingerprint === '') {
+            return $base_ttl;
+        }
+
+        $short_ttl_flag = get_transient('mgcf_download_short_ttl_' . md5($fingerprint));
+        if ($short_ttl_flag) {
+            return MINUTE_IN_SECONDS * 5;
+        }
+
+        return $base_ttl;
+    }
+
+    /**
+     * Build a fingerprint for the current client to scope throttling and token lifetime.
+     *
+     * @return string
+     */
+    protected static function get_download_client_fingerprint() {
+        $parts = array();
+
+        if (function_exists('get_current_user_id')) {
+            $user_id = get_current_user_id();
+            if ($user_id > 0) {
+                $parts[] = 'user:' . $user_id;
+            }
+        }
+
+        $remote_addr = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
+        if ($remote_addr !== '') {
+            $parts[] = 'ip:' . $remote_addr;
+        }
+
+        if (empty($parts)) {
+            return '';
+        }
+
+        return hash('sha256', implode('|', $parts));
     }
 }
