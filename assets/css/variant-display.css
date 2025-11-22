@@ -533,13 +533,12 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
 .mg-archive-view__pattern-canvas {
     position: relative;
     width: 100%;
-    aspect-ratio: 1 / 1;
     background: #f7f7f7;
 }
 
 .mg-archive-view__canvas {
     width: 100%;
-    height: 100%;
+    height: auto;
     display: block;
 }
 

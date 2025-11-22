@@ -104,12 +104,13 @@
 
         return {
             container: $pattern,
+            canvasWrap: $canvasWrap,
             canvas: $canvas,
             fallback: $fallback
         };
     }
 
-    function renderPattern(entry, $canvas, $fallback) {
+    function renderPattern(entry, $canvas, $fallback, $wrap) {
         if (!entry.pattern) {
             $fallback.text(texts.patternMissing || '').addClass('is-visible');
             $canvas.addClass('is-hidden');
@@ -157,6 +158,11 @@
 
             canvas.width = targetW;
             canvas.height = targetH;
+
+            if ($wrap && $wrap.length) {
+                var ratio = targetH / targetW;
+                $wrap.css('padding-top', (ratio * 100) + '%');
+            }
 
             ctx.fillStyle = entry.color || '#f7f7f7';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -215,12 +221,52 @@
         $card.data('mgArchiveBound', true);
     }
 
+    function bindCards($newCards, currentMode, toggleState) {
+        if (!$newCards || !$newCards.length) {
+            return false;
+        }
+
+        var foundPattern = false;
+
+        $newCards.each(function(){
+            var $card = $(this);
+            if (!$card.length) {
+                return;
+            }
+
+            initCard($card);
+            if (!$card.data('mgArchiveBound')) {
+                return;
+            }
+
+            var entry = $card.data('mgArchiveEntry');
+            if (entry && entry.pattern && toggleState.patternBtn && !toggleState.hasPatterns) {
+                toggleState.hasPatterns = true;
+                foundPattern = true;
+                toggleState.patternBtn.removeAttr('aria-disabled').removeClass('is-disabled');
+            }
+
+            var cardMode = (currentMode === 'pattern' && entry && entry.pattern) ? 'pattern' : 'mockup';
+            applyMode($card, cardMode, entry);
+
+            if (cardMode === 'pattern') {
+                var pattern = $card.data('mgArchivePattern');
+                if (pattern && pattern.canvas) {
+                    renderPattern(entry, pattern.canvas, pattern.fallback, pattern.canvasWrap);
+                }
+            }
+        });
+
+        return foundPattern;
+    }
+
     $(function(){
         if (!products || !Object.keys(products).length) {
             return;
         }
 
         var initialMode = getStoredMode();
+        var currentMode = initialMode;
         var hasPatterns = false;
         var $cards = $('.woocommerce ul.products li.product, ul.products li.product, .products li.product');
 
@@ -247,6 +293,7 @@
 
         function setMode(mode) {
             var targetMode = (mode === 'pattern' && hasPatterns) ? 'pattern' : 'mockup';
+            currentMode = targetMode;
             saveMode(targetMode);
             applyActive(toggle, targetMode);
 
@@ -260,7 +307,7 @@
                 var cardMode = (targetMode === 'pattern' && entry.pattern) ? 'pattern' : 'mockup';
                 applyMode($card, cardMode, entry);
                 if (cardMode === 'pattern' && pattern && pattern.canvas) {
-                    renderPattern(entry, pattern.canvas, pattern.fallback);
+                    renderPattern(entry, pattern.canvas, pattern.fallback, pattern.canvasWrap);
                 }
             });
         }
@@ -277,6 +324,40 @@
             }
             setMode('pattern');
         });
+
+        if ($grid.length && window.MutationObserver) {
+            var observer = new MutationObserver(function(mutations){
+                mutations.forEach(function(mutation){
+                    if (!mutation.addedNodes || !mutation.addedNodes.length) {
+                        return;
+                    }
+                    var $products = $();
+                    $(mutation.addedNodes).each(function(){
+                        var $node = $(this);
+                        if ($node.hasClass('product')) {
+                            $products = $products.add($node);
+                        }
+                        if ($node.find) {
+                            $products = $products.add($node.find('li.product'));
+                        }
+                    });
+
+                    if ($products.length) {
+                        $cards = $cards.add($products);
+                        var newlyFound = bindCards($products, currentMode, { hasPatterns: hasPatterns, patternBtn: toggle.patternBtn });
+                        if (newlyFound) {
+                            hasPatterns = true;
+                            applyActive(toggle, currentMode);
+                            if (currentMode === 'pattern') {
+                                setMode('pattern');
+                            }
+                        }
+                    }
+                });
+            });
+
+            observer.observe($grid.get(0), { childList: true, subtree: true });
+        }
 
         setMode(initialMode);
     });
