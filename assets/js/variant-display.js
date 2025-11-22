@@ -11,6 +11,17 @@
             color: '',
             size: ''
         };
+        this.preview = {
+            $button: null,
+            $modal: null,
+            $backdrop: null,
+            $content: null,
+            $image: null,
+            $fallback: null,
+            $close: null,
+            fallbackImage: '',
+            activeVariationId: 0
+        };
         this.isReady = false;
         this.syncing = {
             type: false,
@@ -44,6 +55,7 @@
         this.buildLayout();
         this.captureDescriptionTargets();
         this.bindEvents();
+        this.createPatternPreview();
         this.initialSync();
     };
 
@@ -405,6 +417,14 @@
                 self.syncFromSelects(false);
             }, 20);
         });
+
+        this.$form.on('found_variation', function(event, variation){
+            self.handleFoundVariation(variation);
+        });
+
+        this.$form.on('reset_data hide_variation', function(){
+            self.handleVariationReset();
+        });
     };
 
     VariantDisplay.prototype.initialSync = function() {
@@ -422,6 +442,7 @@
         this.setSize(sizeVal, false);
 
         this.updateTypeUI(false);
+        this.refreshPreviewState();
     };
 
     VariantDisplay.prototype.setType = function(value, triggerChange) {
@@ -500,6 +521,7 @@
         }
         this.syncing.size = false;
         this.updateSizeUI();
+        this.refreshPreviewState();
     };
 
     VariantDisplay.prototype.updateTypeUI = function(shouldTriggerChildren) {
@@ -527,6 +549,7 @@
         });
         this.rebuildSizeOptions(shouldTriggerSizes !== false);
         this.refreshColorLabel();
+        this.refreshPreviewState();
     };
 
     VariantDisplay.prototype.updateSizeUI = function() {
@@ -569,6 +592,7 @@
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
             this.setColor('', shouldTriggerSizeSync);
             this.rebuildSizeOptions(shouldTriggerSizeSync);
+            this.refreshPreviewState();
             return;
         }
 
@@ -582,6 +606,7 @@
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noColors', 'Ehhez a terméktípushoz nincs elérhető szín.')));
             this.setColor('', shouldTriggerSizeSync);
             this.rebuildSizeOptions(shouldTriggerSizeSync);
+            this.refreshPreviewState();
             return;
         }
 
@@ -622,6 +647,7 @@
             } else {
                 this.setColor('', shouldTriggerSizeSync);
             }
+            this.refreshPreviewState();
             return;
         }
 
@@ -634,12 +660,14 @@
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
             this.setSize('', shouldTriggerSizeChange);
             this.updateSizeChartLink();
+            this.refreshPreviewState();
             return;
         }
         if (!this.state.color || !this.config.types[this.state.type] || !this.config.types[this.state.type].colors[this.state.color]) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseColorFirst', 'Először válassz színt.')));
             this.setSize('', shouldTriggerSizeChange);
             this.updateSizeChartLink();
+            this.refreshPreviewState();
             return;
         }
 
@@ -718,6 +746,179 @@
             }
         }
         return out;
+    };
+
+    VariantDisplay.prototype.getVisualDefaults = function() {
+        return (this.config && this.config.visuals && this.config.visuals.defaults) ? this.config.visuals.defaults : {};
+    };
+
+    VariantDisplay.prototype.getVariationColor = function(variationId, typeSlug, colorSlug) {
+        var visuals = this.config && this.config.visuals ? this.config.visuals : {};
+        if (variationId && visuals.variationColors && visuals.variationColors[variationId]) {
+            return visuals.variationColors[variationId];
+        }
+        if (typeSlug && colorSlug && this.config && this.config.types && this.config.types[typeSlug] && this.config.types[typeSlug].colors && this.config.types[typeSlug].colors[colorSlug]) {
+            return this.config.types[typeSlug].colors[colorSlug].swatch || '';
+        }
+        var defaults = this.getVisualDefaults();
+        if (defaults && defaults.color) {
+            return defaults.color;
+        }
+        return '';
+    };
+
+    VariantDisplay.prototype.getVariationPattern = function(variationId) {
+        var visuals = this.config && this.config.visuals ? this.config.visuals : {};
+        if (variationId && visuals.variationPatterns && visuals.variationPatterns[variationId]) {
+            return visuals.variationPatterns[variationId];
+        }
+        var defaults = this.getVisualDefaults();
+        if (defaults && defaults.pattern) {
+            return defaults.pattern;
+        }
+        return '';
+    };
+
+    VariantDisplay.prototype.refreshPreviewState = function() {
+        if (!this.preview || !this.preview.$modal) {
+            return;
+        }
+
+        var variationId = this.preview.activeVariationId || 0;
+        var colorHex = this.getVariationColor(variationId, this.state.type, this.state.color);
+        var pattern = this.getVariationPattern(variationId);
+        var hasPattern = !!pattern;
+        var hasColor = !!colorHex;
+
+        if (this.preview.$content) {
+            this.preview.$content.css('background-color', hasColor ? colorHex : '');
+        }
+
+        if (hasPattern && this.preview.$image) {
+            this.preview.$image.attr('src', pattern).attr('alt', this.getText('previewButton', 'Minta nagyban'));
+            this.preview.$image.show();
+        } else if (this.preview.$image) {
+            this.preview.$image.hide();
+        }
+
+        if (this.preview.$fallback) {
+            var message = '';
+            if (!hasPattern) {
+                message = this.getText('previewUnavailable', 'Ehhez a variációhoz nem érhető el minta.');
+            } else if (!hasColor) {
+                message = this.getText('previewNoColor', 'Ehhez a variációhoz nem található háttérszín.');
+            }
+            this.preview.$fallback.text(message).toggle(message !== '');
+        }
+
+        if (this.preview.$button) {
+            this.preview.$button.toggleClass('is-disabled', !hasPattern);
+            this.preview.$button.attr('aria-disabled', hasPattern ? 'false' : 'true');
+        }
+    };
+
+    VariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $image = $('<img class="mg-pattern-preview__image" alt="Minta nagy felbontásban" />');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($image).append($fallback);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$image = $image;
+        this.preview.$fallback = $fallback;
+        this.preview.$close = $close;
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
+    };
+
+    VariantDisplay.prototype.showPatternPreview = function() {
+        if (!this.preview.$modal) {
+            return;
+        }
+        this.preview.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        if (this.preview.$close) {
+            this.preview.$close.trigger('focus');
+        }
+        this.refreshPreviewState();
+    };
+
+    VariantDisplay.prototype.hidePatternPreview = function() {
+        if (!this.preview.$modal) {
+            return;
+        }
+        this.preview.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        if (this.preview.$button) {
+            this.preview.$button.trigger('focus');
+        }
+    };
+
+    VariantDisplay.prototype.handleFoundVariation = function(variation) {
+        if (!variation) {
+            return;
+        }
+        if (variation.variation_id) {
+            this.preview.activeVariationId = variation.variation_id;
+        }
+        this.refreshPreviewState();
+    };
+
+    VariantDisplay.prototype.handleVariationReset = function() {
+        this.preview.activeVariationId = 0;
+        this.refreshPreviewState();
     };
 
     $(function(){
