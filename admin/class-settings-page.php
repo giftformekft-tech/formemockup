@@ -43,6 +43,17 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Mintagalléria beállítások elmentve.</p></div>';
         }
 
+        if (isset($_POST['mg_description_variables_nonce']) && wp_verify_nonce($_POST['mg_description_variables_nonce'], 'mg_description_variables_save')) {
+            $input = isset($_POST['mg_description_variables_input']) ? wp_unslash($_POST['mg_description_variables_input']) : '';
+            if (function_exists('mgtd__parse_description_variables_input')) {
+                $variables = mgtd__parse_description_variables_input($input);
+            } else {
+                $variables = array();
+            }
+            update_option('mg_description_variables', $variables);
+            echo '<div class="notice notice-success is-dismissible"><p>Leírás változók elmentve.</p></div>';
+        }
+
         if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
             $products = get_option('mg_products', array());
             $key = sanitize_title($_POST['product_key'] ?? '');
@@ -89,6 +100,12 @@ class MG_Settings_Page {
         $w_method = max(0, min(6, intval($webp['method'] ?? $webp_defaults['method'])));
         $gallery_settings = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_settings() : array('enabled' => false, 'position' => 'after_summary', 'max_items' => 6, 'layout' => 'grid', 'title' => '', 'show_title' => true);
         $position_choices = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_position_choices() : array();
+        $description_variables = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
+        $description_variables_lines = array();
+        foreach ($description_variables as $slug => $text) {
+            $description_variables_lines[] = $slug . ' | ' . $text;
+        }
+        $description_variables_text = implode("\n", $description_variables_lines);
         ?>
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
@@ -197,6 +214,17 @@ class MG_Settings_Page {
 
             <hr/>
             <?php endif; ?>
+
+            <h2>Leírás változók</h2>
+            <p class="description">Adj meg újrahasznosítható szövegeket, amelyeket a termék leírásába a <code>{seo:slug}</code> formában illeszthetsz be.</p>
+            <p class="description">Formátum: <code>slug | ide kerül a leírás</code> (soronként egy változó).</p>
+            <form method="post">
+                <?php wp_nonce_field('mg_description_variables_save', 'mg_description_variables_nonce'); ?>
+                <textarea name="mg_description_variables_input" rows="6" class="large-text"><?php echo esc_textarea($description_variables_text); ?></textarea>
+                <?php submit_button('Leírás változók mentése'); ?>
+            </form>
+
+            <hr/>
 
             <table class="widefat striped">
                 <thead><tr><th>Kulcs</th><th>Név</th><th>Ár (HUF)</th><th>SKU prefix</th><th>Almenü</th></tr></thead>
