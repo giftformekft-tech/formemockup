@@ -810,7 +810,7 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 <?php
 $curr_desc = isset($prod['type_description']) ? $prod['type_description'] : '';
 $seo_vars = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
-$placeholder_tokens = array('{product_name}', '{product_category}', '{product_categories}');
+$placeholder_tokens = array('{product_name}', '{product_category}', '{product_categories}', '{category_seo}', '{category_seos}', '{category_seo:slug}');
 if (!empty($seo_vars)) {
     foreach (array_keys($seo_vars) as $slug) {
         $placeholder_tokens[] = '{seo:' . $slug . '}';

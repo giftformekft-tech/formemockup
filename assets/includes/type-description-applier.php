@@ -17,6 +17,69 @@ if (!function_exists('mgtd__get_type_desc')) {
     }
 }
 
+if (!function_exists('mgtd__get_category_seo_description')) {
+    function mgtd__get_category_seo_description($term_id) {
+        $term_id = (int) $term_id;
+        if ($term_id <= 0) {
+            return '';
+        }
+        $value = get_term_meta($term_id, 'mg_category_seo_description', true);
+        return is_string($value) ? wp_kses_post($value) : '';
+    }
+}
+
+if (!function_exists('mgtd__render_category_seo_field')) {
+    function mgtd__render_category_seo_field($term = null) {
+        $value = '';
+        if ($term && isset($term->term_id)) {
+            $value = mgtd__get_category_seo_description($term->term_id);
+        }
+        $label = __('SEO leírás', 'mockup-generator');
+        $description = __('Ezt a leírást a {category_seo} vagy {category_seo:slug} változóval illesztheted be.', 'mockup-generator');
+        if ($term) {
+            echo '<tr class="form-field">';
+            echo '<th scope="row"><label for="mg-category-seo-description">' . esc_html($label) . '</label></th>';
+            echo '<td><textarea name="mg_category_seo_description" id="mg-category-seo-description" rows="5" class="large-text">' . esc_textarea($value) . '</textarea>';
+            echo '<p class="description">' . esc_html($description) . '</p></td>';
+            echo '</tr>';
+        } else {
+            echo '<div class="form-field">';
+            echo '<label for="mg-category-seo-description">' . esc_html($label) . '</label>';
+            echo '<textarea name="mg_category_seo_description" id="mg-category-seo-description" rows="5" class="large-text"></textarea>';
+            echo '<p class="description">' . esc_html($description) . '</p>';
+            echo '</div>';
+        }
+    }
+}
+
+if (!function_exists('mgtd__save_category_seo_description')) {
+    function mgtd__save_category_seo_description($term_id) {
+        if (!current_user_can('manage_product_terms')) {
+            return;
+        }
+        if (!isset($_POST['mg_category_seo_description'])) {
+            return;
+        }
+        $value = wp_kses_post(wp_unslash($_POST['mg_category_seo_description']));
+        if ($value === '') {
+            delete_term_meta($term_id, 'mg_category_seo_description');
+            return;
+        }
+        update_term_meta($term_id, 'mg_category_seo_description', $value);
+    }
+}
+
+add_action('product_cat_add_form_fields', function() {
+    mgtd__render_category_seo_field();
+});
+
+add_action('product_cat_edit_form_fields', function($term) {
+    mgtd__render_category_seo_field($term);
+});
+
+add_action('created_product_cat', 'mgtd__save_category_seo_description');
+add_action('edited_product_cat', 'mgtd__save_category_seo_description');
+
 if (!function_exists('mgtd__parse_description_variables_input')) {
     function mgtd__parse_description_variables_input($input) {
         $vars = array();
@@ -101,6 +164,9 @@ if (!function_exists('mgtd__build_description_context')) {
             'product_name' => '',
             'product_category' => '',
             'product_categories' => '',
+            'category_seo' => '',
+            'category_seos' => '',
+            'category_seo_map' => array(),
         );
 
         if ($product_name !== '') {
@@ -115,6 +181,8 @@ if (!function_exists('mgtd__build_description_context')) {
         }
 
         $names = array();
+        $seo_descriptions = array();
+        $seo_map = array();
         if (!empty($category_ids) && is_array($category_ids)) {
             foreach ($category_ids as $term_id) {
                 $term_id = (int) $term_id;
@@ -124,6 +192,13 @@ if (!function_exists('mgtd__build_description_context')) {
                 $term = get_term($term_id, 'product_cat');
                 if ($term && !is_wp_error($term)) {
                     $names[] = sanitize_text_field($term->name);
+                    $seo_desc = mgtd__get_category_seo_description($term_id);
+                    if ($seo_desc !== '') {
+                        $seo_descriptions[] = $seo_desc;
+                        if (isset($term->slug)) {
+                            $seo_map[sanitize_title($term->slug)] = $seo_desc;
+                        }
+                    }
                 }
             }
         }
@@ -131,6 +206,13 @@ if (!function_exists('mgtd__build_description_context')) {
             $names = array_values(array_unique(array_filter($names, 'strlen')));
             $context['product_categories'] = implode(', ', $names);
             $context['product_category'] = $names[0] ?? '';
+        }
+        if (!empty($seo_descriptions)) {
+            $context['category_seo'] = $seo_descriptions[0] ?? '';
+            $context['category_seos'] = implode("\n", $seo_descriptions);
+        }
+        if (!empty($seo_map)) {
+            $context['category_seo_map'] = $seo_map;
         }
 
         return $context;
@@ -147,6 +229,8 @@ if (!function_exists('mgtd__replace_placeholders')) {
             '{product_name}' => $context['product_name'] ?? '',
             '{product_category}' => $context['product_category'] ?? '',
             '{product_categories}' => $context['product_categories'] ?? '',
+            '{category_seo}' => $context['category_seo'] ?? '',
+            '{category_seos}' => $context['category_seos'] ?? '',
         );
         $content = strtr($content, $replacements);
 
@@ -155,6 +239,14 @@ if (!function_exists('mgtd__replace_placeholders')) {
             $content = preg_replace_callback('/\{seo:([a-z0-9_-]+)\}/i', function($matches) use ($variables) {
                 $slug = sanitize_title($matches[1]);
                 return $variables[$slug] ?? '';
+            }, $content);
+        }
+
+        if (!empty($context['category_seo_map']) && is_array($context['category_seo_map'])) {
+            $seo_map = $context['category_seo_map'];
+            $content = preg_replace_callback('/\{category_seo:([a-z0-9_-]+)\}/i', function($matches) use ($seo_map) {
+                $slug = sanitize_title($matches[1]);
+                return $seo_map[$slug] ?? '';
             }, $content);
         }
 
