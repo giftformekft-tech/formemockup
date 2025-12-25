@@ -1,6 +1,52 @@
 
 (function($){
   function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
+  function getTypeLabel(key){
+    var list = (MG_BULK_ADV.products || []);
+    for (var i = 0; i < list.length; i++){
+      if (list[i] && list[i].key === key){ return list[i].label || list[i].key; }
+    }
+    return key || '';
+  }
+  function getActiveTypeKey(){
+    var $defaultType = $('#mg-default-type');
+    if ($defaultType.length && $defaultType.val()){ return $defaultType.val(); }
+    if (MG_BULK_ADV.activeDefaults && MG_BULK_ADV.activeDefaults.type){ return MG_BULK_ADV.activeDefaults.type; }
+    return '';
+  }
+  function buildAutoName(baseName, mainLabel, typeLabel){
+    var parts = [];
+    if (baseName){ parts.push(baseName); }
+    if (mainLabel){ parts.push(mainLabel); }
+    if (typeLabel){ parts.push(typeLabel); }
+    return parts.join(' ');
+  }
+  function updateRowAutoName($row){
+    if (!$row || !$row.length){ return; }
+    var $name = $row.find('input.mg-name');
+    if (!$name.length){ return; }
+    var autoEnabled = $name.data('mgAutoName') !== false;
+    if (!autoEnabled){ return; }
+    var baseName = $row.data('mgBaseName') || '';
+    var mainLabel = '';
+    var $mainSel = $row.find('select.mg-main');
+    if ($mainSel.length){
+      var selectedText = $mainSel.find('option:selected').text() || '';
+      var selectedVal = $mainSel.val() || '';
+      if (selectedVal && selectedVal !== '0'){
+        mainLabel = selectedText;
+      }
+    }
+    var typeKey = getActiveTypeKey();
+    var typeLabel = typeKey ? getTypeLabel(typeKey) : '';
+    $name.val(buildAutoName(baseName, mainLabel, typeLabel));
+  }
+
+  function updateAllAutoNames(){
+    $('#mg-bulk-rows .mg-item-row').each(function(){
+      updateRowAutoName($(this));
+    });
+  }
   function buildMainSelect(){
     var html = '<select class="mg-main">';
     html += '<option value="0">— Nincs —</option>';
@@ -292,8 +338,15 @@
       $mainSel.on('change', function(){
         var pid = parseInt($(this).val(),10) || 0;
         $subsSel = refreshSubSelect($tr, pid);
+        updateRowAutoName($tr);
       });
-      $tr.append('<td><input type="text" class="mg-name" value="'+basename(file.name||'')+'"></td>');
+      var baseName = basename(file.name||'');
+      $tr.data('mgBaseName', baseName);
+      $tr.append('<td><input type="text" class="mg-name" value=""></td>');
+      var $nameInput = $tr.find('input.mg-name');
+      $nameInput.data('mgAutoName', true);
+      $nameInput.on('input', function(){ $(this).data('mgAutoName', false); });
+      updateRowAutoName($tr);
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
       $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
       // NEW: tags cell before state
@@ -333,6 +386,7 @@
   }
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
+  $(document).on('change', '#mg-default-type', function(){ updateAllAutoNames(); });
 
   function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
