@@ -206,6 +206,18 @@ if (!function_exists('mgtd__build_description_context')) {
                             $seo_map[sanitize_title($term->slug)] = $seo_desc;
                         }
                     }
+                    if (!empty($term->parent) && $parent_seo === '') {
+                        $parent_term = get_term((int) $term->parent, 'product_cat');
+                        if ($parent_term && !is_wp_error($parent_term)) {
+                            $parent_desc = mgtd__get_category_seo_description($parent_term->term_id);
+                            if ($parent_desc !== '') {
+                                $parent_seo = $parent_desc;
+                                if (isset($parent_term->slug)) {
+                                    $seo_map[sanitize_title($parent_term->slug)] = $parent_desc;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
