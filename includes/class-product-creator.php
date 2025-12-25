@@ -289,8 +289,6 @@ class MG_Product_Creator {
         if (!empty($cats['subs']) && is_array($cats['subs'])) foreach ($cats['subs'] as $sid) $ids[] = (int)$sid;
         $ids = array_values(array_unique(array_filter($ids)));
         if (!empty($ids)) {
-            $existing = wp_get_object_terms($product_id, 'product_cat', array('fields'=>'ids'));
-            if (!is_wp_error($existing)) $ids = array_values(array_unique(array_merge($existing, $ids)));
             wp_set_object_terms($product_id, $ids, 'product_cat', false);
         }
     }
@@ -343,6 +341,13 @@ class MG_Product_Creator {
             if (!empty($p['type_description'])) { $desc = wp_kses_post($p['type_description']); break; }
         }
         if ($desc) {
+            if (function_exists('mgtd__replace_placeholders')) {
+                $category_ids = function_exists('mgtd__normalize_category_ids') ? mgtd__normalize_category_ids($cats) : array();
+                $context = function_exists('mgtd__build_description_context')
+                    ? mgtd__build_description_context(null, $category_ids, $parent_name)
+                    : array('product_name' => sanitize_text_field($parent_name));
+                $desc = mgtd__replace_placeholders($desc, $context);
+            }
             if (method_exists($product, 'set_description')) {
                 $product->set_description($desc);
             } else {
