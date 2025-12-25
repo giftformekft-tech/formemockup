@@ -54,7 +54,7 @@ if (!function_exists('mgtd__render_category_seo_field')) {
 
 if (!function_exists('mgtd__save_category_seo_description')) {
     function mgtd__save_category_seo_description($term_id) {
-        if (!current_user_can('manage_product_terms')) {
+        if (!current_user_can('edit_term', $term_id)) {
             return;
         }
         if (!isset($_POST['mg_category_seo_description'])) {
