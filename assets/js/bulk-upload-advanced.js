@@ -1,24 +1,11 @@
 
 (function($){
   function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
-  function getTypeLabel(key){
-    var list = (MG_BULK_ADV.products || []);
-    for (var i = 0; i < list.length; i++){
-      if (list[i] && list[i].key === key){ return list[i].label || list[i].key; }
-    }
-    return key || '';
-  }
-  function getActiveTypeKey(){
-    var $defaultType = $('#mg-default-type');
-    if ($defaultType.length && $defaultType.val()){ return $defaultType.val(); }
-    if (MG_BULK_ADV.activeDefaults && MG_BULK_ADV.activeDefaults.type){ return MG_BULK_ADV.activeDefaults.type; }
-    return '';
-  }
-  function buildAutoName(baseName, mainLabel, typeLabel){
+  function buildAutoName(baseName, mainLabel){
     var parts = [];
     if (baseName){ parts.push(baseName); }
     if (mainLabel){ parts.push(mainLabel); }
-    if (typeLabel){ parts.push(typeLabel); }
+    parts.push('póló pulcsi');
     return parts.join(' ');
   }
   function updateRowAutoName($row){
@@ -37,15 +24,7 @@
         mainLabel = selectedText;
       }
     }
-    var typeKey = getActiveTypeKey();
-    var typeLabel = typeKey ? getTypeLabel(typeKey) : '';
-    $name.val(buildAutoName(baseName, mainLabel, typeLabel));
-  }
-
-  function updateAllAutoNames(){
-    $('#mg-bulk-rows .mg-item-row').each(function(){
-      updateRowAutoName($(this));
-    });
+    $name.val(buildAutoName(baseName, mainLabel));
   }
   function buildMainSelect(){
     var html = '<select class="mg-main">';
