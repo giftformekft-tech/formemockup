@@ -91,6 +91,10 @@
         if (!this.baseTitle || !this.config || !this.config.types) {
             return;
         }
+        var suffix = ' póló pulcsi';
+        if (this.baseTitle.slice(-suffix.length) === suffix) {
+            this.baseTitle = this.baseTitle.slice(0, -suffix.length).trim();
+        }
         var self = this;
         var labels = Object.keys(this.config.types).map(function(slug){
             return self.getTypeLabel(slug).trim();
