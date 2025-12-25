@@ -183,6 +183,8 @@ if (!function_exists('mgtd__build_description_context')) {
         $names = array();
         $seo_descriptions = array();
         $seo_map = array();
+        $parent_seo = '';
+        $child_seo = '';
         if (!empty($category_ids) && is_array($category_ids)) {
             foreach ($category_ids as $term_id) {
                 $term_id = (int) $term_id;
@@ -195,6 +197,11 @@ if (!function_exists('mgtd__build_description_context')) {
                     $seo_desc = mgtd__get_category_seo_description($term_id);
                     if ($seo_desc !== '') {
                         $seo_descriptions[] = $seo_desc;
+                        if (empty($term->parent) && $parent_seo === '') {
+                            $parent_seo = $seo_desc;
+                        } elseif (!empty($term->parent) && $child_seo === '') {
+                            $child_seo = $seo_desc;
+                        }
                         if (isset($term->slug)) {
                             $seo_map[sanitize_title($term->slug)] = $seo_desc;
                         }
@@ -208,7 +215,15 @@ if (!function_exists('mgtd__build_description_context')) {
             $context['product_category'] = $names[0] ?? '';
         }
         if (!empty($seo_descriptions)) {
-            $context['category_seo'] = $seo_descriptions[0] ?? '';
+            if ($parent_seo !== '' && $child_seo !== '') {
+                $context['category_seo'] = $parent_seo . ', ' . $child_seo;
+            } elseif ($parent_seo !== '') {
+                $context['category_seo'] = $parent_seo;
+            } elseif ($child_seo !== '') {
+                $context['category_seo'] = $child_seo;
+            } else {
+                $context['category_seo'] = $seo_descriptions[0] ?? '';
+            }
             $context['category_seos'] = implode("\n", $seo_descriptions);
         }
         if (!empty($seo_map)) {
