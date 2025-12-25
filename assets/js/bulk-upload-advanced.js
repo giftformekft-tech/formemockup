@@ -1,10 +1,26 @@
 
 (function($){
   function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
-  function buildAutoName(baseName, mainLabel){
+  function getTypeLabel(key){
+    var list = (MG_BULK_ADV.products || []);
+    for (var i = 0; i < list.length; i++){
+      if (list[i] && list[i].key === key){ return list[i].label || list[i].key; }
+    }
+    return key || '';
+  }
+  function getActiveTypeKey(){
+    var $defaultType = $('#mg-default-type');
+    if ($defaultType.length && $defaultType.val()){ return $defaultType.val(); }
+    var checked = $('.mg-type-cb:checked').map(function(){ return this.value; }).get();
+    if (checked.length === 1){ return checked[0]; }
+    if (MG_BULK_ADV.activeDefaults && MG_BULK_ADV.activeDefaults.type){ return MG_BULK_ADV.activeDefaults.type; }
+    return checked.length ? checked[0] : '';
+  }
+  function buildAutoName(baseName, mainLabel, typeLabel){
     var parts = [];
     if (baseName){ parts.push(baseName); }
     if (mainLabel){ parts.push(mainLabel); }
+    if (typeLabel){ parts.push(typeLabel); }
     return parts.join(' - ');
   }
   function updateRowAutoName($row){
@@ -23,7 +39,9 @@
         mainLabel = selectedText;
       }
     }
-    $name.val(buildAutoName(baseName, mainLabel));
+    var typeKey = getActiveTypeKey();
+    var typeLabel = typeKey ? getTypeLabel(typeKey) : '';
+    $name.val(buildAutoName(baseName, mainLabel, typeLabel));
   }
   function buildMainSelect(){
     var html = '<select class="mg-main">';
