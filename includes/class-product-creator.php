@@ -231,7 +231,34 @@ class MG_Product_Creator {
         }
         return $ids;
     }
-    private function compose_image_seo_text($product_name, $type_slug, $color_slug, $selected_products) {
+    private function resolve_category_labels($cats = array()) {
+        $labels = array('parent' => '', 'child' => '');
+        if (!is_array($cats)) {
+            return $labels;
+        }
+        $parent_id = !empty($cats['main']) ? (int) $cats['main'] : 0;
+        $child_id = 0;
+        if (!empty($cats['sub'])) {
+            $child_id = (int) $cats['sub'];
+        } elseif (!empty($cats['subs']) && is_array($cats['subs'])) {
+            $child_id = (int) $cats['subs'][0];
+        }
+        if ($parent_id > 0) {
+            $term = get_term($parent_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $labels['parent'] = sanitize_text_field($term->name);
+            }
+        }
+        if ($child_id > 0) {
+            $term = get_term($child_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $labels['child'] = sanitize_text_field($term->name);
+            }
+        }
+        return $labels;
+    }
+
+    private function compose_image_seo_text($product_name, $type_slug, $color_slug, $selected_products, $cats = array()) {
         $type_slug = sanitize_title($type_slug);
         $color_slug = sanitize_title($color_slug);
 
@@ -256,10 +283,14 @@ class MG_Product_Creator {
             }
         }
 
+        $category_labels = $this->resolve_category_labels($cats);
+
         $parts = array_filter([
             sanitize_text_field($product_name),
             $type_label,
             $color_label,
+            $category_labels['parent'] ?? '',
+            $category_labels['child'] ?? '',
         ], 'strlen');
         return implode(' - ', $parts);
     }
@@ -329,7 +360,7 @@ class MG_Product_Creator {
         $color_term_ids = $this->ensure_terms_and_get_ids($tax_color, $color_pairs);
         $image_ids=array(); $gallery=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $seo_text = $this->compose_image_seo_text($parent_name, $type_slug, $color_slug, $selected_products);
+            $seo_text = $this->compose_image_seo_text($parent_name, $type_slug, $color_slug, $selected_products, $cats);
             $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
         }
         $product = new WC_Product_Variable();
@@ -520,7 +551,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
 
         $image_ids=array();
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $seo_text = $this->compose_image_seo_text($product->get_name() ?: $fallback_parent_name, $type_slug, $color_slug, $selected_products);
+            $seo_text = $this->compose_image_seo_text($product->get_name() ?: $fallback_parent_name, $type_slug, $color_slug, $selected_products, $cats);
             $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id;
         }
         $existing=array();
