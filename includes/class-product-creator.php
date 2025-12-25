@@ -343,6 +343,13 @@ class MG_Product_Creator {
             if (!empty($p['type_description'])) { $desc = wp_kses_post($p['type_description']); break; }
         }
         if ($desc) {
+            if (function_exists('mgtd__replace_placeholders')) {
+                $category_ids = function_exists('mgtd__normalize_category_ids') ? mgtd__normalize_category_ids($cats) : array();
+                $context = function_exists('mgtd__build_description_context')
+                    ? mgtd__build_description_context(null, $category_ids, $parent_name)
+                    : array('product_name' => sanitize_text_field($parent_name));
+                $desc = mgtd__replace_placeholders($desc, $context);
+            }
             if (method_exists($product, 'set_description')) {
                 $product->set_description($desc);
             } else {
