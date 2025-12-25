@@ -338,6 +338,12 @@
     mgDedupeTagInputs();
   }
 
+  function updateAllAutoNames(){
+    $('#mg-bulk-rows .mg-item-row').each(function(){
+      updateRowAutoName($(this));
+    });
+  }
+
   function bindParentSearch(){
     $(document).off('input.mgps','.mg-parent-search').on('input.mgps', '.mg-parent-search', function(){
       var $wrap = $(this).closest('.mg-parent');
@@ -365,6 +371,7 @@
   }
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
+  $(document).on('change', '#mg-default-type', function(){ updateAllAutoNames(); });
 
   function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
