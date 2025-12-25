@@ -1,11 +1,25 @@
 
 (function($){
   function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
-  function buildAutoName(baseName, mainLabel){
+  function getTypeLabel(key){
+    var list = (MG_BULK_ADV.products || []);
+    for (var i = 0; i < list.length; i++){
+      if (list[i] && list[i].key === key){ return list[i].label || list[i].key; }
+    }
+    return key || '';
+  }
+  function getActiveTypeKey(){
+    var $defaultType = $('#mg-default-type');
+    if ($defaultType.length && $defaultType.val()){ return $defaultType.val(); }
+    if (MG_BULK_ADV.activeDefaults && MG_BULK_ADV.activeDefaults.type){ return MG_BULK_ADV.activeDefaults.type; }
+    return '';
+  }
+  function buildAutoName(baseName, mainLabel, typeLabel){
     var parts = [];
     if (baseName){ parts.push(baseName); }
     if (mainLabel){ parts.push(mainLabel); }
-    return parts.join(' - ');
+    if (typeLabel){ parts.push(typeLabel); }
+    return parts.join(' ');
   }
   function updateRowAutoName($row){
     if (!$row || !$row.length){ return; }
@@ -23,7 +37,15 @@
         mainLabel = selectedText;
       }
     }
-    $name.val(buildAutoName(baseName, mainLabel));
+    var typeKey = getActiveTypeKey();
+    var typeLabel = typeKey ? getTypeLabel(typeKey) : '';
+    $name.val(buildAutoName(baseName, mainLabel, typeLabel));
+  }
+
+  function updateAllAutoNames(){
+    $('#mg-bulk-rows .mg-item-row').each(function(){
+      updateRowAutoName($(this));
+    });
   }
   function buildMainSelect(){
     var html = '<select class="mg-main">';
@@ -370,7 +392,6 @@
   }
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
-  $(document).on('change', '.mg-type-cb', function(){ updateAllAutoNames(); });
   $(document).on('change', '#mg-default-type', function(){ updateAllAutoNames(); });
 
   function copyMainFromFirst(){

@@ -96,9 +96,12 @@
             return self.getTypeLabel(slug).trim();
         }).filter(function(label){ return label; });
         labels.forEach(function(label){
-            var suffix = ' - ' + label;
-            if (self.baseTitle.slice(-suffix.length) === suffix) {
-                self.baseTitle = self.baseTitle.slice(0, -suffix.length).trim();
+            var dashed = ' - ' + label;
+            var spaced = ' ' + label;
+            if (self.baseTitle.slice(-dashed.length) === dashed) {
+                self.baseTitle = self.baseTitle.slice(0, -dashed.length).trim();
+            } else if (self.baseTitle.slice(-spaced.length) === spaced) {
+                self.baseTitle = self.baseTitle.slice(0, -spaced.length).trim();
             }
         });
     };
@@ -110,7 +113,7 @@
         var typeLabel = this.getTypeLabel(this.state.type);
         var nextTitle = this.baseTitle;
         if (typeLabel) {
-            nextTitle = this.baseTitle + ' - ' + typeLabel;
+            nextTitle = this.baseTitle + ' ' + typeLabel;
         }
         this.$title.text(nextTitle);
     };
