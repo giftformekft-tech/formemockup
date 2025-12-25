@@ -289,8 +289,6 @@ class MG_Product_Creator {
         if (!empty($cats['subs']) && is_array($cats['subs'])) foreach ($cats['subs'] as $sid) $ids[] = (int)$sid;
         $ids = array_values(array_unique(array_filter($ids)));
         if (!empty($ids)) {
-            $existing = wp_get_object_terms($product_id, 'product_cat', array('fields'=>'ids'));
-            if (!is_wp_error($existing)) $ids = array_values(array_unique(array_merge($existing, $ids)));
             wp_set_object_terms($product_id, $ids, 'product_cat', false);
         }
     }
