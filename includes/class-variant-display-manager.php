@@ -322,6 +322,10 @@ class MG_Variant_Display_Manager {
             if ($size_chart !== '') {
                 $size_chart = do_shortcode($size_chart);
             }
+            $size_chart_models = isset($settings['size_chart_models'][$type_slug]) ? $settings['size_chart_models'][$type_slug] : '';
+            if ($size_chart_models !== '') {
+                $size_chart_models = do_shortcode($size_chart_models);
+            }
 
             $type_description = isset($type_meta['description']) ? $type_meta['description'] : '';
             if ($type_description !== '') {
@@ -359,6 +363,7 @@ class MG_Variant_Display_Manager {
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
                 'size_chart' => $size_chart,
+                'size_chart_models' => $size_chart_models,
                 'description' => $type_description,
             );
         }
@@ -404,6 +409,9 @@ class MG_Variant_Display_Manager {
                 'noSizes' => __('Ehhez a kombinációhoz nincs elérhető méret.', 'mgvd'),
                 'sizeChartLink' => __('📏 Mérettáblázat megnyitása', 'mgvd'),
                 'sizeChartTitle' => __('Mérettáblázat', 'mgvd'),
+                'sizeChartModelsTitle' => __('Modelleken', 'mgvd'),
+                'sizeChartModelsLink' => __('Nézd meg modelleken', 'mgvd'),
+                'sizeChartBack' => __('Vissza a mérettáblázatra', 'mgvd'),
                 'sizeChartClose' => __('Bezárás', 'mgvd'),
                 'previewButton' => __('Minta nagyban', 'mgvd'),
                 'previewClose' => __('Bezárás', 'mgvd'),
@@ -831,6 +839,7 @@ class MG_Variant_Display_Manager {
         return wp_parse_args($sanitized, array(
             'colors' => array(),
             'size_charts' => array(),
+            'size_chart_models' => array(),
         ));
     }
 
@@ -838,6 +847,7 @@ class MG_Variant_Display_Manager {
         $clean = array(
             'colors' => array(),
             'size_charts' => array(),
+            'size_chart_models' => array(),
         );
 
         if (!is_array($input)) {
@@ -916,6 +926,23 @@ class MG_Variant_Display_Manager {
                 }
                 $chart = is_string($chart) ? $chart : '';
                 $clean['size_charts'][$type_slug] = wp_kses_post($chart);
+            }
+        }
+
+        if (!empty($input['size_chart_models']) && is_array($input['size_chart_models'])) {
+            foreach ($input['size_chart_models'] as $type_slug => $chart) {
+                $type_slug = sanitize_title($type_slug);
+                if ($type_slug === '') {
+                    continue;
+                }
+                if (is_array($allowed_type_slugs) && !in_array($type_slug, $allowed_type_slugs, true)) {
+                    continue;
+                }
+                if (!isset($clean['size_chart_models'])) {
+                    $clean['size_chart_models'] = array();
+                }
+                $chart = is_string($chart) ? $chart : '';
+                $clean['size_chart_models'][$type_slug] = wp_kses_post($chart);
             }
         }
 
