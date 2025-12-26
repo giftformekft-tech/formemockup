@@ -1209,6 +1209,8 @@
         var $modal = $('<div class="mg-size-chart-modal" role="dialog" aria-modal="true" aria-hidden="true" />');
         var $dialog = $('<div class="mg-size-chart-modal__dialog" role="document" />');
         var $header = $('<div class="mg-size-chart-modal__header" />');
+        var $headerMeta = $('<div class="mg-size-chart-modal__meta" />');
+        var $headerActions = $('<div class="mg-size-chart-modal__actions" />');
         this.sizeChart.$title = $('<h3 class="mg-size-chart-modal__title" />').text(this.getText('sizeChartTitle', 'Mérettáblázat'));
         this.sizeChart.$close = $('<button type="button" class="mg-size-chart-modal__close" />').text(this.getText('sizeChartClose', 'Bezárás'));
         var $body = $('<div class="mg-size-chart-modal__body" />');
@@ -1219,7 +1221,9 @@
         this.sizeChart.$modelsButton = $('<button type="button" class="mg-size-chart-modal__switch" />').text(this.getText('sizeChartModelsLink', 'Nézd meg modelleken'));
         this.sizeChart.$backButton = $('<button type="button" class="mg-size-chart-modal__back" />').text(this.getText('sizeChartBack', 'Vissza a mérettáblázatra'));
 
-        $header.append(this.sizeChart.$title);
+        $headerMeta.append(this.sizeChart.$title);
+        $headerMeta.append($headerActions);
+        $header.append($headerMeta);
         $header.append(this.sizeChart.$close);
         $dialog.append($header);
         $dialog.append($body);
@@ -1235,8 +1239,8 @@
         this.sizeChart.$modelsBody = $modelsBody;
 
         $chartPanel.append($chartBody);
-        $chartPanel.append(this.sizeChart.$modelsButton);
-        $modelsPanel.append(this.sizeChart.$backButton);
+        $headerActions.append(this.sizeChart.$modelsButton);
+        $headerActions.append(this.sizeChart.$backButton);
         $modelsPanel.append($modelsBody);
         $body.append($chartPanel);
         $body.append($modelsPanel);
@@ -1445,6 +1449,10 @@
             this.sizeChart.$modelsButton.toggleClass('is-disabled', !hasModels);
             this.sizeChart.$modelsButton.prop('disabled', !hasModels);
             this.sizeChart.$modelsButton.attr('aria-disabled', hasModels ? 'false' : 'true');
+            this.sizeChart.$modelsButton.toggle(view === 'chart');
+        }
+        if (this.sizeChart.$backButton) {
+            this.sizeChart.$backButton.toggle(view === 'models');
         }
 
         var typeLabel = this.state.type && this.config.types[this.state.type] ? this.config.types[this.state.type].label : '';
