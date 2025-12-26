@@ -42,7 +42,14 @@
             $modal: null,
             $title: null,
             $body: null,
-            $close: null
+            $close: null,
+            $modelsButton: null,
+            $backButton: null,
+            $chartPanel: null,
+            $modelsPanel: null,
+            $chartBody: null,
+            $modelsBody: null,
+            view: 'chart'
         };
         this.descriptionTargets = [];
         this.$colorLabelValue = $();
@@ -1202,11 +1209,21 @@
         var $modal = $('<div class="mg-size-chart-modal" role="dialog" aria-modal="true" aria-hidden="true" />');
         var $dialog = $('<div class="mg-size-chart-modal__dialog" role="document" />');
         var $header = $('<div class="mg-size-chart-modal__header" />');
+        var $headerMeta = $('<div class="mg-size-chart-modal__meta" />');
+        var $headerActions = $('<div class="mg-size-chart-modal__actions" />');
         this.sizeChart.$title = $('<h3 class="mg-size-chart-modal__title" />').text(this.getText('sizeChartTitle', 'Mérettáblázat'));
         this.sizeChart.$close = $('<button type="button" class="mg-size-chart-modal__close" />').text(this.getText('sizeChartClose', 'Bezárás'));
         var $body = $('<div class="mg-size-chart-modal__body" />');
+        var $chartPanel = $('<div class="mg-size-chart-modal__panel mg-size-chart-modal__panel--chart" />');
+        var $modelsPanel = $('<div class="mg-size-chart-modal__panel mg-size-chart-modal__panel--models" />');
+        var $chartBody = $('<div class="mg-size-chart-modal__content" />');
+        var $modelsBody = $('<div class="mg-size-chart-modal__content" />');
+        this.sizeChart.$modelsButton = $('<button type="button" class="mg-size-chart-modal__switch" />').text(this.getText('sizeChartModelsLink', 'Nézd meg modelleken'));
+        this.sizeChart.$backButton = $('<button type="button" class="mg-size-chart-modal__back" />').text(this.getText('sizeChartBack', 'Vissza a mérettáblázatra'));
 
-        $header.append(this.sizeChart.$title);
+        $headerMeta.append(this.sizeChart.$title);
+        $headerMeta.append($headerActions);
+        $header.append($headerMeta);
         $header.append(this.sizeChart.$close);
         $dialog.append($header);
         $dialog.append($body);
@@ -1216,10 +1233,29 @@
 
         this.sizeChart.$modal = $modal;
         this.sizeChart.$body = $body;
+        this.sizeChart.$chartPanel = $chartPanel;
+        this.sizeChart.$modelsPanel = $modelsPanel;
+        this.sizeChart.$chartBody = $chartBody;
+        this.sizeChart.$modelsBody = $modelsBody;
+
+        $chartPanel.append($chartBody);
+        $headerActions.append(this.sizeChart.$modelsButton);
+        $headerActions.append(this.sizeChart.$backButton);
+        $modelsPanel.append($modelsBody);
+        $body.append($chartPanel);
+        $body.append($modelsPanel);
 
         var self = this;
         this.sizeChart.$close.on('click', function(){
             self.hideSizeChart();
+        });
+
+        this.sizeChart.$modelsButton.on('click', function(){
+            self.showSizeChartModels();
+        });
+
+        this.sizeChart.$backButton.on('click', function(){
+            self.showSizeChart();
         });
 
         $modal.on('click', function(event){
@@ -1240,10 +1276,11 @@
             return;
         }
         var chart = this.getSizeChartContent();
-        var hasChart = !!chart;
-        this.sizeChart.$link.toggleClass('is-disabled', !hasChart);
-        this.sizeChart.$link.attr('aria-disabled', hasChart ? 'false' : 'true');
-        this.sizeChart.$link.prop('disabled', !hasChart);
+        var models = this.getSizeChartModelsContent();
+        var hasContent = !!chart || !!models;
+        this.sizeChart.$link.toggleClass('is-disabled', !hasContent);
+        this.sizeChart.$link.attr('aria-disabled', hasContent ? 'false' : 'true');
+        this.sizeChart.$link.prop('disabled', !hasContent);
         this.sizeChart.$link.attr('aria-expanded', this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open') ? 'true' : 'false');
     };
 
@@ -1256,6 +1293,17 @@
             return '';
         }
         return typeMeta.size_chart;
+    };
+
+    VariantDisplay.prototype.getSizeChartModelsContent = function() {
+        if (!this.state.type) {
+            return '';
+        }
+        var typeMeta = this.config.types[this.state.type];
+        if (!typeMeta || !typeMeta.size_chart_models) {
+            return '';
+        }
+        return typeMeta.size_chart_models;
     };
 
     VariantDisplay.prototype.captureDescriptionTargets = function() {
@@ -1331,21 +1379,35 @@
         if (!this.sizeChart.$modal) {
             return;
         }
-        var content = this.getSizeChartContent();
-        if (!content) {
+        var chartContent = this.getSizeChartContent();
+        var modelsContent = this.getSizeChartModelsContent();
+        if (!chartContent && !modelsContent) {
             return;
         }
-        var typeLabel = this.state.type && this.config.types[this.state.type] ? this.config.types[this.state.type].label : '';
-        if (typeLabel) {
-            this.sizeChart.$title.text(this.getText('sizeChartTitle', 'Mérettáblázat') + ' – ' + typeLabel);
-        } else {
-            this.sizeChart.$title.text(this.getText('sizeChartTitle', 'Mérettáblázat'));
-        }
-        this.sizeChart.$body.html(content);
+        this.sizeChart.view = chartContent ? 'chart' : 'models';
+        this.updateSizeChartPanels();
         this.sizeChart.$modal.addClass('is-open').attr('aria-hidden', 'false');
         this.sizeChart.$link.attr('aria-expanded', 'true');
         this.sizeChart.$close.trigger('focus');
         this.updateSizeChartLink();
+    };
+
+    VariantDisplay.prototype.showSizeChartModels = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        var modelsContent = this.getSizeChartModelsContent();
+        if (!modelsContent) {
+            return;
+        }
+        this.sizeChart.view = 'models';
+        this.updateSizeChartPanels();
+        if (!this.sizeChart.$modal.hasClass('is-open')) {
+            this.sizeChart.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        }
+        if (this.sizeChart.$backButton) {
+            this.sizeChart.$backButton.trigger('focus');
+        }
     };
 
     VariantDisplay.prototype.hideSizeChart = function() {
@@ -1353,13 +1415,61 @@
             return;
         }
         this.sizeChart.$modal.removeClass('is-open').attr('aria-hidden', 'true');
-        if (this.sizeChart.$body) {
-            this.sizeChart.$body.empty();
+        if (this.sizeChart.$chartBody) {
+            this.sizeChart.$chartBody.empty();
         }
+        if (this.sizeChart.$modelsBody) {
+            this.sizeChart.$modelsBody.empty();
+        }
+        this.sizeChart.view = 'chart';
         if (this.sizeChart.$link) {
             this.sizeChart.$link.attr('aria-expanded', 'false');
             this.sizeChart.$link.trigger('focus');
         }
         this.updateSizeChartLink();
+    };
+
+    VariantDisplay.prototype.updateSizeChartPanels = function() {
+        var chartContent = this.getSizeChartContent();
+        var modelsContent = this.getSizeChartModelsContent();
+        var hasModels = !!modelsContent;
+        var view = this.sizeChart.view || 'chart';
+        if (view === 'models' && !hasModels) {
+            view = 'chart';
+        }
+        this.sizeChart.view = view;
+
+        if (this.sizeChart.$chartBody) {
+            this.sizeChart.$chartBody.html(chartContent || '');
+        }
+        if (this.sizeChart.$modelsBody) {
+            this.sizeChart.$modelsBody.html(modelsContent || '');
+        }
+        if (this.sizeChart.$modelsButton) {
+            this.sizeChart.$modelsButton.toggleClass('is-disabled', !hasModels);
+            this.sizeChart.$modelsButton.prop('disabled', !hasModels);
+            this.sizeChart.$modelsButton.attr('aria-disabled', hasModels ? 'false' : 'true');
+            this.sizeChart.$modelsButton.toggle(view === 'chart');
+        }
+        if (this.sizeChart.$backButton) {
+            this.sizeChart.$backButton.toggle(view === 'models');
+        }
+
+        var typeLabel = this.state.type && this.config.types[this.state.type] ? this.config.types[this.state.type].label : '';
+        var titleKey = view === 'models' ? 'sizeChartModelsTitle' : 'sizeChartTitle';
+        var titleFallback = view === 'models' ? 'Modelleken' : 'Mérettáblázat';
+        var titleBase = this.getText(titleKey, titleFallback);
+        if (typeLabel) {
+            this.sizeChart.$title.text(titleBase + ' – ' + typeLabel);
+        } else {
+            this.sizeChart.$title.text(titleBase);
+        }
+
+        if (this.sizeChart.$chartPanel) {
+            this.sizeChart.$chartPanel.toggleClass('is-active', view === 'chart');
+        }
+        if (this.sizeChart.$modelsPanel) {
+            this.sizeChart.$modelsPanel.toggleClass('is-active', view === 'models');
+        }
     };
 })(jQuery);

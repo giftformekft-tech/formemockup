@@ -230,6 +230,20 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     gap: 1rem;
 }
 
+.mg-size-chart-modal__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.mg-size-chart-modal__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .mg-size-chart-modal__title {
     margin: 0;
     font-size: 1.1rem;
@@ -260,6 +274,44 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     font-size: 0.95rem;
     line-height: 1.6;
     color: #0f172a;
+}
+
+.mg-size-chart-modal__panel {
+    display: none;
+}
+
+.mg-size-chart-modal__panel.is-active {
+    display: block;
+}
+
+.mg-size-chart-modal__switch,
+.mg-size-chart-modal__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    margin: 0;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mg-size-chart-modal__switch:hover,
+.mg-size-chart-modal__switch:focus,
+.mg-size-chart-modal__back:hover,
+.mg-size-chart-modal__back:focus {
+    background: rgba(37, 99, 235, 0.14);
+}
+
+.mg-size-chart-modal__switch.is-disabled,
+.mg-size-chart-modal__switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .mg-size-chart-modal__body table {
