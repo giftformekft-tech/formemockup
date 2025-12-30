@@ -809,6 +809,21 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 <p class="description">Ez kerül a WooCommerce termék hosszú leírásába; a rövid leírást automatikusan egy kivonatból generáljuk.</p>
 <?php
 $curr_desc = isset($prod['type_description']) ? $prod['type_description'] : '';
+$seo_vars = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
+$placeholder_tokens = array('{product_name}', '{product_category}', '{product_categories}', '{category_seo}', '{category_seos}', '{category_seo:slug}');
+if (!empty($seo_vars)) {
+    foreach (array_keys($seo_vars) as $slug) {
+        $placeholder_tokens[] = '{seo:' . $slug . '}';
+    }
+}
+echo '<p class="description">Elérhető változók: ';
+foreach ($placeholder_tokens as $index => $token) {
+    if ($index > 0) {
+        echo ' ';
+    }
+    echo '<code>' . esc_html($token) . '</code>';
+}
+echo '</p>';
 if (function_exists('wp_editor')) {
     wp_editor(
         $curr_desc,
