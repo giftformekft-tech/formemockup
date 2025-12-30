@@ -230,6 +230,20 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     gap: 1rem;
 }
 
+.mg-size-chart-modal__meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.mg-size-chart-modal__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
 .mg-size-chart-modal__title {
     margin: 0;
     font-size: 1.1rem;
@@ -260,6 +274,44 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     font-size: 0.95rem;
     line-height: 1.6;
     color: #0f172a;
+}
+
+.mg-size-chart-modal__panel {
+    display: none;
+}
+
+.mg-size-chart-modal__panel.is-active {
+    display: block;
+}
+
+.mg-size-chart-modal__switch,
+.mg-size-chart-modal__back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35em;
+    margin: 0;
+    padding: 0.45rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mg-size-chart-modal__switch:hover,
+.mg-size-chart-modal__switch:focus,
+.mg-size-chart-modal__back:hover,
+.mg-size-chart-modal__back:focus {
+    background: rgba(37, 99, 235, 0.14);
+}
+
+.mg-size-chart-modal__switch.is-disabled,
+.mg-size-chart-modal__switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .mg-size-chart-modal__body table {
@@ -454,148 +506,5 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
 
     .mg-pattern-preview__body {
         padding: 1rem;
-    }
-}
-
-.mg-archive-product-marker {
-    display: none !important;
-}
-
-.mg-archive-view-card {
-    position: relative;
-}
-
-.mg-archive-toggle {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-
-.mg-archive-toggle__label {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: #111;
-}
-
-.mg-archive-toggle__btn {
-    border: 1px solid #d0d0d0;
-    background: #fff;
-    color: #111;
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 0.88rem;
-    cursor: pointer;
-    transition: all 0.18s ease;
-}
-
-.mg-archive-toggle__btn:hover {
-    border-color: #111;
-}
-
-.mg-archive-toggle__btn.is-active {
-    background: #111;
-    color: #fff;
-    border-color: #111;
-}
-
-.mg-archive-toggle__btn.is-disabled,
-.mg-archive-toggle__btn[aria-disabled="true"] {
-    opacity: 0.55;
-    cursor: not-allowed;
-}
-
-.mg-archive-view__link {
-    display: block;
-    position: relative;
-}
-
-.mg-archive-view__mockup {
-    width: 100%;
-}
-
-.mg-archive-view__mockup img {
-    display: block;
-    width: 100%;
-    height: auto;
-}
-
-.mg-archive-view__pattern {
-    display: none;
-    position: relative;
-    width: 100%;
-    background: #f7f7f7;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-.mg-archive-view__pattern-canvas {
-    position: relative;
-    width: 100%;
-    background: #f7f7f7;
-}
-
-.mg-archive-view__canvas {
-    width: 100%;
-    height: auto;
-    display: block;
-}
-
-.mg-archive-view__canvas.is-hidden {
-    display: none;
-}
-
-.mg-archive-view__fallback {
-    position: absolute;
-    inset: 0;
-    padding: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-size: 0.92rem;
-    color: #333;
-    background: rgba(255, 255, 255, 0.88);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
-
-.mg-archive-view__fallback.is-visible {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.mg-archive-view-card.mg-archive-mode-pattern .mg-archive-view__pattern {
-    display: block;
-}
-
-.mg-archive-view-card.mg-archive-mode-pattern .mg-archive-view__mockup {
-    display: none;
-}
-
-.mg-archive-view-card.mg-archive-mode-mockup .mg-archive-view__pattern {
-    display: none;
-}
-
-.mg-archive-view-card .mg-archive-view__link img.attachment-woocommerce_thumbnail {
-    transition: opacity 0.18s ease;
-}
-
-.mg-archive-view-card.mg-archive-mode-pattern .mg-archive-view__link img.attachment-woocommerce_thumbnail {
-    opacity: 0;
-    visibility: hidden;
-    height: 0;
-}
-
-@media (max-width: 640px) {
-    .mg-archive-toggle {
-        gap: 6px;
-    }
-
-    .mg-archive-toggle__btn {
-        padding: 6px 9px;
-        font-size: 0.86rem;
     }
 }
