@@ -29,6 +29,19 @@ class MG_Variant_Display_Manager {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_archive_assets'), 15);
         add_action('woocommerce_before_shop_loop_item', array(__CLASS__, 'render_archive_marker'), 5);
+        add_filter('woocommerce_cart_item_name', array(__CLASS__, 'append_cart_item_suffix'), 10, 3);
+    }
+
+    public static function append_cart_item_suffix($name, $cart_item, $cart_item_key) {
+        $suffix = ' póló pulcsi';
+        $plain = wp_strip_all_tags($name);
+        if ($plain !== '' && stripos($plain, trim($suffix)) !== false) {
+            return $name;
+        }
+        if (strpos($name, '</a>') !== false) {
+            return str_replace('</a>', esc_html($suffix) . '</a>', $name);
+        }
+        return $name . esc_html($suffix);
     }
 
     public static function enqueue_assets() {
