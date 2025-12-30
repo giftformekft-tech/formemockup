@@ -118,6 +118,28 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     box-shadow: none;
 }
 
+.mg-variant-availability {
+    margin-top: 0.65em;
+    font-size: 0.92rem;
+    color: #1e293b;
+}
+
+.mg-variant-availability__label {
+    font-weight: 600;
+}
+
+.mg-variant-availability.is-out-of-stock .mg-variant-availability__value {
+    color: #b00020;
+}
+
+.mg-variant-availability.is-in-stock .mg-variant-availability__value {
+    color: #0f6a2f;
+}
+
+.mg-variant-availability.is-pending .mg-variant-availability__value {
+    color: #5c5c5c;
+}
+
 .mg-variant-option__label {
     white-space: nowrap;
 }
