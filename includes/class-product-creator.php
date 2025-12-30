@@ -3,6 +3,27 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    const BULK_SUFFIX = 'póló pulcsi';
+
+    public static function apply_bulk_suffix_slug($product_id, $base_name) {
+        $product_id = intval($product_id);
+        if ($product_id <= 0 || !is_string($base_name) || $base_name === '') {
+            return;
+        }
+        $post = get_post($product_id);
+        if (!$post) {
+            return;
+        }
+        $slug_base = sanitize_title(trim($base_name) . ' ' . self::BULK_SUFFIX);
+        if ($slug_base === '') {
+            return;
+        }
+        $unique_slug = wp_unique_post_slug($slug_base, $post->ID, $post->post_status, $post->post_type, $post->post_parent);
+        if ($unique_slug && $unique_slug !== $post->post_name) {
+            wp_update_post(['ID' => $post->ID, 'post_name' => $unique_slug]);
+        }
+    }
+
     private function sanitize_size_list($product) {
         $sizes = array();
         if (is_array($product)) {

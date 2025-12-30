@@ -5,7 +5,6 @@
     var parts = [];
     if (baseName){ parts.push(baseName); }
     if (mainLabel){ parts.push(mainLabel); }
-    parts.push('póló pulcsi');
     return parts.join(' ');
   }
   function updateRowAutoName($row){

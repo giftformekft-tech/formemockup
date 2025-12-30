@@ -217,6 +217,11 @@
         sizeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('size', 'Méret')));
         this.$sizeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
         sizeSection.append(this.$sizeOptions);
+        this.$availability = $('<div class="mg-variant-availability" />');
+        this.$availability.append($('<span class="mg-variant-availability__label" />').text(this.getText('availability', 'Elérhetőség') + ': '));
+        this.$availabilityValue = $('<span class="mg-variant-availability__value" />');
+        this.$availability.append(this.$availabilityValue);
+        sizeSection.append(this.$availability);
         this.sizeChart.$link = $('<button type="button" class="mg-size-chart-link" aria-disabled="true" aria-expanded="false" />').text(this.getText('sizeChartLink', '📏 Mérettáblázat megnyitása'));
         sizeSection.append(this.sizeChart.$link);
         wrapper.append(sizeSection);
@@ -657,6 +662,36 @@
             $btn.toggleClass('is-selected', isActive);
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
+        this.updateAvailabilityText();
+    };
+
+    VariantDisplay.prototype.updateAvailabilityText = function() {
+        if (!this.$availabilityValue || !this.$availabilityValue.length) {
+            return;
+        }
+        if (!this.state.type) {
+            this.$availabilityValue.text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.'));
+            this.$availability.removeClass('is-out-of-stock is-in-stock').addClass('is-pending');
+            return;
+        }
+        if (!this.state.color) {
+            this.$availabilityValue.text(this.getText('chooseColorFirst', 'Először válassz színt.'));
+            this.$availability.removeClass('is-out-of-stock is-in-stock').addClass('is-pending');
+            return;
+        }
+        if (!this.state.size) {
+            this.$availabilityValue.text(this.getText('chooseSizeFirst', 'Válassz méretet.'));
+            this.$availability.removeClass('is-out-of-stock is-in-stock').addClass('is-pending');
+            return;
+        }
+        var availability = this.getAvailability(this.state.type, this.state.color, this.state.size);
+        if (availability.in_stock && availability.is_purchasable) {
+            this.$availabilityValue.text(this.getText('inStock', 'Raktáron'));
+            this.$availability.removeClass('is-out-of-stock is-pending').addClass('is-in-stock');
+        } else {
+            this.$availabilityValue.text(this.getText('outOfStock', 'Nincs raktáron'));
+            this.$availability.removeClass('is-in-stock is-pending').addClass('is-out-of-stock');
+        }
     };
 
     VariantDisplay.prototype.setColorLabelText = function(label) {
