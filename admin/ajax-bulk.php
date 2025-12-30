@@ -181,6 +181,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         } else {
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
+            MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
             MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
             wp_send_json_success(array('product_id'=>$pid));
         }

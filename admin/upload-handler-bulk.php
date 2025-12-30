@@ -147,7 +147,10 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             if (empty($images_by_type_color)) continue;
             $cats = array('main'=> intval($main[$i] ?? 0), 'sub'=> intval($sub[$i] ?? 0));
             $generation_context = array('design_path' => $design_path, 'trigger' => 'multi_upload');
-            $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
+            $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
+            if (!is_wp_error($pid)) {
+                MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
+            }
         }
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=success')); exit;
     } catch (Throwable $e) {
