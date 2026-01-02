@@ -7,7 +7,7 @@
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
     display: flex;
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;
     gap: 16px;
     flex: 0 0 100%;
     width: 100%;
@@ -27,7 +27,8 @@ form.cart .mg-delivery-estimate {
 
 .mg-delivery-estimate__icon {
     display: flex;
-    align-items: stretch;
+    align-items: center;
+    flex: 0 0 auto;
 }
 
 .mg-delivery-estimate__icon img {

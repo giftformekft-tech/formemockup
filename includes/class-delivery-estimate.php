@@ -89,6 +89,11 @@ class MG_Delivery_Estimate {
         $icon_url = esc_url($settings['icon_url']);
         ?>
         <div class="mg-delivery-estimate" role="note" aria-live="polite">
+            <?php if ($icon_url !== '') : ?>
+                <div class="mg-delivery-estimate__icon">
+                    <img src="<?php echo esc_url($icon_url); ?>" alt="" />
+                </div>
+            <?php endif; ?>
             <div class="mg-delivery-estimate__content">
                 <div class="mg-delivery-estimate__row mg-delivery-estimate__row--normal">
                     <span class="mg-delivery-estimate__label"><?php echo $normal_label; ?></span>
@@ -103,11 +108,6 @@ class MG_Delivery_Estimate {
                     <strong class="mg-delivery-estimate__date"><?php echo $cheapest_text; ?></strong>
                 </div>
             </div>
-            <?php if ($icon_url !== '') : ?>
-                <div class="mg-delivery-estimate__icon">
-                    <img src="<?php echo esc_url($icon_url); ?>" alt="" />
-                </div>
-            <?php endif; ?>
         </div>
         <?php
     }
