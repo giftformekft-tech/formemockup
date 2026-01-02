@@ -18,6 +18,13 @@ form.cart .mg-delivery-estimate {
     order: 99;
 }
 
+form.cart .single_add_to_cart_button,
+.woocommerce-variation-add-to-cart .single_add_to_cart_button {
+    width: 100%;
+    min-height: 52px;
+    padding: 14px 20px;
+}
+
 .mg-delivery-estimate__content {
     display: flex;
     flex-direction: column;
