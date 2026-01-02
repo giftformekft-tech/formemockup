@@ -61,6 +61,8 @@ class MG_Settings_Page {
             $express_days = max(0, intval($input['express_days'] ?? 0));
             $normal_label = sanitize_text_field($input['normal_label'] ?? '');
             $express_label = sanitize_text_field($input['express_label'] ?? '');
+            $cheapest_label = sanitize_text_field($input['cheapest_label'] ?? '');
+            $icon_url = esc_url_raw($input['icon_url'] ?? '');
             $holidays_raw = $input['holidays'] ?? '';
             $holiday_lines = preg_split('/\r\n|\r|\n/', (string)$holidays_raw);
             $holidays = array();
@@ -76,6 +78,8 @@ class MG_Settings_Page {
                 'express_days' => $express_days,
                 'normal_label' => $normal_label,
                 'express_label' => $express_label,
+                'cheapest_label' => $cheapest_label,
+                'icon_url' => $icon_url,
                 'holidays' => $holidays,
             ));
             echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
@@ -139,6 +143,8 @@ class MG_Settings_Page {
             'express_days' => 1,
             'normal_label' => 'Normál kézbesítés várható:',
             'express_label' => 'SOS kézbesítés:',
+            'cheapest_label' => 'Legolcsóbb szállítás:',
+            'icon_url' => '',
             'holidays' => array(),
         );
         $delivery_holidays_text = '';
@@ -278,6 +284,17 @@ class MG_Settings_Page {
                     <tr>
                         <th scope="row">SOS címke</th>
                         <td><input type="text" name="mg_delivery_estimate[express_label]" value="<?php echo esc_attr($delivery_settings['express_label'] ?? ''); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Legolcsóbb címke</th>
+                        <td><input type="text" name="mg_delivery_estimate[cheapest_label]" value="<?php echo esc_attr($delivery_settings['cheapest_label'] ?? ''); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">PNG ikon URL</th>
+                        <td>
+                            <input type="url" name="mg_delivery_estimate[icon_url]" value="<?php echo esc_attr($delivery_settings['icon_url'] ?? ''); ?>" class="regular-text" />
+                            <p class="description">Adj meg egy PNG kép URL-t. A kép a csempe jobb oldalán jelenik meg.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row">Munkaszüneti napok</th>

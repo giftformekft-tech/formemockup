@@ -33,6 +33,8 @@ class MG_Delivery_Estimate {
             'express_days' => 1,
             'normal_label' => __('Normál kézbesítés várható:', 'mockup-generator'),
             'express_label' => __('SOS kézbesítés:', 'mockup-generator'),
+            'cheapest_label' => __('Legolcsóbb szállítás:', 'mockup-generator'),
+            'icon_url' => '',
             'holidays' => array(),
         );
         $settings = get_option(self::OPTION_KEY, array());
@@ -45,6 +47,8 @@ class MG_Delivery_Estimate {
         $merged['express_days'] = max(0, intval($merged['express_days']));
         $merged['normal_label'] = is_string($merged['normal_label']) ? $merged['normal_label'] : $defaults['normal_label'];
         $merged['express_label'] = is_string($merged['express_label']) ? $merged['express_label'] : $defaults['express_label'];
+        $merged['cheapest_label'] = is_string($merged['cheapest_label']) ? $merged['cheapest_label'] : $defaults['cheapest_label'];
+        $merged['icon_url'] = is_string($merged['icon_url']) ? $merged['icon_url'] : $defaults['icon_url'];
         $merged['holidays'] = is_array($merged['holidays']) ? $merged['holidays'] : array();
         return $merged;
     }
@@ -64,16 +68,35 @@ class MG_Delivery_Estimate {
 
         $normal_label = wp_kses_post($settings['normal_label']);
         $express_label = wp_kses_post($settings['express_label']);
+        $cheapest_label = wp_kses_post($settings['cheapest_label']);
+        $icon_url = esc_url($settings['icon_url']);
+        $cheapest_is_express = $settings['express_days'] < $settings['normal_days'];
+        $cheapest_date = $cheapest_is_express ? $express_date : $normal_date;
+        $cheapest_mode_label = $cheapest_is_express ? $settings['express_label'] : $settings['normal_label'];
         ?>
         <div class="mg-delivery-estimate" role="note" aria-live="polite">
-            <div class="mg-delivery-estimate__row mg-delivery-estimate__row--normal">
-                <span class="mg-delivery-estimate__label"><?php echo $normal_label; ?></span>
-                <strong class="mg-delivery-estimate__date"><?php echo esc_html(wp_date($format, $normal_date->getTimestamp(), $timezone)); ?></strong>
+            <div class="mg-delivery-estimate__content">
+                <div class="mg-delivery-estimate__row mg-delivery-estimate__row--normal">
+                    <span class="mg-delivery-estimate__label"><?php echo $normal_label; ?></span>
+                    <strong class="mg-delivery-estimate__date"><?php echo esc_html(wp_date($format, $normal_date->getTimestamp(), $timezone)); ?></strong>
+                </div>
+                <div class="mg-delivery-estimate__row mg-delivery-estimate__row--express">
+                    <span class="mg-delivery-estimate__label"><?php echo $express_label; ?></span>
+                    <strong class="mg-delivery-estimate__date"><?php echo esc_html(wp_date($format, $express_date->getTimestamp(), $timezone)); ?></strong>
+                </div>
+                <div class="mg-delivery-estimate__row mg-delivery-estimate__row--cheapest">
+                    <span class="mg-delivery-estimate__label"><?php echo $cheapest_label; ?></span>
+                    <strong class="mg-delivery-estimate__date">
+                        <?php echo esc_html(wp_strip_all_tags($cheapest_mode_label)); ?>
+                        <?php echo esc_html(' · ' . wp_date($format, $cheapest_date->getTimestamp(), $timezone)); ?>
+                    </strong>
+                </div>
             </div>
-            <div class="mg-delivery-estimate__row mg-delivery-estimate__row--express">
-                <span class="mg-delivery-estimate__label"><?php echo $express_label; ?></span>
-                <strong class="mg-delivery-estimate__date"><?php echo esc_html(wp_date($format, $express_date->getTimestamp(), $timezone)); ?></strong>
-            </div>
+            <?php if ($icon_url !== '') : ?>
+                <div class="mg-delivery-estimate__icon">
+                    <img src="<?php echo esc_url($icon_url); ?>" alt="" />
+                </div>
+            <?php endif; ?>
         </div>
         <?php
     }

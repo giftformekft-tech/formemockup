@@ -6,8 +6,9 @@
     border: 1px solid #ececec;
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 16px;
     flex: 0 0 100%;
     width: 100%;
 }
@@ -15,6 +16,25 @@
 .woocommerce-variation-add-to-cart .mg-delivery-estimate,
 form.cart .mg-delivery-estimate {
     order: 99;
+}
+
+.mg-delivery-estimate__content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.mg-delivery-estimate__icon {
+    display: flex;
+    align-items: stretch;
+}
+
+.mg-delivery-estimate__icon img {
+    height: 100%;
+    max-height: 72px;
+    width: auto;
+    object-fit: contain;
 }
 
 .mg-delivery-estimate__row {
@@ -32,6 +52,10 @@ form.cart .mg-delivery-estimate {
 
 .mg-delivery-estimate__row--express .mg-delivery-estimate__label {
     color: #f59e0b;
+}
+
+.mg-delivery-estimate__row--cheapest .mg-delivery-estimate__label {
+    color: #10b981;
 }
 
 .mg-delivery-estimate__date {
