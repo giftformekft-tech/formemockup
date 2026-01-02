@@ -1,0 +1,69 @@
+.mg-delivery-estimate {
+    margin-top: 16px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #ececec;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    flex: 0 0 100%;
+    width: 100%;
+}
+
+.woocommerce-variation-add-to-cart .mg-delivery-estimate,
+form.cart .mg-delivery-estimate {
+    order: 99;
+}
+
+.mg-delivery-estimate__content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.mg-delivery-estimate__icon {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.mg-delivery-estimate__icon img {
+    height: 100%;
+    max-height: 72px;
+    width: auto;
+    object-fit: contain;
+}
+
+.mg-delivery-estimate__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.mg-delivery-estimate__label {
+    color: #f97316;
+    font-weight: 600;
+}
+
+.mg-delivery-estimate__row--express .mg-delivery-estimate__label {
+    color: #f59e0b;
+}
+
+.mg-delivery-estimate__row--cheapest .mg-delivery-estimate__label {
+    color: #10b981;
+}
+
+.mg-delivery-estimate__date {
+    color: #111827;
+    font-weight: 600;
+}
+
+.mg-delivery-estimate__row--cheapest .mg-delivery-estimate__date {
+    color: #000000;
+}
