@@ -62,3 +62,7 @@ form.cart .mg-delivery-estimate {
     color: #111827;
     font-weight: 600;
 }
+
+.mg-delivery-estimate__row--cheapest .mg-delivery-estimate__date {
+    color: #000000;
+}
