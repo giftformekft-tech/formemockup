@@ -556,11 +556,15 @@ class MG_Generator {
             if (method_exists($design,'thumbnailImage')) $design->thumbnailImage($design_width_px, $design_height_px, true, false);
             $this->ensure_imagick_alpha_channel($design, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
 
-            if ($auto_center_x && method_exists($mockup, 'getImageWidth') && method_exists($design, 'getImageWidth')) {
-                $final_mockup_w = (int)$mockup->getImageWidth();
+            if (method_exists($design, 'getImageWidth')) {
                 $final_design_w = (int)$design->getImageWidth();
-                if ($final_mockup_w > 0 && $final_design_w > 0) {
-                    $design_x_px = max(0, (int)round(($final_mockup_w - $final_design_w) / 2));
+                if ($target_w > 0 && $final_design_w > 0) {
+                    $design_x_px = max(0, (int)round($target_x + (($target_w - $final_design_w) / 2)));
+                } elseif ($auto_center_x && method_exists($mockup, 'getImageWidth')) {
+                    $final_mockup_w = (int)$mockup->getImageWidth();
+                    if ($final_mockup_w > 0 && $final_design_w > 0) {
+                        $design_x_px = max(0, (int)round(($final_mockup_w - $final_design_w) / 2));
+                    }
                 }
             }
 
