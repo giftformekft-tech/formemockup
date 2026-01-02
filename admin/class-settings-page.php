@@ -54,6 +54,37 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Leírás változók elmentve.</p></div>';
         }
 
+        if (isset($_POST['mg_delivery_estimate_nonce']) && wp_verify_nonce($_POST['mg_delivery_estimate_nonce'], 'mg_delivery_estimate_save')) {
+            $input = isset($_POST['mg_delivery_estimate']) && is_array($_POST['mg_delivery_estimate']) ? wp_unslash($_POST['mg_delivery_estimate']) : array();
+            $enabled = !empty($input['enabled']);
+            $normal_days = max(0, intval($input['normal_days'] ?? 0));
+            $express_days = max(0, intval($input['express_days'] ?? 0));
+            $normal_label = sanitize_text_field($input['normal_label'] ?? '');
+            $express_label = sanitize_text_field($input['express_label'] ?? '');
+            $cheapest_label = sanitize_text_field($input['cheapest_label'] ?? '');
+            $icon_url = esc_url_raw($input['icon_url'] ?? '');
+            $holidays_raw = $input['holidays'] ?? '';
+            $holiday_lines = preg_split('/\r\n|\r|\n/', (string)$holidays_raw);
+            $holidays = array();
+            foreach ($holiday_lines as $line) {
+                $normalized = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::normalize_holiday_line($line) : '';
+                if ($normalized !== '' && !in_array($normalized, $holidays, true)) {
+                    $holidays[] = $normalized;
+                }
+            }
+            update_option('mg_delivery_estimate', array(
+                'enabled' => $enabled,
+                'normal_days' => $normal_days,
+                'express_days' => $express_days,
+                'normal_label' => $normal_label,
+                'express_label' => $express_label,
+                'cheapest_label' => $cheapest_label,
+                'icon_url' => $icon_url,
+                'holidays' => $holidays,
+            ));
+            echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
+        }
+
         if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
             $products = get_option('mg_products', array());
             $key = sanitize_title($_POST['product_key'] ?? '');
@@ -106,6 +137,20 @@ class MG_Settings_Page {
             $description_variables_lines[] = $slug . ' | ' . $text;
         }
         $description_variables_text = implode("\n", $description_variables_lines);
+        $delivery_settings = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::get_settings() : array(
+            'enabled' => true,
+            'normal_days' => 3,
+            'express_days' => 1,
+            'normal_label' => 'Normál kézbesítés várható:',
+            'express_label' => 'SOS kézbesítés:',
+            'cheapest_label' => 'Legolcsóbb szállítás:',
+            'icon_url' => '',
+            'holidays' => array(),
+        );
+        $delivery_holidays_text = '';
+        if (!empty($delivery_settings['holidays']) && is_array($delivery_settings['holidays'])) {
+            $delivery_holidays_text = implode("\n", $delivery_settings['holidays']);
+        }
         ?>
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
@@ -214,6 +259,53 @@ class MG_Settings_Page {
 
             <hr/>
             <?php endif; ?>
+
+            <h2>Várható érkezés csempe</h2>
+            <p>Ez a csempe a kosár gomb alatt jelenik meg a termékoldalon, és kiszámolja a várható érkezési dátumot munka- és szállítási napok alapján.</p>
+            <form method="post">
+                <?php wp_nonce_field('mg_delivery_estimate_save', 'mg_delivery_estimate_nonce'); ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Megjelenítés</th>
+                        <td><label><input type="checkbox" name="mg_delivery_estimate[enabled]" value="1" <?php checked(!empty($delivery_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Normál szállítás (munkanap)</th>
+                        <td><input type="number" name="mg_delivery_estimate[normal_days]" min="0" step="1" value="<?php echo esc_attr(intval($delivery_settings['normal_days'] ?? 0)); ?>" class="small-text" /> nap</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">SOS szállítás (munkanap)</th>
+                        <td><input type="number" name="mg_delivery_estimate[express_days]" min="0" step="1" value="<?php echo esc_attr(intval($delivery_settings['express_days'] ?? 0)); ?>" class="small-text" /> nap</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Normál címke</th>
+                        <td><input type="text" name="mg_delivery_estimate[normal_label]" value="<?php echo esc_attr($delivery_settings['normal_label'] ?? ''); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">SOS címke</th>
+                        <td><input type="text" name="mg_delivery_estimate[express_label]" value="<?php echo esc_attr($delivery_settings['express_label'] ?? ''); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Legolcsóbb címke</th>
+                        <td><input type="text" name="mg_delivery_estimate[cheapest_label]" value="<?php echo esc_attr($delivery_settings['cheapest_label'] ?? ''); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">PNG ikon URL</th>
+                        <td>
+                            <input type="url" name="mg_delivery_estimate[icon_url]" value="<?php echo esc_attr($delivery_settings['icon_url'] ?? ''); ?>" class="regular-text" />
+                            <p class="description">Adj meg egy PNG kép URL-t. A kép a csempe jobb oldalán jelenik meg.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Munkaszüneti napok</th>
+                        <td>
+                            <textarea name="mg_delivery_estimate[holidays]" rows="6" class="large-text code" placeholder="2024-12-25"><?php echo esc_textarea($delivery_holidays_text); ?></textarea>
+                            <p class="description">Adj meg egy dátumot soronként (YYYY-MM-DD). Hétvégék automatikusan kiesnek.</p>
+                        </td>
+                    </tr>
+                </table>
+                <?php submit_button('Mentés'); ?>
+            </form>
 
             <h2>Leírás változók</h2>
             <p class="description">Adj meg újrahasznosítható szövegeket, amelyeket a termék leírásába a <code>{seo:slug}</code> formában illeszthetsz be.</p>
