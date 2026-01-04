@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.40
+Version: 1.2.53
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -20,6 +20,7 @@ add_action('plugins_loaded', function(){
     $files = [
         'includes/class-bulk-queue.php',
         'includes/class-cart-name-cleaner.php',
+        'includes/class-cart-pricing.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
@@ -33,6 +34,7 @@ add_action('plugins_loaded', function(){
         'includes/class-product-creator.php',
         'includes/class-custom-fields-manager.php',
         'includes/class-custom-fields-frontend.php',
+        'includes/class-delivery-estimate.php',
         'includes/class-mockup-maintenance.php',
         'includes/class-variant-maintenance.php',
         'includes/class-variant-display-manager.php',
@@ -75,8 +77,8 @@ add_action('plugins_loaded', function(){
         $is_shell = ($hook === 'toplevel_page_mockup-generator') || ($page === 'mockup-generator');
 
         if (strpos($hook, 'mockup-generator') !== false || $is_shell) {
-            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.40');
-            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.40', true);
+            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.53');
+            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.53', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')
@@ -110,8 +112,14 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Custom_Fields_Frontend')) {
         MG_Custom_Fields_Frontend::init();
     }
+    if (class_exists('MG_Delivery_Estimate')) {
+        MG_Delivery_Estimate::init();
+    }
     if (class_exists('MG_Cart_Name_Cleaner')) {
         MG_Cart_Name_Cleaner::init();
+    }
+    if (class_exists('MG_Cart_Pricing')) {
+        MG_Cart_Pricing::init();
     }
     if (class_exists('MG_Mockup_Maintenance')) {
         MG_Mockup_Maintenance::init();

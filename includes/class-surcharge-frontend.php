@@ -17,6 +17,7 @@ class MG_Surcharge_Frontend {
         add_action('woocommerce_checkout_create_order_line_item', [__CLASS__, 'add_order_item_meta'], 10, 4);
         add_action('woocommerce_cart_calculate_fees', [__CLASS__, 'apply_fees']);
         add_action('woocommerce_before_calculate_totals', [__CLASS__, 'validate_cart_items']);
+        add_action('woocommerce_before_calculate_totals', [__CLASS__, 'apply_item_surcharges'], 20);
         add_action('woocommerce_after_cart_item_name', [__CLASS__, 'render_cart_item_controls'], 20, 2);
         add_action('woocommerce_update_cart_action_cart_updated', [__CLASS__, 'handle_cart_update']);
     }
@@ -110,13 +111,15 @@ class MG_Surcharge_Frontend {
         if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
             return $item_data;
         }
+        $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
         foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
             if (empty($surcharge['enabled'])) {
                 continue;
             }
+            $amount = floatval($surcharge['amount']) * $quantity;
             $item_data[] = [
                 'key' => $surcharge['name'],
-                'display' => wc_price($surcharge['amount']),
+                'display' => wc_price($amount),
             ];
         }
         return $item_data;
@@ -139,6 +142,9 @@ class MG_Surcharge_Frontend {
             return;
         }
         foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+            if (!empty($cart_item['mg_surcharge_applied'])) {
+                continue;
+            }
             if (empty($cart_item['mg_surcharge_data'])) {
                 continue;
             }
@@ -154,6 +160,35 @@ class MG_Surcharge_Frontend {
                 $name = sprintf('%s (%s)', $surcharge['name'], $product_name);
                 $cart->add_fee($name, $amount, true);
             }
+        }
+    }
+
+    public static function apply_item_surcharges($cart) {
+        if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+            if (empty($cart_item['mg_surcharge_data']) || empty($cart_item['data'])) {
+                continue;
+            }
+            if (!($cart_item['data'] instanceof WC_Product)) {
+                continue;
+            }
+            $product = $cart_item['data'];
+            $base_price = isset($cart_item['mg_surcharge_base_price'])
+                ? floatval($cart_item['mg_surcharge_base_price'])
+                : floatval($product->get_price());
+            $surcharge_total = 0.0;
+            foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
+                if (empty($surcharge['enabled'])) {
+                    continue;
+                }
+                $surcharge_total += floatval($surcharge['amount']);
+            }
+            $cart->cart_contents[$cart_item_key]['mg_surcharge_base_price'] = $base_price;
+            $cart->cart_contents[$cart_item_key]['mg_surcharge_applied'] = true;
+            $product->set_price($base_price + $surcharge_total);
+            $cart->cart_contents[$cart_item_key]['data'] = $product;
         }
     }
 

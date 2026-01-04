@@ -129,6 +129,23 @@
         this.$title.text(nextTitle);
     };
 
+    VariantDisplay.prototype.relocateVariationPrice = function() {
+        if (!this.$title || !this.$title.length) {
+            return;
+        }
+        var $holder = $('#mg-price-holder');
+        if (!$holder.length) {
+            $holder = this.$form.find('.single_variation').first();
+        }
+        if (!$holder.length) {
+            return;
+        }
+        if ($holder.prev()[0] === this.$title[0]) {
+            return;
+        }
+        $holder.insertAfter(this.$title);
+    };
+
     VariantDisplay.prototype.supportsCanvas = function() {
         if (typeof document === 'undefined') {
             return false;
@@ -148,6 +165,7 @@
 
         this.captureTitle();
         this.buildLayout();
+        this.relocateVariationPrice();
         this.captureDescriptionTargets();
         this.bindEvents();
         this.createPatternPreview();
@@ -1221,6 +1239,7 @@
             this.preview.activeVariationId = variation.variation_id;
         }
         this.refreshPreviewState();
+        this.relocateVariationPrice();
     };
 
     VariantDisplay.prototype.handleVariationReset = function() {
