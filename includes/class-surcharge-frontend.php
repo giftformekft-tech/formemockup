@@ -110,13 +110,15 @@ class MG_Surcharge_Frontend {
         if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
             return $item_data;
         }
+        $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
         foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
             if (empty($surcharge['enabled'])) {
                 continue;
             }
+            $amount = floatval($surcharge['amount']) * $quantity;
             $item_data[] = [
                 'key' => $surcharge['name'],
-                'display' => wc_price($surcharge['amount']),
+                'display' => wc_price($amount),
             ];
         }
         return $item_data;
