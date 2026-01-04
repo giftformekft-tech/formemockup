@@ -16,3 +16,30 @@
     font-weight: 600;
     color: #111827;
 }
+
+.wc-block-cart-item__prices .wc-block-components-product-price__value,
+.wc-block-cart-item__total .wc-block-components-product-price__value,
+.wc-block-cart-item__total .wc-block-formatted-money-amount {
+    display: block;
+}
+
+.wc-block-cart-item__prices .wc-block-components-product-price__value::before {
+    content: "Egység ár";
+    display: block;
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin-bottom: 2px;
+}
+
+.wc-block-cart-item__total .wc-block-components-product-price__value::before,
+.wc-block-cart-item__total .wc-block-formatted-money-amount::before {
+    content: "Összesen";
+    display: block;
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin-bottom: 2px;
+}
