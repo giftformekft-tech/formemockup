@@ -30,6 +30,11 @@ class MG_Cart_Pricing {
         }
         $label = esc_html__('Egység ár', 'mockup-generator');
         $surcharge_line = self::get_surcharge_line($cart_item, false);
+        $base_price = self::get_base_price($cart_item);
+        if ($base_price !== null && isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+            $display_price = wc_get_price_to_display($cart_item['data'], ['qty' => 1, 'price' => $base_price]);
+            $price = wc_price($display_price);
+        }
         return sprintf(
             '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s%s</span></span>',
             $label,
@@ -44,16 +49,34 @@ class MG_Cart_Pricing {
         }
         $label = esc_html__('Összesen', 'mockup-generator');
         $surcharge_total = self::get_surcharge_total($cart_item, true);
-        if ($surcharge_total > 0 && isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+        if (isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
             $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
-            $base_subtotal = wc_get_price_to_display($cart_item['data'], ['qty' => $quantity]);
-            $subtotal = wc_price($base_subtotal + $surcharge_total);
+            $base_price = self::get_base_price($cart_item);
+            if ($base_price !== null) {
+                $base_subtotal = wc_get_price_to_display($cart_item['data'], ['qty' => $quantity, 'price' => $base_price]);
+            } else {
+                $base_subtotal = wc_get_price_to_display($cart_item['data'], ['qty' => $quantity]);
+            }
+            if ($surcharge_total > 0) {
+                $base_subtotal += $surcharge_total;
+            }
+            $subtotal = wc_price($base_subtotal);
         }
         return sprintf(
             '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s</span></span>',
             $label,
             $subtotal
         );
+    }
+
+    private static function get_base_price($cart_item) {
+        if (isset($cart_item['mg_surcharge_base_price'])) {
+            return floatval($cart_item['mg_surcharge_base_price']);
+        }
+        if (isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+            return floatval($cart_item['data']->get_price());
+        }
+        return null;
     }
 
     private static function get_surcharge_total($cart_item, $include_quantity = true) {

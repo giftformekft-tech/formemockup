@@ -97,12 +97,19 @@ class MG_Surcharge_Frontend {
         }
         $selections = isset($_POST[self::FIELD_NAME]) ? wp_unslash((array)$_POST[self::FIELD_NAME]) : [];
         $cart_item_data['mg_surcharge_data'] = self::prepare_cart_item_surcharges($available, $selections);
+        $cart_item_data['mg_surcharge_base_price'] = floatval($product->get_price());
         return $cart_item_data;
     }
 
     public static function restore_cart_item($cart_item, $values) {
         if (isset($values['mg_surcharge_data'])) {
             $cart_item['mg_surcharge_data'] = $values['mg_surcharge_data'];
+        }
+        if (!isset($cart_item['mg_surcharge_base_price'])) {
+            $product = isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product ? $cart_item['data'] : null;
+            if ($product) {
+                $cart_item['mg_surcharge_base_price'] = floatval($product->get_price());
+            }
         }
         return $cart_item;
     }
