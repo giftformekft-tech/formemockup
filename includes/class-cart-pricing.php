@@ -29,10 +29,12 @@ class MG_Cart_Pricing {
             return $price;
         }
         $label = esc_html__('Egység ár', 'mockup-generator');
+        $surcharge_line = self::get_surcharge_line($cart_item, false);
         return sprintf(
-            '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s</span></span>',
+            '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s%s</span></span>',
             $label,
-            $price
+            $price,
+            $surcharge_line
         );
     }
 
@@ -41,10 +43,45 @@ class MG_Cart_Pricing {
             return $subtotal;
         }
         $label = esc_html__('Összesen', 'mockup-generator');
+        $surcharge_total = self::get_surcharge_total($cart_item, true);
+        if ($surcharge_total > 0 && isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+            $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
+            $base_subtotal = wc_get_price_to_display($cart_item['data'], ['qty' => $quantity]);
+            $subtotal = wc_price($base_subtotal + $surcharge_total);
+        }
         return sprintf(
             '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s</span></span>',
             $label,
             $subtotal
+        );
+    }
+
+    private static function get_surcharge_total($cart_item, $include_quantity = true) {
+        if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
+            return 0.0;
+        }
+        $total = 0.0;
+        foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
+            if (empty($surcharge['enabled'])) {
+                continue;
+            }
+            $total += floatval($surcharge['amount']);
+        }
+        if ($include_quantity) {
+            $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
+            $total *= $quantity;
+        }
+        return $total;
+    }
+
+    private static function get_surcharge_line($cart_item, $include_quantity = false) {
+        $total = self::get_surcharge_total($cart_item, $include_quantity);
+        if ($total <= 0) {
+            return '';
+        }
+        return sprintf(
+            '<span class="mg-cart-price__surcharge">+ %s</span>',
+            wc_price($total)
         );
     }
 }

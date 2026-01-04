@@ -13,8 +13,18 @@
 }
 
 .mg-cart-price__value {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
     font-weight: 600;
     color: #111827;
+}
+
+.mg-cart-price__surcharge {
+    font-size: 0.85em;
+    font-weight: 600;
+    color: #111;
 }
 
 .wc-block-cart-item__prices .wc-block-components-product-price__value,
