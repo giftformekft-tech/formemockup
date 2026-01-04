@@ -14,6 +14,7 @@ class MG_Surcharge_Frontend {
         add_filter('woocommerce_add_cart_item_data', [__CLASS__, 'add_cart_item_data'], 10, 4);
         add_filter('woocommerce_get_cart_item_from_session', [__CLASS__, 'restore_cart_item'], 10, 2);
         add_filter('woocommerce_get_item_data', [__CLASS__, 'render_cart_item_data'], 10, 2);
+        add_filter('woocommerce_store_api_cart_item', [__CLASS__, 'filter_store_api_cart_item'], 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', [__CLASS__, 'add_order_item_meta'], 10, 4);
         add_action('woocommerce_cart_calculate_fees', [__CLASS__, 'apply_fees']);
         add_action('woocommerce_before_calculate_totals', [__CLASS__, 'validate_cart_items']);
@@ -130,6 +131,28 @@ class MG_Surcharge_Frontend {
             ];
         }
         return $item_data;
+    }
+
+    public static function filter_store_api_cart_item($cart_item, $item) {
+        if (empty($item['mg_surcharge_base_price']) || empty($cart_item['prices'])) {
+            return $cart_item;
+        }
+        $product = isset($item['data']) && $item['data'] instanceof WC_Product ? $item['data'] : null;
+        if (!$product) {
+            return $cart_item;
+        }
+        $base_price = floatval($item['mg_surcharge_base_price']);
+        $display_price = wc_get_price_to_display($product, ['qty' => 1, 'price' => $base_price]);
+        $decimals = isset($cart_item['prices']['currency_minor_unit'])
+            ? (int) $cart_item['prices']['currency_minor_unit']
+            : wc_get_price_decimals();
+        $minor_units = self::to_minor_units($display_price, $decimals);
+        foreach (['price', 'regular_price', 'sale_price'] as $key) {
+            if (isset($cart_item['prices'][$key])) {
+                $cart_item['prices'][$key] = (string) $minor_units;
+            }
+        }
+        return $cart_item;
     }
 
     public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
@@ -430,5 +453,10 @@ class MG_Surcharge_Frontend {
         }
         $value = strtolower((string)$value);
         return in_array($value, ['1', 'yes', 'on', 'true'], true);
+    }
+
+    private static function to_minor_units($amount, $decimals) {
+        $factor = pow(10, max(0, (int) $decimals));
+        return (int) round(floatval($amount) * $factor);
     }
 }
