@@ -115,10 +115,13 @@ class MG_Delivery_Estimate {
     public static function add_business_days($days, $holidays, $timezone) {
         $days = max(0, intval($days));
         $date = new DateTime('now', $timezone);
+        $holiday_lookup = self::build_holiday_lookup($holidays);
+        while (!self::is_business_day($date, $holiday_lookup)) {
+            $date->modify('+1 day');
+        }
         if ($days === 0) {
             return $date;
         }
-        $holiday_lookup = self::build_holiday_lookup($holidays);
 
         $added = 0;
         while ($added < $days) {
