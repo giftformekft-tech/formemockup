@@ -43,6 +43,12 @@
     margin-bottom: 2px;
 }
 
+.wc-block-components-product-price__regular,
+.wc-block-components-product-price__badge,
+.wc-block-components-product-sale-badge {
+    display: none !important;
+}
+
 .wc-block-cart-item__total .wc-block-components-product-price__value::before,
 .wc-block-cart-item__total .wc-block-formatted-money-amount::before {
     content: "Összesen";
