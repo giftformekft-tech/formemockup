@@ -70,8 +70,17 @@ class MG_Cart_Pricing {
     }
 
     private static function get_base_price($cart_item) {
+        if (!empty($cart_item['variation_id'])) {
+            $variation = wc_get_product($cart_item['variation_id']);
+            if ($variation instanceof WC_Product) {
+                return floatval($variation->get_price());
+            }
+        }
         if (isset($cart_item['mg_surcharge_base_price'])) {
             return floatval($cart_item['mg_surcharge_base_price']);
+        }
+        if (isset($cart_item['mg_custom_fields_base_price'])) {
+            return floatval($cart_item['mg_custom_fields_base_price']);
         }
         if (isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
             return floatval($cart_item['data']->get_price());
