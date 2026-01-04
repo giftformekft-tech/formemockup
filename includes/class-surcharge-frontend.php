@@ -14,11 +14,9 @@ class MG_Surcharge_Frontend {
         add_filter('woocommerce_add_cart_item_data', [__CLASS__, 'add_cart_item_data'], 10, 4);
         add_filter('woocommerce_get_cart_item_from_session', [__CLASS__, 'restore_cart_item'], 10, 2);
         add_filter('woocommerce_get_item_data', [__CLASS__, 'render_cart_item_data'], 10, 2);
-        add_filter('woocommerce_store_api_cart_item', [__CLASS__, 'filter_store_api_cart_item'], 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', [__CLASS__, 'add_order_item_meta'], 10, 4);
         add_action('woocommerce_cart_calculate_fees', [__CLASS__, 'apply_fees']);
         add_action('woocommerce_before_calculate_totals', [__CLASS__, 'validate_cart_items']);
-        add_action('woocommerce_before_calculate_totals', [__CLASS__, 'apply_item_surcharges'], 20);
         add_action('woocommerce_after_cart_item_name', [__CLASS__, 'render_cart_item_controls'], 20, 2);
         add_action('woocommerce_update_cart_action_cart_updated', [__CLASS__, 'handle_cart_update']);
     }
@@ -98,19 +96,12 @@ class MG_Surcharge_Frontend {
         }
         $selections = isset($_POST[self::FIELD_NAME]) ? wp_unslash((array)$_POST[self::FIELD_NAME]) : [];
         $cart_item_data['mg_surcharge_data'] = self::prepare_cart_item_surcharges($available, $selections);
-        $cart_item_data['mg_surcharge_base_price'] = floatval($product->get_price());
         return $cart_item_data;
     }
 
     public static function restore_cart_item($cart_item, $values) {
         if (isset($values['mg_surcharge_data'])) {
             $cart_item['mg_surcharge_data'] = $values['mg_surcharge_data'];
-        }
-        if (!isset($cart_item['mg_surcharge_base_price'])) {
-            $product = isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product ? $cart_item['data'] : null;
-            if ($product) {
-                $cart_item['mg_surcharge_base_price'] = floatval($product->get_price());
-            }
         }
         return $cart_item;
     }
@@ -133,28 +124,6 @@ class MG_Surcharge_Frontend {
         return $item_data;
     }
 
-    public static function filter_store_api_cart_item($cart_item, $item) {
-        if (empty($item['mg_surcharge_base_price']) || empty($cart_item['prices'])) {
-            return $cart_item;
-        }
-        $product = isset($item['data']) && $item['data'] instanceof WC_Product ? $item['data'] : null;
-        if (!$product) {
-            return $cart_item;
-        }
-        $base_price = floatval($item['mg_surcharge_base_price']);
-        $display_price = wc_get_price_to_display($product, ['qty' => 1, 'price' => $base_price]);
-        $decimals = isset($cart_item['prices']['currency_minor_unit'])
-            ? (int) $cart_item['prices']['currency_minor_unit']
-            : wc_get_price_decimals();
-        $minor_units = self::to_minor_units($display_price, $decimals);
-        foreach (['price', 'regular_price', 'sale_price'] as $key) {
-            if (isset($cart_item['prices'][$key])) {
-                $cart_item['prices'][$key] = (string) $minor_units;
-            }
-        }
-        return $cart_item;
-    }
-
     public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
         if (empty($values['mg_surcharge_data']) || !is_array($values['mg_surcharge_data'])) {
             return;
@@ -172,9 +141,6 @@ class MG_Surcharge_Frontend {
             return;
         }
         foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
-            if (!empty($cart_item['mg_surcharge_applied'])) {
-                continue;
-            }
             if (empty($cart_item['mg_surcharge_data'])) {
                 continue;
             }
@@ -190,35 +156,6 @@ class MG_Surcharge_Frontend {
                 $name = sprintf('%s (%s)', $surcharge['name'], $product_name);
                 $cart->add_fee($name, $amount, true);
             }
-        }
-    }
-
-    public static function apply_item_surcharges($cart) {
-        if (is_admin() && !defined('DOING_AJAX')) {
-            return;
-        }
-        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
-            if (empty($cart_item['mg_surcharge_data']) || empty($cart_item['data'])) {
-                continue;
-            }
-            if (!($cart_item['data'] instanceof WC_Product)) {
-                continue;
-            }
-            $product = $cart_item['data'];
-            $base_price = isset($cart_item['mg_surcharge_base_price'])
-                ? floatval($cart_item['mg_surcharge_base_price'])
-                : floatval($product->get_price());
-            $surcharge_total = 0.0;
-            foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
-                if (empty($surcharge['enabled'])) {
-                    continue;
-                }
-                $surcharge_total += floatval($surcharge['amount']);
-            }
-            $cart->cart_contents[$cart_item_key]['mg_surcharge_base_price'] = $base_price;
-            $cart->cart_contents[$cart_item_key]['mg_surcharge_applied'] = true;
-            $product->set_price($base_price + $surcharge_total);
-            $cart->cart_contents[$cart_item_key]['data'] = $product;
         }
     }
 
@@ -453,10 +390,5 @@ class MG_Surcharge_Frontend {
         }
         $value = strtolower((string)$value);
         return in_array($value, ['1', 'yes', 'on', 'true'], true);
-    }
-
-    private static function to_minor_units($amount, $decimals) {
-        $factor = pow(10, max(0, (int) $decimals));
-        return (int) round(floatval($amount) * $factor);
     }
 }
