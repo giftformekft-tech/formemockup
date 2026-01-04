@@ -8,6 +8,7 @@ class MG_Cart_Pricing {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'));
         add_filter('woocommerce_cart_item_price', array(__CLASS__, 'format_cart_item_price'), 10, 3);
         add_filter('woocommerce_cart_item_subtotal', array(__CLASS__, 'format_cart_item_subtotal'), 10, 3);
+        add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_blocks_cart_item_price'), 10, 3);
     }
 
     public static function enqueue_assets() {
@@ -28,12 +29,24 @@ class MG_Cart_Pricing {
         if (!function_exists('is_cart') || !is_cart()) {
             return $price;
         }
+        $base_price = self::get_cart_item_base_price($cart_item);
+        if ($base_price !== null) {
+            $price = wc_price($base_price);
+        }
         $label = esc_html__('Egység ár', 'mockup-generator');
         return sprintf(
             '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s</span></span>',
             $label,
             $price
         );
+    }
+
+    public static function format_blocks_cart_item_price($price, $cart_item, $cart_item_key) {
+        $base_price = self::get_cart_item_base_price($cart_item);
+        if ($base_price === null) {
+            return $price;
+        }
+        return wc_price($base_price);
     }
 
     public static function format_cart_item_subtotal($subtotal, $cart_item, $cart_item_key) {
@@ -46,5 +59,12 @@ class MG_Cart_Pricing {
             $label,
             $subtotal
         );
+    }
+
+    private static function get_cart_item_base_price($cart_item) {
+        if (empty($cart_item['mg_custom_fields_base_price'])) {
+            return null;
+        }
+        return max(0.0, floatval($cart_item['mg_custom_fields_base_price']));
     }
 }
