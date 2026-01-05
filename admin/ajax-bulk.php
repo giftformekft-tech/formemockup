@@ -95,6 +95,17 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $parent_name = sanitize_text_field($_POST['product_name'] ?? pathinfo($design_path, PATHINFO_FILENAME));
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
+        if (taxonomy_exists('product_cat')) {
+            if ($main_cat > 0 && !get_term($main_cat, 'product_cat')) {
+                $main_cat = 0;
+            }
+            $sub_cats = array_values(array_filter($sub_cats, function($cat_id){
+                return $cat_id > 0 && get_term($cat_id, 'product_cat');
+            }));
+        } else {
+            $main_cat = 0;
+            $sub_cats = array();
+        }
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
 
         // Load config & engine
