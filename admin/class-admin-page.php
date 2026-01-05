@@ -421,10 +421,10 @@ class MG_Admin_Page {
         /* translators: Heading shown inside the bulk upload drop zone. */
         echo '<strong>' . esc_html__('Húzd ide a mintákat', 'mockup-generator') . '</strong>';
         echo '<p>' . esc_html__('…vagy', 'mockup-generator') . ' <a href="#" class="button-link">' . esc_html__('válaszd ki a fájlokat', 'mockup-generator') . '</a></p>';
-        echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP képeket adhatsz hozzá. A fájlnév alapján készül az alap terméknév.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP képeket adhatsz hozzá. A fájlnév alapján készül az alap terméknév. Ha mellékelsz azonos nevű .json fájlt, AI módban abból is tölthetők adatok.', 'mockup-generator') . '</p>';
         echo '</div>';
         echo '</div>';
-        echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp" multiple style="display:none" />';
+        echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp,application/json,.json" multiple style="display:none" />';
         echo '</div>';
 
         echo '<div class="mg-row">';
@@ -462,6 +462,29 @@ class MG_Admin_Page {
         echo '</label>';
         echo '</div>';
         echo '<p class="description">' . esc_html__('Ezek az értékek kerülnek az új termékek első variációjába. A listák a kiválasztott típushoz igazodnak.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        echo '<div class="mg-row">';
+        echo '<h3>' . esc_html__('AI adattal mód', 'mockup-generator') . '</h3>';
+        echo '<label class="mg-toggle">';
+        echo '<input type="checkbox" id="mg-ai-mode-toggle" /> ';
+        echo '<span>' . esc_html__('AI adatok használata a páros JSON-ból', 'mockup-generator') . '</span>';
+        echo '</label>';
+        echo '<div class="mg-types">';
+        echo '<label class="mg-type">';
+        echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-main" checked /> ';
+        echo '<span>' . esc_html__('Főkategória', 'mockup-generator') . '</span>';
+        echo '</label>';
+        echo '<label class="mg-type">';
+        echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-sub" checked /> ';
+        echo '<span>' . esc_html__('Alkategória', 'mockup-generator') . '</span>';
+        echo '</label>';
+        echo '<label class="mg-type">';
+        echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-tags" checked /> ';
+        echo '<span>' . esc_html__('Tag-ek', 'mockup-generator') . '</span>';
+        echo '</label>';
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('A JSON fájl neve legyen a képfájl neve + .json. Az AI mód csak a bejelölt mezőket tölti: categories.main, categories.sub és tags tömb. Hiányzó vagy hibás JSON esetén marad a kézi kitöltés.', 'mockup-generator') . '</p>';
         echo '</div>';
 
         echo '</div>'; // .card

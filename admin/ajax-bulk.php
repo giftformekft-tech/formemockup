@@ -96,6 +96,29 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
+        if (taxonomy_exists('product_cat')) {
+            if ($main_cat > 0) {
+                $main_term = get_term($main_cat, 'product_cat');
+                if (!$main_term || is_wp_error($main_term)) {
+                    $main_cat = 0;
+                }
+            }
+            $valid_subs = array();
+            foreach ($sub_cats as $sub_id) {
+                if ($sub_id <= 0) {
+                    continue;
+                }
+                $term = get_term($sub_id, 'product_cat');
+                if (!$term || is_wp_error($term)) {
+                    continue;
+                }
+                if ($main_cat > 0 && intval($term->parent) !== $main_cat) {
+                    continue;
+                }
+                $valid_subs[] = intval($term->term_id);
+            }
+            $sub_cats = array_values(array_unique($valid_subs));
+        }
 
         // Load config & engine
         $all = get_option('mg_products', array());
