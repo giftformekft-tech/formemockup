@@ -89,8 +89,6 @@
     var out = {};
     var title = (typeof raw.title === 'string') ? raw.title : (typeof raw.name === 'string' ? raw.name : '');
     out.title = title;
-    out.description = (typeof raw.description === 'string') ? raw.description : '';
-    out.short_description = (typeof raw.short_description === 'string') ? raw.short_description : (typeof raw.shortDescription === 'string' ? raw.shortDescription : '');
     var tags = raw.tags;
     if (typeof tags === 'string') {
       out.tags = tags;
@@ -186,12 +184,6 @@
         $nameInput.data('mgAutoName', false);
       }
     }
-    if (fields.description && data.description) {
-      $row.find('textarea.mg-description').val(data.description);
-    }
-    if (fields.short_description && data.short_description) {
-      $row.find('textarea.mg-short-description').val(data.short_description);
-    }
     if (fields.tags && data.tags) {
       $row.find('.mg-tags-input').val(data.tags);
     }
@@ -200,7 +192,7 @@
       var subsValue = [];
       if (typeof data.categories === 'object') {
         mainValue = resolveMainCategoryId(data.categories.main);
-        subsValue = resolveSubCategoryIds(data.categories.subs || data.categories.sub || [], mainValue);
+        subsValue = resolveSubCategoryIds(data.categories.sub || [], mainValue);
       } else {
         mainValue = resolveMainCategoryId(data.categories);
       }
@@ -530,6 +522,19 @@
     });
     if (!imageFiles.length) {
       $tbody.append('<tr class="no-items"><td colspan="12">Nincs feltölthető kép.</td></tr>');
+      return;
+    }
+    var jsonMap = {};
+    var imageFiles = [];
+    Array.from(files).forEach(function(file){
+      if (isJsonFile(file)) {
+        jsonMap[baseKey(file.name || '')] = file;
+      } else if (isImageFile(file)) {
+        imageFiles.push(file);
+      }
+    });
+    if (!imageFiles.length) {
+      $tbody.append('<tr class="no-items"><td colspan="10">Nincs feltölthető kép.</td></tr>');
       return;
     }
     mgEnsureHeader();

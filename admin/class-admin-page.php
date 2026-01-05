@@ -434,13 +434,11 @@ class MG_Admin_Page {
         echo '</div>';
         echo '<div class="mg-ai-fields">';
         echo '<label><input type="checkbox" class="mg-ai-field" data-field="title" checked> ' . esc_html__('Cím', 'mockup-generator') . '</label>';
-        echo '<label><input type="checkbox" class="mg-ai-field" data-field="description" checked> ' . esc_html__('Leírás', 'mockup-generator') . '</label>';
-        echo '<label><input type="checkbox" class="mg-ai-field" data-field="short_description" checked> ' . esc_html__('Rövid leírás', 'mockup-generator') . '</label>';
         echo '<label><input type="checkbox" class="mg-ai-field" data-field="tags" checked> ' . esc_html__('Tag-ek', 'mockup-generator') . '</label>';
         echo '<label><input type="checkbox" class="mg-ai-field" data-field="categories" checked> ' . esc_html__('Kategóriák', 'mockup-generator') . '</label>';
         echo '</div>';
         echo '<p class="description">' . esc_html__('JSON séma (fájlnév egyezés):', 'mockup-generator') . '</p>';
-        echo '<pre class="mg-ai-schema">{ "title": "Terméknév", "description": "Hosszú leírás", "short_description": "Rövid leírás", "tags": ["tag1", "tag2"], "categories": { "main": "Főkategória ID vagy név", "subs": ["Alkategória ID vagy név"] } }</pre>';
+        echo '<pre class="mg-ai-schema">{ "title": "Terméknév", "tags": ["tag1", "tag2"], "categories": { "main": "Főkategória ID vagy név", "sub": ["Alkategória ID vagy név"] } }</pre>';
         echo '<p class="description">' . esc_html__('Csak a bepipált mezők töltődnek ki. Hiányzó vagy hibás JSON esetén manuális kitöltés használható.', 'mockup-generator') . '</p>';
         echo '</div>';
 
