@@ -422,15 +422,21 @@
 
   function mgEnsureHeader(){
     var $thead = $('.mg-bulk-table thead tr');
+    function removeColumn(label){
+      if (!$thead.length) { return; }
+      var $target = $thead.find('th:contains("' + label + '")').first();
+      if (!$target.length) { return; }
+      var idx = $target.index();
+      $target.remove();
+      $('.mg-bulk-table tr').each(function(){
+        $(this).find('th, td').eq(idx).remove();
+      });
+    }
     if ($thead.length) {
       if ($thead.find('th:contains("Előnézet")').length === 0) { $('<th>Előnézet</th>').insertAfter($thead.find('th').first()); }
     }
-    if ($thead.length && $thead.find('th:contains("Leírás")').length === 0) {
-      $('<th>Leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
-    }
-    if ($thead.length && $thead.find('th:contains("Rövid leírás")').length === 0) {
-      $('<th>Rövid leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
-    }
+    removeColumn('Leírás');
+    removeColumn('Rövid leírás');
     if ($thead.length && $thead.find('th:contains("Egyedi termék")').length === 0) {
       $('<th>Egyedi termék</th>').insertBefore($thead.find('th:contains("Tag-ek")'));
     }
@@ -522,6 +528,19 @@
     });
     if (!imageFiles.length) {
       $tbody.append('<tr class="no-items"><td colspan="12">Nincs feltölthető kép.</td></tr>');
+      return;
+    }
+    var jsonMap = {};
+    var imageFiles = [];
+    Array.from(files).forEach(function(file){
+      if (isJsonFile(file)) {
+        jsonMap[baseKey(file.name || '')] = file;
+      } else if (isImageFile(file)) {
+        imageFiles.push(file);
+      }
+    });
+    if (!imageFiles.length) {
+      $tbody.append('<tr class="no-items"><td colspan="10">Nincs feltölthető kép.</td></tr>');
       return;
     }
     var jsonMap = {};
