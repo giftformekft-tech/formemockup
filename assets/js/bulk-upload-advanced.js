@@ -425,6 +425,12 @@
     if ($thead.length) {
       if ($thead.find('th:contains("Előnézet")').length === 0) { $('<th>Előnézet</th>').insertAfter($thead.find('th').first()); }
     }
+    if ($thead.length && $thead.find('th:contains("Leírás")').length === 0) {
+      $('<th>Leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
+    }
+    if ($thead.length && $thead.find('th:contains("Rövid leírás")').length === 0) {
+      $('<th>Rövid leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
+    }
     if ($thead.length && $thead.find('th:contains("Egyedi termék")').length === 0) {
       $('<th>Egyedi termék</th>').insertBefore($thead.find('th:contains("Tag-ek")'));
     }
@@ -502,7 +508,20 @@
   function renderRows(files){
     var $tbody = $('#mg-bulk-rows').empty();
     if (!files || !files.length){
-      $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
+      $tbody.append('<tr class="no-items"><td colspan="12">Válassz fájlokat fent.</td></tr>');
+      return;
+    }
+    var jsonMap = {};
+    var imageFiles = [];
+    Array.from(files).forEach(function(file){
+      if (isJsonFile(file)) {
+        jsonMap[baseKey(file.name || '')] = file;
+      } else if (isImageFile(file)) {
+        imageFiles.push(file);
+      }
+    });
+    if (!imageFiles.length) {
+      $tbody.append('<tr class="no-items"><td colspan="12">Nincs feltölthető kép.</td></tr>');
       return;
     }
     var jsonMap = {};
@@ -550,6 +569,8 @@
       $nameInput.data('mgAutoName', true);
       $nameInput.on('input', function(){ $(this).data('mgAutoName', false); });
       updateRowAutoName($tr);
+      $tr.append('<td class="mg-desc"><textarea class="mg-description" rows="2" placeholder="Leírás..."></textarea></td>');
+      $tr.append('<td class="mg-short-desc"><textarea class="mg-short-description" rows="2" placeholder="Rövid leírás..."></textarea></td>');
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
       $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
       // NEW: tags cell before state
@@ -860,6 +881,8 @@
       form.append('design_file', file);
       keys.forEach(function(k){ form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
+      form.append('description', ($row.find('textarea.mg-description').val() || '').trim());
+      form.append('short_description', ($row.find('textarea.mg-short-description').val() || '').trim());
       form.append('main_cat', $mainSel.val()||'0');
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));

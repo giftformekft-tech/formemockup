@@ -498,13 +498,15 @@ class MG_Admin_Page {
         echo '<th>' . esc_html__('Főkategória', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Alkategóriák', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Terméknév', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Leírás', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Rövid leírás', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Meglévő termék keresése', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Egyedi termék', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Tag-ek', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mockup-generator') . '</th>';
         echo '</tr></thead>';
         echo '<tbody id="mg-bulk-rows">';
-        echo '<tr class="no-items"><td colspan="10">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
+        echo '<tr class="no-items"><td colspan="12">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '</div>';

@@ -107,6 +107,8 @@ add_action('wp_ajax_mg_bulk_process', function(){
             $sub_cats = array();
         }
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
+        $description = isset($_POST['description']) ? trim(wp_kses_post(wp_unslash($_POST['description']))) : '';
+        $short_description = isset($_POST['short_description']) ? trim(wp_kses_post(wp_unslash($_POST['short_description']))) : '';
 
         // Load config & engine
         $all = get_option('mg_products', array());
@@ -188,12 +190,36 @@ add_action('wp_ajax_mg_bulk_process', function(){
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
             MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
+            if ($description !== '' || $short_description !== '') {
+                $product = wc_get_product($parent_id);
+                if ($product) {
+                    if ($description !== '') {
+                        $product->set_description($description);
+                    }
+                    if ($short_description !== '') {
+                        $product->set_short_description($short_description);
+                    }
+                    $product->save();
+                }
+            }
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
             MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
             MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
+            if ($description !== '' || $short_description !== '') {
+                $product = wc_get_product($pid);
+                if ($product) {
+                    if ($description !== '') {
+                        $product->set_description($description);
+                    }
+                    if ($short_description !== '') {
+                        $product->set_short_description($short_description);
+                    }
+                    $product->save();
+                }
+            }
             wp_send_json_success(array('product_id'=>$pid));
         }
     } catch (Throwable $e) {
