@@ -421,10 +421,27 @@ class MG_Admin_Page {
         /* translators: Heading shown inside the bulk upload drop zone. */
         echo '<strong>' . esc_html__('Húzd ide a mintákat', 'mockup-generator') . '</strong>';
         echo '<p>' . esc_html__('…vagy', 'mockup-generator') . ' <a href="#" class="button-link">' . esc_html__('válaszd ki a fájlokat', 'mockup-generator') . '</a></p>';
-        echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP képeket adhatsz hozzá. A fájlnév alapján készül az alap terméknév.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('PNG, JPG vagy WebP képeket adhatsz hozzá. A fájlnév alapján készül az alap terméknév. Opcionálisan azonos névvel .json fájlt is mellékelhetsz az AI-adatokhoz.', 'mockup-generator') . '</p>';
         echo '</div>';
         echo '</div>';
-        echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp" multiple style="display:none" />';
+        echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp,application/json,.json" multiple style="display:none" />';
+        echo '</div>';
+
+        echo '<div class="mg-row">';
+        echo '<h3>' . esc_html__('AI adattal mód', 'mockup-generator') . '</h3>';
+        echo '<div class="mg-ai-toggle">';
+        echo '<label><input type="checkbox" id="mg-ai-mode" /> ' . esc_html__('AI adattal mód bekapcsolása (JSON fájlok alapján)', 'mockup-generator') . '</label>';
+        echo '</div>';
+        echo '<div class="mg-ai-fields">';
+        echo '<label><input type="checkbox" class="mg-ai-field" data-field="title" checked> ' . esc_html__('Cím', 'mockup-generator') . '</label>';
+        echo '<label><input type="checkbox" class="mg-ai-field" data-field="description" checked> ' . esc_html__('Leírás', 'mockup-generator') . '</label>';
+        echo '<label><input type="checkbox" class="mg-ai-field" data-field="short_description" checked> ' . esc_html__('Rövid leírás', 'mockup-generator') . '</label>';
+        echo '<label><input type="checkbox" class="mg-ai-field" data-field="tags" checked> ' . esc_html__('Tag-ek', 'mockup-generator') . '</label>';
+        echo '<label><input type="checkbox" class="mg-ai-field" data-field="categories" checked> ' . esc_html__('Kategóriák', 'mockup-generator') . '</label>';
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('JSON séma (fájlnév egyezés):', 'mockup-generator') . '</p>';
+        echo '<pre class="mg-ai-schema">{ "title": "Terméknév", "description": "Hosszú leírás", "short_description": "Rövid leírás", "tags": ["tag1", "tag2"], "categories": { "main": "Főkategória ID vagy név", "subs": ["Alkategória ID vagy név"] } }</pre>';
+        echo '<p class="description">' . esc_html__('Csak a bepipált mezők töltődnek ki. Hiányzó vagy hibás JSON esetén manuális kitöltés használható.', 'mockup-generator') . '</p>';
         echo '</div>';
 
         echo '<div class="mg-row">';
@@ -483,13 +500,15 @@ class MG_Admin_Page {
         echo '<th>' . esc_html__('Főkategória', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Alkategóriák', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Terméknév', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Leírás', 'mockup-generator') . '</th>';
+        echo '<th>' . esc_html__('Rövid leírás', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Meglévő termék keresése', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Egyedi termék', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Tag-ek', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mockup-generator') . '</th>';
         echo '</tr></thead>';
         echo '<tbody id="mg-bulk-rows">';
-        echo '<tr class="no-items"><td colspan="10">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
+        echo '<tr class="no-items"><td colspan="12">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '</div>';

@@ -1,6 +1,17 @@
 
 (function($){
   function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
+  function baseKey(name){ return basename(name || '').toLowerCase(); }
+  function isJsonFile(file){
+    if (!file) { return false; }
+    var name = (file.name || '').toLowerCase();
+    return file.type === 'application/json' || /\.json$/i.test(name);
+  }
+  function isImageFile(file){
+    if (!file) { return false; }
+    if (file.type && /^image\/(png|jpe?g|webp|gif|svg\+xml)$/i.test(file.type)) { return true; }
+    return /\.(png|jpe?g|webp|gif|svg)$/i.test(file.name||'');
+  }
   function buildAutoName(baseName, mainLabel){
     var parts = [];
     if (baseName){ parts.push(baseName); }
@@ -56,6 +67,155 @@
       if (list[i] && list[i].key === key){ return list[i]; }
     }
     return null;
+  }
+
+  function isAiModeEnabled(){
+    var $toggle = $('#mg-ai-mode');
+    return $toggle.length ? $toggle.is(':checked') : false;
+  }
+
+  function getAiFieldSelection(){
+    var selection = {};
+    $('.mg-ai-field').each(function(){
+      var key = $(this).data('field');
+      if (!key) { return; }
+      selection[key] = $(this).is(':checked');
+    });
+    return selection;
+  }
+
+  function normalizeAiPayload(raw){
+    if (!raw || typeof raw !== 'object') { return null; }
+    var out = {};
+    var title = (typeof raw.title === 'string') ? raw.title : (typeof raw.name === 'string' ? raw.name : '');
+    out.title = title;
+    out.description = (typeof raw.description === 'string') ? raw.description : '';
+    out.short_description = (typeof raw.short_description === 'string') ? raw.short_description : (typeof raw.shortDescription === 'string' ? raw.shortDescription : '');
+    var tags = raw.tags;
+    if (typeof tags === 'string') {
+      out.tags = tags;
+    } else if (Array.isArray(tags)) {
+      out.tags = tags.map(function(item){ return (typeof item === 'string') ? item.trim() : ''; }).filter(function(item){ return item !== ''; }).join(', ');
+    } else {
+      out.tags = '';
+    }
+    var categories = raw.categories || raw.category || raw.cats || null;
+    out.categories = categories;
+    return out;
+  }
+
+  function resolveMainCategoryId(value){
+    if (!value && value !== 0) { return 0; }
+    var mains = MG_BULK_ADV.mains || [];
+    var numeric = parseInt(value, 10);
+    if (!isNaN(numeric)) {
+      for (var i = 0; i < mains.length; i++) {
+        if (parseInt(mains[i].id, 10) === numeric) {
+          return numeric;
+        }
+      }
+    }
+    var target = String(value).toLowerCase().trim();
+    if (!target) { return 0; }
+    for (var j = 0; j < mains.length; j++) {
+      var name = (mains[j].name || '').toLowerCase().trim();
+      if (name === target) {
+        return parseInt(mains[j].id, 10) || 0;
+      }
+    }
+    return 0;
+  }
+
+  function resolveSubCategoryIds(values, mainId){
+    var subs = MG_BULK_ADV.subs || {};
+    var list = [];
+    if (mainId && subs[mainId]) {
+      list = subs[mainId];
+    } else {
+      Object.keys(subs).forEach(function(key){
+        if (Array.isArray(subs[key])) {
+          list = list.concat(subs[key]);
+        }
+      });
+    }
+    var resolved = [];
+    (Array.isArray(values) ? values : [values]).forEach(function(value){
+      if (!value && value !== 0) { return; }
+      var numeric = parseInt(value, 10);
+      if (!isNaN(numeric)) {
+        list.forEach(function(item){
+          if (parseInt(item.id, 10) === numeric && resolved.indexOf(numeric) === -1) {
+            resolved.push(numeric);
+          }
+        });
+        return;
+      }
+      var target = String(value).toLowerCase().trim();
+      if (!target) { return; }
+      list.forEach(function(item){
+        var name = (item.name || '').toLowerCase().trim();
+        if (name === target) {
+          var id = parseInt(item.id, 10) || 0;
+          if (id && resolved.indexOf(id) === -1) {
+            resolved.push(id);
+          }
+        }
+      });
+    });
+    return resolved;
+  }
+
+  function setRowJsonStatus($row, message, isError){
+    if (!$row || !$row.length) { return; }
+    var $target = $row.find('.mg-json-status');
+    if (!$target.length) { return; }
+    $target.toggleClass('is-error', !!isError);
+    $target.text(message || '');
+  }
+
+  function applyAiDataToRow($row){
+    if (!$row || !$row.length) { return; }
+    if (!isAiModeEnabled()) { return; }
+    var data = $row.data('mgAiData');
+    if (!data) { return; }
+    var fields = getAiFieldSelection();
+    if (fields.title && data.title) {
+      var $nameInput = $row.find('input.mg-name');
+      if ($nameInput.length) {
+        $nameInput.val(data.title);
+        $nameInput.data('mgAutoName', false);
+      }
+    }
+    if (fields.description && data.description) {
+      $row.find('textarea.mg-description').val(data.description);
+    }
+    if (fields.short_description && data.short_description) {
+      $row.find('textarea.mg-short-description').val(data.short_description);
+    }
+    if (fields.tags && data.tags) {
+      $row.find('.mg-tags-input').val(data.tags);
+    }
+    if (fields.categories && data.categories) {
+      var mainValue = 0;
+      var subsValue = [];
+      if (typeof data.categories === 'object') {
+        mainValue = resolveMainCategoryId(data.categories.main);
+        subsValue = resolveSubCategoryIds(data.categories.subs || data.categories.sub || [], mainValue);
+      } else {
+        mainValue = resolveMainCategoryId(data.categories);
+      }
+      if (mainValue) {
+        var $mainSel = $row.find('select.mg-main');
+        $mainSel.val(String(mainValue));
+        var $subsSel = refreshSubSelect($row, mainValue);
+        if (subsValue.length) {
+          $subsSel.find('option').each(function(){
+            var $opt = $(this);
+            $opt.prop('selected', subsValue.indexOf(parseInt($opt.val(), 10)) !== -1);
+          });
+        }
+      }
+    }
   }
 
   function renderDefaultColorOptions($select, typeKey, preferredColor){
@@ -273,6 +433,12 @@
     if ($thead.length) {
       if ($thead.find('th:contains("Előnézet")').length === 0) { $('<th>Előnézet</th>').insertAfter($thead.find('th').first()); }
     }
+    if ($thead.length && $thead.find('th:contains("Leírás")').length === 0) {
+      $('<th>Leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
+    }
+    if ($thead.length && $thead.find('th:contains("Rövid leírás")').length === 0) {
+      $('<th>Rövid leírás</th>').insertBefore($thead.find('th:contains("Meglévő termék")'));
+    }
     if ($thead.length && $thead.find('th:contains("Egyedi termék")').length === 0) {
       $('<th>Egyedi termék</th>').insertBefore($thead.find('th:contains("Tag-ek")'));
     }
@@ -287,14 +453,87 @@
     });
   }
 
+  function readJsonForRow($row, jsonFile){
+    if (!jsonFile) {
+      $row.data('mgAiMissing', true);
+      if (isAiModeEnabled()) {
+        setRowJsonStatus($row, 'AI JSON hiányzik', true);
+      }
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(evt){
+      try {
+        var parsed = JSON.parse(evt.target.result || '{}');
+        var normalized = normalizeAiPayload(parsed);
+        if (!normalized) {
+          throw new Error('empty');
+        }
+        $row.data('mgAiData', normalized);
+        $row.data('mgAiMissing', false);
+        $row.data('mgAiError', false);
+        if (isAiModeEnabled()) {
+          setRowJsonStatus($row, 'AI JSON betöltve', false);
+          applyAiDataToRow($row);
+        } else {
+          setRowJsonStatus($row, '', false);
+        }
+      } catch (err) {
+        $row.data('mgAiError', true);
+        if (isAiModeEnabled()) {
+          setRowJsonStatus($row, 'AI JSON hibás', true);
+        }
+      }
+    };
+    reader.onerror = function(){
+      $row.data('mgAiError', true);
+      if (isAiModeEnabled()) {
+        setRowJsonStatus($row, 'AI JSON olvasási hiba', true);
+      }
+    };
+    reader.readAsText(jsonFile);
+  }
+
+  function refreshAiStatus(){
+    $('#mg-bulk-rows tr.mg-item-row').each(function(){
+      var $row = $(this);
+      if (!isAiModeEnabled()) {
+        setRowJsonStatus($row, '', false);
+        return;
+      }
+      if ($row.data('mgAiError')) {
+        setRowJsonStatus($row, 'AI JSON hibás', true);
+        return;
+      }
+      if ($row.data('mgAiMissing')) {
+        setRowJsonStatus($row, 'AI JSON hiányzik', true);
+        return;
+      }
+      applyAiDataToRow($row);
+    });
+  }
+
   function renderRows(files){
     var $tbody = $('#mg-bulk-rows').empty();
     if (!files || !files.length){
-      $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
+      $tbody.append('<tr class="no-items"><td colspan="12">Válassz fájlokat fent.</td></tr>');
+      return;
+    }
+    var jsonMap = {};
+    var imageFiles = [];
+    Array.from(files).forEach(function(file){
+      if (isJsonFile(file)) {
+        jsonMap[baseKey(file.name || '')] = file;
+      } else if (isImageFile(file)) {
+        imageFiles.push(file);
+      }
+    });
+    if (!imageFiles.length) {
+      $tbody.append('<tr class="no-items"><td colspan="12">Nincs feltölthető kép.</td></tr>');
       return;
     }
     mgEnsureHeader();
-    Array.from(files).forEach(function(file, idx){
+    imageFiles.forEach(function(file, idx){
       var $tr = $('<tr class="mg-item-row">');
       $tr.append('<td>'+(idx+1)+'</td>');
       /* Preview cell */
@@ -307,7 +546,7 @@
         } else { td.find('.mg-thumb-box').text('—'); }
         $tr.append(td);
       })();
-      $tr.append('<td class="mg-filename">'+(file.name||'')+'</td>');
+      $tr.append('<td class="mg-filename">'+(file.name||'')+'<div class="mg-json-status" aria-live="polite"></div></td>');
       var $main = $('<td>'); var $mainSel = buildMainSelect();
       var $sub = $('<td>');  var $subsSel = buildSubMulti(0);
       $main.append($mainSel); $sub.append($subsSel);
@@ -325,12 +564,16 @@
       $nameInput.data('mgAutoName', true);
       $nameInput.on('input', function(){ $(this).data('mgAutoName', false); });
       updateRowAutoName($tr);
+      $tr.append('<td class="mg-desc"><textarea class="mg-description" rows="2" placeholder="Leírás..."></textarea></td>');
+      $tr.append('<td class="mg-short-desc"><textarea class="mg-short-description" rows="2" placeholder="Rövid leírás..."></textarea></td>');
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
       $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
       // NEW: tags cell before state
       $tr.append('<td class="mg-tags"><input type="text" class="mg-tags-input" placeholder="pl. horgaszat, ponty, kapucnis"></td>');
       $tr.append('<td class="mg-state">Várakozik</td>');
       $tbody.append($tr);
+      var jsonFile = jsonMap[baseKey(file.name || '')] || null;
+      readJsonForRow($tr, jsonFile);
     mgDedupeTagInputs();
     });
     bindParentSearch();
@@ -371,6 +614,7 @@
 
   $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
   $(document).on('change', '#mg-default-type', function(){ updateAllAutoNames(); });
+  $(document).on('change', '#mg-ai-mode, .mg-ai-field', function(){ refreshAiStatus(); });
 
   function copyMainFromFirst(){
     var $rows = $('#mg-bulk-rows .mg-item-row');
@@ -632,6 +876,8 @@
       form.append('design_file', file);
       keys.forEach(function(k){ form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
+      form.append('description', ($row.find('textarea.mg-description').val() || '').trim());
+      form.append('short_description', ($row.find('textarea.mg-short-description').val() || '').trim());
       form.append('main_cat', $mainSel.val()||'0');
       collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
@@ -692,7 +938,12 @@
   var $zone = $('#mg-drop-zone');
   var $input = $('#mg-bulk-files-adv');
   if ($zone.length && $input.length){
-    function accept(f){ return /^image\/(png|jpe?g|webp)$/i.test(f.type) || /\.(png|jpe?g|jpg|webp)$/i.test(f.name||''); }
+    function accept(f){
+      return /^image\/(png|jpe?g|webp)$/i.test(f.type)
+        || /\.(png|jpe?g|jpg|webp)$/i.test(f.name||'')
+        || f.type === 'application/json'
+        || /\.json$/i.test(f.name||'');
+    }
     function setFiles(list){
       try{
         var dt = new DataTransfer();
