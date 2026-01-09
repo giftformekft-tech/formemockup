@@ -229,6 +229,27 @@ class MG_Product_Settings_Page {
     public static function register_dynamic_product_submenus() {
         add_submenu_page('mockup-generator','Termék – szerkesztés','Termék: szerkesztés','manage_options','mockup-generator-product',[self::class,'render_product'],20);
     }
+    private static function generate_unique_key($base, $products) {
+        $base = sanitize_title($base);
+        if ($base === '') {
+            $base = 'termek';
+        }
+        $existing = array();
+        if (is_array($products)) {
+            foreach ($products as $product) {
+                if (is_array($product) && !empty($product['key'])) {
+                    $existing[] = sanitize_title($product['key']);
+                }
+            }
+        }
+        $candidate = $base;
+        $suffix = 1;
+        while (in_array($candidate, $existing, true)) {
+            $candidate = $base . '-' . $suffix;
+            $suffix++;
+        }
+        return $candidate;
+    }
     private static function get_product_by_key($key) {
         $products = get_option('mg_products', array());
         
@@ -242,6 +263,33 @@ if (isset($_GET['mg_delete_key']) && current_user_can('manage_options')) {
     update_option('mg_products', array_values($all));
     wp_safe_redirect(admin_url('admin.php?page=mockup-generator-settings&deleted=1'));
     exit;
+}
+if (isset($_GET['mg_duplicate_key']) && current_user_can('manage_options')) {
+    $dup_key = sanitize_text_field($_GET['mg_duplicate_key']);
+    $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field($_GET['_wpnonce']) : '';
+    if ($dup_key && wp_verify_nonce($nonce, 'mg_duplicate_product_' . $dup_key)) {
+        $original = null;
+        foreach ($products as $product) {
+            if (is_array($product) && isset($product['key']) && $product['key'] === $dup_key) {
+                $original = $product;
+                break;
+            }
+        }
+        if (is_array($original)) {
+            $new_key = self::generate_unique_key($dup_key . '-copy', $products);
+            $new_label = trim((string) ($original['label'] ?? $dup_key));
+            $new_label = $new_label !== '' ? $new_label . ' (másolat)' : $new_key;
+            $copy = $original;
+            $copy['key'] = $new_key;
+            $copy['label'] = $new_label;
+            $copy['sku_prefix'] = strtoupper($new_key);
+            $copy['is_primary'] = 0;
+            $products[] = $copy;
+            update_option('mg_products', $products);
+            wp_safe_redirect(admin_url('admin.php?page=mockup-generator-settings&product=' . $new_key));
+            exit;
+        }
+    }
 }
 foreach ($products as $p) if ($p['key']===$key) return $p;
         return null;
@@ -259,6 +307,9 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         }
         update_option('mg_products',$products);
         self::sync_variant_display_colors($prod);
+        if (class_exists('MG_Mockup_Maintenance')) {
+            MG_Mockup_Maintenance::sync_type_label($prod['key'], $prod['label'] ?? '');
+        }
     }
 
     private static function sync_variant_display_colors($prod) {
@@ -390,6 +441,10 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $working_overrides   = null;
 
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
+            $label = sanitize_text_field($_POST['label'] ?? '');
+            if ($label !== '') {
+                $prod['label'] = $label;
+            }
             $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
             if (!empty($sizes)) $prod['sizes']=$sizes;
 
@@ -684,8 +739,16 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 <a href="<?php echo esc_url(add_query_arg('mg_delete_key', $prod['key'])); ?>"
    class="button button-link-delete"
    onclick="return confirm('Biztosan törlöd ezt a terméktípust?');">Törlés</a> (<code><?php echo esc_html($prod['key']); ?></code>)</h1>
+            <p>
+                <a
+                    href="<?php echo esc_url(wp_nonce_url(add_query_arg('mg_duplicate_key', $prod['key']), 'mg_duplicate_product_' . $prod['key'])); ?>"
+                    class="button"
+                ><?php esc_html_e('Terméktípus duplikálása', 'mgdtp'); ?></a>
+            </p>
             <form method="post" enctype="multipart/form-data">
                 <?php wp_nonce_field('mg_save_product','mg_save_product_nonce'); ?>
+                <h2>Megjelenített név</h2>
+                <p><input type="text" name="label" class="regular-text" value="<?php echo esc_attr($prod['label']); ?>" /></p>
                 <h2>Alap ár (HUF)</h2>
                 <p><input type="number" name="price" class="small-text" min="0" step="1" value="<?php echo esc_attr($price); ?>" /></p>
 

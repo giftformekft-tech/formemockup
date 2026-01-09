@@ -1115,6 +1115,41 @@ class MG_Mockup_Maintenance {
         return $source;
     }
 
+    public static function sync_type_label($type_slug, $label) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return;
+        }
+        $label = sanitize_text_field($label);
+        if ($label === '') {
+            return;
+        }
+        $index = self::get_index();
+        if (!is_array($index) || empty($index)) {
+            return;
+        }
+        $changed = false;
+        foreach ($index as $key => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            if (sanitize_title($entry['type_slug'] ?? '') !== $type_slug) {
+                continue;
+            }
+            $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
+            if (($source['type_label'] ?? '') === $label) {
+                continue;
+            }
+            $source['type_label'] = $label;
+            $entry['source'] = $source;
+            $index[$key] = $entry;
+            $changed = true;
+        }
+        if ($changed) {
+            self::set_index($index);
+        }
+    }
+
     private static function resolve_design_path($entry) {
         $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
         $path = isset($source['design_path']) ? wp_normalize_path($source['design_path']) : '';
