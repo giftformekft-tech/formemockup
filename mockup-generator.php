@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.54
+Version: 1.2.55
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -38,6 +38,7 @@ add_action('plugins_loaded', function(){
         'includes/class-mockup-maintenance.php',
         'includes/class-variant-maintenance.php',
         'includes/class-variant-display-manager.php',
+        'includes/class-product-image-performance.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
         'includes/class-design-gallery.php',
@@ -77,8 +78,8 @@ add_action('plugins_loaded', function(){
         $is_shell = ($hook === 'toplevel_page_mockup-generator') || ($page === 'mockup-generator');
 
         if (strpos($hook, 'mockup-generator') !== false || $is_shell) {
-            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.54');
-            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.54', true);
+            wp_enqueue_style('mg-admin', plugins_url('assets/css/admin.css', __FILE__), [], '1.2.55');
+            wp_enqueue_script('mg-admin', plugins_url('assets/js/admin.js', __FILE__), ['jquery'], '1.2.55', true);
             wp_localize_script('mg-admin', 'MG_AJAX', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('mg_ajax_nonce')
@@ -129,6 +130,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
+    }
+    if (class_exists('MG_Product_Image_Performance')) {
+        MG_Product_Image_Performance::init();
     }
     if (class_exists('MG_Surcharge_Frontend')) {
         MG_Surcharge_Frontend::init();
