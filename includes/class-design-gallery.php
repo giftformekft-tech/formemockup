@@ -61,6 +61,29 @@ class MG_Design_Gallery {
             }
             echo self::render_gallery(array(), $settings);
         }, $hook['priority']);
+
+        if ($hook['name'] === 'woocommerce_after_single_product_summary') {
+            self::move_reviews_below_gallery($hook['priority']);
+        }
+    }
+
+    /**
+     * Move WooCommerce product reviews below the gallery block.
+     *
+     * @param int $gallery_priority
+     * @return void
+     */
+    protected static function move_reviews_below_gallery($gallery_priority) {
+        if (!function_exists('remove_action') || !function_exists('add_action')) {
+            return;
+        }
+        if (!has_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs')) {
+            return;
+        }
+        $gallery_priority = absint($gallery_priority);
+        $review_priority = $gallery_priority > 0 ? $gallery_priority + 5 : 20;
+        remove_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs', 10);
+        add_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs', $review_priority);
     }
 
     /**
@@ -245,32 +268,34 @@ class MG_Design_Gallery {
             return array();
         }
 
+        $entries = array();
         $index = array();
         if (class_exists('MG_Mockup_Maintenance')) {
             $index = MG_Mockup_Maintenance::get_index();
         }
 
-        if (empty($index) || !is_array($index)) {
-            return array();
+        if (!empty($index) && is_array($index)) {
+            foreach ($index as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                if ((int) ($entry['product_id'] ?? 0) !== $product->get_id()) {
+                    continue;
+                }
+                $type_slug = sanitize_title($entry['type_slug'] ?? '');
+                $color_slug = sanitize_title($entry['color_slug'] ?? '');
+                if ($type_slug === '' || $color_slug === '') {
+                    continue;
+                }
+                if (!isset($entries[$type_slug])) {
+                    $entries[$type_slug] = array();
+                }
+                $entries[$type_slug][$color_slug] = $entry;
+            }
         }
 
-        $entries = array();
-        foreach ($index as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            if ((int) ($entry['product_id'] ?? 0) !== $product->get_id()) {
-                continue;
-            }
-            $type_slug = sanitize_title($entry['type_slug'] ?? '');
-            $color_slug = sanitize_title($entry['color_slug'] ?? '');
-            if ($type_slug === '' || $color_slug === '') {
-                continue;
-            }
-            if (!isset($entries[$type_slug])) {
-                $entries[$type_slug] = array();
-            }
-            $entries[$type_slug][$color_slug] = $entry;
+        if (empty($entries)) {
+            $entries = self::collect_entries_from_variations($product);
         }
 
         if (empty($entries)) {
@@ -297,7 +322,7 @@ class MG_Design_Gallery {
                 continue;
             }
 
-            $image = self::resolve_image_url($by_color[$color_slug]);
+            $image = self::resolve_image_url($by_color[$color_slug], $product);
             if ($image === '') {
                 continue;
             }
@@ -319,6 +344,62 @@ class MG_Design_Gallery {
         }
 
         return $items;
+    }
+
+    /**
+     * Build entries from WooCommerce variations when the maintenance index is empty.
+     *
+     * @param WC_Product $product
+     * @return array
+     */
+    protected static function collect_entries_from_variations($product) {
+        if (!is_object($product) || !method_exists($product, 'get_children')) {
+            return array();
+        }
+
+        if (method_exists($product, 'is_type') && !$product->is_type('variable')) {
+            return array();
+        }
+
+        $defaults = method_exists($product, 'get_default_attributes') ? $product->get_default_attributes() : array();
+        $entries = array();
+
+        foreach ((array) $product->get_children() as $child_id) {
+            if (!function_exists('wc_get_product')) {
+                break;
+            }
+            $variation = wc_get_product($child_id);
+            if (!$variation || !method_exists($variation, 'get_attributes')) {
+                continue;
+            }
+            if (method_exists($variation, 'get_image_id')) {
+                $image_id = (int) $variation->get_image_id();
+                if ($image_id <= 0) {
+                    continue;
+                }
+            }
+            $attrs = $variation->get_attributes();
+            $type_slug = sanitize_title($attrs['pa_termektipus'] ?? '');
+            $color_slug = sanitize_title($attrs['pa_szin'] ?? '');
+            if ($type_slug === '' || $color_slug === '') {
+                continue;
+            }
+            if (!isset($entries[$type_slug])) {
+                $entries[$type_slug] = array();
+            }
+            if (!isset($entries[$type_slug][$color_slug])) {
+                $entries[$type_slug][$color_slug] = array(
+                    'product_id' => $product->get_id(),
+                    'type_slug' => $type_slug,
+                    'color_slug' => $color_slug,
+                    'source' => array(
+                        'defaults' => $defaults,
+                    ),
+                );
+            }
+        }
+
+        return $entries;
     }
 
     /**
@@ -366,7 +447,7 @@ class MG_Design_Gallery {
      * @param array $entry
      * @return string
      */
-    protected static function resolve_image_url($entry) {
+    protected static function resolve_image_url($entry, $product = null) {
         if (!is_array($entry)) {
             return '';
         }
@@ -397,6 +478,65 @@ class MG_Design_Gallery {
             }
         }
 
+        $variation_url = self::resolve_variation_image_url($entry, $product);
+        if ($variation_url !== '') {
+            return $variation_url;
+        }
+
+        return '';
+    }
+
+    /**
+     * Resolve variation image URL from the product based on type/color attributes.
+     *
+     * @param array $entry
+     * @param WC_Product|null $product
+     * @return string
+     */
+    protected static function resolve_variation_image_url($entry, $product = null) {
+        if (!function_exists('wc_get_product')) {
+            return '';
+        }
+        $product_id = absint($entry['product_id'] ?? 0);
+        if (!$product || !is_object($product) || !method_exists($product, 'get_id')) {
+            if ($product_id <= 0) {
+                return '';
+            }
+            $product = wc_get_product($product_id);
+        }
+        if (!$product || !method_exists($product, 'get_children') || !$product->get_id()) {
+            return '';
+        }
+        if (method_exists($product, 'is_type') && !$product->is_type('variable')) {
+            return '';
+        }
+        $type_slug = sanitize_title($entry['type_slug'] ?? '');
+        $color_slug = sanitize_title($entry['color_slug'] ?? '');
+        if ($type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        $children = $product->get_children();
+        foreach ((array) $children as $child_id) {
+            $variation = wc_get_product($child_id);
+            if (!$variation || !method_exists($variation, 'get_attributes')) {
+                continue;
+            }
+            $attrs = $variation->get_attributes();
+            $var_type = sanitize_title($attrs['pa_termektipus'] ?? '');
+            $var_color = sanitize_title($attrs['pa_szin'] ?? '');
+            if ($var_type !== $type_slug || $var_color !== $color_slug) {
+                continue;
+            }
+            if (method_exists($variation, 'get_image_id')) {
+                $image_id = (int) $variation->get_image_id();
+                if ($image_id > 0 && function_exists('wp_get_attachment_image_url')) {
+                    $url = wp_get_attachment_image_url($image_id, 'large');
+                    if ($url) {
+                        return $url;
+                    }
+                }
+            }
+        }
         return '';
     }
 
