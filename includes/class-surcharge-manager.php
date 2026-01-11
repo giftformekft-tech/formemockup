@@ -7,6 +7,7 @@ class MG_Surcharge_Manager {
     const OPTION_KEY = 'mg_mockup_surcharges';
     const CACHE_KEY = 'mg_mockup_surcharges_cache';
     const CACHE_GROUP = 'mg_mockup';
+    const LOCK_MESSAGE_OPTION = 'mg_surcharge_cart_lock_message';
 
     public static function get_surcharges($only_active = false) {
         $cached = wp_cache_get(self::CACHE_KEY, self::CACHE_GROUP);
@@ -78,6 +79,7 @@ class MG_Surcharge_Manager {
             'mandatory' => false,
             'default_enabled' => false,
             'frontend_display' => 'product',
+            'cart_lock' => false,
             'conditions' => [
                 'product_types' => [],
                 'colors' => [],
@@ -98,6 +100,7 @@ class MG_Surcharge_Manager {
         $surcharge['mandatory'] = !empty($surcharge['mandatory']);
         $surcharge['require_choice'] = !empty($surcharge['require_choice']);
         $surcharge['default_enabled'] = !empty($surcharge['default_enabled']);
+        $surcharge['cart_lock'] = !empty($surcharge['cart_lock']);
         $allowed_display = ['product', 'cart', 'both'];
         $surcharge['frontend_display'] = in_array($surcharge['frontend_display'], $allowed_display, true) ? $surcharge['frontend_display'] : 'product';
         $conditions = is_array($surcharge['conditions']) ? $surcharge['conditions'] : [];
@@ -174,7 +177,7 @@ class MG_Surcharge_Manager {
         if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'))) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size'))) {
+        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'))) {
             return false;
         }
 
@@ -194,6 +197,9 @@ class MG_Surcharge_Manager {
         }
         $required = array_map('sanitize_title', $conditions[$key]);
         $values = self::get_attribute_values($product, $variation, $taxonomies);
+        if (empty($values) && $variation === null && $product instanceof WC_Product && $product->is_type('variable')) {
+            return true;
+        }
         if (empty($values)) {
             return false;
         }

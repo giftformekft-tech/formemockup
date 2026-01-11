@@ -81,6 +81,28 @@ class MG_Surcharge_Frontend {
                 return false;
             }
         }
+        if (!empty(WC()->cart)) {
+            $locked_ids = self::get_cart_lock_ids(WC()->cart);
+            if (!empty($locked_ids)) {
+                $prepared = self::prepare_cart_item_surcharges($available, $selections);
+                $new_locked = [];
+                foreach ($available as $option) {
+                    if (empty($option['cart_lock'])) {
+                        continue;
+                    }
+                    $id = $option['id'];
+                    if (!empty($prepared[$id]['enabled'])) {
+                        $new_locked[] = $id;
+                    }
+                }
+                $shared = array_intersect($new_locked, $locked_ids);
+                $extra = array_diff($new_locked, $locked_ids);
+                if (empty($shared) || !empty($extra)) {
+                    wc_add_notice(self::get_cart_lock_message(), 'error');
+                    return false;
+                }
+            }
+        }
         return $passed;
     }
 
@@ -295,6 +317,7 @@ class MG_Surcharge_Frontend {
                 'enabled' => $enabled,
                 'require_choice' => !empty($option['require_choice']),
                 'default_enabled' => !empty($option['default_enabled']),
+                'cart_lock' => !empty($option['cart_lock']),
             ];
         }
         return $prepared;
@@ -321,7 +344,7 @@ class MG_Surcharge_Frontend {
         $is_required = !empty($option['require_choice']);
         $is_checked = $existing ? !empty($existing['enabled']) : (!empty($option['default_enabled']));
         $has_choice = $existing ? true : (!empty($option['default_enabled']));
-        $tooltip = $option['description'] ? '<span class="mg-surcharge-tooltip" title="' . esc_attr(wp_strip_all_tags($option['description'])) . '">i</span>' : '';
+        $tooltip = $option['description'] ? '<span class="mg-surcharge-tooltip" role="button" tabindex="0" aria-label="' . esc_attr(wp_strip_all_tags($option['description'])) . '" data-tooltip="' . esc_attr(wp_strip_all_tags($option['description'])) . '">i</span>' : '';
         $price = wp_strip_all_tags(wc_price($option['amount']));
         ob_start();
         echo '<div class="mg-surcharge-option" data-id="' . esc_attr($id) . '" data-required="' . ($is_required ? '1' : '0') . '">';
@@ -357,7 +380,7 @@ class MG_Surcharge_Frontend {
             'categories' => wc_get_product_term_ids($product->get_id(), 'product_cat'),
             'is_variable' => $is_variable,
         ];
-        $taxonomies = ['pa_termektipus', 'pa_product_type', 'pa_szin', 'pa_color', 'pa_meret', 'pa_size'];
+        $taxonomies = ['pa_termektipus', 'pa_product_type', 'pa_szin', 'pa_color', 'pa_meret', 'pa_size', 'meret'];
         foreach ($taxonomies as $taxonomy) {
             $slugs = self::get_attribute_slugs($product, $taxonomy);
             $context['base_attributes'][$taxonomy] = $slugs;
@@ -390,5 +413,36 @@ class MG_Surcharge_Frontend {
         }
         $value = strtolower((string)$value);
         return in_array($value, ['1', 'yes', 'on', 'true'], true);
+    }
+
+    private static function get_cart_lock_ids($cart) {
+        $locked = [];
+        foreach ($cart->get_cart() as $item) {
+            if (empty($item['mg_surcharge_data']) || !is_array($item['mg_surcharge_data'])) {
+                continue;
+            }
+            foreach ($item['mg_surcharge_data'] as $surcharge_id => $data) {
+                if (empty($data['enabled'])) {
+                    continue;
+                }
+                $is_locked = isset($data['cart_lock']) ? !empty($data['cart_lock']) : false;
+                if (!$is_locked) {
+                    $option = MG_Surcharge_Manager::get_surcharge($surcharge_id);
+                    $is_locked = !empty($option['cart_lock']);
+                }
+                if ($is_locked) {
+                    $locked[] = $surcharge_id;
+                }
+            }
+        }
+        return array_values(array_unique($locked));
+    }
+
+    private static function get_cart_lock_message() {
+        $message = get_option(MG_Surcharge_Manager::LOCK_MESSAGE_OPTION, '');
+        if ('' === trim((string)$message)) {
+            return __('A kosárban már van olyan termék, amely feltételhez kötött feláras opciót tartalmaz, ezért most csak ilyen opcióval rendelkező terméket adhatsz hozzá. Ha más terméket szeretnél, külön vásárlásban teheted meg.', 'mockup-generator');
+        }
+        return wp_kses_post($message);
     }
 }
