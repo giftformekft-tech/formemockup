@@ -184,7 +184,7 @@
         if (!listMatches(option.conditions.colors, colorValues)) {
             return false;
         }
-        var sizeValues = [].concat(context.attributes['pa_meret'] || [], context.attributes['pa_size'] || []);
+        var sizeValues = [].concat(context.attributes['pa_meret'] || [], context.attributes['pa_size'] || [], context.attributes['meret'] || []);
         if (!listMatches(option.conditions.sizes, sizeValues)) {
             return false;
         }
