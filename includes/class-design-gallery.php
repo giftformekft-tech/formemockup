@@ -61,6 +61,29 @@ class MG_Design_Gallery {
             }
             echo self::render_gallery(array(), $settings);
         }, $hook['priority']);
+
+        if ($hook['name'] === 'woocommerce_after_single_product_summary') {
+            self::move_reviews_below_gallery($hook['priority']);
+        }
+    }
+
+    /**
+     * Move WooCommerce product reviews below the gallery block.
+     *
+     * @param int $gallery_priority
+     * @return void
+     */
+    protected static function move_reviews_below_gallery($gallery_priority) {
+        if (!function_exists('remove_action') || !function_exists('add_action')) {
+            return;
+        }
+        if (!has_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs')) {
+            return;
+        }
+        $gallery_priority = absint($gallery_priority);
+        $review_priority = $gallery_priority > 0 ? $gallery_priority + 5 : 20;
+        remove_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs', 10);
+        add_action('woocommerce_after_single_product_summary', 'woocommerce_output_product_data_tabs', $review_priority);
     }
 
     /**
