@@ -14,6 +14,7 @@ class MG_Design_Gallery {
         add_action('init', array(__CLASS__, 'register_block'));
         add_action('wp_enqueue_scripts', array(__CLASS__, 'register_assets'));
         add_action('init', array(__CLASS__, 'maybe_hook_auto_output'));
+        add_action('init', array(__CLASS__, 'maybe_limit_product_tabs'));
     }
 
     /**
@@ -65,6 +66,36 @@ class MG_Design_Gallery {
         if ($hook['name'] === 'woocommerce_after_single_product_summary') {
             self::move_reviews_below_gallery($hook['priority']);
         }
+    }
+
+    /**
+     * Limit product tabs to reviews only when enabled in settings.
+     */
+    public static function maybe_limit_product_tabs() {
+        $settings = self::get_settings();
+        if (empty($settings['reviews_only'])) {
+            return;
+        }
+        add_filter('woocommerce_product_tabs', array(__CLASS__, 'filter_product_tabs'), 20, 1);
+    }
+
+    /**
+     * Filter WooCommerce tabs to keep only reviews.
+     *
+     * @param array $tabs
+     * @return array
+     */
+    public static function filter_product_tabs($tabs) {
+        if (!function_exists('is_product') || !is_product()) {
+            return $tabs;
+        }
+        if (isset($tabs['description'])) {
+            unset($tabs['description']);
+        }
+        if (isset($tabs['additional_information'])) {
+            unset($tabs['additional_information']);
+        }
+        return $tabs;
     }
 
     /**
@@ -610,6 +641,7 @@ class MG_Design_Gallery {
             'layout' => 'grid',
             'title' => __('Minta az összes terméken', 'mgdg'),
             'show_title' => true,
+            'reviews_only' => false,
         );
         $stored = get_option(self::OPTION_KEY, array());
         if (!is_array($stored)) {
@@ -633,6 +665,7 @@ class MG_Design_Gallery {
             'layout' => isset($input['layout']) ? sanitize_key($input['layout']) : 'grid',
             'title' => isset($input['title']) ? sanitize_text_field($input['title']) : '',
             'show_title' => isset($input['show_title']) ? (bool) $input['show_title'] : true,
+            'reviews_only' => !empty($input['reviews_only']),
         );
 
         $allowed_positions = array_keys(self::position_map());

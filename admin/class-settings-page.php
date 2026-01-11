@@ -272,6 +272,13 @@ class MG_Settings_Page {
                         <td><label><input type="checkbox" name="mg_design_gallery[show_title]" value="1" <?php checked(!empty($gallery_settings['show_title'])); ?> /> Igen</label></td>
                     </tr>
                     <tr>
+                        <th scope="row">Csak vélemények fül</th>
+                        <td>
+                            <label><input type="checkbox" name="mg_design_gallery[reviews_only]" value="1" <?php checked(!empty($gallery_settings['reviews_only'])); ?> /> Csak a vélemények tab megjelenítése</label>
+                            <p class="description">Eltávolítja a Leírás és További információk tabokat a termékoldalról.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row">Max. elemek száma</th>
                         <td>
                             <input type="number" name="mg_design_gallery[max_items]" min="0" step="1" value="<?php echo esc_attr(intval($gallery_settings['max_items'] ?? 0)); ?>" class="small-text" />
