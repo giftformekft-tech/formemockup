@@ -136,6 +136,9 @@ class MG_Surcharge_Options_Page {
     private static function render_form($id = '') {
         $surcharge = $id ? MG_Surcharge_Manager::get_surcharge($id) : null;
         $surcharge = $surcharge ? $surcharge : MG_Surcharge_Manager::normalize_surcharge([]);
+        if (!$id) {
+            $surcharge['active'] = true;
+        }
         $action_url = esc_url(self::get_form_url($id));
         $terms = [
             'product_types' => self::unique_terms(self::get_terms('pa_termektipus')),
