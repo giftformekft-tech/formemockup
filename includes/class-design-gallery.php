@@ -245,32 +245,34 @@ class MG_Design_Gallery {
             return array();
         }
 
+        $entries = array();
         $index = array();
         if (class_exists('MG_Mockup_Maintenance')) {
             $index = MG_Mockup_Maintenance::get_index();
         }
 
-        if (empty($index) || !is_array($index)) {
-            return array();
+        if (!empty($index) && is_array($index)) {
+            foreach ($index as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                if ((int) ($entry['product_id'] ?? 0) !== $product->get_id()) {
+                    continue;
+                }
+                $type_slug = sanitize_title($entry['type_slug'] ?? '');
+                $color_slug = sanitize_title($entry['color_slug'] ?? '');
+                if ($type_slug === '' || $color_slug === '') {
+                    continue;
+                }
+                if (!isset($entries[$type_slug])) {
+                    $entries[$type_slug] = array();
+                }
+                $entries[$type_slug][$color_slug] = $entry;
+            }
         }
 
-        $entries = array();
-        foreach ($index as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            if ((int) ($entry['product_id'] ?? 0) !== $product->get_id()) {
-                continue;
-            }
-            $type_slug = sanitize_title($entry['type_slug'] ?? '');
-            $color_slug = sanitize_title($entry['color_slug'] ?? '');
-            if ($type_slug === '' || $color_slug === '') {
-                continue;
-            }
-            if (!isset($entries[$type_slug])) {
-                $entries[$type_slug] = array();
-            }
-            $entries[$type_slug][$color_slug] = $entry;
+        if (empty($entries)) {
+            $entries = self::collect_entries_from_variations($product);
         }
 
         if (empty($entries)) {
@@ -319,6 +321,62 @@ class MG_Design_Gallery {
         }
 
         return $items;
+    }
+
+    /**
+     * Build entries from WooCommerce variations when the maintenance index is empty.
+     *
+     * @param WC_Product $product
+     * @return array
+     */
+    protected static function collect_entries_from_variations($product) {
+        if (!is_object($product) || !method_exists($product, 'get_children')) {
+            return array();
+        }
+
+        if (method_exists($product, 'is_type') && !$product->is_type('variable')) {
+            return array();
+        }
+
+        $defaults = method_exists($product, 'get_default_attributes') ? $product->get_default_attributes() : array();
+        $entries = array();
+
+        foreach ((array) $product->get_children() as $child_id) {
+            if (!function_exists('wc_get_product')) {
+                break;
+            }
+            $variation = wc_get_product($child_id);
+            if (!$variation || !method_exists($variation, 'get_attributes')) {
+                continue;
+            }
+            if (method_exists($variation, 'get_image_id')) {
+                $image_id = (int) $variation->get_image_id();
+                if ($image_id <= 0) {
+                    continue;
+                }
+            }
+            $attrs = $variation->get_attributes();
+            $type_slug = sanitize_title($attrs['pa_termektipus'] ?? '');
+            $color_slug = sanitize_title($attrs['pa_szin'] ?? '');
+            if ($type_slug === '' || $color_slug === '') {
+                continue;
+            }
+            if (!isset($entries[$type_slug])) {
+                $entries[$type_slug] = array();
+            }
+            if (!isset($entries[$type_slug][$color_slug])) {
+                $entries[$type_slug][$color_slug] = array(
+                    'product_id' => $product->get_id(),
+                    'type_slug' => $type_slug,
+                    'color_slug' => $color_slug,
+                    'source' => array(
+                        'defaults' => $defaults,
+                    ),
+                );
+            }
+        }
+
+        return $entries;
     }
 
     /**
