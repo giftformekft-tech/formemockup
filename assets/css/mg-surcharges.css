@@ -30,7 +30,7 @@
 
 .mg-surcharge-box__options > .mg-surcharge-option {
     border-top: 1px solid #f0f0f0;
-    padding: 8px 0;
+    padding: 6px 0;
 }
 
 .mg-surcharge-box__options > .mg-surcharge-option:first-of-type {
@@ -42,7 +42,7 @@
     justify-content: space-between;
     align-items: center;
     font-weight: 600;
-    font-size: 0.95em;
+    font-size: 0.9em;
 }
 
 .mg-surcharge-option__title {
