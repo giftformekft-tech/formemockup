@@ -436,6 +436,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $prod = self::get_product_by_key($key);
         if (!$prod) { echo '<div class="notice notice-error"><p>Ismeretlen termék.</p></div>'; return; }
         if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
+        $price_job = self::get_latest_price_update_job($prod['key']);
 
         $sanitized_overrides = null;
         $working_overrides   = null;
@@ -750,6 +751,12 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 <a href="<?php echo esc_url(add_query_arg('mg_delete_key', $prod['key'])); ?>"
    class="button button-link-delete"
    onclick="return confirm('Biztosan törlöd ezt a terméktípust?');">Törlés</a> (<code><?php echo esc_html($prod['key']); ?></code>)</h1>
+            <style>
+                .mg-price-update-status { margin: 8px 0 16px; max-width: 420px; }
+                .mg-price-update-label { margin-bottom: 6px; font-size: 13px; color: #50575e; }
+                .mg-price-update-bar { background: #f1f1f1; border-radius: 6px; height: 10px; overflow: hidden; }
+                .mg-price-update-bar span { display: block; height: 100%; background: #2271b1; width: 0; transition: width 0.3s ease; }
+            </style>
             <p>
                 <a
                     href="<?php echo esc_url(wp_nonce_url(add_query_arg('mg_duplicate_key', $prod['key']), 'mg_duplicate_product_' . $prod['key'])); ?>"
@@ -768,6 +775,28 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         <?php esc_html_e('Már legenerált termékek/variációk árainak frissítése (alapár + felárak).', 'mgdtp'); ?>
                     </label>
                 </p>
+                <?php if ($price_job): ?>
+                    <?php
+                    $job_total = intval($price_job['total'] ?? 0);
+                    $job_updated = intval($price_job['updated'] ?? 0);
+                    $job_done = !empty($price_job['done']);
+                    $job_percent = $job_total > 0 ? min(100, round(($job_updated / max(1, $job_total)) * 100)) : 0;
+                    ?>
+                    <div class="mg-price-update-status" data-job-id="<?php echo esc_attr($price_job['id']); ?>" data-nonce="<?php echo esc_attr(wp_create_nonce('mg_price_update_status')); ?>">
+                        <div class="mg-price-update-label">
+                            <?php
+                            if ($job_done) {
+                                printf(esc_html__('Árfrissítés kész: %1$d / %2$d.', 'mgdtp'), $job_updated, $job_total);
+                            } else {
+                                printf(esc_html__('Árfrissítés folyamatban: %1$d / %2$d.', 'mgdtp'), $job_updated, $job_total);
+                            }
+                            ?>
+                        </div>
+                        <div class="mg-price-update-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr($job_percent); ?>">
+                            <span style="width: <?php echo esc_attr($job_percent); ?>%;"></span>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
@@ -1039,6 +1068,38 @@ if (function_exists('wp_editor')) {
 
         <script>
         window.MG_PA_DEFAULTS = <?php echo json_encode($views, JSON_UNESCAPED_UNICODE); ?>;
+        (function(){
+          var container = document.querySelector('.mg-price-update-status');
+          if (!container || !window.ajaxurl) { return; }
+          var jobId = container.getAttribute('data-job-id');
+          var nonce = container.getAttribute('data-nonce');
+          if (!jobId || !nonce) { return; }
+          var label = container.querySelector('.mg-price-update-label');
+          var bar = container.querySelector('.mg-price-update-bar span');
+          var barWrap = container.querySelector('.mg-price-update-bar');
+          var poll = function(){
+            var data = new URLSearchParams();
+            data.append('action', 'mg_price_update_status');
+            data.append('job_id', jobId);
+            data.append('nonce', nonce);
+            fetch(window.ajaxurl, { method: 'POST', credentials: 'same-origin', body: data })
+              .then(function(resp){ return resp.json(); })
+              .then(function(payload){
+                if (!payload || !payload.success) { return; }
+                var result = payload.data || {};
+                if (label) { label.textContent = result.label || label.textContent; }
+                if (bar) { bar.style.width = (result.percent || 0) + '%'; }
+                if (barWrap) { barWrap.setAttribute('aria-valuenow', result.percent || 0); }
+                if (!result.done) {
+                  setTimeout(poll, 3000);
+                }
+              })
+              .catch(function(){
+                setTimeout(poll, 5000);
+              });
+          };
+          setTimeout(poll, 2000);
+        })();
         </script>
         <?php
     }
@@ -1078,6 +1139,58 @@ if (function_exists('wp_editor')) {
             wp_schedule_single_event(time() + 5, 'mg_price_update_job_process', array($job_id));
         }
         return $job_id;
+    }
+
+    private static function get_latest_price_update_job($type_key) {
+        $type_key = sanitize_title($type_key);
+        if ($type_key === '') {
+            return null;
+        }
+        $jobs = get_option('mg_price_update_jobs', array());
+        if (!is_array($jobs)) {
+            return null;
+        }
+        $latest = null;
+        foreach ($jobs as $job_id => $job) {
+            if (!is_array($job) || empty($job['type_key']) || $job['type_key'] !== $type_key) {
+                continue;
+            }
+            $job['id'] = $job_id;
+            if (!$latest || intval($job['started_at'] ?? 0) > intval($latest['started_at'] ?? 0)) {
+                $latest = $job;
+            }
+        }
+        return $latest;
+    }
+
+    public static function ajax_price_update_status() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgdtp')));
+        }
+        check_ajax_referer('mg_price_update_status', 'nonce');
+        $job_id = sanitize_text_field($_POST['job_id'] ?? '');
+        if ($job_id === '') {
+            wp_send_json_error(array('message' => __('Hiányzó job azonosító.', 'mgdtp')));
+        }
+        $jobs = get_option('mg_price_update_jobs', array());
+        if (!is_array($jobs) || empty($jobs[$job_id]) || !is_array($jobs[$job_id])) {
+            wp_send_json_error(array('message' => __('Ismeretlen job.', 'mgdtp')));
+        }
+        $job = $jobs[$job_id];
+        $total = intval($job['total'] ?? 0);
+        $updated = intval($job['updated'] ?? 0);
+        $done = !empty($job['done']);
+        $percent = $total > 0 ? min(100, round(($updated / max(1, $total)) * 100)) : 0;
+        $label = $done
+            ? sprintf(__('Árfrissítés kész: %1$d / %2$d.', 'mgdtp'), $updated, $total)
+            : sprintf(__('Árfrissítés folyamatban: %1$d / %2$d.', 'mgdtp'), $updated, $total);
+        wp_send_json_success(array(
+            'updated' => $updated,
+            'total'   => $total,
+            'percent' => $percent,
+            'done'    => $done,
+            'label'   => $label,
+        ));
     }
 
     public static function process_price_update_job($job_id) {
@@ -1191,3 +1304,4 @@ if (function_exists('wp_editor')) {
 }
 
 add_action('mg_price_update_job_process', array('MG_Product_Settings_Page', 'process_price_update_job'), 10, 1);
+add_action('wp_ajax_mg_price_update_status', array('MG_Product_Settings_Page', 'ajax_price_update_status'));
