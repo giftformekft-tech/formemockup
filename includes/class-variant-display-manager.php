@@ -297,9 +297,12 @@ class MG_Variant_Display_Manager {
             ),
             'availability' => $availability,
             'text' => array(
-                'type' => __('Terméktípus', 'mgvd'),
+                'type' => __('Válassz terméket:', 'mgvd'),
                 'color' => __('Szín', 'mgvd'),
                 'size' => __('Méret', 'mgvd'),
+                'typePlaceholder' => __('Válassz terméktípust', 'mgvd'),
+                'typeModalTitle' => __('Válaszd ki a terméktípust', 'mgvd'),
+                'typeModalClose' => __('Bezárás', 'mgvd'),
                 'chooseTypeFirst' => __('Először válassz terméktípust.', 'mgvd'),
                 'chooseColorFirst' => __('Először válassz színt.', 'mgvd'),
                 'noColors' => __('Ehhez a terméktípushoz nincs elérhető szín.', 'mgvd'),
@@ -333,6 +336,7 @@ class MG_Variant_Display_Manager {
                 'mockup' => '',
                 'pattern' => '',
             ),
+            'typeMockups' => array(),
             'variationColors' => array(),
             'variationMockups' => array(),
             'variationPatterns' => array(),
@@ -362,6 +366,9 @@ class MG_Variant_Display_Manager {
                     $mockup = self::extract_variation_image($variation);
                     if ($mockup !== '') {
                         $visuals['variationMockups'][$variation_id] = $mockup;
+                        if ($type_slug !== '' && empty($visuals['typeMockups'][$type_slug])) {
+                            $visuals['typeMockups'][$type_slug] = $mockup;
+                        }
                     }
                 }
 
