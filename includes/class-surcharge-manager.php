@@ -197,6 +197,9 @@ class MG_Surcharge_Manager {
         }
         $required = array_map('sanitize_title', $conditions[$key]);
         $values = self::get_attribute_values($product, $variation, $taxonomies);
+        if (empty($values) && $variation === null && $product instanceof WC_Product && $product->is_type('variable')) {
+            return true;
+        }
         if (empty($values)) {
             return false;
         }
