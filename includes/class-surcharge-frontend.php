@@ -344,7 +344,7 @@ class MG_Surcharge_Frontend {
         $is_required = !empty($option['require_choice']);
         $is_checked = $existing ? !empty($existing['enabled']) : (!empty($option['default_enabled']));
         $has_choice = $existing ? true : (!empty($option['default_enabled']));
-        $tooltip = $option['description'] ? '<span class="mg-surcharge-tooltip" title="' . esc_attr(wp_strip_all_tags($option['description'])) . '">i</span>' : '';
+        $tooltip = $option['description'] ? '<span class="mg-surcharge-tooltip" role="button" tabindex="0" aria-label="' . esc_attr(wp_strip_all_tags($option['description'])) . '" data-tooltip="' . esc_attr(wp_strip_all_tags($option['description'])) . '">i</span>' : '';
         $price = wp_strip_all_tags(wc_price($option['amount']));
         ob_start();
         echo '<div class="mg-surcharge-option" data-id="' . esc_attr($id) . '" data-required="' . ($is_required ? '1' : '0') . '">';
