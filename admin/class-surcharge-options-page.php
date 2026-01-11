@@ -62,7 +62,7 @@ class MG_Surcharge_Options_Page {
                 'colors' => isset($_POST['conditions']['colors']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['colors'])) : [],
                 'sizes' => isset($_POST['conditions']['sizes']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['sizes'])) : [],
                 'categories' => isset($_POST['conditions']['categories']) ? array_map('intval', (array)$_POST['conditions']['categories']) : [],
-                'products' => isset($_POST['conditions']['products']) ? array_map('intval', array_filter(array_map('trim', explode(',', wp_unslash($_POST['conditions']['products']))))) : [],
+                'products' => isset($_POST['conditions']['products']) ? array_map('intval', (array)$_POST['conditions']['products']) : [],
                 'min_cart_total' => isset($_POST['conditions']['min_cart_total']) ? floatval(wp_unslash($_POST['conditions']['min_cart_total'])) : '',
             ],
         ];
@@ -175,7 +175,7 @@ class MG_Surcharge_Options_Page {
         echo self::render_multiselect(__('Színek', 'mockup-generator'), 'conditions[colors][]', $terms['colors'], $conditions['colors']);
         echo self::render_multiselect(__('Méret', 'mockup-generator'), 'conditions[sizes][]', $terms['sizes'], $conditions['sizes']);
         echo self::render_multiselect(__('Kategóriák', 'mockup-generator'), 'conditions[categories][]', $terms['categories'], $conditions['categories'], true);
-        echo '<p><label>' . esc_html__('Termék ID-k (vesszővel elválasztva)', 'mockup-generator') . '<br /><input type="text" name="conditions[products]" class="regular-text" value="' . esc_attr(implode(',', $conditions['products'])) . '" /></label></p>';
+        echo self::render_multiselect(__('Termékek', 'mockup-generator'), 'conditions[products][]', self::get_products_for_conditions(), $conditions['products'], true);
         echo '<p><label>' . esc_html__('Minimum kosárérték (opcionális)', 'mockup-generator') . '<br /><input type="number" step="0.01" name="conditions[min_cart_total]" value="' . esc_attr($conditions['min_cart_total']) . '" /></label></p>';
         echo '</fieldset>';
         echo '</td></tr>';
@@ -234,6 +234,34 @@ class MG_Surcharge_Options_Page {
             ];
         }
         return $result;
+    }
+
+    private static function get_products_for_conditions() {
+        $products = [];
+        if (!function_exists('wc_get_products')) {
+            return $products;
+        }
+        $items = wc_get_products([
+            'limit' => -1,
+            'status' => 'publish',
+            'orderby' => 'title',
+            'order' => 'ASC',
+            'return' => 'ids',
+        ]);
+        if (empty($items)) {
+            return $products;
+        }
+        foreach ($items as $product_id) {
+            $title = get_the_title($product_id);
+            if (!$title) {
+                continue;
+            }
+            $products[] = [
+                'id' => (int)$product_id,
+                'name' => $title,
+            ];
+        }
+        return $products;
     }
 
     private static function get_plugin_sizes() {
@@ -306,7 +334,7 @@ class MG_Surcharge_Options_Page {
             'colors' => __('Szín', 'mockup-generator'),
             'sizes' => __('Méret', 'mockup-generator'),
             'categories' => __('Kategória', 'mockup-generator'),
-            'products' => __('Termék ID', 'mockup-generator'),
+            'products' => __('Termék', 'mockup-generator'),
             'min_cart_total' => __('Min. kosár', 'mockup-generator'),
         ];
         foreach ($map as $key => $label) {
