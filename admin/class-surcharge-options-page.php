@@ -27,6 +27,9 @@ class MG_Surcharge_Options_Page {
             MG_Surcharge_Manager::delete_surcharge(sanitize_key(wp_unslash($_GET['surcharge_id'])));
             add_settings_error('mg_surcharges', 'deleted', __('Felár opció törölve.', 'mockup-generator'), 'updated');
         }
+        if (!empty($_POST['mg_surcharge_settings_nonce'])) {
+            self::handle_settings_save();
+        }
         if (!empty($_POST['mg_surcharge_nonce'])) {
             self::handle_save();
         }
@@ -52,13 +55,14 @@ class MG_Surcharge_Options_Page {
             'require_choice' => !empty($_POST['require_choice']),
             'mandatory' => !empty($_POST['require_choice']),
             'default_enabled' => !empty($_POST['default_enabled']),
+            'cart_lock' => !empty($_POST['cart_lock']),
             'frontend_display' => isset($_POST['frontend_display']) ? sanitize_text_field(wp_unslash($_POST['frontend_display'])) : 'product',
             'conditions' => [
                 'product_types' => isset($_POST['conditions']['product_types']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['product_types'])) : [],
                 'colors' => isset($_POST['conditions']['colors']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['colors'])) : [],
                 'sizes' => isset($_POST['conditions']['sizes']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['sizes'])) : [],
                 'categories' => isset($_POST['conditions']['categories']) ? array_map('intval', (array)$_POST['conditions']['categories']) : [],
-                'products' => isset($_POST['conditions']['products']) ? array_map('intval', array_filter(array_map('trim', explode(',', wp_unslash($_POST['conditions']['products']))))) : [],
+                'products' => isset($_POST['conditions']['products']) ? array_map('intval', (array)$_POST['conditions']['products']) : [],
                 'min_cart_total' => isset($_POST['conditions']['min_cart_total']) ? floatval(wp_unslash($_POST['conditions']['min_cart_total'])) : '',
             ],
         ];
@@ -66,12 +70,33 @@ class MG_Surcharge_Options_Page {
         add_settings_error('mg_surcharges', 'saved', __('Felár opció mentve.', 'mockup-generator'), 'updated');
     }
 
+    private static function handle_settings_save() {
+        check_admin_referer('mg_save_surcharge_settings', 'mg_surcharge_settings_nonce');
+        $message = isset($_POST['cart_lock_message']) ? wp_kses_post(wp_unslash($_POST['cart_lock_message'])) : '';
+        update_option(MG_Surcharge_Manager::LOCK_MESSAGE_OPTION, $message, false);
+        add_settings_error('mg_surcharges', 'settings_saved', __('Feláras opciók beállításai elmentve.', 'mockup-generator'), 'updated');
+    }
+
     private static function render_list() {
         $surcharges = MG_Surcharge_Manager::sort_surcharges(MG_Surcharge_Manager::get_surcharges(false));
+        $cart_lock_message = get_option(MG_Surcharge_Manager::LOCK_MESSAGE_OPTION, '');
+        if ($cart_lock_message === '') {
+            $cart_lock_message = __('A kosárban már van olyan termék, amely feltételhez kötött feláras opciót tartalmaz, ezért most csak ilyen opcióval rendelkező terméket adhatsz hozzá. Ha más terméket szeretnél, külön vásárlásban teheted meg.', 'mockup-generator');
+        }
         echo '<div class="wrap">';
         echo '<h1 class="wp-heading-inline">' . esc_html__('Feláras opciók', 'mockup-generator') . '</h1> ';
         echo '<a href="' . esc_url(self::get_form_url()) . '" class="page-title-action">' . esc_html__('Új opció', 'mockup-generator') . '</a>';
         echo '<hr class="wp-header-end" />';
+        echo '<form method="post" action="">';
+        wp_nonce_field('mg_save_surcharge_settings', 'mg_surcharge_settings_nonce');
+        echo '<table class="form-table" role="presentation">';
+        echo '<tr><th scope="row"><label for="mg-cart-lock-message">' . esc_html__('Kosár korlátozás üzenet', 'mockup-generator') . '</label></th><td>';
+        echo '<textarea id="mg-cart-lock-message" name="cart_lock_message" rows="3" class="large-text">' . esc_textarea($cart_lock_message) . '</textarea>';
+        echo '<p class="description">' . esc_html__('A feláras opció által korlátozott kosár esetén megjelenő hibaüzenet.', 'mockup-generator') . '</p>';
+        echo '</td></tr>';
+        echo '</table>';
+        submit_button(__('Üzenet mentése', 'mockup-generator'));
+        echo '</form>';
         if (empty($surcharges)) {
             echo '<p>' . esc_html__('Még nincs felár opció.', 'mockup-generator') . '</p>';
         } else {
@@ -111,6 +136,9 @@ class MG_Surcharge_Options_Page {
     private static function render_form($id = '') {
         $surcharge = $id ? MG_Surcharge_Manager::get_surcharge($id) : null;
         $surcharge = $surcharge ? $surcharge : MG_Surcharge_Manager::normalize_surcharge([]);
+        if (!$id) {
+            $surcharge['active'] = true;
+        }
         $action_url = esc_url(self::get_form_url($id));
         $terms = [
             'product_types' => self::unique_terms(self::get_terms('pa_termektipus')),
@@ -129,6 +157,7 @@ class MG_Surcharge_Options_Page {
         self::render_input_row(__('Alapértelmezett állapot', 'mockup-generator'), '<label><input type="checkbox" name="active" value="1" ' . checked($surcharge['active'], true, false) . ' /> ' . esc_html__('Aktív', 'mockup-generator') . '</label>');
         self::render_input_row(__('Vásárlói választás kötelező?', 'mockup-generator'), '<label><input type="checkbox" name="require_choice" value="1" ' . checked($surcharge['require_choice'], true, false) . ' /> ' . esc_html__('Igen', 'mockup-generator') . '</label>');
         self::render_input_row(__('Alapértelmezett érték', 'mockup-generator'), '<label><input type="checkbox" name="default_enabled" value="1" ' . checked($surcharge['default_enabled'], true, false) . ' /> ' . esc_html__('Bekapcsolva', 'mockup-generator') . '</label>');
+        self::render_input_row(__('Kosár korlátozás', 'mockup-generator'), '<label><input type="checkbox" name="cart_lock" value="1" ' . checked($surcharge['cart_lock'], true, false) . ' /> ' . esc_html__('Csak azonos feláras opcióval rendelkező termékek lehetnek a kosárban.', 'mockup-generator') . '</label>');
         self::render_input_row(__('Frontend megjelenítés', 'mockup-generator'), self::render_display_select($surcharge['frontend_display']));
         self::render_input_row(__('Prioritás', 'mockup-generator'), '<input type="number" name="priority" value="' . esc_attr($surcharge['priority']) . '" />');
         self::render_conditions_section($surcharge['conditions'], $terms);
@@ -146,7 +175,7 @@ class MG_Surcharge_Options_Page {
         echo self::render_multiselect(__('Színek', 'mockup-generator'), 'conditions[colors][]', $terms['colors'], $conditions['colors']);
         echo self::render_multiselect(__('Méret', 'mockup-generator'), 'conditions[sizes][]', $terms['sizes'], $conditions['sizes']);
         echo self::render_multiselect(__('Kategóriák', 'mockup-generator'), 'conditions[categories][]', $terms['categories'], $conditions['categories'], true);
-        echo '<p><label>' . esc_html__('Termék ID-k (vesszővel elválasztva)', 'mockup-generator') . '<br /><input type="text" name="conditions[products]" class="regular-text" value="' . esc_attr(implode(',', $conditions['products'])) . '" /></label></p>';
+        echo self::render_multiselect(__('Termékek', 'mockup-generator'), 'conditions[products][]', self::get_products_for_conditions(), $conditions['products'], true);
         echo '<p><label>' . esc_html__('Minimum kosárérték (opcionális)', 'mockup-generator') . '<br /><input type="number" step="0.01" name="conditions[min_cart_total]" value="' . esc_attr($conditions['min_cart_total']) . '" /></label></p>';
         echo '</fieldset>';
         echo '</td></tr>';
@@ -205,6 +234,34 @@ class MG_Surcharge_Options_Page {
             ];
         }
         return $result;
+    }
+
+    private static function get_products_for_conditions() {
+        $products = [];
+        if (!function_exists('wc_get_products')) {
+            return $products;
+        }
+        $items = wc_get_products([
+            'limit' => -1,
+            'status' => 'publish',
+            'orderby' => 'title',
+            'order' => 'ASC',
+            'return' => 'ids',
+        ]);
+        if (empty($items)) {
+            return $products;
+        }
+        foreach ($items as $product_id) {
+            $title = get_the_title($product_id);
+            if (!$title) {
+                continue;
+            }
+            $products[] = [
+                'id' => (int)$product_id,
+                'name' => $title,
+            ];
+        }
+        return $products;
     }
 
     private static function get_plugin_sizes() {
@@ -277,7 +334,7 @@ class MG_Surcharge_Options_Page {
             'colors' => __('Szín', 'mockup-generator'),
             'sizes' => __('Méret', 'mockup-generator'),
             'categories' => __('Kategória', 'mockup-generator'),
-            'products' => __('Termék ID', 'mockup-generator'),
+            'products' => __('Termék', 'mockup-generator'),
             'min_cart_total' => __('Min. kosár', 'mockup-generator'),
         ];
         foreach ($map as $key => $label) {
