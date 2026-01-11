@@ -297,7 +297,7 @@ class MG_Variant_Display_Manager {
             ),
             'availability' => $availability,
             'text' => array(
-                'type' => __('Terméktípus', 'mgvd'),
+                'type' => __('Válassz terméket:', 'mgvd'),
                 'color' => __('Szín', 'mgvd'),
                 'size' => __('Méret', 'mgvd'),
                 'typePlaceholder' => __('Válassz terméktípust', 'mgvd'),
