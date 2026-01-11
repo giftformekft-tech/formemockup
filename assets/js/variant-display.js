@@ -224,6 +224,7 @@
         var wrapper = $('<div class="mg-variant-display" />');
         this.$variantWrapper = wrapper;
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
+        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
         var $typeTrigger = $('<button type="button" class="mg-variant-type-trigger" aria-haspopup="dialog" aria-expanded="false" />');
         $typeTrigger.append($('<span class="mg-variant-type-trigger__label" />').text(this.getText('type', 'Terméktípus')));
         this.typeModal.$value = $('<span class="mg-variant-type-trigger__value" />').text(this.getText('typePlaceholder', 'Válassz terméktípust'));
