@@ -141,7 +141,7 @@ class MG_Surcharge_Options_Page {
         }
         $action_url = esc_url(self::get_form_url($id));
         $terms = [
-            'product_types' => self::unique_terms(self::get_terms('pa_termektipus')),
+            'product_types' => self::unique_terms(self::get_product_types_for_conditions()),
             'colors' => self::unique_terms(array_merge(self::get_terms('pa_szin'), self::get_terms('pa_color'))),
             'sizes' => self::unique_terms(array_merge(self::get_terms('pa_meret'), self::get_terms('pa_size'), self::get_plugin_sizes())),
             'categories' => self::unique_terms(self::get_terms('product_cat', true)),
@@ -234,6 +234,35 @@ class MG_Surcharge_Options_Page {
             ];
         }
         return $result;
+    }
+
+    private static function get_product_types_for_conditions() {
+        $products = get_option('mg_products', []);
+        if (!is_array($products)) {
+            return [];
+        }
+        $types = [];
+        foreach ($products as $key => $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $label = isset($product['label']) && $product['label'] !== '' ? wp_strip_all_tags($product['label']) : (string)$key;
+            $slug = isset($product['key']) && $product['key'] !== '' ? $product['key'] : $key;
+            $slug = sanitize_title($slug);
+            if ($slug === '') {
+                continue;
+            }
+            $types[] = [
+                'slug' => $slug,
+                'name' => $label,
+            ];
+        }
+        if (!empty($types)) {
+            usort($types, function ($a, $b) {
+                return strcasecmp($a['name'], $b['name']);
+            });
+        }
+        return $types;
     }
 
     private static function get_products_for_conditions() {
