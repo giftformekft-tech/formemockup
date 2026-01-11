@@ -380,7 +380,7 @@ class MG_Surcharge_Frontend {
             'categories' => wc_get_product_term_ids($product->get_id(), 'product_cat'),
             'is_variable' => $is_variable,
         ];
-        $taxonomies = ['pa_termektipus', 'pa_product_type', 'pa_szin', 'pa_color', 'pa_meret', 'pa_size'];
+        $taxonomies = ['pa_termektipus', 'pa_product_type', 'pa_szin', 'pa_color', 'pa_meret', 'pa_size', 'meret'];
         foreach ($taxonomies as $taxonomy) {
             $slugs = self::get_attribute_slugs($product, $taxonomy);
             $context['base_attributes'][$taxonomy] = $slugs;

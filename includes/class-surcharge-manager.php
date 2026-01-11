@@ -177,7 +177,7 @@ class MG_Surcharge_Manager {
         if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'))) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size'))) {
+        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'))) {
             return false;
         }
 
