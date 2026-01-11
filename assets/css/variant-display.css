@@ -69,6 +69,46 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     font-size: 0.95rem;
 }
 
+.mg-variant-type-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75em;
+    width: 100%;
+    border: 1px solid #cbd5f5;
+    border-radius: 12px;
+    padding: 0.75em 1em;
+    background: #f8fafc;
+    color: #0f172a;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+.mg-variant-type-trigger:hover,
+.mg-variant-type-trigger:focus {
+    border-color: #60a5fa;
+    background: #eff6ff;
+}
+
+.mg-variant-type-trigger__label {
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.mg-variant-type-trigger__value {
+    margin-left: auto;
+    font-weight: 500;
+    color: #0f172a;
+}
+
+.mg-variant-type-trigger__chevron {
+    color: #64748b;
+    font-size: 1rem;
+}
+
 .mg-variant-section__label-text {
     font-weight: inherit;
 }
@@ -116,6 +156,154 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     background: #f1f5f9;
     border-color: #e2e8f0;
     box-shadow: none;
+}
+
+.mg-variant-type-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: 10000;
+}
+
+.mg-variant-type-modal.is-open {
+    display: block;
+}
+
+.mg-variant-type-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.mg-variant-type-modal__panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #ffffff;
+    border-radius: 16px 16px 0 0;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -18px 48px rgba(15, 23, 42, 0.25);
+    transform: translateY(100%);
+    transition: transform 0.25s ease;
+}
+
+.mg-variant-type-modal.is-open .mg-variant-type-modal__panel {
+    transform: translateY(0);
+}
+
+.mg-variant-type-modal__header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.mg-variant-type-modal__title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.mg-variant-type-modal__close {
+    border: none;
+    background: rgba(148, 163, 184, 0.2);
+    color: #0f172a;
+    border-radius: 999px;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    cursor: pointer;
+}
+
+.mg-variant-type-modal__close:hover,
+.mg-variant-type-modal__close:focus {
+    background: rgba(37, 99, 235, 0.18);
+    color: #1d4ed8;
+}
+
+.mg-variant-type-modal__body {
+    padding: 0.75rem 1.25rem 1.5rem;
+    overflow-y: auto;
+}
+
+.mg-variant-type-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.mg-variant-type-option {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 0.65rem 0.85rem;
+    background: #ffffff;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.95rem;
+    color: #0f172a;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mg-variant-type-option:hover,
+.mg-variant-type-option:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.mg-variant-type-option.is-selected {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.22);
+}
+
+.mg-variant-type-option__thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #f1f5f9;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mg-variant-type-option__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.mg-variant-type-option__label {
+    font-weight: 600;
+    flex: 1;
+}
+
+.mg-variant-type-option__check {
+    opacity: 0;
+    color: #2563eb;
+    font-weight: 700;
+}
+
+.mg-variant-type-option.is-selected .mg-variant-type-option__check {
+    opacity: 1;
+}
+
+.mg-variant-modal-open {
+    overflow: hidden;
 }
 
 .mg-variant-availability {
@@ -528,5 +716,23 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
 
     .mg-pattern-preview__body {
         padding: 1rem;
+    }
+}
+
+@media (min-width: 769px) {
+    .mg-variant-type-modal__panel {
+        top: 50%;
+        bottom: auto;
+        left: 50%;
+        right: auto;
+        transform: translate(-50%, -50%) scale(0.96);
+        border-radius: 18px;
+        width: min(520px, 92vw);
+        max-height: 80vh;
+        box-shadow: 0 24px 64px rgba(15, 23, 42, 0.35);
+    }
+
+    .mg-variant-type-modal.is-open .mg-variant-type-modal__panel {
+        transform: translate(-50%, -50%) scale(1);
     }
 }

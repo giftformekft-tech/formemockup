@@ -31,6 +31,15 @@
             loadFailed: false,
             failedPattern: ''
         };
+        this.typeModal = {
+            $trigger: null,
+            $value: null,
+            $modal: null,
+            $backdrop: null,
+            $panel: null,
+            $close: null,
+            $list: null
+        };
         this.isReady = false;
         this.syncing = {
             type: false,
@@ -215,9 +224,14 @@
         var wrapper = $('<div class="mg-variant-display" />');
         this.$variantWrapper = wrapper;
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
-        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('type', 'Terméktípus')));
-        this.$typeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
-        typeSection.append(this.$typeOptions);
+        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
+        var $typeTrigger = $('<button type="button" class="mg-variant-type-trigger" aria-haspopup="dialog" aria-expanded="false" />');
+        $typeTrigger.append($('<span class="mg-variant-type-trigger__label" />').text(this.getText('type', 'Terméktípus')));
+        this.typeModal.$value = $('<span class="mg-variant-type-trigger__value" />').text(this.getText('typePlaceholder', 'Válassz terméktípust'));
+        $typeTrigger.append(this.typeModal.$value);
+        $typeTrigger.append($('<span class="mg-variant-type-trigger__chevron" aria-hidden="true">▾</span>'));
+        this.typeModal.$trigger = $typeTrigger;
+        typeSection.append($typeTrigger);
         wrapper.append(typeSection);
 
         var colorSection = $('<div class="mg-variant-section mg-variant-section--color" />');
@@ -246,6 +260,7 @@
 
         this.$form.find('.variations').addClass('mg-variant-hidden').before(wrapper);
 
+        this.createTypeModal();
         this.createSizeChartModal();
         this.relocateCustomFields();
 
@@ -256,11 +271,83 @@
             if (!meta) {
                 return;
             }
-            var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--type" aria-pressed="false" />');
+            var $btn = $('<button type="button" class="mg-variant-type-option" aria-pressed="false" />');
             $btn.attr('data-value', typeSlug);
-            $btn.append($('<span class="mg-variant-option__label" />').text(meta.label || typeSlug));
+            var label = meta.label || typeSlug;
+            var mockup = self.getTypeMockup(typeSlug);
+            if (mockup) {
+                var $thumb = $('<span class="mg-variant-type-option__thumb" />');
+                var $img = $('<img loading="lazy" decoding="async" alt="" />').attr('src', mockup).attr('alt', label + ' előnézet');
+                $thumb.append($img);
+                $btn.append($thumb);
+            }
+            $btn.append($('<span class="mg-variant-type-option__label" />').text(label));
+            $btn.append($('<span class="mg-variant-type-option__check" aria-hidden="true">✓</span>'));
             self.$typeOptions.append($btn);
         });
+    };
+
+    VariantDisplay.prototype.createTypeModal = function() {
+        if (this.typeModal.$modal) {
+            return;
+        }
+        var $modal = $('<div class="mg-variant-type-modal" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-variant-type-modal__backdrop" />');
+        var $panel = $('<div class="mg-variant-type-modal__panel" role="document" />');
+        var $header = $('<div class="mg-variant-type-modal__header" />');
+        var $title = $('<h3 class="mg-variant-type-modal__title" />').text(this.getText('typeModalTitle', 'Válaszd ki a terméktípust'));
+        var $close = $('<button type="button" class="mg-variant-type-modal__close" aria-label="' + this.getText('typeModalClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-variant-type-modal__body" />');
+        var $list = $('<div class="mg-variant-type-list" role="radiogroup" />');
+
+        $header.append($title).append($close);
+        $body.append($list);
+        $panel.append($header).append($body);
+        $modal.append($backdrop).append($panel);
+        $('body').append($modal);
+
+        this.typeModal.$modal = $modal;
+        this.typeModal.$backdrop = $backdrop;
+        this.typeModal.$panel = $panel;
+        this.typeModal.$close = $close;
+        this.typeModal.$list = $list;
+        this.$typeOptions = $list;
+    };
+
+    VariantDisplay.prototype.getTypeMockup = function(typeSlug) {
+        if (!typeSlug || !this.config || !this.config.visuals) {
+            return '';
+        }
+        var visuals = this.config.visuals;
+        if (visuals.typeMockups && visuals.typeMockups[typeSlug]) {
+            return visuals.typeMockups[typeSlug];
+        }
+        if (visuals.defaults && visuals.defaults.mockup) {
+            return visuals.defaults.mockup;
+        }
+        return '';
+    };
+
+    VariantDisplay.prototype.showTypeModal = function() {
+        if (!this.typeModal.$modal || !this.typeModal.$trigger) {
+            return;
+        }
+        this.typeModal.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        this.typeModal.$trigger.attr('aria-expanded', 'true');
+        $('body').addClass('mg-variant-modal-open');
+        if (this.typeModal.$close) {
+            this.typeModal.$close.trigger('focus');
+        }
+    };
+
+    VariantDisplay.prototype.hideTypeModal = function() {
+        if (!this.typeModal.$modal || !this.typeModal.$trigger) {
+            return;
+        }
+        this.typeModal.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        this.typeModal.$trigger.attr('aria-expanded', 'false');
+        $('body').removeClass('mg-variant-modal-open');
+        this.typeModal.$trigger.trigger('focus');
     };
 
     VariantDisplay.prototype.getCustomFieldOrder = function($block) {
@@ -433,13 +520,21 @@
     VariantDisplay.prototype.bindEvents = function() {
         var self = this;
 
-        this.$typeOptions.on('click', '.mg-variant-option', function(e){
+        if (this.typeModal.$trigger) {
+            this.typeModal.$trigger.on('click', function(e){
+                e.preventDefault();
+                self.showTypeModal();
+            });
+        }
+
+        this.$typeOptions.on('click', '.mg-variant-type-option', function(e){
             e.preventDefault();
             var value = $(this).attr('data-value') || '';
             if ($(this).hasClass('is-disabled')) {
                 return;
             }
             self.setType(value, true);
+            self.hideTypeModal();
         });
 
         this.$colorOptions.on('click', '.mg-variant-option', function(e){
@@ -499,6 +594,26 @@
                 self.showSizeChart();
             });
         }
+
+        if (this.typeModal.$close) {
+            this.typeModal.$close.on('click', function(){
+                self.hideTypeModal();
+            });
+        }
+
+        if (this.typeModal.$modal) {
+            this.typeModal.$modal.on('click', function(event){
+                if ($(event.target).is(self.typeModal.$modal) || $(event.target).is(self.typeModal.$backdrop)) {
+                    self.hideTypeModal();
+                }
+            });
+        }
+
+        $(document).on('keydown.mgVariantTypeModal', function(event){
+            if (event.key === 'Escape' && self.typeModal.$modal && self.typeModal.$modal.hasClass('is-open')) {
+                self.hideTypeModal();
+            }
+        });
 
         this.$typeSelect.on('change', function(){
             if (self.syncing.type) {
@@ -584,6 +699,9 @@
         if (!value) {
             this.setColor('', triggerChange);
         }
+        if (this.typeModal && this.typeModal.$modal && this.typeModal.$modal.hasClass('is-open')) {
+            this.hideTypeModal();
+        }
         if (this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open')) {
             this.hideSizeChart();
         }
@@ -644,13 +762,17 @@
 
     VariantDisplay.prototype.updateTypeUI = function(shouldTriggerChildren) {
         var self = this;
-        this.$typeOptions.find('.mg-variant-option').each(function(){
+        this.$typeOptions.find('.mg-variant-type-option').each(function(){
             var $btn = $(this);
             var value = $btn.attr('data-value') || '';
             var isActive = value === self.state.type;
             $btn.toggleClass('is-selected', isActive);
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
+        if (this.typeModal.$value) {
+            var label = this.state.type ? this.getTypeLabel(this.state.type) : this.getText('typePlaceholder', 'Válassz terméktípust');
+            this.typeModal.$value.text(label);
+        }
         this.rebuildColorOptions(shouldTriggerChildren !== false);
         this.updateSizeChartLink();
         this.updateDescription();
