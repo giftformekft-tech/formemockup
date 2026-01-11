@@ -297,7 +297,7 @@ class MG_Design_Gallery {
                 continue;
             }
 
-            $image = self::resolve_image_url($by_color[$color_slug]);
+            $image = self::resolve_image_url($by_color[$color_slug], $product);
             if ($image === '') {
                 continue;
             }
@@ -366,7 +366,7 @@ class MG_Design_Gallery {
      * @param array $entry
      * @return string
      */
-    protected static function resolve_image_url($entry) {
+    protected static function resolve_image_url($entry, $product = null) {
         if (!is_array($entry)) {
             return '';
         }
@@ -397,6 +397,65 @@ class MG_Design_Gallery {
             }
         }
 
+        $variation_url = self::resolve_variation_image_url($entry, $product);
+        if ($variation_url !== '') {
+            return $variation_url;
+        }
+
+        return '';
+    }
+
+    /**
+     * Resolve variation image URL from the product based on type/color attributes.
+     *
+     * @param array $entry
+     * @param WC_Product|null $product
+     * @return string
+     */
+    protected static function resolve_variation_image_url($entry, $product = null) {
+        if (!function_exists('wc_get_product')) {
+            return '';
+        }
+        $product_id = absint($entry['product_id'] ?? 0);
+        if (!$product || !is_object($product) || !method_exists($product, 'get_id')) {
+            if ($product_id <= 0) {
+                return '';
+            }
+            $product = wc_get_product($product_id);
+        }
+        if (!$product || !method_exists($product, 'get_children') || !$product->get_id()) {
+            return '';
+        }
+        if (method_exists($product, 'is_type') && !$product->is_type('variable')) {
+            return '';
+        }
+        $type_slug = sanitize_title($entry['type_slug'] ?? '');
+        $color_slug = sanitize_title($entry['color_slug'] ?? '');
+        if ($type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        $children = $product->get_children();
+        foreach ((array) $children as $child_id) {
+            $variation = wc_get_product($child_id);
+            if (!$variation || !method_exists($variation, 'get_attributes')) {
+                continue;
+            }
+            $attrs = $variation->get_attributes();
+            $var_type = sanitize_title($attrs['pa_termektipus'] ?? '');
+            $var_color = sanitize_title($attrs['pa_szin'] ?? '');
+            if ($var_type !== $type_slug || $var_color !== $color_slug) {
+                continue;
+            }
+            if (method_exists($variation, 'get_image_id')) {
+                $image_id = (int) $variation->get_image_id();
+                if ($image_id > 0 && function_exists('wp_get_attachment_image_url')) {
+                    $url = wp_get_attachment_image_url($image_id, 'large');
+                    if ($url) {
+                        return $url;
+                    }
+                }
+            }
+        }
         return '';
     }
 
