@@ -441,6 +441,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $working_overrides   = null;
 
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
+            $update_existing_prices = !empty($_POST['update_existing_prices']);
             $label = sanitize_text_field($_POST['label'] ?? '');
             if ($label !== '') {
                 $prod['label'] = $label;
@@ -677,6 +678,18 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 printf(esc_html__('%d mockup háttér nem volt elérhető, ezért eltávolítottuk a listából. Ellenőrizd a mockup feltöltéseket.', 'mgdtp'), $removed_overrides);
                 echo '</p></div>';
             }
+            if ($update_existing_prices) {
+                $update_result = self::update_existing_variation_prices($prod);
+                if (is_wp_error($update_result)) {
+                    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($update_result->get_error_message()) . '</p></div>';
+                } else {
+                    $updated = intval($update_result['updated'] ?? 0);
+                    $total = intval($update_result['total'] ?? 0);
+                    echo '<div class="notice notice-info is-dismissible"><p>';
+                    printf(esc_html__('Árfrissítés kész. Frissített variációk: %1$d / %2$d.', 'mgdtp'), $updated, $total);
+                    echo '</p></div>';
+                }
+            }
         }
 
         $sizes = $prod['sizes'];
@@ -751,6 +764,12 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 <p><input type="text" name="label" class="regular-text" value="<?php echo esc_attr($prod['label']); ?>" /></p>
                 <h2>Alap ár (HUF)</h2>
                 <p><input type="number" name="price" class="small-text" min="0" step="1" value="<?php echo esc_attr($price); ?>" /></p>
+                <p>
+                    <label>
+                        <input type="checkbox" name="update_existing_prices" value="1" />
+                        <?php esc_html_e('Már legenerált termékek/variációk árainak frissítése (alapár + felárak).', 'mgdtp'); ?>
+                    </label>
+                </p>
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
@@ -1024,5 +1043,85 @@ if (function_exists('wp_editor')) {
         window.MG_PA_DEFAULTS = <?php echo json_encode($views, JSON_UNESCAPED_UNICODE); ?>;
         </script>
         <?php
+    }
+
+    private static function update_existing_variation_prices($prod) {
+        if (!function_exists('wc_get_product')) {
+            return new WP_Error('woocommerce_missing', __('A WooCommerce nem elérhető az árfrissítéshez.', 'mgdtp'));
+        }
+        if (!is_array($prod) || empty($prod['key'])) {
+            return new WP_Error('invalid_product', __('Hiányzó terméktípus kulcs.', 'mgdtp'));
+        }
+        $type_key = sanitize_title($prod['key']);
+        if ($type_key === '') {
+            return new WP_Error('invalid_product', __('Érvénytelen terméktípus kulcs.', 'mgdtp'));
+        }
+
+        $variation_ids = get_posts(array(
+            'post_type'      => 'product_variation',
+            'post_status'    => array('publish', 'private', 'draft', 'inherit'),
+            'fields'         => 'ids',
+            'nopaging'       => true,
+            'meta_query'     => array(
+                array(
+                    'key'   => 'attribute_pa_termektipus',
+                    'value' => $type_key,
+                ),
+            ),
+        ));
+
+        if (empty($variation_ids)) {
+            return array('updated' => 0, 'total' => 0);
+        }
+
+        $updated = 0;
+        $parent_ids = array();
+        $size_surcharges = isset($prod['size_surcharges']) && is_array($prod['size_surcharges']) ? $prod['size_surcharges'] : array();
+        $color_surcharges = isset($prod['color_surcharges']) && is_array($prod['color_surcharges']) ? $prod['color_surcharges'] : array();
+        $base_price = intval($prod['price'] ?? 0);
+
+        foreach ($variation_ids as $variation_id) {
+            $variation = wc_get_product($variation_id);
+            if (!$variation) {
+                continue;
+            }
+            $color_slug = sanitize_title($variation->get_attribute('pa_szin'));
+            $size_value = $variation->get_attribute('meret');
+            if ($size_value === '') {
+                $size_value = $variation->get_attribute('pa_meret');
+            }
+            $size_value = sanitize_text_field($size_value);
+
+            if (function_exists('mgsc_compute_variant_price')) {
+                $new_price = mgsc_compute_variant_price($type_key, $size_value, $color_slug);
+            } else {
+                $size_extra = isset($size_surcharges[$size_value]) ? intval($size_surcharges[$size_value]) : 0;
+                $color_extra = isset($color_surcharges[$color_slug]) ? intval($color_surcharges[$color_slug]) : 0;
+                $new_price = max(0, $base_price + $size_extra + $color_extra);
+            }
+
+            if ($new_price === null) {
+                continue;
+            }
+            $variation->set_regular_price((string) $new_price);
+            $variation->save();
+            $updated++;
+            $parent_id = $variation->get_parent_id();
+            if ($parent_id) {
+                $parent_ids[] = $parent_id;
+            }
+        }
+
+        $parent_ids = array_values(array_unique(array_filter($parent_ids)));
+        foreach ($parent_ids as $parent_id) {
+            if (function_exists('wc_delete_product_transients')) {
+                wc_delete_product_transients($parent_id);
+            }
+            if (function_exists('wc_update_product_lookup_tables')) {
+                wc_update_product_lookup_tables($parent_id);
+            }
+        }
+
+        return array('updated' => $updated, 'total' => count($variation_ids));
     }
 }
