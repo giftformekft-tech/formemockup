@@ -679,14 +679,12 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 echo '</p></div>';
             }
             if ($update_existing_prices) {
-                $update_result = self::update_existing_variation_prices($prod);
+                $update_result = self::enqueue_price_update_job($prod);
                 if (is_wp_error($update_result)) {
                     echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($update_result->get_error_message()) . '</p></div>';
                 } else {
-                    $updated = intval($update_result['updated'] ?? 0);
-                    $total = intval($update_result['total'] ?? 0);
                     echo '<div class="notice notice-info is-dismissible"><p>';
-                    printf(esc_html__('Árfrissítés kész. Frissített variációk: %1$d / %2$d.', 'mgdtp'), $updated, $total);
+                    printf(esc_html__('Árfrissítés ütemezve. A frissítés háttérben, több lépésben fog lefutni (job: %s).', 'mgdtp'), esc_html($update_result));
                     echo '</p></div>';
                 }
             }
@@ -1045,7 +1043,7 @@ if (function_exists('wp_editor')) {
         <?php
     }
 
-    private static function update_existing_variation_prices($prod) {
+    private static function enqueue_price_update_job($prod) {
         if (!function_exists('wc_get_product')) {
             return new WP_Error('woocommerce_missing', __('A WooCommerce nem elérhető az árfrissítéshez.', 'mgdtp'));
         }
@@ -1057,11 +1055,56 @@ if (function_exists('wp_editor')) {
             return new WP_Error('invalid_product', __('Érvénytelen terméktípus kulcs.', 'mgdtp'));
         }
 
-        $variation_ids = get_posts(array(
+        $jobs = get_option('mg_price_update_jobs', array());
+        if (!is_array($jobs)) {
+            $jobs = array();
+        }
+        $job_id = uniqid('mg_price_update_', false);
+        $jobs[$job_id] = array(
+            'type_key'        => $type_key,
+            'base_price'      => intval($prod['price'] ?? 0),
+            'size_surcharges' => isset($prod['size_surcharges']) && is_array($prod['size_surcharges']) ? $prod['size_surcharges'] : array(),
+            'color_surcharges'=> isset($prod['color_surcharges']) && is_array($prod['color_surcharges']) ? $prod['color_surcharges'] : array(),
+            'page'            => 1,
+            'per_page'        => 200,
+            'updated'         => 0,
+            'total'           => 0,
+            'done'            => false,
+            'started_at'      => time(),
+            'last_run'        => 0,
+        );
+        update_option('mg_price_update_jobs', $jobs);
+        if (!wp_next_scheduled('mg_price_update_job_process', array($job_id))) {
+            wp_schedule_single_event(time() + 5, 'mg_price_update_job_process', array($job_id));
+        }
+        return $job_id;
+    }
+
+    public static function process_price_update_job($job_id) {
+        $jobs = get_option('mg_price_update_jobs', array());
+        if (!is_array($jobs) || empty($jobs[$job_id]) || !is_array($jobs[$job_id])) {
+            return;
+        }
+        $job = $jobs[$job_id];
+        if (!empty($job['done'])) {
+            return;
+        }
+        $type_key = sanitize_title($job['type_key'] ?? '');
+        if ($type_key === '') {
+            $job['done'] = true;
+            $jobs[$job_id] = $job;
+            update_option('mg_price_update_jobs', $jobs);
+            return;
+        }
+        $per_page = max(1, min(500, intval($job['per_page'] ?? 200)));
+        $page = max(1, intval($job['page'] ?? 1));
+
+        $query = new WP_Query(array(
             'post_type'      => 'product_variation',
             'post_status'    => array('publish', 'private', 'draft', 'inherit'),
             'fields'         => 'ids',
-            'nopaging'       => true,
+            'posts_per_page' => $per_page,
+            'paged'          => $page,
             'meta_query'     => array(
                 array(
                     'key'   => 'attribute_pa_termektipus',
@@ -1070,15 +1113,25 @@ if (function_exists('wp_editor')) {
             ),
         ));
 
-        if (empty($variation_ids)) {
-            return array('updated' => 0, 'total' => 0);
+        if (!empty($job['total']) || empty($query->found_posts)) {
+            $job['total'] = intval($job['total'] ?? 0);
+        } else {
+            $job['total'] = intval($query->found_posts);
         }
 
-        $updated = 0;
+        $variation_ids = $query->posts;
+        if (empty($variation_ids)) {
+            $job['done'] = true;
+            $job['last_run'] = time();
+            $jobs[$job_id] = $job;
+            update_option('mg_price_update_jobs', $jobs);
+            return;
+        }
+
+        $size_surcharges = isset($job['size_surcharges']) && is_array($job['size_surcharges']) ? $job['size_surcharges'] : array();
+        $color_surcharges = isset($job['color_surcharges']) && is_array($job['color_surcharges']) ? $job['color_surcharges'] : array();
+        $base_price = intval($job['base_price'] ?? 0);
         $parent_ids = array();
-        $size_surcharges = isset($prod['size_surcharges']) && is_array($prod['size_surcharges']) ? $prod['size_surcharges'] : array();
-        $color_surcharges = isset($prod['color_surcharges']) && is_array($prod['color_surcharges']) ? $prod['color_surcharges'] : array();
-        $base_price = intval($prod['price'] ?? 0);
 
         foreach ($variation_ids as $variation_id) {
             $variation = wc_get_product($variation_id);
@@ -1105,7 +1158,7 @@ if (function_exists('wp_editor')) {
             }
             $variation->set_regular_price((string) $new_price);
             $variation->save();
-            $updated++;
+            $job['updated'] = intval($job['updated'] ?? 0) + 1;
             $parent_id = $variation->get_parent_id();
             if ($parent_id) {
                 $parent_ids[] = $parent_id;
@@ -1122,6 +1175,19 @@ if (function_exists('wp_editor')) {
             }
         }
 
-        return array('updated' => $updated, 'total' => count($variation_ids));
+        if (count($variation_ids) < $per_page) {
+            $job['done'] = true;
+        } else {
+            $job['page'] = $page + 1;
+        }
+        $job['last_run'] = time();
+        $jobs[$job_id] = $job;
+        update_option('mg_price_update_jobs', $jobs);
+
+        if (empty($job['done'])) {
+            wp_schedule_single_event(time() + 5, 'mg_price_update_job_process', array($job_id));
+        }
     }
 }
+
+add_action('mg_price_update_job_process', array('MG_Product_Settings_Page', 'process_price_update_job'), 10, 1);
