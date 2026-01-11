@@ -30,7 +30,7 @@
 
 .mg-surcharge-box__options > .mg-surcharge-option {
     border-top: 1px solid #f0f0f0;
-    padding: 12px 0;
+    padding: 6px 0;
 }
 
 .mg-surcharge-box__options > .mg-surcharge-option:first-of-type {
@@ -42,6 +42,7 @@
     justify-content: space-between;
     align-items: center;
     font-weight: 600;
+    font-size: 0.9em;
 }
 
 .mg-surcharge-option__title {
@@ -93,6 +94,35 @@
     line-height: 16px;
     cursor: help;
     color: #2271b1;
+    position: relative;
+}
+
+.mg-surcharge-tooltip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    background: #1d2327;
+    color: #fff;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: normal;
+    width: max-content;
+    max-width: 220px;
+    text-align: left;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-in-out;
+    z-index: 2;
+}
+
+.mg-surcharge-tooltip:hover::after,
+.mg-surcharge-tooltip:focus::after,
+.mg-surcharge-tooltip:active::after {
+    opacity: 1;
 }
 
 .mg-surcharge-option.is-disabled {
