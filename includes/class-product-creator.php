@@ -317,6 +317,18 @@ class MG_Product_Creator {
     }
 
     private function attach_image($path, $seo_text = '') {
+        $existing_id = $this->find_existing_attachment_id($path);
+        if ($existing_id) {
+            if ($seo_text !== '') {
+                $title = sanitize_text_field($seo_text);
+                wp_update_post([
+                    'ID'         => $existing_id,
+                    'post_title' => $title,
+                ]);
+                update_post_meta($existing_id, '_wp_attachment_image_alt', $title);
+            }
+            return $existing_id;
+        }
         add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
@@ -332,6 +344,38 @@ class MG_Product_Creator {
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
+    }
+
+    private function find_existing_attachment_id($path) {
+        if (!function_exists('wp_upload_dir')) {
+            return 0;
+        }
+        $path = wp_normalize_path($path);
+        if ($path === '') {
+            return 0;
+        }
+        $uploads = wp_upload_dir();
+        $basedir = wp_normalize_path($uploads['basedir'] ?? '');
+        if ($basedir === '' || strpos($path, $basedir) !== 0) {
+            return 0;
+        }
+        $relative = ltrim(substr($path, strlen($basedir)), '/');
+        if ($relative === '') {
+            return 0;
+        }
+        $query = new WP_Query([
+            'post_type'      => 'attachment',
+            'post_status'    => 'inherit',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'meta_query'     => [
+                [
+                    'key'   => '_wp_attached_file',
+                    'value' => $relative,
+                ],
+            ],
+        ]);
+        return !empty($query->posts) ? (int) $query->posts[0] : 0;
     }
     private function assign_categories($product_id, $cats = array()) {
         $ids = array();

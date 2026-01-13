@@ -1348,6 +1348,7 @@ class MG_Mockup_Maintenance {
         }
         self::apply_variation_images($product, $type_slug, $color_slug, $new_attachment_ids);
         self::refresh_gallery($product, $old_attachments, $new_attachment_ids);
+        self::delete_old_attachments($old_attachments, $new_attachment_ids);
         $timestamp = self::current_timestamp();
         $index[$key]['status'] = 'ok';
         $index[$key]['updated_at'] = $timestamp;
@@ -1394,6 +1395,18 @@ class MG_Mockup_Maintenance {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
+        $existing_id = self::find_existing_attachment_id($path);
+        if ($existing_id) {
+            if ($seo_text !== '') {
+                $title = sanitize_text_field($seo_text);
+                wp_update_post([
+                    'ID'         => $existing_id,
+                    'post_title' => $title,
+                ]);
+                update_post_meta($existing_id, '_wp_attachment_image_alt', $title);
+            }
+            return $existing_id;
+        }
         add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
@@ -1419,6 +1432,58 @@ class MG_Mockup_Maintenance {
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
+    }
+
+    private static function find_existing_attachment_id($path) {
+        if (!function_exists('wp_upload_dir')) {
+            return 0;
+        }
+        $path = wp_normalize_path($path);
+        if ($path === '') {
+            return 0;
+        }
+        $uploads = wp_upload_dir();
+        $basedir = wp_normalize_path($uploads['basedir'] ?? '');
+        if ($basedir === '' || strpos($path, $basedir) !== 0) {
+            return 0;
+        }
+        $relative = ltrim(substr($path, strlen($basedir)), '/');
+        if ($relative === '') {
+            return 0;
+        }
+        $query = new WP_Query([
+            'post_type'      => 'attachment',
+            'post_status'    => 'inherit',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'meta_query'     => [
+                [
+                    'key'   => '_wp_attached_file',
+                    'value' => $relative,
+                ],
+            ],
+        ]);
+        return !empty($query->posts) ? (int) $query->posts[0] : 0;
+    }
+
+    private static function delete_old_attachments($old_ids, $new_ids) {
+        $old_ids = array_map('intval', (array) $old_ids);
+        $new_ids = array_map('intval', (array) $new_ids);
+        $to_delete = array_diff($old_ids, $new_ids);
+        foreach ($to_delete as $attachment_id) {
+            if ($attachment_id <= 0) {
+                continue;
+            }
+            $path = get_attached_file($attachment_id);
+            if (!$path) {
+                continue;
+            }
+            $basename = basename($path);
+            if (strpos($basename, 'mockup_') !== 0 || !preg_match('/\.webp$/i', $basename)) {
+                continue;
+            }
+            wp_delete_attachment($attachment_id, true);
+        }
     }
 
     private static function normalize_attributes($attributes) {
