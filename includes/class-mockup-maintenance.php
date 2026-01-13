@@ -1471,9 +1471,18 @@ class MG_Mockup_Maintenance {
         $new_ids = array_map('intval', (array) $new_ids);
         $to_delete = array_diff($old_ids, $new_ids);
         foreach ($to_delete as $attachment_id) {
-            if ($attachment_id > 0) {
-                wp_delete_attachment($attachment_id, true);
+            if ($attachment_id <= 0) {
+                continue;
             }
+            $path = get_attached_file($attachment_id);
+            if (!$path) {
+                continue;
+            }
+            $basename = basename($path);
+            if (strpos($basename, 'mockup_') !== 0 || !preg_match('/\.webp$/i', $basename)) {
+                continue;
+            }
+            wp_delete_attachment($attachment_id, true);
         }
     }
 
