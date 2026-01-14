@@ -187,12 +187,15 @@ class MG_Storage_Manager {
                 return $existing_path;
             }
         }
-        $manifest[$hash] = [
-            'path' => $relative ?: $path,
-            'size' => filesize($path),
-            'updated_at' => $now,
-        ];
-        self::save_manifest($manifest);
+        $manifest_path = self::manifest_path();
+        if ($manifest_path) {
+            $manifest[$hash] = [
+                'path' => $relative ?: $path,
+                'size' => filesize($path),
+                'updated_at' => $now,
+            ];
+            self::save_manifest($manifest);
+        }
         return $path;
     }
 
@@ -229,7 +232,7 @@ class MG_Storage_Manager {
     }
 
     private static function manifest_path() {
-        $uploads = wp_upload_dir();
+        $uploads = self::get_uploads_info();
         if (empty($uploads['basedir'])) {
             return '';
         }
@@ -237,7 +240,7 @@ class MG_Storage_Manager {
     }
 
     private static function relative_upload_path($path) {
-        $uploads = wp_upload_dir();
+        $uploads = self::get_uploads_info();
         $base = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         $path = wp_normalize_path($path);
         if ($base && strpos($path, $base) === 0) {
@@ -247,7 +250,7 @@ class MG_Storage_Manager {
     }
 
     private static function absolute_upload_path($relative) {
-        $uploads = wp_upload_dir();
+        $uploads = self::get_uploads_info();
         $base = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         if ($base === '' || $relative === '') {
             return '';
@@ -347,5 +350,13 @@ class MG_Storage_Manager {
     private static function table_name($table_name) {
         global $wpdb;
         return $wpdb->prefix . $table_name;
+    }
+
+    private static function get_uploads_info() {
+        $uploads = wp_upload_dir();
+        if (is_wp_error($uploads)) {
+            return [];
+        }
+        return is_array($uploads) ? $uploads : [];
     }
 }
