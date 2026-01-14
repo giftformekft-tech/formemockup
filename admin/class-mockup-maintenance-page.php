@@ -80,6 +80,19 @@ class MG_Mockup_Maintenance_Page {
                 /* translators: %d: number of mockups processed per cron run */
                 self::add_notice(sprintf(__('A cron mostantól egyszerre %d mockupot dolgoz fel.', 'mgdtp'), $new_value));
                 break;
+            case 'manual_variant_sync':
+                if (!class_exists('MG_Variant_Maintenance')) {
+                    self::add_notice(__('Hiányzik a variáns karbantartó modul.', 'mgdtp'), 'error');
+                    break;
+                }
+                $queued = MG_Variant_Maintenance::queue_full_sync();
+                if ($queued === 0) {
+                    self::add_notice(__('Nincs frissítendő variáns.', 'mgdtp'), 'warning');
+                    break;
+                }
+                MG_Variant_Maintenance::process_queue();
+                self::add_notice(__('A variáns frissítés elindult.', 'mgdtp'));
+                break;
         }
     }
 
@@ -307,6 +320,11 @@ class MG_Mockup_Maintenance_Page {
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
                 <input type="hidden" name="mg_mockup_action" value="process_queue_now" />
                 <button type="submit" class="button button-secondary"><?php esc_html_e('Sor feldolgozása most', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="manual_variant_sync" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Variánsok frissítése most', 'mgdtp'); ?></button>
             </form>
             <form method="post" class="mg-batch-size-form">
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
