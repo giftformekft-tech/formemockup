@@ -467,14 +467,17 @@ class MG_Variant_Maintenance {
         }
     }
 
-    public static function process_queue() {
+    public static function process_queue($time_limit = null) {
         $queue = self::get_queue();
         if (empty($queue)) {
             self::set_queue([]);
             return;
         }
 
-        $time_limit = self::get_cron_time_limit();
+        $time_limit = is_numeric($time_limit) ? (float) $time_limit : self::get_cron_time_limit();
+        if ($time_limit <= 0) {
+            $time_limit = self::get_cron_time_limit();
+        }
         $start = microtime(true);
         $remaining = [];
 
@@ -521,6 +524,10 @@ class MG_Variant_Maintenance {
         } else {
             self::set_queue([]);
         }
+    }
+
+    public static function get_queue_count() {
+        return count(self::get_queue());
     }
 
     public static function queue_full_sync() {

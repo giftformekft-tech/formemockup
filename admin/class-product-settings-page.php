@@ -696,8 +696,12 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 } elseif (!MG_Variant_Maintenance::queue_type_sync($prod['key'])) {
                     echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Nincs frissítendő variáns ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
                 } else {
-                    MG_Variant_Maintenance::process_queue();
-                    echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns frissítés elindult ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
+                    MG_Variant_Maintenance::process_queue(30);
+                    if (MG_Variant_Maintenance::get_queue_count() > 0) {
+                        echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns frissítés elindult ehhez a terméktípushoz. A feldolgozás a háttérben folytatódik.', 'mgdtp') . '</p></div>';
+                    } else {
+                        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('A variáns frissítés lefutott ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
+                    }
                 }
             }
         }
