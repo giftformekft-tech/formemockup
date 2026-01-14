@@ -58,6 +58,7 @@ function mgstp_read_products(){
                 'label'=> isset($p['label']) ? wp_kses_post($p['label']) : $key,
                 'sku_prefix'=> isset($p['sku_prefix']) ? sanitize_text_field($p['sku_prefix']) : strtoupper($key),
                 'price'=> isset($p['price']) ? floatval($p['price']) : 0,
+                'apply_to_existing'=> !empty($p['apply_to_existing']),
                 'sizes'=> $sizes,
                 'size_surcharges'=> $norm_size_surch, // ÚJ
                 'colors'=> $colors,
@@ -161,6 +162,7 @@ function mgstp_save_products($products){
             'label'=>$p['label'],
             'sku_prefix'=>$p['sku_prefix'],
             'price'=> isset($p['price']) ? floatval($p['price']) : 0,
+            'apply_to_existing'=> !empty($p['apply_to_existing']),
             'sizes'=> $sizes,
             'size_surcharges'=> $size_surch, // ÚJ
             'colors'=> $colors,
@@ -185,7 +187,7 @@ function mgstp_render_settings(){
         if ($new_key && $new_label) {
             $products[$new_key] = array(
                 'key'=>$new_key, 'label'=>$new_label, 'sku_prefix'=>strtoupper($new_key),
-                'price'=>0, 'sizes'=>array(), 'size_surcharges'=>array(), 'colors'=>array(), 'type_description'=>'',
+                'price'=>0, 'apply_to_existing'=>false, 'sizes'=>array(), 'size_surcharges'=>array(), 'colors'=>array(), 'type_description'=>'',
                 'size_color_matrix'=>array()
             );
             mgstp_save_products($products);
@@ -208,6 +210,7 @@ function mgstp_render_settings(){
         $p['label'] = isset($row['label']) ? wp_kses_post($row['label']) : $p['label'];
         $p['sku_prefix'] = isset($row['sku_prefix']) ? sanitize_text_field($row['sku_prefix']) : $p['sku_prefix'];
         $p['price'] = isset($row['price']) ? floatval($row['price']) : $p['price'];
+        $p['apply_to_existing'] = !empty($row['apply_to_existing']);
 
         // sizes
         if (isset($row['sizes'])) {
@@ -303,6 +306,7 @@ function mgstp_render_settings(){
     echo '<tr><th>'.esc_html__('Címke','mgstp').'</th><td><input type="text" name="mg[label]" value="'.esc_attr($p['label']).'"></td></tr>';
     echo '<tr><th>'.esc_html__('SKU prefix','mgstp').'</th><td><input type="text" name="mg[sku_prefix]" value="'.esc_attr($p['sku_prefix']).'"></td></tr>';
     echo '<tr><th>'.esc_html__('Alapár','mgstp').'</th><td><input type="number" min="0" step="1" name="mg[price]" value="'.esc_attr($p['price']).'"></td></tr>';
+    echo '<tr><th>'.esc_html__('Hozzáadás meglévő termékekhez','mgstp').'</th><td><label><input type="checkbox" name="mg[apply_to_existing]" value="1" '.checked(!empty($p['apply_to_existing']), true, false).'> '.esc_html__('A hiányzó mockupokat hozzáadja a már generált termékekhez.', 'mgstp').'</label><p class="description">'.esc_html__('Kapcsold ki és mentsd el, ha később újra szeretnéd futtatni ezt a lépést.', 'mgstp').'</p></td></tr>';
 
     // Sizes
     $sizes_str = implode(', ',$p['sizes']);
