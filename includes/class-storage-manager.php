@@ -21,9 +21,19 @@ class MG_Storage_Manager {
 
     public static function maybe_install() {
         if (!function_exists('dbDelta')) {
-            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $upgrade_path = ABSPATH . 'wp-admin/includes/upgrade.php';
+            if (!file_exists($upgrade_path)) {
+                return;
+            }
+            require_once $upgrade_path;
+            if (!function_exists('dbDelta')) {
+                return;
+            }
         }
         global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb)) {
+            return;
+        }
         $charset_collate = $wpdb->get_charset_collate();
         $mockup_table = self::table_name(self::MOCKUP_INDEX_TABLE);
         $queue_table = self::table_name(self::VARIANT_QUEUE_TABLE);
@@ -58,10 +68,10 @@ class MG_Storage_Manager {
     }
 
     public static function get_mockup_index() {
-        if (!self::table_exists(self::MOCKUP_INDEX_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::MOCKUP_INDEX_TABLE)) {
             return self::get_legacy_mockup_index();
         }
-        global $wpdb;
         $table = self::table_name(self::MOCKUP_INDEX_TABLE);
         $rows = $wpdb->get_results("SELECT entry_key, payload FROM {$table}", ARRAY_A);
         if (!is_array($rows)) {
@@ -82,13 +92,13 @@ class MG_Storage_Manager {
     }
 
     public static function set_mockup_index($index) {
-        if (!self::table_exists(self::MOCKUP_INDEX_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::MOCKUP_INDEX_TABLE)) {
             return self::set_legacy_mockup_index($index);
         }
         if (!is_array($index)) {
             $index = [];
         }
-        global $wpdb;
         $table = self::table_name(self::MOCKUP_INDEX_TABLE);
         $wpdb->query("TRUNCATE TABLE {$table}");
         foreach ($index as $key => $entry) {
@@ -117,10 +127,10 @@ class MG_Storage_Manager {
     }
 
     public static function get_variant_queue() {
-        if (!self::table_exists(self::VARIANT_QUEUE_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::VARIANT_QUEUE_TABLE)) {
             return self::get_legacy_variant_queue();
         }
-        global $wpdb;
         $table = self::table_name(self::VARIANT_QUEUE_TABLE);
         $rows = $wpdb->get_results("SELECT payload FROM {$table} ORDER BY id ASC", ARRAY_A);
         if (!is_array($rows)) {
@@ -137,13 +147,13 @@ class MG_Storage_Manager {
     }
 
     public static function set_variant_queue($queue) {
-        if (!self::table_exists(self::VARIANT_QUEUE_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::VARIANT_QUEUE_TABLE)) {
             return self::set_legacy_variant_queue($queue);
         }
         if (!is_array($queue)) {
             $queue = [];
         }
-        global $wpdb;
         $table = self::table_name(self::VARIANT_QUEUE_TABLE);
         $wpdb->query("TRUNCATE TABLE {$table}");
         $now = current_time('timestamp', true);
@@ -259,10 +269,10 @@ class MG_Storage_Manager {
     }
 
     private static function maybe_migrate_mockup_index() {
-        if (!self::table_exists(self::MOCKUP_INDEX_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::MOCKUP_INDEX_TABLE)) {
             return;
         }
-        global $wpdb;
         $table = self::table_name(self::MOCKUP_INDEX_TABLE);
         $count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
         if ($count > 0) {
@@ -277,10 +287,10 @@ class MG_Storage_Manager {
     }
 
     private static function maybe_migrate_variant_queue() {
-        if (!self::table_exists(self::VARIANT_QUEUE_TABLE)) {
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !self::table_exists(self::VARIANT_QUEUE_TABLE)) {
             return;
         }
-        global $wpdb;
         $table = self::table_name(self::VARIANT_QUEUE_TABLE);
         $count = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$table}");
         if ($count > 0) {
@@ -342,6 +352,9 @@ class MG_Storage_Manager {
 
     private static function table_exists($table_name) {
         global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb)) {
+            return false;
+        }
         $table = self::table_name($table_name);
         $found = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
         return $found === $table;
