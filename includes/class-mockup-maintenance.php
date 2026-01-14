@@ -1378,6 +1378,15 @@ class MG_Mockup_Maintenance {
             self::log_activity($entry, 'missing', $index[$key]['last_message']);
             return;
         }
+        $design_reference = self::ensure_design_webp($design_path, $product, $type, $color_slug, $entry);
+        if (!empty($design_reference['design_path']) && file_exists($design_reference['design_path'])) {
+            $design_path = $design_reference['design_path'];
+            $index[$key]['source']['design_path'] = $design_reference['design_path'];
+            if (!empty($design_reference['design_attachment_id'])) {
+                $index[$key]['source']['design_attachment_id'] = (int) $design_reference['design_attachment_id'];
+            }
+            self::set_index($index);
+        }
         if (class_exists('MG_Variant_Maintenance')) {
             MG_Variant_Maintenance::sync_product_variants($product_id, $type_slug, $type);
         }
@@ -1465,6 +1474,102 @@ class MG_Mockup_Maintenance {
 
         $parts = array_filter([$product_name, $type_label, $color_label], 'strlen');
         return implode(' - ', $parts);
+    }
+
+    private static function ensure_design_webp($design_path, $product, $type, $color_slug, $entry) {
+        $reference = [
+            'design_path' => $design_path,
+            'design_attachment_id' => 0,
+        ];
+        if (!is_string($design_path) || $design_path === '' || !file_exists($design_path)) {
+            return $reference;
+        }
+        if (preg_match('/\.webp$/i', $design_path)) {
+            $existing_id = self::find_existing_attachment_id($design_path);
+            if ($existing_id) {
+                $reference['design_attachment_id'] = $existing_id;
+            }
+            return $reference;
+        }
+        if (!function_exists('wp_get_image_editor')) {
+            return $reference;
+        }
+        $editor = wp_get_image_editor($design_path);
+        if (is_wp_error($editor)) {
+            return $reference;
+        }
+        $quality = 80;
+        $webp_defaults = array('quality'=>78,'alpha'=>92,'method'=>3);
+        $webp_settings = get_option('mg_webp_options', $webp_defaults);
+        if (isset($webp_settings['quality'])) {
+            $quality = max(0, min(100, intval($webp_settings['quality'])));
+        }
+        if (method_exists($editor, 'set_quality')) {
+            $editor->set_quality($quality);
+        }
+        $target_path = preg_replace('/\.[^.]+$/', '.webp', $design_path);
+        $saved = $editor->save($target_path, 'image/webp');
+        if (is_wp_error($saved) || empty($saved['path']) || !file_exists($saved['path'])) {
+            return $reference;
+        }
+        $reference['design_path'] = $saved['path'];
+        $title = self::compose_design_title($product, $type, $color_slug);
+        $attachment_id = self::attach_design_image($saved['path'], $title);
+        if ($attachment_id) {
+            $reference['design_attachment_id'] = $attachment_id;
+        }
+        $product_id = is_object($product) && method_exists($product, 'get_id') ? $product->get_id() : 0;
+        if ($product_id) {
+            self::store_design_reference($product_id, $reference['design_path'], $reference['design_attachment_id']);
+        }
+        return $reference;
+    }
+
+    private static function compose_design_title($product, $type, $color_slug) {
+        $base = self::compose_image_seo_text($product, $type, $color_slug);
+        if ($base === '') {
+            return __('Minta', 'mgdtp');
+        }
+        return $base . ' - ' . __('Minta', 'mgdtp');
+    }
+
+    private static function attach_design_image($path, $title = '') {
+        if (!function_exists('wp_check_filetype')) {
+            return 0;
+        }
+        $existing_id = self::find_existing_attachment_id($path);
+        if ($existing_id) {
+            if ($title !== '') {
+                $safe_title = sanitize_text_field($title);
+                wp_update_post([
+                    'ID'         => $existing_id,
+                    'post_title' => $safe_title,
+                ]);
+                update_post_meta($existing_id, '_wp_attachment_image_alt', $safe_title);
+            }
+            return $existing_id;
+        }
+        $filetype = wp_check_filetype(basename($path), null);
+        if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) {
+            $filetype['type'] = 'image/webp';
+        }
+        $wp_upload_dir = wp_upload_dir();
+        $title = $title !== '' ? sanitize_text_field($title) : preg_replace('/\.[^.]+$/', '', basename($path));
+        $attachment = [
+            'guid'           => trailingslashit($wp_upload_dir['url']) . basename($path),
+            'post_mime_type' => $filetype['type'] ?? 'image/webp',
+            'post_title'     => $title,
+            'post_content'   => '',
+            'post_status'    => 'inherit',
+        ];
+        $attach_id = wp_insert_attachment($attachment, $path);
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        $attach_data = ['file' => _wp_relative_upload_path($path)];
+        wp_update_attachment_metadata($attach_id, $attach_data);
+        if ($attach_id && $title !== '') {
+            update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
+        }
+        return $attach_id;
     }
 
     private static function attach_image($path, $seo_text = '') {
