@@ -1861,6 +1861,8 @@ class MG_Mockup_Maintenance {
         }
         $index_snapshot = self::get_index();
         $index_lookup = [];
+        $existing_keys = array_fill_keys(array_keys($index_snapshot), true);
+        $all_products = [];
         foreach ($index_snapshot as $entry) {
             $type_key = sanitize_title($entry['type_slug'] ?? '');
             $color_key = sanitize_title($entry['color_slug'] ?? '');
@@ -1868,6 +1870,7 @@ class MG_Mockup_Maintenance {
             if ($type_key === '' || $product_id <= 0) {
                 continue;
             }
+            $all_products[$product_id] = true;
             if (!isset($index_lookup[$type_key])) {
                 $index_lookup[$type_key] = [
                     '__all_products' => [],
@@ -1940,6 +1943,28 @@ class MG_Mockup_Maintenance {
                             'type_slug'  => $slug,
                             'color_slug' => $entry['color_slug'],
                             'reason'     => __('A nézetek módosultak.', 'mgdtp'),
+                        ];
+                    }
+                }
+            }
+            $apply_to_existing = !empty($type['apply_to_existing']);
+            $old_apply_to_existing = !empty($old_type['apply_to_existing']);
+            if ($apply_to_existing && !$old_apply_to_existing && !empty($all_products)) {
+                foreach (array_keys($all_products) as $product_id) {
+                    foreach ($colors as $color_slug => $color) {
+                        $color_key = sanitize_title($color_slug);
+                        if ($color_key === '') {
+                            continue;
+                        }
+                        $key = self::compose_key($product_id, $slug, $color_key);
+                        if (isset($existing_keys[$key])) {
+                            continue;
+                        }
+                        $regen_requests[] = [
+                            'product_id' => $product_id,
+                            'type_slug' => $slug,
+                            'color_slug' => $color_key,
+                            'reason' => __('Új terméktípus hozzáadva meglévő termékekhez.', 'mgdtp'),
                         ];
                     }
                 }
