@@ -22,8 +22,23 @@ class MG_Variant_Maintenance {
             return $new_value;
         }
 
+        $type_renames = self::detect_type_slug_renames($old_value, $new_value);
         $new_types = self::normalize_catalog($new_value);
         $old_types = self::normalize_catalog($old_value);
+        if (!empty($type_renames)) {
+            foreach ($type_renames as $old_slug => $new_slug) {
+                $old_slug = sanitize_title($old_slug);
+                $new_slug = sanitize_title($new_slug);
+                if ($old_slug === '' || $new_slug === '' || $old_slug === $new_slug) {
+                    continue;
+                }
+                if (isset($old_types[$old_slug])) {
+                    $old_types[$new_slug] = $old_types[$old_slug];
+                    unset($old_types[$old_slug]);
+                }
+                self::apply_type_slug_rename($old_slug, $new_slug);
+            }
+        }
 
         $type_keys = array_unique(array_merge(array_keys($new_types), array_keys($old_types)));
         foreach ($type_keys as $type_slug) {
@@ -66,6 +81,93 @@ class MG_Variant_Maintenance {
         }
 
         return $new_value;
+    }
+
+    private static function detect_type_slug_renames($old_value, $new_value) {
+        $old_map = self::build_type_identity_map($old_value);
+        $new_map = self::build_type_identity_map($new_value);
+        if (empty($old_map) || empty($new_map)) {
+            return [];
+        }
+        $renames = [];
+        foreach ($old_map as $identity => $old_slug) {
+            if (!isset($new_map[$identity])) {
+                continue;
+            }
+            $new_slug = $new_map[$identity];
+            if ($new_slug !== $old_slug) {
+                $renames[$old_slug] = $new_slug;
+            }
+        }
+        return $renames;
+    }
+
+    private static function build_type_identity_map($types) {
+        $map = [];
+        if (!is_array($types)) {
+            return $map;
+        }
+        foreach ($types as $type) {
+            if (!is_array($type) || empty($type['key'])) {
+                continue;
+            }
+            $slug = sanitize_title($type['key']);
+            if ($slug === '') {
+                continue;
+            }
+            $label = sanitize_text_field($type['label'] ?? $type['name'] ?? '');
+            if ($label === '') {
+                continue;
+            }
+            $identity = 'label:' . strtolower($label);
+            if (!isset($map[$identity])) {
+                $map[$identity] = $slug;
+            } else {
+                $map[$identity] = null;
+            }
+        }
+        return array_filter($map);
+    }
+
+    private static function apply_type_slug_rename($old_slug, $new_slug) {
+        $old_slug = sanitize_title($old_slug);
+        $new_slug = sanitize_title($new_slug);
+        if ($old_slug === '' || $new_slug === '' || $old_slug === $new_slug) {
+            return;
+        }
+        $product_ids = self::collect_products_for_type($old_slug);
+        if (empty($product_ids)) {
+            return;
+        }
+        foreach ($product_ids as $product_id) {
+            $product = wc_get_product($product_id);
+            if (!$product || !method_exists($product, 'get_children')) {
+                continue;
+            }
+            $existing = self::map_existing_variations_with_ids($product, $old_slug);
+            if (empty($existing)) {
+                continue;
+            }
+            foreach ($existing as $color_slug => $sizes) {
+                foreach ($sizes as $variation_id) {
+                    $variation = wc_get_product($variation_id);
+                    if (!$variation || !method_exists($variation, 'get_attributes')) {
+                        continue;
+                    }
+                    $attributes = $variation->get_attributes();
+                    $attributes['pa_termektipus'] = $new_slug;
+                    $variation->set_attributes($attributes);
+                    $variation->save();
+                }
+            }
+            self::refresh_product_attributes_from_variations($product);
+            if (function_exists('wc_delete_product_transients')) {
+                wc_delete_product_transients($product->get_id());
+            }
+            if (function_exists('wc_update_product_lookup_tables')) {
+                wc_update_product_lookup_tables($product->get_id());
+            }
+        }
     }
 
     private static function normalize_catalog($raw) {

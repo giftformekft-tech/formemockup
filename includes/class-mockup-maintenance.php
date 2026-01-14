@@ -236,6 +236,117 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function detect_type_slug_renames($old_types, $new_types) {
+        $old_identity = self::build_type_identity_map($old_types);
+        $new_identity = self::build_type_identity_map($new_types);
+        if (empty($old_identity) || empty($new_identity)) {
+            return [];
+        }
+        $renames = [];
+        foreach ($old_identity as $identity => $old_slug) {
+            if (!isset($new_identity[$identity])) {
+                continue;
+            }
+            $new_slug = $new_identity[$identity];
+            if ($new_slug !== $old_slug) {
+                $renames[$old_slug] = $new_slug;
+            }
+        }
+        return $renames;
+    }
+
+    private static function build_type_identity_map($types) {
+        $map = [];
+        if (!is_array($types)) {
+            return $map;
+        }
+        foreach ($types as $type) {
+            if (!is_array($type) || empty($type['key'])) {
+                continue;
+            }
+            $slug = sanitize_title($type['key']);
+            if ($slug === '') {
+                continue;
+            }
+            $label = sanitize_text_field($type['label'] ?? $type['name'] ?? '');
+            if ($label === '') {
+                continue;
+            }
+            $identity = 'label:' . strtolower($label);
+            if (!isset($map[$identity])) {
+                $map[$identity] = $slug;
+            } else {
+                $map[$identity] = null;
+            }
+        }
+        return array_filter($map);
+    }
+
+    private static function apply_type_slug_renames($renames, $new_types) {
+        if (empty($renames)) {
+            return;
+        }
+        $index = self::get_index();
+        $queue = self::get_queue();
+        $index_changed = false;
+        $queue_changed = false;
+        foreach ($renames as $old_slug => $new_slug) {
+            $old_slug = sanitize_title($old_slug);
+            $new_slug = sanitize_title($new_slug);
+            if ($old_slug === '' || $new_slug === '' || $old_slug === $new_slug) {
+                continue;
+            }
+            $type_label = '';
+            foreach ($new_types as $type) {
+                if (!is_array($type) || empty($type['key'])) {
+                    continue;
+                }
+                if (sanitize_title($type['key']) === $new_slug) {
+                    $type_label = sanitize_text_field($type['label'] ?? $type['name'] ?? $type['key'] ?? '');
+                    break;
+                }
+            }
+            foreach ($index as $key => $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                if (($entry['type_slug'] ?? '') !== $old_slug) {
+                    continue;
+                }
+                $product_id = absint($entry['product_id'] ?? 0);
+                if ($product_id <= 0) {
+                    continue;
+                }
+                $entry['type_slug'] = $new_slug;
+                if ($type_label !== '') {
+                    $entry['source']['type_label'] = $type_label;
+                }
+                $entry['updated_at'] = self::current_timestamp();
+                $new_key = self::compose_key($product_id, $new_slug, $entry['color_slug'] ?? '');
+                if (isset($index[$new_key])) {
+                    $index[$new_key] = self::prefer_latest_entry($index[$new_key], $entry);
+                } else {
+                    $index[$new_key] = $entry;
+                }
+                if ($new_key !== $key) {
+                    unset($index[$key]);
+                }
+                $index_changed = true;
+                if (in_array($key, $queue, true)) {
+                    $queue = array_values(array_diff($queue, [$key]));
+                    $queue[] = $new_key;
+                    $queue_changed = true;
+                }
+            }
+        }
+        if ($index_changed) {
+            self::set_index($index);
+        }
+        if ($queue_changed) {
+            self::set_queue(array_values(array_unique($queue)));
+        }
+    }
+
     private static function detect_color_slug_renames($old_colors, $new_colors) {
         if (!is_array($old_colors) || !is_array($new_colors)) {
             return [];
@@ -1970,6 +2081,10 @@ class MG_Mockup_Maintenance {
     public static function handle_product_catalog_update($new_value, $old_value) {
         $new_value = is_array($new_value) ? $new_value : [];
         $old_value = is_array($old_value) ? $old_value : [];
+        $type_renames = self::detect_type_slug_renames($old_value, $new_value);
+        if (!empty($type_renames)) {
+            self::apply_type_slug_renames($type_renames, $new_value);
+        }
         $old_map = [];
         $new_map = [];
         foreach ($old_value as $type) {
@@ -1983,6 +2098,19 @@ class MG_Mockup_Maintenance {
                 continue;
             }
             $new_map[sanitize_title($type['key'])] = $type;
+        }
+        if (!empty($type_renames)) {
+            foreach ($type_renames as $old_slug => $new_slug) {
+                $old_slug = sanitize_title($old_slug);
+                $new_slug = sanitize_title($new_slug);
+                if ($old_slug === '' || $new_slug === '') {
+                    continue;
+                }
+                if (isset($old_map[$old_slug])) {
+                    $old_map[$new_slug] = $old_map[$old_slug];
+                    unset($old_map[$old_slug]);
+                }
+            }
         }
         foreach ($new_value as $type) {
             if (!is_array($type) || empty($type['key'])) {
