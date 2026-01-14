@@ -294,16 +294,22 @@ if (isset($_GET['mg_duplicate_key']) && current_user_can('manage_options')) {
 foreach ($products as $p) if ($p['key']===$key) return $p;
         return null;
     }
-    private static function save_product($prod) {
+    private static function save_product($prod, $original_key = '') {
         $products = get_option('mg_products', array());
         $is_primary = !empty($prod['is_primary']);
+        $lookup_key = $original_key !== '' ? $original_key : $prod['key'];
+        $updated = false;
         foreach ($products as $i=>$p) {
             if (!is_array($p) || !isset($p['key'])) continue;
-            if ($p['key']===$prod['key']) {
+            if ($p['key']===$lookup_key) {
                 $products[$i]=$prod;
+                $updated = true;
             } elseif ($is_primary) {
                 $products[$i]['is_primary'] = 0;
             }
+        }
+        if (!$updated) {
+            $products[] = $prod;
         }
         update_option('mg_products',$products);
         self::sync_variant_display_colors($prod);
@@ -435,6 +441,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $key = sanitize_text_field($_GET['product'] ?? '');
         $prod = self::get_product_by_key($key);
         if (!$prod) { echo '<div class="notice notice-error"><p>Ismeretlen termék.</p></div>'; return; }
+        $original_key = $prod['key'];
         if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
         $price_job = self::get_latest_price_update_job($prod['key']);
 
@@ -448,6 +455,11 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
             $label = sanitize_text_field($_POST['label'] ?? '');
             if ($label !== '') {
                 $prod['label'] = $label;
+            }
+            $requested_key = isset($_POST['type_key']) ? sanitize_title(wp_unslash($_POST['type_key'])) : $prod['key'];
+            if ($requested_key !== '' && $requested_key !== $prod['key']) {
+                $requested_key = self::generate_unique_key($requested_key, get_option('mg_products', array()));
+                $prod['key'] = $requested_key;
             }
             $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
             if (!empty($sizes)) $prod['sizes']=$sizes;
@@ -674,7 +686,7 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 $sanitized_overrides = $prod['mockup_overrides'];
             }
 
-            self::save_product($prod);
+            self::save_product($prod, $original_key);
             echo '<div class="notice notice-success is-dismissible"><p>Termék beállításai elmentve.</p></div>';
             if ($removed_overrides > 0) {
                 echo '<div class="notice notice-warning is-dismissible"><p>';
@@ -779,6 +791,9 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 <?php wp_nonce_field('mg_save_product','mg_save_product_nonce'); ?>
                 <h2>Megjelenített név</h2>
                 <p><input type="text" name="label" class="regular-text" value="<?php echo esc_attr($prod['label']); ?>" /></p>
+                <h2>Terméktípus slug</h2>
+                <p><input type="text" name="type_key" class="regular-text" value="<?php echo esc_attr($prod['key']); ?>" /></p>
+                <p class="description"><?php esc_html_e('A slug módosítása átnevezi a terméktípust és a meglévő mockupokat/variációkat ehhez igazítja.', 'mgdtp'); ?></p>
                 <h2>Alap ár (HUF)</h2>
                 <p><input type="number" name="price" class="small-text" min="0" step="1" value="<?php echo esc_attr($price); ?>" /></p>
                 <p>
