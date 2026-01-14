@@ -22,6 +22,7 @@ class MG_Mockup_Maintenance {
         add_filter('cron_schedules', [__CLASS__, 'register_interval']);
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_product_catalog_update'], 10, 2);
         add_action('before_delete_post', [__CLASS__, 'cleanup_product_mockups'], 10, 1);
+        add_action('post_updated', [__CLASS__, 'handle_product_slug_update'], 10, 3);
     }
 
     public static function register_interval($schedules) {
@@ -141,6 +142,73 @@ class MG_Mockup_Maintenance {
             unset($index[$key]);
         }
         self::set_index($index);
+    }
+
+    public static function handle_product_slug_update($post_id, $post_after, $post_before) {
+        if (get_post_type($post_id) !== 'product') {
+            return;
+        }
+        if (!is_object($post_after) || !is_object($post_before)) {
+            return;
+        }
+        if (($post_after->post_name ?? '') === ($post_before->post_name ?? '')) {
+            return;
+        }
+        if (!function_exists('wc_get_product')) {
+            return;
+        }
+        $product = wc_get_product($post_id);
+        if (!$product || !$product->get_id()) {
+            return;
+        }
+        $index = self::get_index();
+        if (empty($index)) {
+            return;
+        }
+        $updated_designs = [];
+        foreach ($index as $entry) {
+            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== (int) $post_id) {
+                continue;
+            }
+            $type_slug = $entry['type_slug'] ?? '';
+            $color_slug = $entry['color_slug'] ?? '';
+            if ($type_slug === '' || $color_slug === '') {
+                continue;
+            }
+            $type = self::find_type_definition($type_slug);
+            if (!$type) {
+                continue;
+            }
+            $seo_text = self::compose_image_seo_text($product, $type, $color_slug);
+            if ($seo_text !== '') {
+                $title = sanitize_text_field($seo_text);
+                $attachment_ids = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+                foreach ($attachment_ids as $attachment_id) {
+                    $attachment_id = absint($attachment_id);
+                    if ($attachment_id <= 0) {
+                        continue;
+                    }
+                    wp_update_post([
+                        'ID' => $attachment_id,
+                        'post_title' => $title,
+                    ]);
+                    update_post_meta($attachment_id, '_wp_attachment_image_alt', $title);
+                }
+            }
+            $design_attachment_id = absint($entry['source']['design_attachment_id'] ?? 0);
+            if ($design_attachment_id > 0 && empty($updated_designs[$design_attachment_id])) {
+                $design_title = self::compose_design_title($product, $type, $color_slug);
+                if ($design_title !== '') {
+                    $safe_title = sanitize_text_field($design_title);
+                    wp_update_post([
+                        'ID' => $design_attachment_id,
+                        'post_title' => $safe_title,
+                    ]);
+                    update_post_meta($design_attachment_id, '_wp_attachment_image_alt', $safe_title);
+                }
+                $updated_designs[$design_attachment_id] = true;
+            }
+        }
     }
 
     public static function get_queue() {
