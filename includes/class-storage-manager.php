@@ -16,10 +16,16 @@ class MG_Storage_Manager {
     const LEGACY_VARIANT_QUEUE_CHUNK_PREFIX = 'mg_variant_sync_queue_chunk_';
 
     public static function init() {
-        add_action('init', [__CLASS__, 'maybe_install']);
+        add_action('admin_init', [__CLASS__, 'maybe_install']);
     }
 
     public static function maybe_install() {
+        if (!is_admin() && !defined('WP_CLI')) {
+            return;
+        }
+        if (function_exists('current_user_can') && !current_user_can('manage_options')) {
+            return;
+        }
         if (!function_exists('dbDelta')) {
             $upgrade_path = ABSPATH . 'wp-admin/includes/upgrade.php';
             if (!file_exists($upgrade_path)) {
