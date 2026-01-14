@@ -14,6 +14,8 @@ class MG_Mockup_Maintenance {
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
+    const LOCK_KEY = 'mg_mockup_queue_lock';
+    const LOCK_TTL = 300;
 
     public static function init() {
         add_action('init', [__CLASS__, 'register_cron_schedule']);
@@ -1226,6 +1228,7 @@ class MG_Mockup_Maintenance {
                 }
                 $cached = $product_cache[$product_id];
                 if (!$cached['exists'] || !$cached['active']) {
+                    self::cleanup_orphaned_assets($entry, true);
                     unset($pruned[$key]);
                     $needs_update = true;
                     continue;
@@ -1233,6 +1236,7 @@ class MG_Mockup_Maintenance {
             }
             $type_slug = sanitize_title($entry['type_slug'] ?? '');
             if ($type_slug !== '' && !self::find_type_definition($type_slug)) {
+                self::cleanup_orphaned_assets($entry, false);
                 unset($pruned[$key]);
                 $needs_update = true;
             }
@@ -1307,13 +1311,21 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
+        if (!self::acquire_lock(self::LOCK_KEY, self::LOCK_TTL)) {
+            return;
+        }
         $queue = self::get_queue();
         if (empty($queue)) {
+            self::release_lock(self::LOCK_KEY);
             return;
         }
         $batch = array_slice($queue, 0, self::get_batch_size());
-        foreach ($batch as $key) {
-            self::process_single($key);
+        try {
+            foreach ($batch as $key) {
+                self::process_single($key);
+            }
+        } finally {
+            self::release_lock(self::LOCK_KEY);
         }
     }
 
@@ -1476,6 +1488,26 @@ class MG_Mockup_Maintenance {
         return implode(' - ', $parts);
     }
 
+    private static function cleanup_orphaned_assets($entry, $remove_design = false) {
+        if (!is_array($entry)) {
+            return;
+        }
+        $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+        if (!empty($old_attachments)) {
+            self::delete_old_attachments($old_attachments, []);
+        }
+        if (!$remove_design) {
+            return;
+        }
+        $design_attachment_id = absint($entry['source']['design_attachment_id'] ?? 0);
+        if ($design_attachment_id > 0) {
+            $generated = get_post_meta($design_attachment_id, '_mg_generated_design', true);
+            if ($generated) {
+                wp_delete_attachment($design_attachment_id, true);
+            }
+        }
+    }
+
     private static function ensure_design_webp($design_path, $product, $type, $color_slug, $entry) {
         $reference = [
             'design_path' => $design_path,
@@ -1588,7 +1620,24 @@ class MG_Mockup_Maintenance {
         if ($attach_id && $title !== '') {
             update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
         }
+        if ($attach_id) {
+            update_post_meta($attach_id, '_mg_generated_design', 1);
+        }
         return $attach_id;
+    }
+
+    private static function acquire_lock($key, $ttl) {
+        $key = sanitize_key($key);
+        $ttl = max(10, (int) $ttl);
+        if (get_transient($key)) {
+            return false;
+        }
+        return set_transient($key, time(), $ttl);
+    }
+
+    private static function release_lock($key) {
+        $key = sanitize_key($key);
+        delete_transient($key);
     }
 
     private static function attach_image($path, $seo_text = '') {

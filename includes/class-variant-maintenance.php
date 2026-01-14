@@ -8,6 +8,8 @@ class MG_Variant_Maintenance {
     const OPTION_PROGRESS = 'mg_variant_sync_progress';
     const CRON_HOOK = 'mg_variant_sync_process';
     const CRON_TIME_LIMIT = 8.0;
+    const LOCK_KEY = 'mg_variant_sync_lock';
+    const LOCK_TTL = 300;
 
     public static function init() {
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_catalog_update'], 20, 2);
@@ -469,9 +471,13 @@ class MG_Variant_Maintenance {
     }
 
     public static function process_queue($time_limit = null) {
+        if (!self::acquire_lock(self::LOCK_KEY, self::LOCK_TTL)) {
+            return;
+        }
         $queue = self::get_queue();
         if (empty($queue)) {
             self::set_queue([]);
+            self::release_lock(self::LOCK_KEY);
             return;
         }
 
@@ -519,12 +525,59 @@ class MG_Variant_Maintenance {
             }
         }
 
-        if (!empty($remaining)) {
-            self::set_queue($remaining);
-            self::maybe_schedule_processor();
-        } else {
-            self::set_queue([]);
+        try {
+            if (!empty($remaining)) {
+                self::set_queue($remaining);
+                self::maybe_schedule_processor();
+            } else {
+                self::set_queue([]);
+            }
+        } finally {
+            self::release_lock(self::LOCK_KEY);
         }
+    }
+
+    public static function get_queue_count() {
+        return count(self::get_queue());
+    }
+
+    public static function queue_full_sync() {
+        $catalog = get_option('mg_products', []);
+        $types = self::normalize_catalog($catalog);
+        if (empty($types)) {
+            return 0;
+        }
+        $product_ids = self::collect_all_products();
+        if (empty($product_ids)) {
+            return 0;
+        }
+        $queued = 0;
+        foreach ($types as $type_slug => $type_data) {
+            $added_colors = array_keys($type_data['colors'] ?? []);
+            self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids);
+            $queued++;
+        }
+        return $queued;
+    }
+
+    public static function queue_type_sync($type_slug) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return false;
+        }
+        $catalog = get_option('mg_products', []);
+        $types = self::normalize_catalog($catalog);
+        if (empty($types[$type_slug])) {
+            return false;
+        }
+        $product_ids = self::collect_all_products();
+        if (empty($product_ids)) {
+            return false;
+        }
+        $type_data = $types[$type_slug];
+        $added_colors = array_keys($type_data['colors'] ?? []);
+        self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids);
+        return true;
     }
 
     public static function get_queue_count() {
@@ -1211,5 +1264,19 @@ class MG_Variant_Maintenance {
             $limit = self::CRON_TIME_LIMIT;
         }
         return $limit;
+    }
+
+    private static function acquire_lock($key, $ttl) {
+        $key = sanitize_key($key);
+        $ttl = max(10, (int) $ttl);
+        if (get_transient($key)) {
+            return false;
+        }
+        return set_transient($key, time(), $ttl);
+    }
+
+    private static function release_lock($key) {
+        $key = sanitize_key($key);
+        delete_transient($key);
     }
 }
