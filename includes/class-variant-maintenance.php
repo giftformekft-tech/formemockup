@@ -542,6 +542,26 @@ class MG_Variant_Maintenance {
         return $queued;
     }
 
+    public static function queue_type_sync($type_slug) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return false;
+        }
+        $catalog = get_option('mg_products', []);
+        $types = self::normalize_catalog($catalog);
+        if (empty($types[$type_slug])) {
+            return false;
+        }
+        $product_ids = self::collect_all_products();
+        if (empty($product_ids)) {
+            return false;
+        }
+        $type_data = $types[$type_slug];
+        $added_colors = array_keys($type_data['colors'] ?? []);
+        self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids);
+        return true;
+    }
+
     private static function queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids) {
         $type_slug = sanitize_title($type_slug);
         if ($type_slug === '') {
