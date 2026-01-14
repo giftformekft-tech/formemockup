@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 
 class MG_Variant_Maintenance {
     const OPTION_QUEUE = 'mg_variant_sync_queue';
+    const OPTION_PROGRESS = 'mg_variant_sync_progress';
     const CRON_HOOK = 'mg_variant_sync_process';
     const CRON_TIME_LIMIT = 8.0;
 
@@ -12,6 +13,7 @@ class MG_Variant_Maintenance {
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_catalog_update'], 20, 2);
         add_action('init', [__CLASS__, 'bootstrap_queue_processor']);
         add_action(self::CRON_HOOK, [__CLASS__, 'process_queue']);
+        add_action('wp_ajax_mg_variant_progress', [__CLASS__, 'handle_progress_ajax']);
     }
 
     public static function handle_catalog_update($new_value, $old_value) {
@@ -521,6 +523,45 @@ class MG_Variant_Maintenance {
         }
     }
 
+    public static function queue_full_sync() {
+        $catalog = get_option('mg_products', []);
+        $types = self::normalize_catalog($catalog);
+        if (empty($types)) {
+            return 0;
+        }
+        $product_ids = self::collect_all_products();
+        if (empty($product_ids)) {
+            return 0;
+        }
+        $queued = 0;
+        foreach ($types as $type_slug => $type_data) {
+            $added_colors = array_keys($type_data['colors'] ?? []);
+            self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids);
+            $queued++;
+        }
+        return $queued;
+    }
+
+    public static function queue_type_sync($type_slug) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return false;
+        }
+        $catalog = get_option('mg_products', []);
+        $types = self::normalize_catalog($catalog);
+        if (empty($types[$type_slug])) {
+            return false;
+        }
+        $product_ids = self::collect_all_products();
+        if (empty($product_ids)) {
+            return false;
+        }
+        $type_data = $types[$type_slug];
+        $added_colors = array_keys($type_data['colors'] ?? []);
+        self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids);
+        return true;
+    }
+
     private static function queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids) {
         $type_slug = sanitize_title($type_slug);
         if ($type_slug === '') {
@@ -846,10 +887,15 @@ class MG_Variant_Maintenance {
             }
         }
         $existing = self::map_existing_variations_with_ids($product, $type_slug);
+        $progress_total = self::count_existing_variations($existing) + self::count_allowed_variations($allowed_by_color);
+        $progress_current = 0;
+        self::start_progress($product_id, $type_slug, $progress_total);
         $removed_colors = [];
         foreach ($existing as $color_slug => $sizes) {
             $color_allowed = isset($allowed_by_color[$color_slug]);
             foreach ($sizes as $size_label => $variation_id) {
+                $progress_current++;
+                self::update_progress($product_id, $type_slug, $progress_current, $progress_total);
                 if (!$color_allowed || !in_array($size_label, $allowed_by_color[$color_slug], true)) {
                     if (!isset($removed_colors[$color_slug])) {
                         $removed_colors[$color_slug] = true;
@@ -887,6 +933,8 @@ class MG_Variant_Maintenance {
 
         foreach ($allowed_by_color as $color_slug => $sizes) {
             foreach ($sizes as $size_label) {
+                $progress_current++;
+                self::update_progress($product_id, $type_slug, $progress_current, $progress_total);
                 if (!empty($existing[$color_slug][$size_label])) {
                     continue;
                 }
@@ -923,10 +971,90 @@ class MG_Variant_Maintenance {
             MG_Mockup_Maintenance::purge_index_entries_for_type($product_id, $type_slug, array_keys($removed_colors));
         }
 
+        self::finish_progress($product_id, $type_slug, max($progress_current, $progress_total));
+
         return [
             'removed_colors' => array_keys($removed_colors),
             'added_variants' => $added_variants,
         ];
+    }
+
+    public static function get_progress() {
+        $progress = get_option(self::OPTION_PROGRESS, []);
+        return is_array($progress) ? $progress : [];
+    }
+
+    private static function set_progress($progress) {
+        if (!is_array($progress)) {
+            $progress = [];
+        }
+        update_option(self::OPTION_PROGRESS, $progress, false);
+    }
+
+    private static function start_progress($product_id, $type_slug, $total) {
+        $total = max(1, (int) $total);
+        self::set_progress([
+            'status' => 'running',
+            'product_id' => absint($product_id),
+            'type_slug' => sanitize_title($type_slug),
+            'current' => 0,
+            'total' => $total,
+            'percent' => 0,
+            'updated_at' => current_time('timestamp', true),
+        ]);
+    }
+
+    private static function update_progress($product_id, $type_slug, $current, $total) {
+        $total = max(1, (int) $total);
+        $current = min($total, max(0, (int) $current));
+        $percent = (int) round(($current / $total) * 100);
+        self::set_progress([
+            'status' => 'running',
+            'product_id' => absint($product_id),
+            'type_slug' => sanitize_title($type_slug),
+            'current' => $current,
+            'total' => $total,
+            'percent' => min(100, max(0, $percent)),
+            'updated_at' => current_time('timestamp', true),
+        ]);
+    }
+
+    private static function finish_progress($product_id, $type_slug, $total) {
+        $total = max(1, (int) $total);
+        self::set_progress([
+            'status' => 'done',
+            'product_id' => absint($product_id),
+            'type_slug' => sanitize_title($type_slug),
+            'current' => $total,
+            'total' => $total,
+            'percent' => 100,
+            'updated_at' => current_time('timestamp', true),
+        ]);
+    }
+
+    private static function count_existing_variations($existing) {
+        $count = 0;
+        foreach ((array) $existing as $sizes) {
+            if (is_array($sizes)) {
+                $count += count($sizes);
+            }
+        }
+        return $count;
+    }
+
+    private static function count_allowed_variations($allowed_by_color) {
+        $count = 0;
+        foreach ((array) $allowed_by_color as $sizes) {
+            if (is_array($sizes)) {
+                $count += count($sizes);
+            }
+        }
+        return $count;
+    }
+
+    public static function handle_progress_ajax() {
+        check_ajax_referer('mg_ajax_nonce', 'nonce');
+        wp_send_json_success(self::get_progress());
     }
 
     private static function remove_type_variations($product_id, $type_slug) {

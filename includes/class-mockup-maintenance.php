@@ -1366,6 +1366,10 @@ class MG_Mockup_Maintenance {
         }
         $product = wc_get_product($product_id);
         if (!$product || !$product->get_id()) {
+            $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+            if (!empty($old_attachments)) {
+                self::delete_old_attachments($old_attachments, []);
+            }
             $index[$key]['status'] = 'missing';
             $index[$key]['last_message'] = __('A WooCommerce termék nem található.', 'mgdtp');
             $index[$key]['updated_at'] = self::current_timestamp();
