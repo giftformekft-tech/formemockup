@@ -1481,17 +1481,37 @@ class MG_Mockup_Maintenance {
             'design_path' => $design_path,
             'design_attachment_id' => 0,
         ];
+        if (is_array($entry) && !empty($entry['source']['design_attachment_id'])) {
+            $reference['design_attachment_id'] = (int) $entry['source']['design_attachment_id'];
+        }
+        if (is_array($entry) && !empty($entry['source']['design_path']) && file_exists($entry['source']['design_path'])) {
+            $reference['design_path'] = $entry['source']['design_path'];
+            $design_path = $reference['design_path'];
+        }
         if (!is_string($design_path) || $design_path === '' || !file_exists($design_path)) {
             return $reference;
         }
         if (preg_match('/\.webp$/i', $design_path)) {
-            $existing_id = self::find_existing_attachment_id($design_path);
-            if ($existing_id) {
-                $reference['design_attachment_id'] = $existing_id;
+            if (!$reference['design_attachment_id']) {
+                $existing_id = self::find_existing_attachment_id($design_path);
+                if ($existing_id) {
+                    $reference['design_attachment_id'] = $existing_id;
+                }
             }
             return $reference;
         }
         if (!function_exists('wp_get_image_editor')) {
+            return $reference;
+        }
+        $target_path = preg_replace('/\.[^.]+$/', '.webp', $design_path);
+        if ($target_path && file_exists($target_path)) {
+            $reference['design_path'] = $target_path;
+            if (!$reference['design_attachment_id']) {
+                $existing_id = self::find_existing_attachment_id($target_path);
+                if ($existing_id) {
+                    $reference['design_attachment_id'] = $existing_id;
+                }
+            }
             return $reference;
         }
         $editor = wp_get_image_editor($design_path);
@@ -1507,7 +1527,6 @@ class MG_Mockup_Maintenance {
         if (method_exists($editor, 'set_quality')) {
             $editor->set_quality($quality);
         }
-        $target_path = preg_replace('/\.[^.]+$/', '.webp', $design_path);
         $saved = $editor->save($target_path, 'image/webp');
         if (is_wp_error($saved) || empty($saved['path']) || !file_exists($saved['path'])) {
             return $reference;
