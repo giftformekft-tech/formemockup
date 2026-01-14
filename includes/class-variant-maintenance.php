@@ -14,6 +14,7 @@ class MG_Variant_Maintenance {
         add_action('init', [__CLASS__, 'bootstrap_queue_processor']);
         add_action(self::CRON_HOOK, [__CLASS__, 'process_queue']);
         add_action('wp_ajax_mg_variant_progress', [__CLASS__, 'handle_progress_ajax']);
+        add_action('wp_ajax_mg_variant_sync_run', [__CLASS__, 'handle_sync_run_ajax']);
     }
 
     public static function handle_catalog_update($new_value, $old_value) {
@@ -1062,6 +1063,14 @@ class MG_Variant_Maintenance {
     public static function handle_progress_ajax() {
         check_ajax_referer('mg_ajax_nonce', 'nonce');
         wp_send_json_success(self::get_progress());
+    }
+
+    public static function handle_sync_run_ajax() {
+        check_ajax_referer('mg_ajax_nonce', 'nonce');
+        self::process_queue(5);
+        wp_send_json_success([
+            'remaining' => self::get_queue_count(),
+        ]);
     }
 
     private static function remove_type_variations($product_id, $type_slug) {
