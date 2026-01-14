@@ -14,6 +14,8 @@ class MG_Mockup_Maintenance {
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
+    const LOCK_KEY = 'mg_mockup_queue_lock';
+    const LOCK_TTL = 300;
 
     public static function init() {
         add_action('init', [__CLASS__, 'register_cron_schedule']);
@@ -1309,13 +1311,21 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
+        if (!self::acquire_lock(self::LOCK_KEY, self::LOCK_TTL)) {
+            return;
+        }
         $queue = self::get_queue();
         if (empty($queue)) {
+            self::release_lock(self::LOCK_KEY);
             return;
         }
         $batch = array_slice($queue, 0, self::get_batch_size());
-        foreach ($batch as $key) {
-            self::process_single($key);
+        try {
+            foreach ($batch as $key) {
+                self::process_single($key);
+            }
+        } finally {
+            self::release_lock(self::LOCK_KEY);
         }
     }
 
@@ -1614,6 +1624,20 @@ class MG_Mockup_Maintenance {
             update_post_meta($attach_id, '_mg_generated_design', 1);
         }
         return $attach_id;
+    }
+
+    private static function acquire_lock($key, $ttl) {
+        $key = sanitize_key($key);
+        $ttl = max(10, (int) $ttl);
+        if (get_transient($key)) {
+            return false;
+        }
+        return set_transient($key, time(), $ttl);
+    }
+
+    private static function release_lock($key) {
+        $key = sanitize_key($key);
+        delete_transient($key);
     }
 
     private static function attach_image($path, $seo_text = '') {
