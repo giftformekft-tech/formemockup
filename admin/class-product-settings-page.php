@@ -443,6 +443,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
 
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
             $update_existing_prices = !empty($_POST['update_existing_prices']);
+            $run_variant_sync = !empty($_POST['mg_variant_sync']);
             $label = sanitize_text_field($_POST['label'] ?? '');
             if ($label !== '') {
                 $prod['label'] = $label;
@@ -689,6 +690,20 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                     echo '</p></div>';
                 }
             }
+            if ($run_variant_sync) {
+                if (!class_exists('MG_Variant_Maintenance')) {
+                    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Hiányzik a variáns karbantartó modul.', 'mgdtp') . '</p></div>';
+                } elseif (!MG_Variant_Maintenance::queue_type_sync($prod['key'])) {
+                    echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Nincs frissítendő variáns ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
+                } else {
+                    MG_Variant_Maintenance::process_queue(30);
+                    if (MG_Variant_Maintenance::get_queue_count() > 0) {
+                        echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns frissítés elindult ehhez a terméktípushoz. A feldolgozás a háttérben folytatódik.', 'mgdtp') . '</p></div>';
+                    } else {
+                        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('A variáns frissítés lefutott ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
+                    }
+                }
+            }
         }
 
         $sizes = $prod['sizes'];
@@ -797,6 +812,14 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         </div>
                     </div>
                 <?php endif; ?>
+
+                <h2>Variánsok frissítése</h2>
+                <p class="description"><?php esc_html_e('Ezzel a gombbal csak az aktuális terméktípushoz tartozó variánsokat frissítjük a meglévő termékekben.', 'mgdtp'); ?></p>
+                <p>
+                    <button type="submit" class="button button-secondary" name="mg_variant_sync" value="1">
+                        <?php esc_html_e('Variánsok frissítése ehhez a terméktípushoz', 'mgdtp'); ?>
+                    </button>
+                </p>
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
