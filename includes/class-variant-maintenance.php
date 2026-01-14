@@ -5,14 +5,9 @@ if (!defined('ABSPATH')) {
 
 class MG_Variant_Maintenance {
     const OPTION_QUEUE = 'mg_variant_sync_queue';
-    const OPTION_QUEUE_META = 'mg_variant_sync_queue_meta';
-    const OPTION_QUEUE_CHUNK_PREFIX = 'mg_variant_sync_queue_chunk_';
     const OPTION_PROGRESS = 'mg_variant_sync_progress';
     const CRON_HOOK = 'mg_variant_sync_process';
     const CRON_TIME_LIMIT = 8.0;
-    const LOCK_KEY = 'mg_variant_sync_lock';
-    const LOCK_TTL = 300;
-    const QUEUE_CHUNK_SIZE = 50;
 
     public static function init() {
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_catalog_update'], 20, 2);
@@ -474,68 +469,61 @@ class MG_Variant_Maintenance {
     }
 
     public static function process_queue($time_limit = null) {
-        if (!self::acquire_lock(self::LOCK_KEY, self::LOCK_TTL)) {
+        $queue = self::get_queue();
+        if (empty($queue)) {
+            self::set_queue([]);
             return;
         }
-        try {
-            $queue = self::get_queue();
-            if (empty($queue)) {
-                self::set_queue([]);
-                return;
+
+        $time_limit = is_numeric($time_limit) ? (float) $time_limit : self::get_cron_time_limit();
+        if ($time_limit <= 0) {
+            $time_limit = self::get_cron_time_limit();
+        }
+        $start = microtime(true);
+        $remaining = [];
+
+        while (!empty($queue) && (microtime(true) - $start) < $time_limit) {
+            $item = array_shift($queue);
+            $normalized = self::normalize_queue_item($item);
+            if (empty($normalized['product_ids'])) {
+                continue;
             }
 
-            $time_limit = is_numeric($time_limit) ? (float) $time_limit : self::get_cron_time_limit();
-            if ($time_limit <= 0) {
-                $time_limit = self::get_cron_time_limit();
+            while (!empty($normalized['product_ids']) && (microtime(true) - $start) < $time_limit) {
+                $product_id = array_shift($normalized['product_ids']);
+                if (!empty($normalized['remove_type'])) {
+                    self::remove_type_variations($product_id, $normalized['type_slug']);
+                } else {
+                    self::process_single_product(
+                        $product_id,
+                        $normalized['type_slug'],
+                        $normalized['type_data'],
+                        $normalized['added_colors'],
+                        $normalized['allowed_additions']
+                    );
+                }
             }
-            $start = microtime(true);
-            $remaining = [];
 
-            while (!empty($queue) && (microtime(true) - $start) < $time_limit) {
-                $item = array_shift($queue);
+            if (!empty($normalized['product_ids'])) {
+                $remaining[] = $normalized;
+                break;
+            }
+        }
+
+        if (!empty($queue)) {
+            foreach ($queue as $item) {
                 $normalized = self::normalize_queue_item($item);
-                if (empty($normalized['product_ids'])) {
-                    continue;
-                }
-
-                while (!empty($normalized['product_ids']) && (microtime(true) - $start) < $time_limit) {
-                    $product_id = array_shift($normalized['product_ids']);
-                    if (!empty($normalized['remove_type'])) {
-                        self::remove_type_variations($product_id, $normalized['type_slug']);
-                    } else {
-                        self::process_single_product(
-                            $product_id,
-                            $normalized['type_slug'],
-                            $normalized['type_data'],
-                            $normalized['added_colors'],
-                            $normalized['allowed_additions']
-                        );
-                    }
-                }
-
                 if (!empty($normalized['product_ids'])) {
                     $remaining[] = $normalized;
-                    break;
                 }
             }
+        }
 
-            if (!empty($queue)) {
-                foreach ($queue as $item) {
-                    $normalized = self::normalize_queue_item($item);
-                    if (!empty($normalized['product_ids'])) {
-                        $remaining[] = $normalized;
-                    }
-                }
-            }
-
-            if (!empty($remaining)) {
-                self::set_queue($remaining);
-                self::maybe_schedule_processor();
-            } else {
-                self::set_queue([]);
-            }
-        } finally {
-            self::release_lock(self::LOCK_KEY);
+        if (!empty($remaining)) {
+            self::set_queue($remaining);
+            self::maybe_schedule_processor();
+        } else {
+            self::set_queue([]);
         }
     }
 
@@ -1191,29 +1179,22 @@ class MG_Variant_Maintenance {
     }
 
     private static function get_queue() {
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            return MG_Storage_Manager::get_variant_queue();
+        $queue = get_option(self::OPTION_QUEUE, []);
+        if (!is_array($queue)) {
+            $queue = [];
         }
-        $legacy = get_option(self::OPTION_QUEUE, []);
-        return is_array($legacy) ? array_values($legacy) : [];
+        return array_values($queue);
     }
 
     private static function set_queue($queue) {
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            MG_Storage_Manager::set_variant_queue($queue);
-            return;
+        if (!is_array($queue)) {
+            $queue = [];
         }
-        update_option(self::OPTION_QUEUE, array_values((array) $queue), false);
+        update_option(self::OPTION_QUEUE, array_values($queue), false);
     }
 
     private static function maybe_schedule_processor() {
         if (empty(self::get_queue())) {
-            return;
-        }
-        if (function_exists('as_enqueue_async_action')) {
-            if (!function_exists('as_next_scheduled_action') || !as_next_scheduled_action(self::CRON_HOOK)) {
-                as_enqueue_async_action(self::CRON_HOOK, [], 'mg_variant_sync');
-            }
             return;
         }
         if (function_exists('wp_next_scheduled') && function_exists('wp_schedule_single_event')) {
@@ -1230,19 +1211,5 @@ class MG_Variant_Maintenance {
             $limit = self::CRON_TIME_LIMIT;
         }
         return $limit;
-    }
-
-    private static function acquire_lock($key, $ttl) {
-        $key = sanitize_key($key);
-        $ttl = max(10, (int) $ttl);
-        if (get_transient($key)) {
-            return false;
-        }
-        return set_transient($key, time(), $ttl);
-    }
-
-    private static function release_lock($key) {
-        $key = sanitize_key($key);
-        delete_transient($key);
     }
 }

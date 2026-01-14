@@ -5,8 +5,6 @@ if (!defined('ABSPATH')) {
 
 class MG_Mockup_Maintenance {
     const OPTION_STATUS_INDEX = 'mg_mockup_status_index';
-    const OPTION_STATUS_INDEX_META = 'mg_mockup_status_index_meta';
-    const OPTION_STATUS_INDEX_CHUNK_PREFIX = 'mg_mockup_status_index_chunk_';
     const OPTION_QUEUE = 'mg_mockup_regen_queue';
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
     const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
@@ -14,22 +12,15 @@ class MG_Mockup_Maintenance {
     const MIN_BATCH = 1;
     const MAX_BATCH = 50;
     const CRON_HOOK = 'mg_mockup_process_queue';
-    const CRON_GC_HOOK = 'mg_mockup_gc_cleanup';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
-    const LOCK_KEY = 'mg_mockup_queue_lock';
-    const LOCK_TTL = 300;
-    const MOCKUP_META_KEY = '_mg_generated_mockup';
 
     public static function init() {
         add_action('init', [__CLASS__, 'register_cron_schedule']);
         add_action('init', [__CLASS__, 'maybe_schedule_processor']);
-        add_action('init', [__CLASS__, 'maybe_schedule_gc']);
         add_action(self::CRON_HOOK, [__CLASS__, 'process_queue']);
-        add_action(self::CRON_GC_HOOK, [__CLASS__, 'run_garbage_collection']);
         add_filter('cron_schedules', [__CLASS__, 'register_interval']);
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_product_catalog_update'], 10, 2);
-        add_action('before_delete_post', [__CLASS__, 'handle_product_deleted']);
     }
 
     public static function register_interval($schedules) {
@@ -47,36 +38,16 @@ class MG_Mockup_Maintenance {
     }
 
     public static function maybe_schedule_processor() {
-        if (function_exists('as_enqueue_async_action')) {
-            if (!function_exists('as_next_scheduled_action') || !as_next_scheduled_action(self::CRON_HOOK)) {
-                as_enqueue_async_action(self::CRON_HOOK, [], 'mg_mockup');
-            }
-            return;
-        }
         if (!wp_next_scheduled(self::CRON_HOOK)) {
             self::register_cron_schedule();
         }
     }
 
-    public static function maybe_schedule_gc() {
-        if (wp_next_scheduled(self::CRON_GC_HOOK)) {
-            return;
-        }
-        wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::CRON_GC_HOOK);
-    }
-
     public static function get_index() {
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            $index = MG_Storage_Manager::get_mockup_index();
-        } else {
-            $index = get_option(self::OPTION_STATUS_INDEX, []);
-            $index = is_array($index) ? $index : [];
+        $index = get_option(self::OPTION_STATUS_INDEX, []);
+        if (!is_array($index)) {
+            $index = [];
         }
-        wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::CRON_GC_HOOK);
-    }
-
-    public static function get_index() {
-        $index = self::get_index_from_storage();
         list($normalized, $needs_update) = self::normalize_index_entries($index);
         if ($needs_update) {
             $index = $normalized;
@@ -145,10 +116,6 @@ class MG_Mockup_Maintenance {
     }
 
     public static function set_index($index) {
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            MG_Storage_Manager::set_mockup_index($index);
-            return;
-        }
         update_option(self::OPTION_STATUS_INDEX, $index, false);
     }
 
@@ -1259,7 +1226,6 @@ class MG_Mockup_Maintenance {
                 }
                 $cached = $product_cache[$product_id];
                 if (!$cached['exists'] || !$cached['active']) {
-                    self::cleanup_orphaned_assets($entry, true);
                     unset($pruned[$key]);
                     $needs_update = true;
                     continue;
@@ -1267,7 +1233,6 @@ class MG_Mockup_Maintenance {
             }
             $type_slug = sanitize_title($entry['type_slug'] ?? '');
             if ($type_slug !== '' && !self::find_type_definition($type_slug)) {
-                self::cleanup_orphaned_assets($entry, false);
                 unset($pruned[$key]);
                 $needs_update = true;
             }
@@ -1342,21 +1307,13 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
-        if (!self::acquire_lock(self::LOCK_KEY, self::LOCK_TTL)) {
-            return;
-        }
         $queue = self::get_queue();
         if (empty($queue)) {
-            self::release_lock(self::LOCK_KEY);
             return;
         }
         $batch = array_slice($queue, 0, self::get_batch_size());
-        try {
-            foreach ($batch as $key) {
-                self::process_single($key);
-            }
-        } finally {
-            self::release_lock(self::LOCK_KEY);
+        foreach ($batch as $key) {
+            self::process_single($key);
         }
     }
 
@@ -1519,26 +1476,6 @@ class MG_Mockup_Maintenance {
         return implode(' - ', $parts);
     }
 
-    private static function cleanup_orphaned_assets($entry, $remove_design = false) {
-        if (!is_array($entry)) {
-            return;
-        }
-        $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
-        if (!empty($old_attachments)) {
-            self::delete_old_attachments($old_attachments, []);
-        }
-        if (!$remove_design) {
-            return;
-        }
-        $design_attachment_id = absint($entry['source']['design_attachment_id'] ?? 0);
-        if ($design_attachment_id > 0) {
-            $generated = get_post_meta($design_attachment_id, '_mg_generated_design', true);
-            if ($generated) {
-                wp_delete_attachment($design_attachment_id, true);
-            }
-        }
-    }
-
     private static function ensure_design_webp($design_path, $product, $type, $color_slug, $entry) {
         $reference = [
             'design_path' => $design_path,
@@ -1619,9 +1556,6 @@ class MG_Mockup_Maintenance {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            $path = MG_Storage_Manager::dedupe_generated_asset($path);
-        }
         $existing_id = self::find_existing_attachment_id($path);
         if ($existing_id) {
             if ($title !== '') {
@@ -1654,18 +1588,12 @@ class MG_Mockup_Maintenance {
         if ($attach_id && $title !== '') {
             update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
         }
-        if ($attach_id) {
-            update_post_meta($attach_id, '_mg_generated_design', 1);
-        }
         return $attach_id;
     }
 
     private static function attach_image($path, $seo_text = '') {
         if (!function_exists('wp_check_filetype')) {
             return 0;
-        }
-        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
-            $path = MG_Storage_Manager::dedupe_generated_asset($path);
         }
         $existing_id = self::find_existing_attachment_id($path);
         if ($existing_id) {
@@ -1700,11 +1628,6 @@ class MG_Mockup_Maintenance {
         wp_update_attachment_metadata($attach_id, $attach_data);
         if ($attach_id && $seo_text !== '') {
             update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
-        }
-        if ($attach_id) {
-            update_post_meta($attach_id, self::MOCKUP_META_KEY, 1);
-        } elseif (is_string($path) && $path !== '' && file_exists($path)) {
-            @unlink($path);
         }
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
         remove_filter('big_image_size_threshold', '__return_false', 99);
@@ -1761,108 +1684,6 @@ class MG_Mockup_Maintenance {
             }
             wp_delete_attachment($attachment_id, true);
         }
-    }
-
-    public static function handle_product_deleted($post_id) {
-        $post_id = absint($post_id);
-        if ($post_id <= 0) {
-            return;
-        }
-        if (get_post_type($post_id) !== 'product') {
-            return;
-        }
-        self::purge_index_entries_for_product($post_id, true);
-    }
-
-    public static function purge_index_entries_for_product($product_id, $remove_design = false) {
-        $product_id = absint($product_id);
-        if ($product_id <= 0) {
-            return;
-        }
-        $index = self::get_index();
-        $queue = self::get_queue();
-        $index_changed = false;
-        $queue_changed = false;
-        foreach ($index as $key => $entry) {
-            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== $product_id) {
-                continue;
-            }
-            self::cleanup_orphaned_assets($entry, $remove_design);
-            unset($index[$key]);
-            $index_changed = true;
-            if (in_array($key, $queue, true)) {
-                $queue = array_values(array_diff($queue, [$key]));
-                $queue_changed = true;
-            }
-        }
-        if ($index_changed) {
-            self::set_index($index);
-        }
-        if ($queue_changed) {
-            self::set_queue($queue);
-        }
-    }
-
-    public static function run_garbage_collection() {
-        $index = self::prune_missing_references(self::get_index());
-        self::cleanup_orphaned_attachments($index);
-    }
-
-    private static function cleanup_orphaned_attachments($index) {
-        if (!function_exists('get_posts')) {
-            return;
-        }
-        $referenced = [];
-        $design_referenced = [];
-        foreach ((array) $index as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
-            foreach ($attachments as $id) {
-                $id = absint($id);
-                if ($id > 0) {
-                    $referenced[$id] = true;
-                }
-            }
-            $design_id = absint($entry['source']['design_attachment_id'] ?? 0);
-            if ($design_id > 0) {
-                $design_referenced[$design_id] = true;
-            }
-        }
-
-        self::cleanup_attachment_group(self::MOCKUP_META_KEY, $referenced);
-        self::cleanup_attachment_group('_mg_generated_design', $design_referenced);
-    }
-
-    private static function cleanup_attachment_group($meta_key, $referenced) {
-        $paged = 1;
-        $meta_key = sanitize_key($meta_key);
-        do {
-            $query = new WP_Query([
-                'post_type'      => 'attachment',
-                'post_status'    => 'inherit',
-                'posts_per_page' => 200,
-                'paged'          => $paged,
-                'fields'         => 'ids',
-                'meta_query'     => [
-                    [
-                        'key'   => $meta_key,
-                        'value' => 1,
-                    ],
-                ],
-            ]);
-            if (empty($query->posts)) {
-                break;
-            }
-            foreach ($query->posts as $attachment_id) {
-                $attachment_id = absint($attachment_id);
-                if ($attachment_id > 0 && empty($referenced[$attachment_id])) {
-                    wp_delete_attachment($attachment_id, true);
-                }
-            }
-            $paged++;
-        } while ($paged <= $query->max_num_pages);
     }
 
     private static function normalize_attributes($attributes) {
