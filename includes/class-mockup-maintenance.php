@@ -5,6 +5,8 @@ if (!defined('ABSPATH')) {
 
 class MG_Mockup_Maintenance {
     const OPTION_STATUS_INDEX = 'mg_mockup_status_index';
+    const OPTION_STATUS_INDEX_META = 'mg_mockup_status_index_meta';
+    const OPTION_STATUS_INDEX_CHUNK_PREFIX = 'mg_mockup_status_index_chunk_';
     const OPTION_QUEUE = 'mg_mockup_regen_queue';
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
     const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
@@ -70,6 +72,11 @@ class MG_Mockup_Maintenance {
             $index = get_option(self::OPTION_STATUS_INDEX, []);
             $index = is_array($index) ? $index : [];
         }
+        wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::CRON_GC_HOOK);
+    }
+
+    public static function get_index() {
+        $index = self::get_index_from_storage();
         list($normalized, $needs_update) = self::normalize_index_entries($index);
         if ($needs_update) {
             $index = $normalized;

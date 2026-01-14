@@ -5,11 +5,14 @@ if (!defined('ABSPATH')) {
 
 class MG_Variant_Maintenance {
     const OPTION_QUEUE = 'mg_variant_sync_queue';
+    const OPTION_QUEUE_META = 'mg_variant_sync_queue_meta';
+    const OPTION_QUEUE_CHUNK_PREFIX = 'mg_variant_sync_queue_chunk_';
     const OPTION_PROGRESS = 'mg_variant_sync_progress';
     const CRON_HOOK = 'mg_variant_sync_process';
     const CRON_TIME_LIMIT = 8.0;
     const LOCK_KEY = 'mg_variant_sync_lock';
     const LOCK_TTL = 300;
+    const QUEUE_CHUNK_SIZE = 50;
 
     public static function init() {
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_catalog_update'], 20, 2);
