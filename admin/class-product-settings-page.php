@@ -441,8 +441,10 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $sanitized_overrides = null;
         $working_overrides   = null;
 
+        $variant_sync_queued = false;
         if (isset($_POST['mg_save_product_nonce']) && wp_verify_nonce($_POST['mg_save_product_nonce'],'mg_save_product')) {
             $update_existing_prices = !empty($_POST['update_existing_prices']);
+            $run_variant_sync = !empty($_POST['mg_variant_sync']);
             $label = sanitize_text_field($_POST['label'] ?? '');
             if ($label !== '') {
                 $prod['label'] = $label;
@@ -689,6 +691,16 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                     echo '</p></div>';
                 }
             }
+            if ($run_variant_sync) {
+                if (!class_exists('MG_Variant_Maintenance')) {
+                    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Hiányzik a variáns karbantartó modul.', 'mgdtp') . '</p></div>';
+                } elseif (!MG_Variant_Maintenance::queue_type_sync($prod['key'])) {
+                    echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Nincs frissítendő variáns ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
+                } else {
+                    $variant_sync_queued = true;
+                    echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns frissítés elindult ehhez a terméktípushoz. A feldolgozás a háttérben fut.', 'mgdtp') . '</p></div>';
+                }
+            }
         }
 
         $sizes = $prod['sizes'];
@@ -797,6 +809,15 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         </div>
                     </div>
                 <?php endif; ?>
+
+                <h2>Variánsok frissítése</h2>
+                <p class="description"><?php esc_html_e('Ezzel a gombbal csak az aktuális terméktípushoz tartozó variánsokat frissítjük a meglévő termékekben.', 'mgdtp'); ?></p>
+                <p>
+                    <button type="submit" class="button button-secondary" name="mg_variant_sync" value="1">
+                        <?php esc_html_e('Variánsok frissítése ehhez a terméktípushoz', 'mgdtp'); ?>
+                    </button>
+                </p>
+                <p id="mg-variant-sync-status" class="description"></p>
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
@@ -1101,6 +1122,38 @@ if (function_exists('wp_editor')) {
           setTimeout(poll, 2000);
         })();
         </script>
+        <?php if ($variant_sync_queued) : ?>
+        <script>
+        (function(){
+          if (!window.ajaxurl) { return; }
+          var status = document.getElementById('mg-variant-sync-status');
+          var nonce = '<?php echo esc_js(wp_create_nonce('mg_ajax_nonce')); ?>';
+          var poll = function(){
+            var data = new URLSearchParams();
+            data.append('action', 'mg_variant_sync_run');
+            data.append('nonce', nonce);
+            fetch(window.ajaxurl, { method: 'POST', credentials: 'same-origin', body: data })
+              .then(function(resp){ return resp.json(); })
+              .then(function(payload){
+                if (!payload || !payload.success) { return; }
+                var remaining = parseInt((payload.data || {}).remaining || 0, 10);
+                if (status) {
+                  status.textContent = remaining > 0
+                    ? 'Folyamatban... Hátralévő csomagok: ' + remaining
+                    : 'A variáns frissítés befejeződött.';
+                }
+                if (remaining > 0) {
+                  setTimeout(poll, 2000);
+                }
+              })
+              .catch(function(){
+                setTimeout(poll, 4000);
+              });
+          };
+          poll();
+        })();
+        </script>
+        <?php endif; ?>
         <?php
     }
 
