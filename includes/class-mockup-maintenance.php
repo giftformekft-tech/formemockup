@@ -21,6 +21,7 @@ class MG_Mockup_Maintenance {
         add_action(self::CRON_HOOK, [__CLASS__, 'process_queue']);
         add_filter('cron_schedules', [__CLASS__, 'register_interval']);
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_product_catalog_update'], 10, 2);
+        add_action('before_delete_post', [__CLASS__, 'cleanup_product_mockups'], 10, 1);
     }
 
     public static function register_interval($schedules) {
@@ -117,6 +118,29 @@ class MG_Mockup_Maintenance {
 
     public static function set_index($index) {
         update_option(self::OPTION_STATUS_INDEX, $index, false);
+    }
+
+    public static function cleanup_product_mockups($post_id) {
+        if (get_post_type($post_id) !== 'product') {
+            return;
+        }
+        $index = self::get_index();
+        if (empty($index)) {
+            return;
+        }
+        foreach ($index as $key => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            if ((int) ($entry['product_id'] ?? 0) !== (int) $post_id) {
+                continue;
+            }
+            $source = is_array($entry['source'] ?? null) ? $entry['source'] : [];
+            $attachment_ids = $source['attachment_ids'] ?? [];
+            self::delete_old_attachments($attachment_ids, []);
+            unset($index[$key]);
+        }
+        self::set_index($index);
     }
 
     public static function get_queue() {
@@ -1307,13 +1331,22 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
-        $queue = self::get_queue();
-        if (empty($queue)) {
+        $lock_key = 'mg_mockup_queue_lock';
+        if (get_transient($lock_key)) {
             return;
         }
-        $batch = array_slice($queue, 0, self::get_batch_size());
-        foreach ($batch as $key) {
-            self::process_single($key);
+        set_transient($lock_key, 1, 300);
+        try {
+            $queue = self::get_queue();
+            if (empty($queue)) {
+                return;
+            }
+            $batch = array_slice($queue, 0, self::get_batch_size());
+            foreach ($batch as $key) {
+                self::process_single($key);
+            }
+        } finally {
+            delete_transient($lock_key);
         }
     }
 
