@@ -1839,11 +1839,18 @@ class MG_Mockup_Maintenance {
         $new_value = is_array($new_value) ? $new_value : [];
         $old_value = is_array($old_value) ? $old_value : [];
         $old_map = [];
+        $new_map = [];
         foreach ($old_value as $type) {
             if (!is_array($type) || empty($type['key'])) {
                 continue;
             }
             $old_map[sanitize_title($type['key'])] = $type;
+        }
+        foreach ($new_value as $type) {
+            if (!is_array($type) || empty($type['key'])) {
+                continue;
+            }
+            $new_map[sanitize_title($type['key'])] = $type;
         }
         $index_snapshot = self::get_index();
         $index_lookup = [];
@@ -1869,6 +1876,19 @@ class MG_Mockup_Maintenance {
             $index_lookup[$type_key][$color_key][] = $entry;
         }
 
+        $removed_types = array_diff(array_keys($old_map), array_keys($new_map));
+        if (!empty($removed_types)) {
+            foreach ($removed_types as $type_slug) {
+                $type_slug = sanitize_title($type_slug);
+                if ($type_slug === '' || empty($index_lookup[$type_slug]['__all_products'])) {
+                    continue;
+                }
+                foreach (array_keys($index_lookup[$type_slug]['__all_products']) as $product_id) {
+                    self::purge_index_entries_for_type($product_id, $type_slug);
+                }
+            }
+        }
+
         $regen_requests = [];
         foreach ($new_value as $type) {
             if (!is_array($type) || empty($type['key'])) {
@@ -1880,6 +1900,26 @@ class MG_Mockup_Maintenance {
             $old_colors = self::normalize_colors_from_type($old_type);
             $new_overrides = self::normalize_overrides_from_type($type);
             $old_overrides = self::normalize_overrides_from_type($old_type);
+            $old_label = '';
+            if ($old_type) {
+                $old_label = sanitize_text_field($old_type['label'] ?? $old_type['name'] ?? $old_type['key'] ?? '');
+            }
+            $new_label = sanitize_text_field($type['label'] ?? $type['name'] ?? $type['key'] ?? '');
+            if ($old_type && $old_label !== '' && $new_label !== '' && $old_label !== $new_label && isset($index_lookup[$slug])) {
+                foreach ($index_lookup[$slug] as $color_slug => $entries) {
+                    if ($color_slug === '__all_products' || empty($entries)) {
+                        continue;
+                    }
+                    foreach ($entries as $entry) {
+                        $regen_requests[] = [
+                            'product_id' => $entry['product_id'],
+                            'type_slug'  => $slug,
+                            'color_slug' => $entry['color_slug'],
+                            'reason'     => __('A terméktípus neve megváltozott.', 'mgdtp'),
+                        ];
+                    }
+                }
+            }
             $old_hash = md5(wp_json_encode($old_type['views'] ?? []));
             $new_hash = md5(wp_json_encode($type['views'] ?? []));
             if ($old_type && $old_hash !== $new_hash && isset($index_lookup[$slug])) {
@@ -1894,6 +1934,22 @@ class MG_Mockup_Maintenance {
                             'color_slug' => $entry['color_slug'],
                             'reason'     => __('A nézetek módosultak.', 'mgdtp'),
                         ];
+                    }
+                }
+            }
+            $removed_colors = array_diff(array_keys($old_colors), array_keys($colors));
+            if (!empty($removed_colors) && isset($index_lookup[$slug])) {
+                foreach ($removed_colors as $color_slug) {
+                    $color_slug = sanitize_title($color_slug);
+                    if ($color_slug === '') {
+                        continue;
+                    }
+                    $entries = isset($index_lookup[$slug][$color_slug]) ? $index_lookup[$slug][$color_slug] : [];
+                    if (empty($entries)) {
+                        continue;
+                    }
+                    foreach ($entries as $entry) {
+                        self::purge_index_entries_for_type($entry['product_id'], $slug, [$color_slug]);
                     }
                 }
             }
