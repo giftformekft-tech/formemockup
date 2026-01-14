@@ -42,4 +42,59 @@
         slider.addEventListener('change', update);
         update();
     });
+
+    document.addEventListener('DOMContentLoaded', function(){
+        var progressWrap = document.querySelector('[data-variant-progress]');
+        if (!progressWrap || typeof window.MG_MOCKUP_MAINTENANCE === 'undefined') {
+            return;
+        }
+        var bar = progressWrap.querySelector('.progress-bar span');
+        var barWrap = progressWrap.querySelector('.progress-bar');
+        var statusEl = progressWrap.querySelector('[data-variant-progress-status]');
+        var valueEl = progressWrap.querySelector('[data-variant-progress-value]');
+        var runningLabel = progressWrap.getAttribute('data-label-running') || '';
+        var idleLabel = progressWrap.getAttribute('data-label-idle') || '';
+        var endpoint = window.MG_MOCKUP_MAINTENANCE.ajax_url || '';
+        var nonce = window.MG_MOCKUP_MAINTENANCE.nonce || '';
+
+        if (!endpoint || !nonce) {
+            return;
+        }
+
+        var applyData = function(data){
+            if (!data) {
+                return;
+            }
+            var percent = parseInt(data.percent || 0, 10);
+            var current = parseInt(data.current || 0, 10);
+            var total = parseInt(data.total || 0, 10);
+            var status = data.status || 'idle';
+            if (bar) {
+                bar.style.width = percent + '%';
+            }
+            if (barWrap) {
+                barWrap.setAttribute('aria-valuenow', percent);
+            }
+            if (statusEl) {
+                statusEl.textContent = status === 'running' ? runningLabel : idleLabel;
+            }
+            if (valueEl) {
+                valueEl.textContent = total > 0 ? (current + ' / ' + total) : valueEl.textContent;
+            }
+        };
+
+        var refresh = function(){
+            fetch(endpoint + '?action=mg_variant_progress&nonce=' + encodeURIComponent(nonce), { credentials: 'same-origin' })
+                .then(function(response){ return response.json(); })
+                .then(function(payload){
+                    if (payload && payload.success) {
+                        applyData(payload.data);
+                    }
+                })
+                .catch(function(){});
+        };
+
+        refresh();
+        setInterval(refresh, 4000);
+    });
 })();
