@@ -1243,6 +1243,69 @@ class MG_Mockup_Maintenance {
         return $pruned;
     }
 
+    public static function purge_index_entries_for_type($product_id, $type_slug, $color_slugs = []) {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        if ($product_id <= 0 || $type_slug === '') {
+            return;
+        }
+        $index = self::get_index();
+        $queue = self::get_queue();
+        $colors = [];
+        if (!empty($color_slugs)) {
+            foreach ((array) $color_slugs as $color_slug) {
+                $color_slug = sanitize_title($color_slug);
+                if ($color_slug !== '') {
+                    $colors[$color_slug] = true;
+                }
+            }
+        } else {
+            foreach ($index as $entry) {
+                if (($entry['product_id'] ?? 0) != $product_id) {
+                    continue;
+                }
+                if (sanitize_title($entry['type_slug'] ?? '') !== $type_slug) {
+                    continue;
+                }
+                $color_slug = sanitize_title($entry['color_slug'] ?? '');
+                if ($color_slug !== '') {
+                    $colors[$color_slug] = true;
+                }
+            }
+        }
+
+        if (empty($colors)) {
+            return;
+        }
+
+        $index_changed = false;
+        $queue_changed = false;
+        foreach (array_keys($colors) as $color_slug) {
+            $key = self::compose_key($product_id, $type_slug, $color_slug);
+            if (!isset($index[$key])) {
+                continue;
+            }
+            $entry = $index[$key];
+            $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+            if (!empty($old_attachments)) {
+                self::delete_old_attachments($old_attachments, []);
+            }
+            unset($index[$key]);
+            $index_changed = true;
+            if (in_array($key, $queue, true)) {
+                $queue = array_values(array_diff($queue, [$key]));
+                $queue_changed = true;
+            }
+        }
+
+        if ($index_changed) {
+            self::set_index($index);
+        }
+        if ($queue_changed) {
+            self::set_queue($queue);
+        }
+    }
+
     public static function process_queue() {
         $queue = self::get_queue();
         if (empty($queue)) {
@@ -1292,6 +1355,12 @@ class MG_Mockup_Maintenance {
             self::log_activity($entry, 'missing', $index[$key]['last_message']);
             return;
         }
+        $normalized_colors = self::normalize_colors_from_type($type);
+        if ($color_slug !== '' && !isset($normalized_colors[$color_slug])) {
+            self::purge_index_entries_for_type($product_id, $type_slug, [$color_slug]);
+            self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
+            return;
+        }
         if (!function_exists('wc_get_product')) {
             return; // WooCommerce not loaded yet.
         }
@@ -1304,6 +1373,9 @@ class MG_Mockup_Maintenance {
             self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
             self::log_activity($entry, 'missing', $index[$key]['last_message']);
             return;
+        }
+        if (class_exists('MG_Variant_Maintenance')) {
+            MG_Variant_Maintenance::sync_product_variants($product_id, $type_slug, $type);
         }
         require_once __DIR__ . '/class-generator.php';
         $generator = new MG_Generator();
