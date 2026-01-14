@@ -1626,20 +1626,6 @@ class MG_Mockup_Maintenance {
         return $attach_id;
     }
 
-    private static function acquire_lock($key, $ttl) {
-        $key = sanitize_key($key);
-        $ttl = max(10, (int) $ttl);
-        if (get_transient($key)) {
-            return false;
-        }
-        return set_transient($key, time(), $ttl);
-    }
-
-    private static function release_lock($key) {
-        $key = sanitize_key($key);
-        delete_transient($key);
-    }
-
     private static function attach_image($path, $seo_text = '') {
         if (!function_exists('wp_check_filetype')) {
             return 0;
