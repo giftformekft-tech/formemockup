@@ -1564,9 +1564,16 @@ class MG_Mockup_Maintenance {
         if (is_wp_error($saved) || empty($saved['path']) || !file_exists($saved['path'])) {
             return $reference;
         }
-        $reference['design_path'] = $saved['path'];
+        $saved_path = $saved['path'];
+        if (class_exists('MG_Storage_Manager') && method_exists('MG_Storage_Manager', 'dedupe_generated_asset')) {
+            $deduped = MG_Storage_Manager::dedupe_generated_asset($saved_path);
+            if (is_string($deduped) && $deduped !== '') {
+                $saved_path = $deduped;
+            }
+        }
+        $reference['design_path'] = $saved_path;
         $title = self::compose_design_title($product, $type, $color_slug);
-        $attachment_id = self::attach_design_image($saved['path'], $title);
+        $attachment_id = self::attach_design_image($saved_path, $title);
         if ($attachment_id) {
             $reference['design_attachment_id'] = $attachment_id;
         }
