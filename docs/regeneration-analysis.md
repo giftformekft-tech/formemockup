@@ -49,6 +49,12 @@
    - Törléskor: attachment + fájl törlés.
    - Módosításkor: régiek leváltása, új útvonal mentése.
 
+**Javasolt implementációs leképezés a jelenlegi rendszerre:**
+- **Input változás érzékelése:** `handle_product_catalog_update()` + `MG_Variant_Maintenance::handle_catalog_update()` figyeli a típust, színt, méretet.
+- **Create/Update queue:** `queue_multiple_for_regeneration()` hozza létre a feldolgozandó elemeket.
+- **Delete lépés:** `purge_index_entries_for_type()` végzi a törlést és attachment takarítást.
+- **Generálás:** `process_queue()` → `process_single()` → `MG_Generator::generate_for_product()` → manifest dedupe.
+
 ### 4) Új terméktípus hozzáadása meglévő termékekhez
 **Elvárt viselkedés:** a már generált termékekhez később is hozzáadható legyen az új típus, és készüljenek el a hiányzó képek.
 
@@ -74,4 +80,3 @@
 - **Törlés → variáns + fájl + attachment törlés**.
 - **Átnevezés → variáns/metadata frissítés**.
 - **Deduplikáció → nem keletkezik duplikált fájl**.
-
