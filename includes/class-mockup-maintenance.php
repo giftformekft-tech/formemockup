@@ -236,6 +236,131 @@ class MG_Mockup_Maintenance {
         return $out;
     }
 
+    private static function detect_color_slug_renames($old_colors, $new_colors) {
+        if (!is_array($old_colors) || !is_array($new_colors)) {
+            return [];
+        }
+        $identity_to_new = [];
+        foreach ($new_colors as $slug => $color) {
+            if (!is_array($color)) {
+                continue;
+            }
+            $identity = self::color_identity_key($color);
+            if ($identity === '') {
+                continue;
+            }
+            if (!isset($identity_to_new[$identity])) {
+                $identity_to_new[$identity] = $slug;
+            } else {
+                $identity_to_new[$identity] = null;
+            }
+        }
+
+        $renames = [];
+        foreach ($old_colors as $old_slug => $color) {
+            if (!is_array($color) || isset($new_colors[$old_slug])) {
+                continue;
+            }
+            $identity = self::color_identity_key($color);
+            if ($identity === '' || empty($identity_to_new[$identity])) {
+                continue;
+            }
+            $new_slug = $identity_to_new[$identity];
+            if (!isset($new_colors[$new_slug])) {
+                continue;
+            }
+            if ($new_slug !== $old_slug) {
+                $renames[$old_slug] = $new_slug;
+            }
+        }
+        return $renames;
+    }
+
+    private static function color_identity_key($color) {
+        if (!is_array($color)) {
+            return '';
+        }
+        if (!empty($color['hex'])) {
+            $hex = is_string($color['hex']) ? $color['hex'] : '';
+            $hex = function_exists('sanitize_hex_color') ? sanitize_hex_color($hex) : $hex;
+            if ($hex) {
+                return 'hex:' . strtolower($hex);
+            }
+        }
+        $name = '';
+        if (!empty($color['name'])) {
+            $name = sanitize_text_field($color['name']);
+        } elseif (!empty($color['label'])) {
+            $name = sanitize_text_field($color['label']);
+        }
+        if ($name !== '') {
+            return 'name:' . strtolower($name);
+        }
+        return '';
+    }
+
+    private static function apply_color_slug_renames($type_slug, $renames, $new_colors) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '' || empty($renames)) {
+            return;
+        }
+        $index = self::get_index();
+        $queue = self::get_queue();
+        $index_changed = false;
+        $queue_changed = false;
+        foreach ($renames as $old_slug => $new_slug) {
+            $old_slug = sanitize_title($old_slug);
+            $new_slug = sanitize_title($new_slug);
+            if ($old_slug === '' || $new_slug === '' || $old_slug === $new_slug) {
+                continue;
+            }
+            foreach ($index as $key => $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+                if (($entry['type_slug'] ?? '') !== $type_slug) {
+                    continue;
+                }
+                if (sanitize_title($entry['color_slug'] ?? '') !== $old_slug) {
+                    continue;
+                }
+                $product_id = absint($entry['product_id'] ?? 0);
+                if ($product_id <= 0) {
+                    continue;
+                }
+                $entry['color_slug'] = $new_slug;
+                if (isset($new_colors[$new_slug]) && is_array($new_colors[$new_slug])) {
+                    $label = $new_colors[$new_slug]['name'] ?? $new_colors[$new_slug]['label'] ?? '';
+                    if ($label !== '') {
+                        $entry['source']['color_label'] = sanitize_text_field($label);
+                    }
+                }
+                $entry['updated_at'] = self::current_timestamp();
+                $new_key = self::compose_key($product_id, $type_slug, $new_slug);
+                if (isset($index[$new_key])) {
+                    $index[$new_key] = self::prefer_latest_entry($index[$new_key], $entry);
+                } else {
+                    $index[$new_key] = $entry;
+                }
+                if ($new_key !== $key) {
+                    unset($index[$key]);
+                }
+                $index_changed = true;
+                if (in_array($key, $queue, true)) {
+                    $queue = array_values(array_diff($queue, [$key]));
+                    $queue[] = $new_key;
+                    $queue_changed = true;
+                }
+            }
+        }
+        if ($index_changed) {
+            self::set_index($index);
+        }
+        if ($queue_changed) {
+            self::set_queue(array_values(array_unique($queue)));
+        }
+    }
+
     private static function normalize_single_override_path($path) {
         if (!is_string($path)) {
             return '';
@@ -1859,6 +1984,21 @@ class MG_Mockup_Maintenance {
             }
             $new_map[sanitize_title($type['key'])] = $type;
         }
+        foreach ($new_value as $type) {
+            if (!is_array($type) || empty($type['key'])) {
+                continue;
+            }
+            $slug = sanitize_title($type['key']);
+            if ($slug === '' || empty($old_map[$slug])) {
+                continue;
+            }
+            $old_colors = self::normalize_colors_from_type($old_map[$slug]);
+            $new_colors = self::normalize_colors_from_type($type);
+            $renames = self::detect_color_slug_renames($old_colors, $new_colors);
+            if (!empty($renames)) {
+                self::apply_color_slug_renames($slug, $renames, $new_colors);
+            }
+        }
         $index_snapshot = self::get_index();
         $index_lookup = [];
         $existing_keys = array_fill_keys(array_keys($index_snapshot), true);
@@ -1908,6 +2048,8 @@ class MG_Mockup_Maintenance {
             $colors = self::normalize_colors_from_type($type);
             $old_type = isset($old_map[$slug]) ? $old_map[$slug] : null;
             $old_colors = self::normalize_colors_from_type($old_type);
+            $color_renames = self::detect_color_slug_renames($old_colors, $colors);
+            $renamed_new_slugs = array_values($color_renames);
             $new_overrides = self::normalize_overrides_from_type($type);
             $old_overrides = self::normalize_overrides_from_type($old_type);
             $old_label = '';
@@ -1970,6 +2112,9 @@ class MG_Mockup_Maintenance {
                 }
             }
             $removed_colors = array_diff(array_keys($old_colors), array_keys($colors));
+            if (!empty($color_renames)) {
+                $removed_colors = array_diff($removed_colors, array_keys($color_renames));
+            }
             if (!empty($removed_colors) && isset($index_lookup[$slug])) {
                 foreach ($removed_colors as $color_slug) {
                     $color_slug = sanitize_title($color_slug);
@@ -2032,6 +2177,9 @@ class MG_Mockup_Maintenance {
                         ];
                     }
                 } elseif (!$old_color_hash && isset($index_lookup[$slug]['__all_products'])) {
+                    if (!empty($renamed_new_slugs) && in_array($color_key, $renamed_new_slugs, true)) {
+                        continue;
+                    }
                     foreach (array_keys($index_lookup[$slug]['__all_products']) as $product_id) {
                         $regen_requests[] = [
                             'product_id' => $product_id,

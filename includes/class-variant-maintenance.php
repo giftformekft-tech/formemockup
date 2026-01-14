@@ -41,20 +41,27 @@ class MG_Variant_Maintenance {
 
             $added_colors = array_diff(array_keys($type_data['colors']), array_keys($old_data['colors']));
             $added_sizes = array_diff($type_data['sizes'], $old_data['sizes']);
+            $size_renames = self::detect_size_renames($type_data, $old_data, $added_sizes);
+            if (!empty($size_renames)) {
+                $added_sizes = array_diff($added_sizes, array_values($size_renames));
+            }
             $allowed_additions = self::detect_allowed_size_additions($type_data, $old_data);
             $removed_colors = array_diff(array_keys($old_data['colors']), array_keys($type_data['colors']));
             $removed_sizes = array_diff($old_data['sizes'], $type_data['sizes']);
+            if (!empty($size_renames)) {
+                $removed_sizes = array_diff($removed_sizes, array_keys($size_renames));
+            }
             $removed_allowed = self::detect_removed_size_allowances($type_data, $old_data);
 
             if (empty($added_colors) && empty($added_sizes) && empty($allowed_additions)
-                && empty($removed_colors) && empty($removed_sizes) && empty($removed_allowed)
+                && empty($removed_colors) && empty($removed_sizes) && empty($removed_allowed) && empty($size_renames)
             ) {
                 continue;
             }
 
             $product_ids = $is_new_type ? self::collect_all_products() : self::collect_products_for_type($type_slug);
             if (!empty($product_ids)) {
-                self::queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids);
+                self::queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids, $size_renames);
             }
         }
 
@@ -178,6 +185,68 @@ class MG_Variant_Maintenance {
         return $additions;
     }
 
+    private static function detect_size_renames($new_data, $old_data, $added_sizes) {
+        $added_sizes = is_array($added_sizes) ? array_values($added_sizes) : [];
+        $removed_sizes = array_diff($old_data['sizes'] ?? [], $new_data['sizes'] ?? []);
+        if (empty($added_sizes) || empty($removed_sizes)) {
+            return [];
+        }
+        $renames = [];
+        $used_new = [];
+        foreach ($removed_sizes as $old_size) {
+            if (!is_string($old_size) || $old_size === '') {
+                continue;
+            }
+            $old_allowed = self::colors_for_size_label($old_data, $old_size);
+            $candidate = '';
+            foreach ($added_sizes as $new_size) {
+                if (!is_string($new_size) || $new_size === '' || isset($used_new[$new_size])) {
+                    continue;
+                }
+                if (strcasecmp($old_size, $new_size) === 0) {
+                    $candidate = $new_size;
+                    break;
+                }
+                $new_allowed = self::colors_for_size_label($new_data, $new_size);
+                if (!empty($old_allowed) && !empty($new_allowed) && $old_allowed === $new_allowed) {
+                    if ($candidate !== '') {
+                        $candidate = '';
+                        break;
+                    }
+                    $candidate = $new_size;
+                }
+            }
+            if ($candidate !== '' && $candidate !== $old_size) {
+                $renames[$old_size] = $candidate;
+                $used_new[$candidate] = true;
+            }
+        }
+        return $renames;
+    }
+
+    private static function colors_for_size_label($data, $size_label) {
+        $size_label = is_string($size_label) ? sanitize_text_field($size_label) : '';
+        if ($size_label === '') {
+            return [];
+        }
+        $matrix = isset($data['matrix']) && is_array($data['matrix']) ? $data['matrix'] : [];
+        if (empty($matrix)) {
+            return [];
+        }
+        $colors = isset($matrix[$size_label]) && is_array($matrix[$size_label]) ? $matrix[$size_label] : [];
+        $normalized = [];
+        foreach ($colors as $color_slug) {
+            $color_slug = sanitize_title($color_slug);
+            if ($color_slug === '') {
+                continue;
+            }
+            $normalized[] = $color_slug;
+        }
+        $normalized = array_values(array_unique($normalized));
+        sort($normalized);
+        return $normalized;
+    }
+
     private static function detect_removed_size_allowances($new_data, $old_data) {
         $removals = [];
         $color_slugs = array_unique(array_merge(array_keys($new_data['colors']), array_keys($old_data['colors'])));
@@ -222,8 +291,8 @@ class MG_Variant_Maintenance {
         return array_values(array_unique($allowed));
     }
 
-    private static function process_single_product($product_id, $type_slug, $type_data, $added_colors, $allowed_additions) {
-        self::sync_product_variants($product_id, $type_slug, $type_data);
+    private static function process_single_product($product_id, $type_slug, $type_data, $added_colors, $allowed_additions, $size_renames) {
+        self::sync_product_variants($product_id, $type_slug, $type_data, $size_renames);
         $missing = self::determine_missing_variants($product_id, $type_slug, $type_data, $added_colors, $allowed_additions);
         if (empty($missing)) {
             return;
@@ -499,7 +568,8 @@ class MG_Variant_Maintenance {
                         $normalized['type_slug'],
                         $normalized['type_data'],
                         $normalized['added_colors'],
-                        $normalized['allowed_additions']
+                        $normalized['allowed_additions'],
+                        $normalized['size_renames']
                     );
                 }
             }
@@ -570,7 +640,7 @@ class MG_Variant_Maintenance {
         return true;
     }
 
-    private static function queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids) {
+    private static function queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids, $size_renames = []) {
         $type_slug = sanitize_title($type_slug);
         if ($type_slug === '') {
             return;
@@ -584,6 +654,7 @@ class MG_Variant_Maintenance {
         $normalized_type = self::normalize_type_data_for_queue($type_data);
         $normalized_colors = self::normalize_color_list($added_colors);
         $normalized_allowed = self::normalize_allowed_additions_map($allowed_additions);
+        $normalized_renames = self::normalize_size_rename_map($size_renames);
 
         $merged = false;
         foreach ($queue as &$entry) {
@@ -593,17 +664,20 @@ class MG_Variant_Maintenance {
             $entry_type = self::normalize_type_data_for_queue(isset($entry['type_data']) ? $entry['type_data'] : []);
             $entry_colors = self::normalize_color_list(isset($entry['added_colors']) ? $entry['added_colors'] : []);
             $entry_allowed = self::normalize_allowed_additions_map(isset($entry['allowed_additions']) ? $entry['allowed_additions'] : []);
+            $entry_renames = self::normalize_size_rename_map(isset($entry['size_renames']) ? $entry['size_renames'] : []);
             $entry_products = array_values(array_unique(array_filter(array_map('absint', isset($entry['product_ids']) ? $entry['product_ids'] : []))));
 
             $entry_type = self::merge_type_data($entry_type, $normalized_type);
             $entry_colors = array_values(array_unique(array_merge($entry_colors, $normalized_colors)));
             $entry_allowed = self::merge_allowed_additions($entry_allowed, $normalized_allowed);
+            $entry_renames = self::merge_size_rename_map($entry_renames, $normalized_renames);
             $entry_products = array_values(array_unique(array_merge($entry_products, $product_ids)));
 
             $entry['type_slug'] = $type_slug;
             $entry['type_data'] = $entry_type;
             $entry['added_colors'] = $entry_colors;
             $entry['allowed_additions'] = $entry_allowed;
+            $entry['size_renames'] = $entry_renames;
             $entry['remove_type'] = !empty($entry['remove_type']);
             $entry['product_ids'] = $entry_products;
             $merged = true;
@@ -617,6 +691,7 @@ class MG_Variant_Maintenance {
                 'type_data' => $normalized_type,
                 'added_colors' => $normalized_colors,
                 'allowed_additions' => $normalized_allowed,
+                'size_renames' => $normalized_renames,
                 'remove_type' => false,
                 'product_ids' => $product_ids,
             ];
@@ -631,6 +706,7 @@ class MG_Variant_Maintenance {
         $type_data = self::normalize_type_data_for_queue(is_array($item) && isset($item['type_data']) ? $item['type_data'] : []);
         $added_colors = self::normalize_color_list(is_array($item) && isset($item['added_colors']) ? $item['added_colors'] : []);
         $allowed_additions = self::normalize_allowed_additions_map(is_array($item) && isset($item['allowed_additions']) ? $item['allowed_additions'] : []);
+        $size_renames = self::normalize_size_rename_map(is_array($item) && isset($item['size_renames']) ? $item['size_renames'] : []);
         $remove_type = !empty($item['remove_type']);
         $product_ids = [];
         if (is_array($item) && isset($item['product_ids']) && is_array($item['product_ids'])) {
@@ -648,6 +724,7 @@ class MG_Variant_Maintenance {
             'type_data' => $type_data,
             'added_colors' => $added_colors,
             'allowed_additions' => $allowed_additions,
+            'size_renames' => $size_renames,
             'remove_type' => $remove_type,
             'product_ids' => $product_ids,
         ];
@@ -781,6 +858,36 @@ class MG_Variant_Maintenance {
         return $normalized;
     }
 
+    private static function normalize_size_rename_map($input) {
+        $normalized = [];
+        if (!is_array($input)) {
+            return $normalized;
+        }
+        foreach ($input as $old_size => $new_size) {
+            if (!is_string($old_size) || !is_string($new_size)) {
+                continue;
+            }
+            $old_size = sanitize_text_field($old_size);
+            $new_size = sanitize_text_field($new_size);
+            if ($old_size === '' || $new_size === '' || $old_size === $new_size) {
+                continue;
+            }
+            $normalized[$old_size] = $new_size;
+        }
+        return $normalized;
+    }
+
+    private static function merge_size_rename_map($current, $incoming) {
+        $current = is_array($current) ? $current : [];
+        $incoming = is_array($incoming) ? $incoming : [];
+        foreach ($incoming as $old_size => $new_size) {
+            if (!isset($current[$old_size])) {
+                $current[$old_size] = $new_size;
+            }
+        }
+        return $current;
+    }
+
     private static function merge_allowed_additions($current, $incoming) {
         if (!is_array($current)) {
             $current = [];
@@ -869,7 +976,7 @@ class MG_Variant_Maintenance {
         self::maybe_schedule_processor();
     }
 
-    public static function sync_product_variants($product_id, $type_slug, $type_data) {
+    public static function sync_product_variants($product_id, $type_slug, $type_data, $size_renames = []) {
         $product_id = absint($product_id);
         $type_slug = sanitize_title($type_slug);
         if ($product_id <= 0 || $type_slug === '') {
@@ -886,6 +993,11 @@ class MG_Variant_Maintenance {
             ];
         }
         $normalized = self::normalize_type_data_for_queue($type_data);
+        $size_renames = self::normalize_size_rename_map($size_renames);
+        $renamed_variations = false;
+        if (!empty($size_renames)) {
+            $renamed_variations = self::apply_size_renames($product, $type_slug, $size_renames);
+        }
         $colors = array_keys($normalized['colors']);
         $allowed_by_color = [];
         foreach ($colors as $color_slug) {
@@ -965,7 +1077,7 @@ class MG_Variant_Maintenance {
             }
         }
 
-        if (!empty($removed_colors) || !empty($added_variants)) {
+        if (!empty($removed_colors) || !empty($added_variants) || $renamed_variations) {
             self::refresh_product_attributes_from_variations($product);
             if (function_exists('wc_delete_product_transients')) {
                 wc_delete_product_transients($product->get_id());
@@ -985,6 +1097,38 @@ class MG_Variant_Maintenance {
             'removed_colors' => array_keys($removed_colors),
             'added_variants' => $added_variants,
         ];
+    }
+
+    private static function apply_size_renames($product, $type_slug, $size_renames) {
+        if (!is_array($size_renames) || empty($size_renames)) {
+            return false;
+        }
+        $existing = self::map_existing_variations_with_ids($product, $type_slug);
+        if (empty($existing)) {
+            return false;
+        }
+        $updated = false;
+        foreach ($size_renames as $old_size => $new_size) {
+            if ($old_size === $new_size) {
+                continue;
+            }
+            foreach ($existing as $color_slug => $sizes) {
+                if (empty($sizes[$old_size]) || !empty($sizes[$new_size])) {
+                    continue;
+                }
+                $variation_id = $sizes[$old_size];
+                $variation = wc_get_product($variation_id);
+                if (!$variation || !method_exists($variation, 'get_attributes')) {
+                    continue;
+                }
+                $attributes = $variation->get_attributes();
+                $attributes['meret'] = $new_size;
+                $variation->set_attributes($attributes);
+                $variation->save();
+                $updated = true;
+            }
+        }
+        return $updated;
     }
 
     public static function get_progress() {
