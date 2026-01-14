@@ -1331,13 +1331,22 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
-        $queue = self::get_queue();
-        if (empty($queue)) {
+        $lock_key = 'mg_mockup_queue_lock';
+        if (get_transient($lock_key)) {
             return;
         }
-        $batch = array_slice($queue, 0, self::get_batch_size());
-        foreach ($batch as $key) {
-            self::process_single($key);
+        set_transient($lock_key, 1, 300);
+        try {
+            $queue = self::get_queue();
+            if (empty($queue)) {
+                return;
+            }
+            $batch = array_slice($queue, 0, self::get_batch_size());
+            foreach ($batch as $key) {
+                self::process_single($key);
+            }
+        } finally {
+            delete_transient($lock_key);
         }
     }
 
