@@ -8,6 +8,8 @@ class MG_Variant_Maintenance {
     const OPTION_PROGRESS = 'mg_variant_sync_progress';
     const CRON_HOOK = 'mg_variant_sync_process';
     const CRON_TIME_LIMIT = 8.0;
+    const LOCK_KEY = 'mg_variant_sync_lock';
+    const LOCK_TTL = 300;
 
     public static function init() {
         add_filter('pre_update_option_mg_products', [__CLASS__, 'handle_catalog_update'], 20, 2);
@@ -472,6 +474,7 @@ class MG_Variant_Maintenance {
         $queue = self::get_queue();
         if (empty($queue)) {
             self::set_queue([]);
+            self::release_lock(self::LOCK_KEY);
             return;
         }
 
@@ -519,11 +522,15 @@ class MG_Variant_Maintenance {
             }
         }
 
-        if (!empty($remaining)) {
-            self::set_queue($remaining);
-            self::maybe_schedule_processor();
-        } else {
-            self::set_queue([]);
+        try {
+            if (!empty($remaining)) {
+                self::set_queue($remaining);
+                self::maybe_schedule_processor();
+            } else {
+                self::set_queue([]);
+            }
+        } finally {
+            self::release_lock(self::LOCK_KEY);
         }
     }
 
@@ -1211,5 +1218,19 @@ class MG_Variant_Maintenance {
             $limit = self::CRON_TIME_LIMIT;
         }
         return $limit;
+    }
+
+    private static function acquire_lock($key, $ttl) {
+        $key = sanitize_key($key);
+        $ttl = max(10, (int) $ttl);
+        if (get_transient($key)) {
+            return false;
+        }
+        return set_transient($key, time(), $ttl);
+    }
+
+    private static function release_lock($key) {
+        $key = sanitize_key($key);
+        delete_transient($key);
     }
 }
