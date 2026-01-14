@@ -1191,49 +1191,19 @@ class MG_Variant_Maintenance {
     }
 
     private static function get_queue() {
-        $meta = get_option(self::OPTION_QUEUE_META, []);
-        $meta = is_array($meta) ? $meta : [];
-        $chunk_count = isset($meta['chunks']) ? (int) $meta['chunks'] : 0;
-        $queue = [];
-        if ($chunk_count > 0) {
-            for ($i = 1; $i <= $chunk_count; $i++) {
-                $chunk = get_option(self::OPTION_QUEUE_CHUNK_PREFIX . $i, []);
-                if (is_array($chunk)) {
-                    $queue = array_merge($queue, $chunk);
-                }
-            }
-            return array_values($queue);
+        if (class_exists('MG_Storage_Manager')) {
+            return MG_Storage_Manager::get_variant_queue();
         }
         $legacy = get_option(self::OPTION_QUEUE, []);
-        if (!is_array($legacy)) {
-            return [];
-        }
-        if (count($legacy) >= self::QUEUE_CHUNK_SIZE) {
-            self::set_queue($legacy);
-        }
-        return array_values($legacy);
+        return is_array($legacy) ? array_values($legacy) : [];
     }
 
     private static function set_queue($queue) {
-        if (!is_array($queue)) {
-            $queue = [];
+        if (class_exists('MG_Storage_Manager')) {
+            MG_Storage_Manager::set_variant_queue($queue);
+            return;
         }
-        $queue = array_values($queue);
-        $chunks = array_chunk($queue, self::QUEUE_CHUNK_SIZE);
-        $chunk_count = count($chunks);
-        $meta = get_option(self::OPTION_QUEUE_META, []);
-        $previous = is_array($meta) ? (int) ($meta['chunks'] ?? 0) : 0;
-        for ($i = 0; $i < $chunk_count; $i++) {
-            update_option(self::OPTION_QUEUE_CHUNK_PREFIX . ($i + 1), $chunks[$i], false);
-        }
-        for ($i = $chunk_count + 1; $i <= $previous; $i++) {
-            delete_option(self::OPTION_QUEUE_CHUNK_PREFIX . $i);
-        }
-        update_option(self::OPTION_QUEUE_META, [
-            'chunks' => $chunk_count,
-            'updated_at' => current_time('timestamp', true),
-        ], false);
-        delete_option(self::OPTION_QUEUE);
+        update_option(self::OPTION_QUEUE, array_values((array) $queue), false);
     }
 
     private static function maybe_schedule_processor() {

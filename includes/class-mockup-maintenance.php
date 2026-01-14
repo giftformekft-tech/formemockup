@@ -19,7 +19,6 @@ class MG_Mockup_Maintenance {
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
     const LOCK_KEY = 'mg_mockup_queue_lock';
     const LOCK_TTL = 300;
-    const INDEX_CHUNK_SIZE = 500;
     const MOCKUP_META_KEY = '_mg_generated_mockup';
 
     public static function init() {
@@ -62,6 +61,16 @@ class MG_Mockup_Maintenance {
     public static function maybe_schedule_gc() {
         if (wp_next_scheduled(self::CRON_GC_HOOK)) {
             return;
+        }
+        wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::CRON_GC_HOOK);
+    }
+
+    public static function get_index() {
+        if (class_exists('MG_Storage_Manager')) {
+            $index = MG_Storage_Manager::get_mockup_index();
+        } else {
+            $index = get_option(self::OPTION_STATUS_INDEX, []);
+            $index = is_array($index) ? $index : [];
         }
         wp_schedule_event(time() + HOUR_IN_SECONDS, 'daily', self::CRON_GC_HOOK);
     }
@@ -136,48 +145,11 @@ class MG_Mockup_Maintenance {
     }
 
     public static function set_index($index) {
-        if (!is_array($index)) {
-            $index = [];
+        if (class_exists('MG_Storage_Manager')) {
+            MG_Storage_Manager::set_mockup_index($index);
+            return;
         }
-        $chunks = array_chunk($index, self::INDEX_CHUNK_SIZE, true);
-        $chunk_count = count($chunks);
-        $meta = get_option(self::OPTION_STATUS_INDEX_META, []);
-        $previous = is_array($meta) ? (int) ($meta['chunks'] ?? 0) : 0;
-        for ($i = 0; $i < $chunk_count; $i++) {
-            update_option(self::OPTION_STATUS_INDEX_CHUNK_PREFIX . ($i + 1), $chunks[$i], false);
-        }
-        for ($i = $chunk_count + 1; $i <= $previous; $i++) {
-            delete_option(self::OPTION_STATUS_INDEX_CHUNK_PREFIX . $i);
-        }
-        update_option(self::OPTION_STATUS_INDEX_META, [
-            'chunks' => $chunk_count,
-            'updated_at' => self::current_timestamp(),
-        ], false);
-        delete_option(self::OPTION_STATUS_INDEX);
-    }
-
-    private static function get_index_from_storage() {
-        $meta = get_option(self::OPTION_STATUS_INDEX_META, []);
-        $meta = is_array($meta) ? $meta : [];
-        $chunk_count = isset($meta['chunks']) ? (int) $meta['chunks'] : 0;
-        $index = [];
-        if ($chunk_count > 0) {
-            for ($i = 1; $i <= $chunk_count; $i++) {
-                $chunk = get_option(self::OPTION_STATUS_INDEX_CHUNK_PREFIX . $i, []);
-                if (is_array($chunk)) {
-                    $index += $chunk;
-                }
-            }
-            return $index;
-        }
-        $legacy = get_option(self::OPTION_STATUS_INDEX, []);
-        if (is_array($legacy)) {
-            if (count($legacy) >= self::INDEX_CHUNK_SIZE) {
-                self::set_index($legacy);
-            }
-            return $legacy;
-        }
-        return [];
+        update_option(self::OPTION_STATUS_INDEX, $index, false);
     }
 
     public static function get_queue() {
@@ -1647,6 +1619,9 @@ class MG_Mockup_Maintenance {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
+        if (class_exists('MG_Storage_Manager')) {
+            $path = MG_Storage_Manager::dedupe_generated_asset($path);
+        }
         $existing_id = self::find_existing_attachment_id($path);
         if ($existing_id) {
             if ($title !== '') {
@@ -1688,6 +1663,9 @@ class MG_Mockup_Maintenance {
     private static function attach_image($path, $seo_text = '') {
         if (!function_exists('wp_check_filetype')) {
             return 0;
+        }
+        if (class_exists('MG_Storage_Manager')) {
+            $path = MG_Storage_Manager::dedupe_generated_asset($path);
         }
         $existing_id = self::find_existing_attachment_id($path);
         if ($existing_id) {
