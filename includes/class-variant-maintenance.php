@@ -1191,7 +1191,7 @@ class MG_Variant_Maintenance {
     }
 
     private static function get_queue() {
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             return MG_Storage_Manager::get_variant_queue();
         }
         $legacy = get_option(self::OPTION_QUEUE, []);
@@ -1199,7 +1199,7 @@ class MG_Variant_Maintenance {
     }
 
     private static function set_queue($queue) {
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             MG_Storage_Manager::set_variant_queue($queue);
             return;
         }

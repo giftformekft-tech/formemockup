@@ -16,15 +16,33 @@ class MG_Storage_Manager {
     const LEGACY_VARIANT_QUEUE_CHUNK_PREFIX = 'mg_variant_sync_queue_chunk_';
 
     public static function init() {
+        if (!self::is_enabled()) {
+            return;
+        }
         add_action('admin_init', [__CLASS__, 'maybe_install']);
     }
 
+    public static function is_enabled() {
+        if (defined('MG_DISABLE_STORAGE_MANAGER') && MG_DISABLE_STORAGE_MANAGER) {
+            return false;
+        }
+        return (bool) apply_filters('mg_storage_manager_enabled', true);
+    }
+
     public static function maybe_install() {
+        if (!self::is_enabled()) {
+            return;
+        }
         if (!is_admin() && !defined('WP_CLI')) {
             return;
         }
-        if (function_exists('current_user_can') && !current_user_can('manage_options')) {
-            return;
+        if (function_exists('current_user_can')) {
+            if (!defined('WP_CLI') && function_exists('is_user_logged_in') && !is_user_logged_in()) {
+                return;
+            }
+            if (!current_user_can('manage_options')) {
+                return;
+            }
         }
         if (!function_exists('dbDelta')) {
             $upgrade_path = ABSPATH . 'wp-admin/includes/upgrade.php';

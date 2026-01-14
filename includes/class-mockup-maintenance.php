@@ -66,7 +66,7 @@ class MG_Mockup_Maintenance {
     }
 
     public static function get_index() {
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             $index = MG_Storage_Manager::get_mockup_index();
         } else {
             $index = get_option(self::OPTION_STATUS_INDEX, []);
@@ -145,7 +145,7 @@ class MG_Mockup_Maintenance {
     }
 
     public static function set_index($index) {
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             MG_Storage_Manager::set_mockup_index($index);
             return;
         }
@@ -1619,7 +1619,7 @@ class MG_Mockup_Maintenance {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             $path = MG_Storage_Manager::dedupe_generated_asset($path);
         }
         $existing_id = self::find_existing_attachment_id($path);
@@ -1664,7 +1664,7 @@ class MG_Mockup_Maintenance {
         if (!function_exists('wp_check_filetype')) {
             return 0;
         }
-        if (class_exists('MG_Storage_Manager')) {
+        if (class_exists('MG_Storage_Manager') && MG_Storage_Manager::is_enabled()) {
             $path = MG_Storage_Manager::dedupe_generated_asset($path);
         }
         $existing_id = self::find_existing_attachment_id($path);
