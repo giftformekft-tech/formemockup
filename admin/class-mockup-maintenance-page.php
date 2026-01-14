@@ -80,6 +80,19 @@ class MG_Mockup_Maintenance_Page {
                 /* translators: %d: number of mockups processed per cron run */
                 self::add_notice(sprintf(__('A cron mostantól egyszerre %d mockupot dolgoz fel.', 'mgdtp'), $new_value));
                 break;
+            case 'manual_variant_sync':
+                if (!class_exists('MG_Variant_Maintenance')) {
+                    self::add_notice(__('Hiányzik a variáns karbantartó modul.', 'mgdtp'), 'error');
+                    break;
+                }
+                $queued = MG_Variant_Maintenance::queue_full_sync();
+                if ($queued === 0) {
+                    self::add_notice(__('Nincs frissítendő variáns.', 'mgdtp'), 'warning');
+                    break;
+                }
+                MG_Variant_Maintenance::process_queue();
+                self::add_notice(__('A variáns frissítés elindult.', 'mgdtp'));
+                break;
         }
     }
 
@@ -181,6 +194,13 @@ class MG_Mockup_Maintenance_Page {
         $total = max(1, array_sum($counts));
         $pending = isset($counts['pending']) ? (int) $counts['pending'] : 0;
         $percent = min(100, max(0, round((($total - $pending) / $total) * 100)));
+        $variant_progress = class_exists('MG_Variant_Maintenance') ? MG_Variant_Maintenance::get_progress() : [];
+        $variant_percent = isset($variant_progress['percent']) ? (int) $variant_progress['percent'] : 0;
+        $variant_current = isset($variant_progress['current']) ? (int) $variant_progress['current'] : 0;
+        $variant_total = isset($variant_progress['total']) ? (int) $variant_progress['total'] : 0;
+        $variant_status = $variant_progress['status'] ?? 'idle';
+        $variant_label = $variant_status === 'running' ? __('Variáns frissítés folyamatban', 'mgdtp') : __('Variáns frissítés', 'mgdtp');
+        $variant_progress_text = $variant_total > 0 ? sprintf('%d / %d', $variant_current, $variant_total) : __('nincs adat', 'mgdtp');
         ?>
         <div class="mg-maintenance-summary">
             <div class="summary-item">
@@ -194,6 +214,18 @@ class MG_Mockup_Maintenance_Page {
             <div class="summary-progress">
                 <span><?php esc_html_e('Előrehaladás', 'mgdtp'); ?></span>
                 <div class="progress-bar"><span style="width: <?php echo esc_attr($percent); ?>%"></span></div>
+            </div>
+            <div
+                class="summary-progress summary-progress--variants"
+                data-variant-progress
+                data-label-running="<?php echo esc_attr__('Variáns frissítés folyamatban', 'mgdtp'); ?>"
+                data-label-idle="<?php echo esc_attr__('Variáns frissítés', 'mgdtp'); ?>"
+            >
+                <span data-variant-progress-status><?php echo esc_html($variant_label); ?></span>
+                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr($variant_percent); ?>">
+                    <span style="width: <?php echo esc_attr($variant_percent); ?>%"></span>
+                </div>
+                <div class="variant-progress__meta" data-variant-progress-value><?php echo esc_html($variant_progress_text); ?></div>
             </div>
         </div>
         <?php
@@ -288,6 +320,11 @@ class MG_Mockup_Maintenance_Page {
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
                 <input type="hidden" name="mg_mockup_action" value="process_queue_now" />
                 <button type="submit" class="button button-secondary"><?php esc_html_e('Sor feldolgozása most', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="manual_variant_sync" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Variánsok frissítése most', 'mgdtp'); ?></button>
             </form>
             <form method="post" class="mg-batch-size-form">
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>

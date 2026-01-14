@@ -54,6 +54,16 @@
     background: #2ecc71;
 }
 
+.mg-mockup-maintenance .summary-progress--variants .progress-bar span {
+    background: #2271b1;
+}
+
+.mg-mockup-maintenance .variant-progress__meta {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #646970;
+}
+
 .mg-mockup-maintenance .status-pill {
     display: inline-block;
     padding: 2px 10px;
