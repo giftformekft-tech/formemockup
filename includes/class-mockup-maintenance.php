@@ -1001,7 +1001,7 @@ class MG_Mockup_Maintenance {
         $defaults_payload = [
             'type'  => $merged_defaults['pa_termektipus'] ?? '',
             'color' => $merged_defaults['pa_szin'] ?? '',
-            'size'  => $merged_defaults['meret'] ?? '',
+            'size'  => '',
         ];
         $generation_context = [
             'skip_register_maintenance' => true,
@@ -1646,7 +1646,11 @@ class MG_Mockup_Maintenance {
         try {
             $queue = self::get_queue();
             if (empty($queue)) {
-                return;
+                self::queue_missing_attachments_from_index();
+                $queue = self::get_queue();
+                if (empty($queue)) {
+                    return;
+                }
             }
             $batch = array_slice($queue, 0, self::get_batch_size());
             foreach ($batch as $key) {
@@ -1654,6 +1658,45 @@ class MG_Mockup_Maintenance {
             }
         } finally {
             delete_transient($lock_key);
+        }
+    }
+
+    private static function queue_missing_attachments_from_index() {
+        $index = self::get_index();
+        if (empty($index) || !is_array($index)) {
+            return;
+        }
+        $requests = [];
+        foreach ($index as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $product_id = absint($entry['product_id'] ?? 0);
+            $type_slug = sanitize_title($entry['type_slug'] ?? '');
+            $color_slug = sanitize_title($entry['color_slug'] ?? '');
+            if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+                continue;
+            }
+            $attachment_ids = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+            $has_attachment = false;
+            foreach ($attachment_ids as $attachment_id) {
+                if (absint($attachment_id) > 0) {
+                    $has_attachment = true;
+                    break;
+                }
+            }
+            if ($has_attachment) {
+                continue;
+            }
+            $requests[] = [
+                'product_id' => $product_id,
+                'type_slug' => $type_slug,
+                'color_slug' => $color_slug,
+                'reason' => __('Hiányzó mockup csatolmány a karbantartási indexben.', 'mgdtp'),
+            ];
+        }
+        if (!empty($requests)) {
+            self::queue_multiple_for_regeneration($requests);
         }
     }
 

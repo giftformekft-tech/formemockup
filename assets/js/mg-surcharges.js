@@ -125,6 +125,10 @@
             var tax = this.name.replace('attribute_', '');
             context.attributes[tax] = [val];
         });
+        var selectedSize = $form.find('[name="mg_size"]').val();
+        if (selectedSize) {
+            context.attributes.meret = [selectedSize];
+        }
         ['pa_termektipus', 'pa_product_type'].forEach(function(tax){
             if (!context.attributes[tax] || !context.attributes[tax].length) {
                 if (baseAttributes[tax] && baseAttributes[tax].length) {

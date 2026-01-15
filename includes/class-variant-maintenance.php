@@ -55,28 +55,15 @@ class MG_Variant_Maintenance {
             }
 
             $added_colors = array_diff(array_keys($type_data['colors']), array_keys($old_data['colors']));
-            $added_sizes = array_diff($type_data['sizes'], $old_data['sizes']);
-            $size_renames = self::detect_size_renames($type_data, $old_data, $added_sizes);
-            if (!empty($size_renames)) {
-                $added_sizes = array_diff($added_sizes, array_values($size_renames));
-            }
-            $allowed_additions = self::detect_allowed_size_additions($type_data, $old_data);
             $removed_colors = array_diff(array_keys($old_data['colors']), array_keys($type_data['colors']));
-            $removed_sizes = array_diff($old_data['sizes'], $type_data['sizes']);
-            if (!empty($size_renames)) {
-                $removed_sizes = array_diff($removed_sizes, array_keys($size_renames));
-            }
-            $removed_allowed = self::detect_removed_size_allowances($type_data, $old_data);
 
-            if (empty($added_colors) && empty($added_sizes) && empty($allowed_additions)
-                && empty($removed_colors) && empty($removed_sizes) && empty($removed_allowed) && empty($size_renames)
-            ) {
+            if (empty($added_colors) && empty($removed_colors)) {
                 continue;
             }
 
             $product_ids = $is_new_type ? self::collect_all_products() : self::collect_products_for_type($type_slug);
             if (!empty($product_ids)) {
-                self::queue_products_for_later($type_slug, $type_data, $added_colors, $allowed_additions, $product_ids, $size_renames);
+                self::queue_products_for_later($type_slug, $type_data, $added_colors, [], $product_ids, []);
             }
         }
 
@@ -397,6 +384,7 @@ class MG_Variant_Maintenance {
         self::sync_product_variants($product_id, $type_slug, $type_data, $size_renames);
         $missing = self::determine_missing_variants($product_id, $type_slug, $type_data, $added_colors, $allowed_additions);
         if (empty($missing)) {
+            self::queue_missing_mockups_for_product($product_id, $type_slug, $type_data, []);
             return;
         }
         foreach ($missing as $color_slug => $payload) {
@@ -412,6 +400,70 @@ class MG_Variant_Maintenance {
             }
             MG_Mockup_Maintenance::queue_for_regeneration($product_id, $type_slug, $color_slug, $reason);
         }
+        self::queue_missing_mockups_for_product($product_id, $type_slug, $type_data, array_keys($missing));
+    }
+
+    private static function queue_missing_mockups_for_product($product_id, $type_slug, $type_data, $skip_colors) {
+        if (!class_exists('MG_Mockup_Maintenance')) {
+            return;
+        }
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        if ($product_id <= 0 || $type_slug === '') {
+            return;
+        }
+        $normalized = self::normalize_type_data_for_queue($type_data);
+        $colors = array_keys($normalized['colors']);
+        if (empty($colors)) {
+            return;
+        }
+        $skip_colors = is_array($skip_colors) ? $skip_colors : [];
+        $skip = [];
+        foreach ($skip_colors as $color_slug) {
+            $color_slug = sanitize_title($color_slug);
+            if ($color_slug !== '') {
+                $skip[$color_slug] = true;
+            }
+        }
+        $index = MG_Mockup_Maintenance::get_index();
+        if (!is_array($index)) {
+            $index = [];
+        }
+        $requests = [];
+        foreach ($colors as $color_slug) {
+            if (isset($skip[$color_slug])) {
+                continue;
+            }
+            $key = self::compose_mockup_index_key($product_id, $type_slug, $color_slug);
+            $entry = isset($index[$key]) && is_array($index[$key]) ? $index[$key] : [];
+            $attachment_ids = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+            $has_attachment = false;
+            foreach ($attachment_ids as $attachment_id) {
+                if (absint($attachment_id) > 0) {
+                    $has_attachment = true;
+                    break;
+                }
+            }
+            if ($has_attachment) {
+                continue;
+            }
+            $requests[] = [
+                'product_id' => $product_id,
+                'type_slug' => $type_slug,
+                'color_slug' => $color_slug,
+                'reason' => __('Mockup hiányzik a variáns szinkron után.', 'mgdtp'),
+            ];
+        }
+        if (!empty($requests)) {
+            MG_Mockup_Maintenance::queue_multiple_for_regeneration($requests);
+        }
+    }
+
+    private static function compose_mockup_index_key($product_id, $type_slug, $color_slug) {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        return $product_id . '|' . $type_slug . '|' . $color_slug;
     }
 
     private static function collect_products_for_type($type_slug) {
@@ -469,48 +521,13 @@ class MG_Variant_Maintenance {
         $missing = [];
         $color_keys = array_keys($type_data['colors']);
         foreach ($color_keys as $color_slug) {
-            $allowed_sizes = self::allowed_sizes_from_struct($type_data, $color_slug);
-            if (empty($allowed_sizes)) {
-                continue;
-            }
             $color_new = in_array($color_slug, $added_colors, true);
             $color_missing_before = empty($existing[$color_slug]);
-            $size_targets = [];
-            $size_addition_flag = false;
-
             if ($color_new || $color_missing_before) {
-                foreach ($allowed_sizes as $size_label) {
-                    if (empty($existing[$color_slug][$size_label])) {
-                        $size_targets[] = $size_label;
-                        if (!$color_new && isset($allowed_additions[$color_slug][$size_label])) {
-                            $size_addition_flag = true;
-                        }
-                    }
-                }
-            }
-
-            if (!$color_new && !$color_missing_before && !empty($allowed_additions[$color_slug])) {
-                foreach ($allowed_additions[$color_slug] as $size_label => $flag) {
-                    if (empty($flag)) {
-                        continue;
-                    }
-                    if (!in_array($size_label, $allowed_sizes, true)) {
-                        continue;
-                    }
-                    if (!empty($existing[$color_slug][$size_label])) {
-                        continue;
-                    }
-                    $size_targets[] = $size_label;
-                    $size_addition_flag = true;
-                }
-            }
-
-            if (!empty($size_targets)) {
-                $size_targets = array_values(array_unique($size_targets));
                 $missing[$color_slug] = [
-                    'sizes' => $size_targets,
+                    'sizes' => [],
                     'color_new' => $color_new,
-                    'size_addition' => $size_addition_flag,
+                    'size_addition' => false,
                 ];
             }
         }
@@ -537,15 +554,11 @@ class MG_Variant_Maintenance {
                 continue;
             }
             $color = isset($normalized['pa_szin']) ? $normalized['pa_szin'] : '';
-            $size = isset($normalized['meret']) ? $normalized['meret'] : '';
             if ($color === '') {
                 continue;
             }
             if (!isset($map[$color])) {
-                $map[$color] = [];
-            }
-            if ($size !== '') {
-                $map[$color][$size] = true;
+                $map[$color] = true;
             }
         }
         return $map;
@@ -571,16 +584,13 @@ class MG_Variant_Maintenance {
                 continue;
             }
             $color = isset($normalized['pa_szin']) ? $normalized['pa_szin'] : '';
-            $size = isset($normalized['meret']) ? $normalized['meret'] : '';
             if ($color === '') {
                 continue;
             }
             if (!isset($map[$color])) {
                 $map[$color] = [];
             }
-            if ($size !== '') {
-                $map[$color][$size] = $variation->get_id();
-            }
+            $map[$color][] = $variation->get_id();
         }
         return $map;
     }
@@ -1095,54 +1105,18 @@ class MG_Variant_Maintenance {
             ];
         }
         $normalized = self::normalize_type_data_for_queue($type_data);
-        $size_renames = self::normalize_size_rename_map($size_renames);
-        $renamed_variations = false;
-        if (!empty($size_renames)) {
-            $renamed_variations = self::apply_size_renames($product, $type_slug, $size_renames);
-        }
         $colors = array_keys($normalized['colors']);
-        $allowed_by_color = [];
-        foreach ($colors as $color_slug) {
-            $allowed_sizes = self::allowed_sizes_from_struct($normalized, $color_slug);
-            if (!empty($allowed_sizes)) {
-                $allowed_by_color[$color_slug] = $allowed_sizes;
-            }
-        }
         $existing = self::map_existing_variations_with_ids($product, $type_slug);
-        $progress_total = self::count_existing_variations($existing) + self::count_allowed_variations($allowed_by_color);
+        $progress_total = self::count_existing_variations($existing) + self::count_allowed_variations($colors);
         $progress_current = 0;
         self::start_progress($product_id, $type_slug, $progress_total);
         $removed_colors = [];
-        foreach ($existing as $color_slug => $sizes) {
-            $color_allowed = isset($allowed_by_color[$color_slug]);
-            foreach ($sizes as $size_label => $variation_id) {
-                $progress_current++;
-                self::update_progress($product_id, $type_slug, $progress_current, $progress_total);
-                if (!$color_allowed || !in_array($size_label, $allowed_by_color[$color_slug], true)) {
-                    if (!isset($removed_colors[$color_slug])) {
-                        $removed_colors[$color_slug] = true;
-                    }
-                    $variation = wc_get_product($variation_id);
-                    if ($variation && method_exists($variation, 'delete')) {
-                        $variation->delete(true);
-                    } else {
-                        wp_delete_post($variation_id, true);
-                    }
-                    unset($existing[$color_slug][$size_label]);
-                }
-            }
-            if (empty($existing[$color_slug])) {
-                unset($existing[$color_slug]);
-            }
-        }
 
-        $added_variants = [];
         $parent_sku_base = $product->get_sku();
         if (!$parent_sku_base && method_exists($product, 'get_name')) {
             $parent_sku_base = strtoupper(sanitize_title($product->get_name()));
         }
         $base_price = isset($type_data['price']) ? (int) $type_data['price'] : 0;
-        $size_surcharge_map = isset($type_data['size_surcharges']) && is_array($type_data['size_surcharges']) ? $type_data['size_surcharges'] : [];
         $color_surcharge_map = isset($type_data['color_surcharges']) && is_array($type_data['color_surcharges']) ? $type_data['color_surcharges'] : [];
         $sku_prefix = isset($type_data['sku_prefix']) ? strtoupper(sanitize_text_field($type_data['sku_prefix'])) : strtoupper($type_slug);
         $type_label = $type_data['label'] ?? $type_slug;
@@ -1153,33 +1127,77 @@ class MG_Variant_Maintenance {
             self::ensure_term_exists('pa_szin', $color_slug, $color_label);
         }
 
-        foreach ($allowed_by_color as $color_slug => $sizes) {
-            foreach ($sizes as $size_label) {
+        $added_variants = [];
+        $kept_variations = [];
+        foreach ($existing as $color_slug => $variation_ids) {
+            $color_allowed = in_array($color_slug, $colors, true);
+            $kept_id = 0;
+            foreach ($variation_ids as $variation_id) {
                 $progress_current++;
                 self::update_progress($product_id, $type_slug, $progress_current, $progress_total);
-                if (!empty($existing[$color_slug][$size_label])) {
+                if (!$color_allowed) {
+                    $removed_colors[$color_slug] = true;
+                    $variation = wc_get_product($variation_id);
+                    if ($variation && method_exists($variation, 'delete')) {
+                        $variation->delete(true);
+                    } else {
+                        wp_delete_post($variation_id, true);
+                    }
                     continue;
                 }
-                $price = max(0, $base_price + (int) ($size_surcharge_map[$size_label] ?? 0) + (int) ($color_surcharge_map[$color_slug] ?? 0));
-                $variation = new WC_Product_Variation();
-                $variation->set_parent_id($product->get_id());
-                $variation->set_attributes([
-                    'pa_termektipus' => $type_slug,
-                    'pa_szin' => $color_slug,
-                    'meret' => $size_label,
-                ]);
-                if ($price > 0) {
-                    $variation->set_regular_price($price);
+                if ($kept_id) {
+                    $variation = wc_get_product($variation_id);
+                    if ($variation && method_exists($variation, 'delete')) {
+                        $variation->delete(true);
+                    } else {
+                        wp_delete_post($variation_id, true);
+                    }
+                    continue;
                 }
-                if ($parent_sku_base) {
-                    $variation->set_sku(strtoupper($parent_sku_base . '-' . $sku_prefix . '-' . $color_slug . '-' . $size_label));
+                $kept_id = $variation_id;
+                $kept_variations[$color_slug] = $variation_id;
+                $variation = wc_get_product($variation_id);
+                if ($variation && method_exists($variation, 'set_attributes')) {
+                    $variation->set_attributes([
+                        'pa_termektipus' => $type_slug,
+                        'pa_szin' => $color_slug,
+                    ]);
+                    $price = max(0, $base_price + (int) ($color_surcharge_map[$color_slug] ?? 0));
+                    if ($price > 0) {
+                        $variation->set_regular_price($price);
+                    }
+                    if ($parent_sku_base) {
+                        $variation->set_sku(strtoupper($parent_sku_base . '-' . $sku_prefix . '-' . $color_slug));
+                    }
+                    $variation->save();
                 }
-                $variation->save();
-                $added_variants[$color_slug][] = $size_label;
             }
         }
 
-        if (!empty($removed_colors) || !empty($added_variants) || $renamed_variations) {
+        foreach ($colors as $color_slug) {
+            $progress_current++;
+            self::update_progress($product_id, $type_slug, $progress_current, $progress_total);
+            if (!empty($kept_variations[$color_slug])) {
+                continue;
+            }
+            $price = max(0, $base_price + (int) ($color_surcharge_map[$color_slug] ?? 0));
+            $variation = new WC_Product_Variation();
+            $variation->set_parent_id($product->get_id());
+            $variation->set_attributes([
+                'pa_termektipus' => $type_slug,
+                'pa_szin' => $color_slug,
+            ]);
+            if ($price > 0) {
+                $variation->set_regular_price($price);
+            }
+            if ($parent_sku_base) {
+                $variation->set_sku(strtoupper($parent_sku_base . '-' . $sku_prefix . '-' . $color_slug));
+            }
+            $variation->save();
+            $added_variants[$color_slug] = true;
+        }
+
+        if (!empty($removed_colors) || !empty($added_variants)) {
             self::refresh_product_attributes_from_variations($product);
             if (function_exists('wc_delete_product_transients')) {
                 wc_delete_product_transients($product->get_id());
@@ -1197,40 +1215,8 @@ class MG_Variant_Maintenance {
 
         return [
             'removed_colors' => array_keys($removed_colors),
-            'added_variants' => $added_variants,
+            'added_variants' => array_keys($added_variants),
         ];
-    }
-
-    private static function apply_size_renames($product, $type_slug, $size_renames) {
-        if (!is_array($size_renames) || empty($size_renames)) {
-            return false;
-        }
-        $existing = self::map_existing_variations_with_ids($product, $type_slug);
-        if (empty($existing)) {
-            return false;
-        }
-        $updated = false;
-        foreach ($size_renames as $old_size => $new_size) {
-            if ($old_size === $new_size) {
-                continue;
-            }
-            foreach ($existing as $color_slug => $sizes) {
-                if (empty($sizes[$old_size]) || !empty($sizes[$new_size])) {
-                    continue;
-                }
-                $variation_id = $sizes[$old_size];
-                $variation = wc_get_product($variation_id);
-                if (!$variation || !method_exists($variation, 'get_attributes')) {
-                    continue;
-                }
-                $attributes = $variation->get_attributes();
-                $attributes['meret'] = $new_size;
-                $variation->set_attributes($attributes);
-                $variation->save();
-                $updated = true;
-            }
-        }
-        return $updated;
     }
 
     public static function get_progress() {
@@ -1288,22 +1274,16 @@ class MG_Variant_Maintenance {
 
     private static function count_existing_variations($existing) {
         $count = 0;
-        foreach ((array) $existing as $sizes) {
-            if (is_array($sizes)) {
-                $count += count($sizes);
+        foreach ((array) $existing as $variation_ids) {
+            if (is_array($variation_ids)) {
+                $count += count($variation_ids);
             }
         }
         return $count;
     }
 
     private static function count_allowed_variations($allowed_by_color) {
-        $count = 0;
-        foreach ((array) $allowed_by_color as $sizes) {
-            if (is_array($sizes)) {
-                $count += count($sizes);
-            }
-        }
-        return $count;
+        return is_array($allowed_by_color) ? count($allowed_by_color) : 0;
     }
 
     public static function handle_progress_ajax() {
@@ -1353,7 +1333,6 @@ class MG_Variant_Maintenance {
         $children = $product->get_children();
         $type_slugs = [];
         $color_slugs = [];
-        $sizes = [];
         foreach ($children as $variation_id) {
             $variation = wc_get_product($variation_id);
             if (!$variation) {
@@ -1365,9 +1344,6 @@ class MG_Variant_Maintenance {
             }
             if (!empty($attrs['pa_szin'])) {
                 $color_slugs[$attrs['pa_szin']] = true;
-            }
-            if (!empty($attrs['meret'])) {
-                $sizes[$attrs['meret']] = true;
             }
         }
 
@@ -1384,13 +1360,7 @@ class MG_Variant_Maintenance {
         $attr_color->set_variation(true);
         $attr_color->set_options(self::lookup_term_ids('pa_szin', array_keys($color_slugs)));
 
-        $attr_size = isset($attrs['Méret']) ? $attrs['Méret'] : new WC_Product_Attribute();
-        $attr_size->set_name('Méret');
-        $attr_size->set_visible(true);
-        $attr_size->set_variation(true);
-        $attr_size->set_options(array_keys($sizes));
-
-        $product->set_attributes([$attr_type, $attr_color, $attr_size]);
+        $product->set_attributes([$attr_type, $attr_color]);
         $product->save();
     }
 
