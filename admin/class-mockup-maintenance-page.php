@@ -232,6 +232,30 @@ class MG_Mockup_Maintenance_Page {
     }
 
     private static function render_table($entries) {
+        $grouped = [];
+        $group_order = [];
+        foreach ($entries as $entry) {
+            $product_id = (int) ($entry['product_id'] ?? 0);
+            $product_label = $product_id;
+            if ($product_id && function_exists('wc_get_product')) {
+                $product_obj = wc_get_product($product_id);
+                if ($product_obj) {
+                    $product_label = $product_obj->get_name();
+                }
+            }
+            $group_label = $product_label !== '' ? $product_label : __('Ismeretlen', 'mgdtp');
+            $group_key = $product_id . '|' . sanitize_title((string) $group_label);
+            if (!isset($grouped[$group_key])) {
+                $grouped[$group_key] = [
+                    'product_id' => $product_id,
+                    'label' => $group_label,
+                    'entries' => [],
+                ];
+                $group_order[] = $group_key;
+            }
+            $entry['__product_label'] = $group_label;
+            $grouped[$group_key]['entries'][] = $entry;
+        }
         ?>
         <form method="post" class="mg-maintenance-table">
             <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
@@ -255,47 +279,72 @@ class MG_Mockup_Maintenance_Page {
                             <td colspan="8" class="no-items"><?php esc_html_e('Nincs találat a megadott szűrőkkel.', 'mgdtp'); ?></td>
                         </tr>
                     <?php else : ?>
-                        <?php foreach ($entries as $entry) :
-                            $key = $entry['key'];
-                            $product_id = (int) ($entry['product_id'] ?? 0);
-                            $product_label = $product_id;
-                            if ($product_id && function_exists('wc_get_product')) {
-                                $product_obj = wc_get_product($product_id);
-                                if ($product_obj) {
-                                    $product_label = $product_obj->get_name();
-                                }
-                            }
-                            $updated_at = !empty($entry['updated_at']) ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $entry['updated_at']) : __('nincs adat', 'mgdtp');
-                            $status = $entry['status'] ?? 'ok';
-                            $pending_reason = $entry['pending_reason'] ?? '';
-                            $message = $entry['last_message'] ?? '';
+                        <?php foreach ($group_order as $group_key) :
+                            $group = $grouped[$group_key];
+                            $group_label = $group['label'];
+                            $group_count = count($group['entries']);
+                            $group_id = 'mg-group-' . md5($group_key);
+                            $product_id = (int) ($group['product_id'] ?? 0);
                             ?>
-                            <tr>
-                                <th scope="row" class="check-column"><input type="checkbox" name="mockup_keys[]" value="<?php echo esc_attr($key); ?>" /></th>
-                                <td>
+                            <tr class="mg-group-row" data-group-row="<?php echo esc_attr($group_id); ?>">
+                                <th colspan="8">
+                                    <button type="button" class="mg-group-toggle" data-group="<?php echo esc_attr($group_id); ?>" aria-expanded="false">
+                                        <span class="mg-group-title">
+                                            <?php
+                                            echo esc_html(
+                                                sprintf(
+                                                    /* translators: %1$s: product label, %2$d: entry count. */
+                                                    __('Termék: %1$s (%2$d)', 'mgdtp'),
+                                                    $group_label,
+                                                    $group_count
+                                                )
+                                            );
+                                            ?>
+                                        </span>
+                                    </button>
                                     <?php if ($product_id) : ?>
-                                        <a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">#<?php echo esc_html($product_id); ?></a>
-                                        <div class="meta-label"><?php echo esc_html($product_label); ?></div>
-                                    <?php else : ?>
-                                        <?php echo esc_html($product_label); ?>
+                                        <a class="mg-group-edit" href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">
+                                            <?php esc_html_e('Megnyitás', 'mgdtp'); ?>
+                                        </a>
                                     <?php endif; ?>
-                                </td>
-                                <td><?php echo esc_html($entry['source']['type_label'] ?? $entry['type_slug']); ?></td>
-                                <td><?php echo esc_html($entry['source']['color_label'] ?? $entry['color_slug']); ?></td>
-                                <td><span class="status-pill <?php echo esc_attr(self::status_class($status)); ?>"><?php echo esc_html(self::status_label($status)); ?></span></td>
-                                <td><?php echo esc_html($updated_at); ?></td>
-                                <td>
-                                    <?php if ($status === 'pending' && $pending_reason) : ?>
-                                        <div><?php echo esc_html($pending_reason); ?></div>
-                                    <?php endif; ?>
-                                    <?php if ($message) : ?>
-                                        <div class="last-message"><?php echo esc_html($message); ?></div>
-                                    <?php endif; ?>
-                                </td>
-                                <td>
-                                    <button type="submit" name="mg_single_key" value="<?php echo esc_attr($key); ?>" class="button-link mg-row-action" onclick="this.form.mg_mockup_action.value='bulk_regenerate';"><?php esc_html_e('Újragenerálás', 'mgdtp'); ?></button>
-                                </td>
+                                </th>
                             </tr>
+                            <?php foreach ($group['entries'] as $entry) :
+                                $key = $entry['key'];
+                                $product_id = (int) ($entry['product_id'] ?? 0);
+                                $product_label = $entry['__product_label'] ?? $product_id;
+                                $updated_at = !empty($entry['updated_at']) ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $entry['updated_at']) : __('nincs adat', 'mgdtp');
+                                $status = $entry['status'] ?? 'ok';
+                                $pending_reason = $entry['pending_reason'] ?? '';
+                                $message = $entry['last_message'] ?? '';
+                                ?>
+                                <tr class="mg-group-entry is-collapsed" data-group="<?php echo esc_attr($group_id); ?>">
+                                    <th scope="row" class="check-column"><input type="checkbox" name="mockup_keys[]" value="<?php echo esc_attr($key); ?>" /></th>
+                                    <td>
+                                        <?php if ($product_id) : ?>
+                                            <a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">#<?php echo esc_html($product_id); ?></a>
+                                            <div class="meta-label"><?php echo esc_html($product_label); ?></div>
+                                        <?php else : ?>
+                                            <?php echo esc_html($product_label); ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo esc_html($entry['source']['type_label'] ?? $entry['type_slug']); ?></td>
+                                    <td><?php echo esc_html($entry['source']['color_label'] ?? $entry['color_slug']); ?></td>
+                                    <td><span class="status-pill <?php echo esc_attr(self::status_class($status)); ?>"><?php echo esc_html(self::status_label($status)); ?></span></td>
+                                    <td><?php echo esc_html($updated_at); ?></td>
+                                    <td>
+                                        <?php if ($status === 'pending' && $pending_reason) : ?>
+                                            <div><?php echo esc_html($pending_reason); ?></div>
+                                        <?php endif; ?>
+                                        <?php if ($message) : ?>
+                                            <div class="last-message"><?php echo esc_html($message); ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <button type="submit" name="mg_single_key" value="<?php echo esc_attr($key); ?>" class="button-link mg-row-action" onclick="this.form.mg_mockup_action.value='bulk_regenerate';"><?php esc_html_e('Újragenerálás', 'mgdtp'); ?></button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
                         <?php endforeach; ?>
                     <?php endif; ?>
                 </tbody>

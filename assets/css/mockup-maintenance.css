@@ -207,6 +207,47 @@
     margin-top: 2px;
 }
 
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-row th {
+    background: #f0f6fc;
+    color: #1d2327;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-top: 1px solid #d0d7de;
+}
+
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-toggle {
+    appearance: none;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-toggle::before {
+    content: '▸';
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-toggle[aria-expanded="true"]::before {
+    transform: rotate(90deg);
+}
+
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-edit {
+    margin-left: 12px;
+    font-weight: 400;
+    text-decoration: none;
+}
+
+.mg-mockup-maintenance .mg-maintenance-table .mg-group-entry.is-collapsed {
+    display: none;
+}
+
 .mg-mockup-maintenance .mg-maintenance-table .no-items {
     text-align: center;
 }

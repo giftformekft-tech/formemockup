@@ -729,12 +729,32 @@
     $('.mg-worker-toggle').prop('disabled', true);
     $rowsCollection.each(function(){ $(this).find('.mg-state').text('Sorban áll…'); });
 
+    var jobProgress = {};
+
+    function getActiveProgress(){
+      var sum = 0;
+      Object.keys(jobProgress).forEach(function(key){
+        var value = jobProgress[key];
+        if (typeof value === 'number' && value > 0) { sum += value; }
+      });
+      return sum;
+    }
+
     function updateProgress(){
-      var pct = total > 0 ? Math.round((done/total)*100) : 0;
+      var inFlight = getActiveProgress();
+      var pct = total > 0 ? Math.round(((done + inFlight) / total) * 100) : 0;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
       $('#mg-bulk-bar').css('width', pct+'%');
-      $('#mg-bulk-status').text(pct+'%');
+      var statusParts = [pct + '%'];
+      if (total > 0) {
+        statusParts.push(done + '/' + total);
+      }
+      var activeCount = Object.keys(jobProgress).length;
+      if (activeCount > 0) {
+        statusParts.push('folyamatban: ' + activeCount);
+      }
+      $('#mg-bulk-status').text(statusParts.join(' · '));
     }
     updateProgress();
 
@@ -772,7 +792,9 @@
         return;
       }
       active++;
-      $row.find('.mg-state').text('Feldolgozás...');
+      var $state = $row.find('.mg-state');
+      $state.text('Feltöltés...');
+      jobProgress[index] = 0;
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
@@ -799,10 +821,32 @@
         data: form,
         processData:false,
         contentType:false,
-        dataType:'json'
+        dataType:'json',
+        xhr: function(){
+          var xhr = $.ajaxSettings.xhr();
+          if (xhr && xhr.upload) {
+            xhr.upload.addEventListener('progress', function(evt){
+              if (!evt || !evt.lengthComputable) { return; }
+              var ratio = evt.total > 0 ? (evt.loaded / evt.total) : 0;
+              if (ratio < 0) { ratio = 0; }
+              if (ratio > 1) { ratio = 1; }
+              jobProgress[index] = Math.min(ratio, 0.9);
+              $state.text('Feltöltés... ' + Math.round(ratio * 100) + '%');
+              updateProgress();
+            });
+            xhr.upload.addEventListener('load', function(){
+              if (typeof jobProgress[index] === 'number') {
+                jobProgress[index] = Math.max(jobProgress[index], 0.9);
+                updateProgress();
+              }
+              $state.text('Feldolgozás...');
+            });
+          }
+          return xhr;
+        }
       }).done(function(resp){
         if (resp && resp.success){
-          $row.find('.mg-state').text('OK…');
+          $state.text('OK…');
           var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id,10) : 0;
           var latestTags = ($row.find('.mg-tags-input').val()||'').trim();
           if (pid && latestTags){
@@ -812,21 +856,22 @@
               product_id: pid,
               tags: latestTags
             }, function(r){
-              if (r && r.success){ $row.find('.mg-state').text('OK'); }
-              else { $row.find('.mg-state').text('OK – tagek hiba'); }
-            }, 'json').fail(function(){ $row.find('.mg-state').text('OK – tagek hiba'); });
+              if (r && r.success){ $state.text('OK'); }
+              else { $state.text('OK – tagek hiba'); }
+            }, 'json').fail(function(){ $state.text('OK – tagek hiba'); });
           } else {
-            $row.find('.mg-state').text('OK');
+            $state.text('OK');
           }
         } else {
           var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
-          $row.find('.mg-state').text('Hiba: '+msg);
+          $state.text('Hiba: '+msg);
         }
       }).fail(function(xhr){
-        $row.find('.mg-state').text('Hiba: '+serverErrorToText(xhr));
+        $state.text('Hiba: '+serverErrorToText(xhr));
       }).always(function(){
         done++;
         active--;
+        delete jobProgress[index];
         updateProgress();
         launchNext();
       });
