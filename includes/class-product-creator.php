@@ -420,6 +420,9 @@ class MG_Product_Creator {
             $seo_text = $this->compose_image_seo_text($parent_name, $type_slug, $color_slug, $selected_products, $cats);
             $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
         }
+        if (!empty($image_ids)) {
+            $generation_context['attachment_ids'] = $image_ids;
+        }
         $product = new WC_Product_Variable();
         $product->set_name($parent_name);
         
@@ -593,6 +596,9 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
             $seo_text = $this->compose_image_seo_text($product->get_name() ?: $fallback_parent_name, $type_slug, $color_slug, $selected_products, $cats);
             $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id;
+        }
+        if (!empty($image_ids)) {
+            $generation_context['attachment_ids'] = $image_ids;
         }
         $existing=array();
         foreach ($product->get_children() as $vid){
