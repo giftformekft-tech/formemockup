@@ -273,9 +273,42 @@ class MG_Generator {
         return $had_alpha;
     }
 
+    private function resolve_imagick_resize_filter($filter_key) {
+        $key = is_string($filter_key) ? strtolower(trim($filter_key)) : '';
+        $map = array(
+            'lanczos' => 'Imagick::FILTER_LANCZOS',
+            'triangle' => 'Imagick::FILTER_TRIANGLE',
+            'catrom' => 'Imagick::FILTER_CATROM',
+            'mitchell' => 'Imagick::FILTER_MITCHELL',
+        );
+        if (!array_key_exists($key, $map)) {
+            $key = 'lanczos';
+        }
+        $constant = $map[$key];
+        if (defined($constant)) {
+            return constant($constant);
+        }
+        if (defined('Imagick::FILTER_LANCZOS')) {
+            return Imagick::FILTER_LANCZOS;
+        }
+        if (defined('Imagick::FILTER_TRIANGLE')) {
+            return Imagick::FILTER_TRIANGLE;
+        }
+        return 0;
+    }
+
     private function trim_imagick_image_bounds($image) {
         if (!($image instanceof Imagick)) {
             return;
+        }
+        if (method_exists($image, 'getImageProperty')) {
+            try {
+                $already_trimmed = $image->getImageProperty('mg_trimmed');
+                if ($already_trimmed === '1') {
+                    return;
+                }
+            } catch (Throwable $ignored) {
+            }
         }
         if (!method_exists($image, 'trimImage')) {
             return;
@@ -284,6 +317,9 @@ class MG_Generator {
             $image->trimImage(0);
             if (method_exists($image, 'setImagePage')) {
                 $image->setImagePage(0, 0, 0, 0);
+            }
+            if (method_exists($image, 'setImageProperty')) {
+                $image->setImageProperty('mg_trimmed', '1');
             }
         } catch (Throwable $ignored) {
         }
@@ -378,6 +414,8 @@ class MG_Generator {
         $filesize = 0;
         $size_hint = '';
         $scale_plan = null;
+        $resize_settings = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos'));
+        $resize_filter = $this->resolve_imagick_resize_filter($resize_settings['filter'] ?? 'lanczos');
         try {
             $probing = new Imagick();
             $probing->pingImage($template_path);
@@ -486,7 +524,7 @@ class MG_Generator {
             $placement_scale = 1.0;
             if (is_array($scale_plan)) {
                 if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
-                    $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], Imagick::FILTER_LANCZOS, 1, true);
+                    $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], $resize_filter, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                     if ($mockup_started_with_alpha === false) {
                         $this->force_imagick_alpha_channel_opaque($mockup);
@@ -577,11 +615,10 @@ class MG_Generator {
             if (method_exists($mockup,'compositeImage')) $mockup->compositeImage($design, Imagick::COMPOSITE_OVER, $design_x_px, $design_y_px);
 
             // Optional output resize
-            $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit'));
-            $enabled = !empty($resize['enabled']);
-            $max_w = max(0, intval($resize['max_w'] ?? 0));
-            $max_h = max(0, intval($resize['max_h'] ?? 0));
-            $mode  = $resize['mode'] ?? 'fit';
+            $enabled = !empty($resize_settings['enabled']);
+            $max_w = max(0, intval($resize_settings['max_w'] ?? 0));
+            $max_h = max(0, intval($resize_settings['max_h'] ?? 0));
+            $mode  = $resize_settings['mode'] ?? 'fit';
 
             if ($enabled && ($max_w > 0 || $max_h > 0)) {
                 $cw = $mockup->getImageWidth();
@@ -602,7 +639,7 @@ class MG_Generator {
                     }
                 }
                 if (($target_w != $cw) || ($target_h != $ch)) {
-                    $mockup->resizeImage($target_w, $target_h, Imagick::FILTER_LANCZOS, 1, true);
+                    $mockup->resizeImage($target_w, $target_h, $resize_filter, 1, true);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                     if ($mockup_started_with_alpha === false) {
                         $this->force_imagick_alpha_channel_opaque($mockup);
