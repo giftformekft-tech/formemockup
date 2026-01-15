@@ -397,6 +397,7 @@ class MG_Variant_Maintenance {
         self::sync_product_variants($product_id, $type_slug, $type_data, $size_renames);
         $missing = self::determine_missing_variants($product_id, $type_slug, $type_data, $added_colors, $allowed_additions);
         if (empty($missing)) {
+            self::queue_missing_mockups_for_product($product_id, $type_slug, $type_data, []);
             return;
         }
         foreach ($missing as $color_slug => $payload) {
@@ -412,6 +413,70 @@ class MG_Variant_Maintenance {
             }
             MG_Mockup_Maintenance::queue_for_regeneration($product_id, $type_slug, $color_slug, $reason);
         }
+        self::queue_missing_mockups_for_product($product_id, $type_slug, $type_data, array_keys($missing));
+    }
+
+    private static function queue_missing_mockups_for_product($product_id, $type_slug, $type_data, $skip_colors) {
+        if (!class_exists('MG_Mockup_Maintenance')) {
+            return;
+        }
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        if ($product_id <= 0 || $type_slug === '') {
+            return;
+        }
+        $normalized = self::normalize_type_data_for_queue($type_data);
+        $colors = array_keys($normalized['colors']);
+        if (empty($colors)) {
+            return;
+        }
+        $skip_colors = is_array($skip_colors) ? $skip_colors : [];
+        $skip = [];
+        foreach ($skip_colors as $color_slug) {
+            $color_slug = sanitize_title($color_slug);
+            if ($color_slug !== '') {
+                $skip[$color_slug] = true;
+            }
+        }
+        $index = MG_Mockup_Maintenance::get_index();
+        if (!is_array($index)) {
+            $index = [];
+        }
+        $requests = [];
+        foreach ($colors as $color_slug) {
+            if (isset($skip[$color_slug])) {
+                continue;
+            }
+            $key = self::compose_mockup_index_key($product_id, $type_slug, $color_slug);
+            $entry = isset($index[$key]) && is_array($index[$key]) ? $index[$key] : [];
+            $attachment_ids = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
+            $has_attachment = false;
+            foreach ($attachment_ids as $attachment_id) {
+                if (absint($attachment_id) > 0) {
+                    $has_attachment = true;
+                    break;
+                }
+            }
+            if ($has_attachment) {
+                continue;
+            }
+            $requests[] = [
+                'product_id' => $product_id,
+                'type_slug' => $type_slug,
+                'color_slug' => $color_slug,
+                'reason' => __('Mockup hiányzik a variáns szinkron után.', 'mgdtp'),
+            ];
+        }
+        if (!empty($requests)) {
+            MG_Mockup_Maintenance::queue_multiple_for_regeneration($requests);
+        }
+    }
+
+    private static function compose_mockup_index_key($product_id, $type_slug, $color_slug) {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        return $product_id . '|' . $type_slug . '|' . $color_slug;
     }
 
     private static function collect_products_for_type($type_slug) {
