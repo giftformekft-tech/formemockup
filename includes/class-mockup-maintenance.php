@@ -1106,6 +1106,15 @@ class MG_Mockup_Maintenance {
                     'views' => isset($type['views']) && is_array($type['views']) ? array_values($type['views']) : [],
                     'images' => self::extract_generated_images($images_by_type_color, $type['key'], $type_slug, $color_slug),
                 ]);
+                $attachment_ids = self::extract_generated_attachment_ids(
+                    isset($context['attachment_ids']) && is_array($context['attachment_ids']) ? $context['attachment_ids'] : [],
+                    $type['key'],
+                    $type_slug,
+                    $color_slug
+                );
+                if (!empty($attachment_ids)) {
+                    $index[$key]['source']['attachment_ids'] = $attachment_ids;
+                }
                 $queue = array_values(array_diff($queue, [$key]));
             }
         }
@@ -2167,6 +2176,34 @@ class MG_Mockup_Maintenance {
             return array_values($by_type[$color_slug]);
         }
         return [];
+    }
+
+    private static function extract_generated_attachment_ids($attachment_ids_by_type_color, $type_key, $type_slug, $color_slug) {
+        if (!is_array($attachment_ids_by_type_color)) {
+            return [];
+        }
+        $type_key_sanitized = sanitize_title($type_key);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $type_candidates = array_unique(array_filter([$type_key, $type_key_sanitized, $type_slug]));
+        $attachments = [];
+        foreach ($type_candidates as $candidate) {
+            if (!isset($attachment_ids_by_type_color[$candidate]) || !is_array($attachment_ids_by_type_color[$candidate])) {
+                continue;
+            }
+            foreach ($attachment_ids_by_type_color[$candidate] as $color_key => $ids) {
+                if (sanitize_title($color_key) !== $color_slug) {
+                    continue;
+                }
+                foreach ((array) $ids as $attachment_id) {
+                    $attachment_id = absint($attachment_id);
+                    if ($attachment_id > 0) {
+                        $attachments[$attachment_id] = true;
+                    }
+                }
+            }
+        }
+        return array_values(array_keys($attachments));
     }
 
     private static function log_activity($entry, $status, $message) {
