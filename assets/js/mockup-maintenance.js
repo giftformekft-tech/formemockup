@@ -23,6 +23,22 @@
                 }
             }
         });
+
+        var toggles = scope.querySelectorAll('.mg-group-toggle');
+        toggles.forEach(function(toggle){
+            toggle.addEventListener('click', function(){
+                var groupId = toggle.getAttribute('data-group');
+                if (!groupId) {
+                    return;
+                }
+                var isExpanded = toggle.getAttribute('aria-expanded') === 'true';
+                toggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+                var rows = scope.querySelectorAll('.mg-group-entry[data-group="' + groupId + '"]');
+                rows.forEach(function(row){
+                    row.classList.toggle('is-collapsed', isExpanded);
+                });
+            });
+        });
     });
 
     document.addEventListener('DOMContentLoaded', function(){

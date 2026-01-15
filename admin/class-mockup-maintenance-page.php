@@ -235,18 +235,25 @@ class MG_Mockup_Maintenance_Page {
         $grouped = [];
         $group_order = [];
         foreach ($entries as $entry) {
-            $type_label = $entry['source']['type_label'] ?? ($entry['type_slug'] ?? '');
-            $type_label = $type_label !== '' ? $type_label : __('Ismeretlen', 'mgdtp');
-            $type_slug = $entry['type_slug'] ?? '';
-            $group_key = $type_label . '|' . $type_slug;
+            $product_id = (int) ($entry['product_id'] ?? 0);
+            $product_label = $product_id;
+            if ($product_id && function_exists('wc_get_product')) {
+                $product_obj = wc_get_product($product_id);
+                if ($product_obj) {
+                    $product_label = $product_obj->get_name();
+                }
+            }
+            $group_label = $product_label !== '' ? $product_label : __('Ismeretlen', 'mgdtp');
+            $group_key = $product_id . '|' . sanitize_title((string) $group_label);
             if (!isset($grouped[$group_key])) {
                 $grouped[$group_key] = [
-                    'label' => $type_label,
-                    'slug' => $type_slug,
+                    'product_id' => $product_id,
+                    'label' => $group_label,
                     'entries' => [],
                 ];
                 $group_order[] = $group_key;
             }
+            $entry['__product_label'] = $group_label;
             $grouped[$group_key]['entries'][] = $entry;
         }
         ?>
@@ -276,37 +283,42 @@ class MG_Mockup_Maintenance_Page {
                             $group = $grouped[$group_key];
                             $group_label = $group['label'];
                             $group_count = count($group['entries']);
+                            $group_id = 'mg-group-' . md5($group_key);
+                            $product_id = (int) ($group['product_id'] ?? 0);
                             ?>
-                            <tr class="mg-group-row">
+                            <tr class="mg-group-row" data-group-row="<?php echo esc_attr($group_id); ?>">
                                 <th colspan="8">
-                                    <?php
-                                    echo esc_html(
-                                        sprintf(
-                                            /* translators: %1$s: type label, %2$d: entry count. */
-                                            __('Terméktípus: %1$s (%2$d)', 'mgdtp'),
-                                            $group_label,
-                                            $group_count
-                                        )
-                                    );
-                                    ?>
+                                    <button type="button" class="mg-group-toggle" data-group="<?php echo esc_attr($group_id); ?>" aria-expanded="false">
+                                        <span class="mg-group-title">
+                                            <?php
+                                            echo esc_html(
+                                                sprintf(
+                                                    /* translators: %1$s: product label, %2$d: entry count. */
+                                                    __('Termék: %1$s (%2$d)', 'mgdtp'),
+                                                    $group_label,
+                                                    $group_count
+                                                )
+                                            );
+                                            ?>
+                                        </span>
+                                    </button>
+                                    <?php if ($product_id) : ?>
+                                        <a class="mg-group-edit" href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">
+                                            <?php esc_html_e('Megnyitás', 'mgdtp'); ?>
+                                        </a>
+                                    <?php endif; ?>
                                 </th>
                             </tr>
                             <?php foreach ($group['entries'] as $entry) :
                                 $key = $entry['key'];
                                 $product_id = (int) ($entry['product_id'] ?? 0);
-                                $product_label = $product_id;
-                                if ($product_id && function_exists('wc_get_product')) {
-                                    $product_obj = wc_get_product($product_id);
-                                    if ($product_obj) {
-                                        $product_label = $product_obj->get_name();
-                                    }
-                                }
+                                $product_label = $entry['__product_label'] ?? $product_id;
                                 $updated_at = !empty($entry['updated_at']) ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $entry['updated_at']) : __('nincs adat', 'mgdtp');
                                 $status = $entry['status'] ?? 'ok';
                                 $pending_reason = $entry['pending_reason'] ?? '';
                                 $message = $entry['last_message'] ?? '';
                                 ?>
-                                <tr>
+                                <tr class="mg-group-entry is-collapsed" data-group="<?php echo esc_attr($group_id); ?>">
                                     <th scope="row" class="check-column"><input type="checkbox" name="mockup_keys[]" value="<?php echo esc_attr($key); ?>" /></th>
                                     <td>
                                         <?php if ($product_id) : ?>
