@@ -13,7 +13,7 @@ class MG_Mockup_Maintenance {
     const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
     const DEFAULT_BATCH = 3;
     const MIN_BATCH = 1;
-    const MAX_BATCH = 50;
+    const MAX_BATCH = 200;
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
