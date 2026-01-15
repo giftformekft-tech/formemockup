@@ -297,6 +297,33 @@ class MG_Generator {
         return 0;
     }
 
+    private function resize_imagick_image($image, $width, $height, $filter, $use_thumbnail) {
+        if (!($image instanceof Imagick)) {
+            return;
+        }
+        $w = max(1, (int)$width);
+        $h = max(1, (int)$height);
+        if ($use_thumbnail && method_exists($image, 'thumbnailImage')) {
+            if (method_exists($image, 'setImageFilter') && is_int($filter)) {
+                try {
+                    $image->setImageFilter($filter);
+                } catch (Throwable $ignored) {
+                }
+            }
+            try {
+                $image->thumbnailImage($w, $h, true, true);
+            } catch (Throwable $ignored) {
+            }
+            return;
+        }
+        if (method_exists($image, 'resizeImage')) {
+            try {
+                $image->resizeImage($w, $h, $filter, 1, true);
+            } catch (Throwable $ignored) {
+            }
+        }
+    }
+
     private function trim_imagick_image_bounds($image) {
         if (!($image instanceof Imagick)) {
             return;
@@ -414,8 +441,9 @@ class MG_Generator {
         $filesize = 0;
         $size_hint = '';
         $scale_plan = null;
-        $resize_settings = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos'));
+        $resize_settings = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos','method'=>'resize'));
         $resize_filter = $this->resolve_imagick_resize_filter($resize_settings['filter'] ?? 'lanczos');
+        $use_thumbnail = ($resize_settings['method'] ?? 'resize') === 'thumbnail';
         try {
             $probing = new Imagick();
             $probing->pingImage($template_path);
@@ -524,7 +552,7 @@ class MG_Generator {
             $placement_scale = 1.0;
             if (is_array($scale_plan)) {
                 if ($scale_plan['width'] !== $template_width || $scale_plan['height'] !== $template_height) {
-                    $mockup->resizeImage($scale_plan['width'], $scale_plan['height'], $resize_filter, 1, true);
+                    $this->resize_imagick_image($mockup, $scale_plan['width'], $scale_plan['height'], $resize_filter, $use_thumbnail);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                     if ($mockup_started_with_alpha === false) {
                         $this->force_imagick_alpha_channel_opaque($mockup);
@@ -639,7 +667,7 @@ class MG_Generator {
                     }
                 }
                 if (($target_w != $cw) || ($target_h != $ch)) {
-                    $mockup->resizeImage($target_w, $target_h, $resize_filter, 1, true);
+                    $this->resize_imagick_image($mockup, $target_w, $target_h, $resize_filter, $use_thumbnail);
                     $this->ensure_imagick_alpha_channel($mockup, defined('Imagick::ALPHACHANNEL_SET') ? Imagick::ALPHACHANNEL_SET : null);
                     if ($mockup_started_with_alpha === false) {
                         $this->force_imagick_alpha_channel_opaque($mockup);

@@ -20,6 +20,8 @@ class MG_Settings_Page {
             $mode  = in_array(($_POST['resize_mode'] ?? 'fit'), array('fit','width','height'), true) ? $_POST['resize_mode'] : 'fit';
             $filter = isset($_POST['resize_filter']) ? sanitize_text_field($_POST['resize_filter']) : 'lanczos';
             $filter = in_array($filter, array('lanczos', 'triangle', 'catrom', 'mitchell'), true) ? $filter : 'lanczos';
+            $resize_method = isset($_POST['resize_method']) ? sanitize_text_field($_POST['resize_method']) : 'resize';
+            $resize_method = in_array($resize_method, array('resize', 'thumbnail'), true) ? $resize_method : 'resize';
 
             $quality = isset($_POST['webp_quality']) ? max(0, min(100, intval($_POST['webp_quality']))) : 78;
             $alpha_quality = isset($_POST['webp_alpha']) ? max(0, min(100, intval($_POST['webp_alpha']))) : 92;
@@ -31,6 +33,7 @@ class MG_Settings_Page {
                 'max_h'   => $max_h,
                 'mode'    => $mode,
                 'filter'  => $filter,
+                'method'  => $resize_method,
             ));
             update_option('mg_webp_options', array(
                 'quality' => $quality,
@@ -141,12 +144,13 @@ class MG_Settings_Page {
         }
 
         $products = get_option('mg_products', array());
-        $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos'));
+        $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos','method'=>'resize'));
         $r_enabled = !empty($resize['enabled']);
         $r_w = intval($resize['max_w'] ?? 0);
         $r_h = intval($resize['max_h'] ?? 0);
         $r_mode = $resize['mode'] ?? 'fit';
         $r_filter = $resize['filter'] ?? 'lanczos';
+        $r_method = $resize['method'] ?? 'resize';
         $webp_defaults = array('quality'=>78,'alpha'=>92,'method'=>3);
         $webp = get_option('mg_webp_options', $webp_defaults);
         $w_quality = max(0, min(100, intval($webp['quality'] ?? $webp_defaults['quality'])));
@@ -222,6 +226,16 @@ class MG_Settings_Page {
                                 <option value="mitchell" <?php selected($r_filter,'mitchell'); ?>>MITCHEL</option>
                             </select>
                             <p class="description">A filter hatással van a lekicsinyítés minőségére és sebességére.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Átméretezési metódus</th>
+                        <td>
+                            <select name="resize_method">
+                                <option value="resize" <?php selected($r_method,'resize'); ?>>resizeImage</option>
+                                <option value="thumbnail" <?php selected($r_method,'thumbnail'); ?>>thumbnailImage</option>
+                            </select>
+                            <p class="description">Válaszd ki, hogy resizeImage vagy thumbnailImage legyen használva.</p>
                         </td>
                     </tr>
                     <tr>
