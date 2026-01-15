@@ -18,21 +18,31 @@ class MG_Settings_Page {
             $max_w = max(0, intval($_POST['resize_max_w'] ?? 0));
             $max_h = max(0, intval($_POST['resize_max_h'] ?? 0));
             $mode  = in_array(($_POST['resize_mode'] ?? 'fit'), array('fit','width','height'), true) ? $_POST['resize_mode'] : 'fit';
+            $filter = isset($_POST['resize_filter']) ? sanitize_text_field($_POST['resize_filter']) : 'lanczos';
+            $filter = in_array($filter, array('lanczos', 'triangle', 'catrom', 'mitchell'), true) ? $filter : 'lanczos';
+            $resize_method = isset($_POST['resize_method']) ? sanitize_text_field($_POST['resize_method']) : 'resize';
+            $resize_method = in_array($resize_method, array('resize', 'thumbnail'), true) ? $resize_method : 'resize';
 
             $quality = isset($_POST['webp_quality']) ? max(0, min(100, intval($_POST['webp_quality']))) : 78;
             $alpha_quality = isset($_POST['webp_alpha']) ? max(0, min(100, intval($_POST['webp_alpha']))) : 92;
             $method = isset($_POST['webp_method']) ? max(0, min(6, intval($_POST['webp_method']))) : 3;
+            $thread_limit = isset($_POST['imagick_thread_limit']) ? max(0, intval($_POST['imagick_thread_limit'])) : 0;
 
             update_option('mg_output_resize', array(
                 'enabled' => $enabled,
                 'max_w'   => $max_w,
                 'max_h'   => $max_h,
-                'mode'    => $mode
+                'mode'    => $mode,
+                'filter'  => $filter,
+                'method'  => $resize_method,
             ));
             update_option('mg_webp_options', array(
                 'quality' => $quality,
                 'alpha'   => $alpha_quality,
                 'method'  => $method,
+            ));
+            update_option('mg_imagick_options', array(
+                'thread_limit' => $thread_limit,
             ));
             echo '<div class="notice notice-success is-dismissible"><p>Beállítások elmentve.</p></div>';
         }
@@ -138,16 +148,20 @@ class MG_Settings_Page {
         }
 
         $products = get_option('mg_products', array());
-        $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit'));
+        $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos','method'=>'resize'));
         $r_enabled = !empty($resize['enabled']);
         $r_w = intval($resize['max_w'] ?? 0);
         $r_h = intval($resize['max_h'] ?? 0);
         $r_mode = $resize['mode'] ?? 'fit';
+        $r_filter = $resize['filter'] ?? 'lanczos';
+        $r_method = $resize['method'] ?? 'resize';
         $webp_defaults = array('quality'=>78,'alpha'=>92,'method'=>3);
         $webp = get_option('mg_webp_options', $webp_defaults);
         $w_quality = max(0, min(100, intval($webp['quality'] ?? $webp_defaults['quality'])));
         $w_alpha = max(0, min(100, intval($webp['alpha'] ?? $webp_defaults['alpha'])));
         $w_method = max(0, min(6, intval($webp['method'] ?? $webp_defaults['method'])));
+        $imagick_options = get_option('mg_imagick_options', array('thread_limit' => 0));
+        $imagick_thread_limit = max(0, intval($imagick_options['thread_limit'] ?? 0));
         $gallery_settings = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_settings() : array('enabled' => false, 'position' => 'after_summary', 'max_items' => 6, 'layout' => 'grid', 'title' => '', 'show_title' => true);
         $position_choices = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_position_choices() : array();
         $description_variables = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
@@ -209,6 +223,28 @@ class MG_Settings_Page {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row">Átméretezési filter</th>
+                        <td>
+                            <select name="resize_filter">
+                                <option value="lanczos" <?php selected($r_filter,'lanczos'); ?>>LANCZOS</option>
+                                <option value="triangle" <?php selected($r_filter,'triangle'); ?>>TRIANGLE</option>
+                                <option value="catrom" <?php selected($r_filter,'catrom'); ?>>CATROM</option>
+                                <option value="mitchell" <?php selected($r_filter,'mitchell'); ?>>MITCHEL</option>
+                            </select>
+                            <p class="description">A filter hatással van a lekicsinyítés minőségére és sebességére.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Átméretezési metódus</th>
+                        <td>
+                            <select name="resize_method">
+                                <option value="resize" <?php selected($r_method,'resize'); ?>>resizeImage</option>
+                                <option value="thumbnail" <?php selected($r_method,'thumbnail'); ?>>thumbnailImage</option>
+                            </select>
+                            <p class="description">Válaszd ki, hogy resizeImage vagy thumbnailImage legyen használva.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row">Max. szélesség (px)</th>
                         <td><input type="number" name="resize_max_w" min="0" step="1" value="<?php echo esc_attr($r_w); ?>" class="small-text" /> px</td>
                     </tr>
@@ -235,6 +271,13 @@ class MG_Settings_Page {
                         <td>
                             <input type="number" name="webp_method" min="0" max="6" step="1" value="<?php echo esc_attr($w_method); ?>" class="small-text" />
                             <p class="description">0 = leggyorsabb, 6 = legjobb minőség (lassabb feldolgozás).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Imagick szál limit</th>
+                        <td>
+                            <input type="number" name="imagick_thread_limit" min="0" step="1" value="<?php echo esc_attr($imagick_thread_limit); ?>" class="small-text" />
+                            <p class="description">0 = automatikus (imagick.thread_limit vagy fallback 2). Pozitív érték esetén ezt használja a feldolgozás.</p>
                         </td>
                     </tr>
                 </table>
