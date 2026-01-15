@@ -1001,7 +1001,7 @@ class MG_Mockup_Maintenance {
         $defaults_payload = [
             'type'  => $merged_defaults['pa_termektipus'] ?? '',
             'color' => $merged_defaults['pa_szin'] ?? '',
-            'size'  => $merged_defaults['meret'] ?? '',
+            'size'  => '',
         ];
         $generation_context = [
             'skip_register_maintenance' => true,

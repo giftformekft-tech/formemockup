@@ -2,7 +2,7 @@
 if (!defined('ABSPATH')) exit;
 
 /**
- * Variáns ár felárakkal: típus alapár + méret felár + szín felár
+ * Variáns ár felárakkal: típus alapár + szín felár
  * Forrás: mg_products opció
  */
 
@@ -23,19 +23,13 @@ if (!function_exists('mgsc_get_products')) {
 }
 
 if (!function_exists('mgsc_compute_variant_price')) {
-    function mgsc_compute_variant_price($type_key, $size, $color_slug){
+    function mgsc_compute_variant_price($type_key, $color_slug){
         $prods = mgsc_get_products();
         $type_key = sanitize_title($type_key);
         if (!isset($prods[$type_key])) return null;
         $p = $prods[$type_key];
 
         $base = isset($p['price']) ? floatval($p['price']) : 0;
-        // size surcharge
-        $sz = (string)$size;
-        $size_sur = 0;
-        if (isset($p['size_surcharges']) && is_array($p['size_surcharges']) && isset($p['size_surcharges'][$sz])) {
-            $size_sur = floatval($p['size_surcharges'][$sz]);
-        }
         // color surcharge
         $col_sur = 0;
         if (isset($p['colors']) && is_array($p['colors'])) {
@@ -47,24 +41,39 @@ if (!function_exists('mgsc_compute_variant_price')) {
                 }
             }
         }
-        $price = $base + $size_sur + $col_sur;
+        $price = $base + $col_sur;
         return max($price, 0);
+    }
+}
+
+if (!function_exists('mgsc_get_size_surcharge')) {
+    function mgsc_get_size_surcharge($type_key, $size){
+        $prods = mgsc_get_products();
+        $type_key = sanitize_title($type_key);
+        if (!isset($prods[$type_key])) return 0;
+        $p = $prods[$type_key];
+        $size = (string)$size;
+        if ($size === '') return 0;
+        if (!isset($p['size_surcharges']) || !is_array($p['size_surcharges'])) {
+            return 0;
+        }
+        return floatval($p['size_surcharges'][$size] ?? 0);
     }
 }
 
 /**
  * 1) Ha a saját variáns payload-ot szűritek, használjátok ezt:
- *    $payload = apply_filters('mg_variant_payload', $payload, $type_key, $size, $color_slug);
+ *    $payload = apply_filters('mg_variant_payload', $payload, $type_key, $color_slug);
  */
-add_filter('mg_variant_payload', function($payload, $type_key, $size, $color_slug){
+add_filter('mg_variant_payload', function($payload, $type_key, $color_slug){
     try {
-        $new = mgsc_compute_variant_price($type_key, $size, $color_slug);
+        $new = mgsc_compute_variant_price($type_key, $color_slug);
         if ($new !== null) {
             $payload['regular_price'] = (string) $new;
         }
     } catch (\Throwable $e) {}
     return $payload;
-}, 10, 4);
+}, 10, 3);
 
 /**
  * 2) Automatikus WooCommerce REST hook – ha a plugin REST-en hoz létre variánst,
@@ -82,25 +91,23 @@ add_filter('woocommerce_rest_pre_insert_product_variation', function($product, $
         $type_key = get_post_meta($parent_id, '_mg_type_key', true);
         if (!$type_key) return $product;
 
-        // try to get size & color from attributes
+        // try to get color from attributes
         $attrs = $product->get_attributes(); // array of name => value
-        $size = ''; $color_slug = '';
+        $color_slug = '';
         foreach ($attrs as $name => $value){
             $n = sanitize_title($name);
-            if (strpos($n,'size') !== false || strpos($n,'meret') !== false) $size = is_string($value)? $value : '';
             if (strpos($n,'color') !== false || strpos($n,'szin') !== false) $color_slug = is_string($value)? $value : '';
         }
-        if (!$size && isset($request['attributes']) && is_array($request['attributes'])) {
+        if (isset($request['attributes']) && is_array($request['attributes'])) {
             foreach ($request['attributes'] as $a){
                 $n = isset($a['name']) ? sanitize_title($a['name']) : '';
                 $v = isset($a['option']) ? $a['option'] : '';
-                if (strpos($n,'size') !== false || strpos($n,'meret') !== false) $size = $v;
                 if (strpos($n,'color') !== false || strpos($n,'szin') !== false) $color_slug = $v;
             }
         }
 
-        if ($size && $color_slug) {
-            $price = mgsc_compute_variant_price($type_key, $size, $color_slug);
+        if ($color_slug) {
+            $price = mgsc_compute_variant_price($type_key, $color_slug);
             if ($price !== null) {
                 $product->set_regular_price( (string)$price );
             }

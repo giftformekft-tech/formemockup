@@ -4,7 +4,11 @@
         this.config = config;
         this.$typeSelect = $form.find('select[name="attribute_pa_termektipus"]');
         this.$colorSelect = $form.find('select[name="attribute_pa_szin"]');
-        this.$sizeSelect = $form.find('select[name="attribute_meret"]');
+        this.$sizeSelect = $form.find('[name="mg_size"]');
+        if (!this.$sizeSelect.length) {
+            this.$sizeSelect = $('<input type="hidden" name="mg_size" />');
+            $form.append(this.$sizeSelect);
+        }
         this.$variantWrapper = null;
         this.state = {
             type: '',

@@ -897,7 +897,7 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         echo '</tr>';
                     }
                     echo '</tbody></table>';
-                    echo '<p class="description">Csak a kijelölt szín–méret párosokból készülnek WooCommerce variációk. Ha mindent üresen hagysz, minden kombináció engedélyezett.</p>';
+                    echo '<p class="description">A kijelölt szín–méret párosok határozzák meg, milyen méretek választhatók az adott színhez. A variációk kizárólag terméktípus × szín alapján készülnek.</p>';
                 }
                 ?>
 
@@ -1309,7 +1309,6 @@ if (function_exists('wp_editor')) {
             return;
         }
 
-        $size_surcharges = isset($job['size_surcharges']) && is_array($job['size_surcharges']) ? $job['size_surcharges'] : array();
         $color_surcharges = isset($job['color_surcharges']) && is_array($job['color_surcharges']) ? $job['color_surcharges'] : array();
         $base_price = intval($job['base_price'] ?? 0);
         $parent_ids = array();
@@ -1320,18 +1319,12 @@ if (function_exists('wp_editor')) {
                 continue;
             }
             $color_slug = sanitize_title($variation->get_attribute('pa_szin'));
-            $size_value = $variation->get_attribute('meret');
-            if ($size_value === '') {
-                $size_value = $variation->get_attribute('pa_meret');
-            }
-            $size_value = sanitize_text_field($size_value);
 
             if (function_exists('mgsc_compute_variant_price')) {
-                $new_price = mgsc_compute_variant_price($type_key, $size_value, $color_slug);
+                $new_price = mgsc_compute_variant_price($type_key, $color_slug);
             } else {
-                $size_extra = isset($size_surcharges[$size_value]) ? intval($size_surcharges[$size_value]) : 0;
                 $color_extra = isset($color_surcharges[$color_slug]) ? intval($color_surcharges[$color_slug]) : 0;
-                $new_price = max(0, $base_price + $size_extra + $color_extra);
+                $new_price = max(0, $base_price + $color_extra);
             }
 
             if ($new_price === null) {

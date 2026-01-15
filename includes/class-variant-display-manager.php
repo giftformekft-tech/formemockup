@@ -445,7 +445,6 @@ class MG_Variant_Display_Manager {
 
         $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
         $default_color = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
-        $default_size = isset($defaults['meret']) ? sanitize_text_field($defaults['meret']) : '';
 
         foreach ($available as $variation) {
             if (!is_array($variation)) {
@@ -458,15 +457,11 @@ class MG_Variant_Display_Manager {
             $attributes = isset($variation['attributes']) ? $variation['attributes'] : array();
             $type_slug = isset($attributes['attribute_pa_termektipus']) ? sanitize_title($attributes['attribute_pa_termektipus']) : '';
             $color_slug = isset($attributes['attribute_pa_szin']) ? sanitize_title($attributes['attribute_pa_szin']) : '';
-            $size_label = isset($attributes['attribute_meret']) ? sanitize_text_field($attributes['attribute_meret']) : '';
 
             if ($default_type && $type_slug !== $default_type) {
                 continue;
             }
             if ($default_color && $color_slug !== $default_color) {
-                continue;
-            }
-            if ($default_size && $size_label !== $default_size) {
                 continue;
             }
 
@@ -761,6 +756,7 @@ class MG_Variant_Display_Manager {
         if (!is_array($available)) {
             return $map;
         }
+        $catalog = self::get_catalog_index();
 
         foreach ($available as $variation) {
             if (!is_array($variation)) {
@@ -769,8 +765,7 @@ class MG_Variant_Display_Manager {
             $attributes = isset($variation['attributes']) ? $variation['attributes'] : array();
             $type_slug = isset($attributes['attribute_pa_termektipus']) ? sanitize_title($attributes['attribute_pa_termektipus']) : '';
             $color_slug = isset($attributes['attribute_pa_szin']) ? sanitize_title($attributes['attribute_pa_szin']) : '';
-            $size_label = isset($attributes['attribute_meret']) ? sanitize_text_field($attributes['attribute_meret']) : '';
-            if ($type_slug === '' || $color_slug === '' || $size_label === '') {
+            if ($type_slug === '' || $color_slug === '') {
                 continue;
             }
             if (!isset($map[$type_slug])) {
@@ -779,10 +774,19 @@ class MG_Variant_Display_Manager {
             if (!isset($map[$type_slug][$color_slug])) {
                 $map[$type_slug][$color_slug] = array();
             }
-            $map[$type_slug][$color_slug][$size_label] = array(
-                'in_stock' => !empty($variation['is_in_stock']),
-                'is_purchasable' => !empty($variation['is_purchasable']),
-            );
+            $sizes = array();
+            if (isset($catalog[$type_slug])) {
+                $sizes = self::sizes_for_color($catalog[$type_slug], $color_slug);
+            }
+            if (empty($sizes)) {
+                continue;
+            }
+            foreach ($sizes as $size_label) {
+                $map[$type_slug][$color_slug][$size_label] = array(
+                    'in_stock' => !empty($variation['is_in_stock']),
+                    'is_purchasable' => !empty($variation['is_purchasable']),
+                );
+            }
         }
 
         return $map;
