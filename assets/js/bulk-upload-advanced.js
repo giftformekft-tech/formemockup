@@ -741,8 +741,7 @@
     }
 
     function updateProgress(){
-      var inFlight = getActiveProgress();
-      var pct = total > 0 ? Math.round(((done + inFlight) / total) * 100) : 0;
+      var pct = total > 0 ? Math.round((done / total) * 100) : 0;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
       $('#mg-bulk-bar').css('width', pct+'%');
@@ -793,8 +792,7 @@
       }
       active++;
       var $state = $row.find('.mg-state');
-      $state.text('Feltöltés...');
-      jobProgress[index] = 0;
+      $state.text('Feldolgozás...');
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
