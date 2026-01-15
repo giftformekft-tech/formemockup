@@ -2,6 +2,9 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+if (class_exists('MG_Mockup_Maintenance')) {
+    return;
+}
 
 class MG_Mockup_Maintenance {
     const OPTION_STATUS_INDEX = 'mg_mockup_status_index';
