@@ -1808,11 +1808,18 @@ class MG_Mockup_Maintenance {
         $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
         $seo_text = self::compose_image_seo_text($product, $type, $color_slug);
         $new_attachment_ids = [];
-        foreach ($files as $file) {
-            $attachment_id = self::attach_image($file, $seo_text);
-            if ($attachment_id) {
-                $new_attachment_ids[] = $attachment_id;
+        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
+        add_filter('big_image_size_threshold', '__return_false', 99);
+        try {
+            foreach ($files as $file) {
+                $attachment_id = self::attach_image($file, $seo_text);
+                if ($attachment_id) {
+                    $new_attachment_ids[] = $attachment_id;
+                }
             }
+        } finally {
+            remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
+            remove_filter('big_image_size_threshold', '__return_false', 99);
         }
         if (empty($new_attachment_ids)) {
             $index[$key]['status'] = 'error';
@@ -2006,8 +2013,6 @@ class MG_Mockup_Maintenance {
             }
             return $existing_id;
         }
-        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-        add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) {
             $filetype['type'] = 'image/webp';
@@ -2028,8 +2033,6 @@ class MG_Mockup_Maintenance {
         if ($attach_id && $seo_text !== '') {
             update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
         }
-        remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-        remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
     }
 
