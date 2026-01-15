@@ -540,7 +540,9 @@ class MG_Generator {
             $design = clone $design_base;
 
             if (method_exists('Imagick','setResourceLimit')) {
-                $threads = max(1, (int)@ini_get('imagick.thread_limit') ?: 2);
+                $imagick_options = get_option('mg_imagick_options', array('thread_limit' => 0));
+                $thread_limit_setting = max(0, intval($imagick_options['thread_limit'] ?? 0));
+                $threads = $thread_limit_setting > 0 ? $thread_limit_setting : max(1, (int)@ini_get('imagick.thread_limit') ?: 2);
                 $mockup->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
                 $design->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
             }

@@ -26,6 +26,7 @@ class MG_Settings_Page {
             $quality = isset($_POST['webp_quality']) ? max(0, min(100, intval($_POST['webp_quality']))) : 78;
             $alpha_quality = isset($_POST['webp_alpha']) ? max(0, min(100, intval($_POST['webp_alpha']))) : 92;
             $method = isset($_POST['webp_method']) ? max(0, min(6, intval($_POST['webp_method']))) : 3;
+            $thread_limit = isset($_POST['imagick_thread_limit']) ? max(0, intval($_POST['imagick_thread_limit'])) : 0;
 
             update_option('mg_output_resize', array(
                 'enabled' => $enabled,
@@ -39,6 +40,9 @@ class MG_Settings_Page {
                 'quality' => $quality,
                 'alpha'   => $alpha_quality,
                 'method'  => $method,
+            ));
+            update_option('mg_imagick_options', array(
+                'thread_limit' => $thread_limit,
             ));
             echo '<div class="notice notice-success is-dismissible"><p>Beállítások elmentve.</p></div>';
         }
@@ -156,6 +160,8 @@ class MG_Settings_Page {
         $w_quality = max(0, min(100, intval($webp['quality'] ?? $webp_defaults['quality'])));
         $w_alpha = max(0, min(100, intval($webp['alpha'] ?? $webp_defaults['alpha'])));
         $w_method = max(0, min(6, intval($webp['method'] ?? $webp_defaults['method'])));
+        $imagick_options = get_option('mg_imagick_options', array('thread_limit' => 0));
+        $imagick_thread_limit = max(0, intval($imagick_options['thread_limit'] ?? 0));
         $gallery_settings = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_settings() : array('enabled' => false, 'position' => 'after_summary', 'max_items' => 6, 'layout' => 'grid', 'title' => '', 'show_title' => true);
         $position_choices = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_position_choices() : array();
         $description_variables = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
@@ -265,6 +271,13 @@ class MG_Settings_Page {
                         <td>
                             <input type="number" name="webp_method" min="0" max="6" step="1" value="<?php echo esc_attr($w_method); ?>" class="small-text" />
                             <p class="description">0 = leggyorsabb, 6 = legjobb minőség (lassabb feldolgozás).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Imagick szál limit</th>
+                        <td>
+                            <input type="number" name="imagick_thread_limit" min="0" step="1" value="<?php echo esc_attr($imagick_thread_limit); ?>" class="small-text" />
+                            <p class="description">0 = automatikus (imagick.thread_limit vagy fallback 2). Pozitív érték esetén ezt használja a feldolgozás.</p>
                         </td>
                     </tr>
                 </table>
