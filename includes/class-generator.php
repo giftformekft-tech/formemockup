@@ -353,6 +353,12 @@ class MG_Generator {
                         }
                         return new WP_Error('template_missing','Hiányzó template: '.$view['file']);
                     }
+                    if (class_exists('MG_Storage_Manager') && method_exists('MG_Storage_Manager', 'dedupe_generated_asset')) {
+                        $deduped = MG_Storage_Manager::dedupe_generated_asset($outfile);
+                        if (is_string($deduped) && $deduped !== '') {
+                            $outfile = $deduped;
+                        }
+                    }
                     $out[$slug][] = $outfile;
                 }
             }

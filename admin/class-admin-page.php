@@ -521,26 +521,6 @@ class MG_Admin_Page {
         echo '<button type="button" class="button" id="mg-bulk-apply-first">' . esc_html__('Első sor beállításainak másolása az összes sorba', 'mockup-generator') . '</button>';
         echo '</div>';
 
-        echo '<div class="mg-worker-control">';
-        echo '<span class="mg-worker-label">' . esc_html__('Párhuzamos generáló folyamatok', 'mockup-generator') . '</span>';
-        echo '<div class="mg-worker-toggle-group">';
-        if (!empty($data['worker_options'])) {
-            foreach ($data['worker_options'] as $option) {
-                $is_active = intval($option) === intval($data['worker_count']);
-                $classes = 'button mg-worker-toggle' . ($is_active ? ' is-active' : '');
-                echo '<button type="button" class="' . esc_attr($classes) . '" data-workers="' . esc_attr($option) . '" aria-pressed="' . ($is_active ? 'true' : 'false') . '">' . sprintf(esc_html__('%d worker', 'mockup-generator'), intval($option)) . '</button>';
-            }
-        }
-        echo '</div>';
-        $worker_summary = sprintf(
-            /* translators: %s: selected worker count. */
-            __('Aktív: %s', 'mockup-generator'),
-            '<span class="mg-worker-active-count">' . esc_html(intval($data['worker_count'])) . '</span>'
-        );
-        echo '<p class="mg-worker-summary">' . wp_kses_post($worker_summary) . '</p>';
-        echo '<p class="mg-worker-feedback" aria-live="polite"></p>';
-        echo '</div>';
-
         echo '<div class="mg-actions">';
         echo '<button type="button" class="button button-primary" id="mg-bulk-start">' . esc_html__('Bulk generálás indítása', 'mockup-generator') . '</button>';
         echo '<div class="mg-progress" aria-hidden="true"><div class="mg-bar" id="mg-bulk-bar"></div></div>';
@@ -751,13 +731,6 @@ class MG_Admin_Page {
             }
         }
 
-        $worker_options = array();
-        $worker_count = 1;
-        if (class_exists('MG_Bulk_Queue')) {
-            $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();
-            $worker_count = MG_Bulk_Queue::get_configured_worker_count();
-        }
-
         self::$bulk_data = array(
             'products'       => $products,
             'default_type'   => $default_type,
@@ -765,8 +738,6 @@ class MG_Admin_Page {
             'default_size'   => $default_size,
             'mains'          => $mains,
             'subs'           => $subs,
-            'worker_options' => $worker_options,
-            'worker_count'   => $worker_count,
         );
 
         return self::$bulk_data;
@@ -814,11 +785,6 @@ class MG_Admin_Page {
             'default_type'          => $bulk_data['default_type'],
             'default_color'         => $bulk_data['default_color'],
             'default_size'          => $bulk_data['default_size'],
-            'worker_options'        => $bulk_data['worker_options'],
-            'worker_count'          => $bulk_data['worker_count'],
-            'worker_feedback_saving'=> __('Mentés folyamatban…', 'mockup-generator'),
-            'worker_feedback_saved' => __('Beállítva: %d worker.', 'mockup-generator'),
-            'worker_feedback_error' => __('Nem sikerült menteni. Próbáld újra.', 'mockup-generator'),
         );
 
         wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', $payload);
