@@ -730,7 +730,7 @@
     $rowsCollection.each(function(){ $(this).find('.mg-state').text('Sorban áll…'); });
 
     function updateProgress(){
-      var pct = total > 0 ? Math.round((done/total)*100) : 0;
+      var pct = total > 0 ? Math.round((done / total) * 100) : 0;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
       $('#mg-bulk-bar').css('width', pct+'%');
@@ -772,7 +772,8 @@
         return;
       }
       active++;
-      $row.find('.mg-state').text('Feldolgozás...');
+      var $state = $row.find('.mg-state');
+      $state.text('Feldolgozás...');
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
@@ -802,7 +803,7 @@
         dataType:'json'
       }).done(function(resp){
         if (resp && resp.success){
-          $row.find('.mg-state').text('OK…');
+          $state.text('OK…');
           var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id,10) : 0;
           var latestTags = ($row.find('.mg-tags-input').val()||'').trim();
           if (pid && latestTags){
@@ -812,18 +813,18 @@
               product_id: pid,
               tags: latestTags
             }, function(r){
-              if (r && r.success){ $row.find('.mg-state').text('OK'); }
-              else { $row.find('.mg-state').text('OK – tagek hiba'); }
-            }, 'json').fail(function(){ $row.find('.mg-state').text('OK – tagek hiba'); });
+              if (r && r.success){ $state.text('OK'); }
+              else { $state.text('OK – tagek hiba'); }
+            }, 'json').fail(function(){ $state.text('OK – tagek hiba'); });
           } else {
-            $row.find('.mg-state').text('OK');
+            $state.text('OK');
           }
         } else {
           var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
-          $row.find('.mg-state').text('Hiba: '+msg);
+          $state.text('Hiba: '+msg);
         }
       }).fail(function(xhr){
-        $row.find('.mg-state').text('Hiba: '+serverErrorToText(xhr));
+        $state.text('Hiba: '+serverErrorToText(xhr));
       }).always(function(){
         done++;
         active--;
