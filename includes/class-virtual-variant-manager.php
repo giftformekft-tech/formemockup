@@ -202,6 +202,27 @@ class MG_Virtual_Variant_Manager {
             'typeMockups' => self::get_type_mockups($product->get_id(), $types_payload),
         );
 
+        $default_type = apply_filters('mg_virtual_variant_default_type', '', $product, $types_payload);
+        if ($default_type === '' && !empty($type_order)) {
+            $default_type = reset($type_order);
+        }
+        if ($default_type === '' && !empty($types_payload)) {
+            $type_keys = array_keys($types_payload);
+            $default_type = $type_keys ? reset($type_keys) : '';
+        }
+        $default_color = apply_filters('mg_virtual_variant_default_color', '', $product, $default_type, $types_payload);
+        if ($default_color === '' && $default_type !== '' && !empty($types_payload[$default_type]['color_order'])) {
+            $default_color = reset($types_payload[$default_type]['color_order']);
+        }
+        if ($default_color === '' && $default_type !== '' && !empty($types_payload[$default_type]['colors'])) {
+            $color_keys = array_keys($types_payload[$default_type]['colors']);
+            $default_color = $color_keys ? reset($color_keys) : '';
+        }
+        $default_size = apply_filters('mg_virtual_variant_default_size', '', $product, $default_type, $default_color, $types_payload);
+        if ($default_size === '' && $default_type !== '' && $default_color !== '' && !empty($types_payload[$default_type]['colors'][$default_color]['sizes'])) {
+            $default_size = reset($types_payload[$default_type]['colors'][$default_color]['sizes']);
+        }
+
         $config = array(
             'types' => $types_payload,
             'order' => array(
@@ -235,9 +256,9 @@ class MG_Virtual_Variant_Manager {
                 'outOfStock' => __('Nincs raktáron', 'mgvd'),
             ),
             'default' => array(
-                'type' => '',
-                'color' => '',
-                'size' => '',
+                'type' => $default_type,
+                'color' => $default_color,
+                'size' => $default_size,
             ),
             'descriptionTargets' => $description_targets,
             'visuals' => $visuals,
