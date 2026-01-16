@@ -75,6 +75,13 @@ add_action('plugins_loaded', function(){
         }
         });
 
+    add_action('add_meta_boxes', function($post_type) {
+        if ($post_type !== 'product') {
+            return;
+        }
+        remove_meta_box('postimagediv', 'product', 'side');
+    }, 99);
+
     add_action('admin_enqueue_scripts', function($hook){
         $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
         $tab  = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
