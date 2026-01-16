@@ -529,6 +529,24 @@ class MG_Variant_Display_Manager {
                 if ($render_url !== '') {
                     $mockups[$type_slug] = $render_url;
                 }
+                continue;
+            }
+
+            $render_dir = self::build_render_dir($render_version, $design_id, $type_slug);
+            if ($render_dir === '' || !is_dir($render_dir)) {
+                continue;
+            }
+            $pattern = $render_dir . '/mockup_' . sanitize_title($type_slug) . '_' . sanitize_title($fallback_color) . '_*.webp';
+            $candidates = glob($pattern);
+            if (empty($candidates)) {
+                continue;
+            }
+            $candidate = $candidates[0];
+            if (is_string($candidate) && $candidate !== '' && file_exists($candidate)) {
+                $url = self::convert_path_to_url($candidate);
+                if ($url !== '') {
+                    $mockups[$type_slug] = $url;
+                }
             }
         }
         return $mockups;
@@ -660,6 +678,20 @@ class MG_Variant_Display_Manager {
         }
         $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
         return trailingslashit($base_url) . str_replace('\\', '/', $path);
+    }
+
+    protected static function build_render_dir($render_version, $design_id, $type_slug) {
+        $base_dir = self::get_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug);
     }
 
     protected static function resolve_design_url($post_id) {
