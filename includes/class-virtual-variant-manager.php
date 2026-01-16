@@ -278,7 +278,88 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_version($product) {
-        return apply_filters('mg_virtual_variant_render_version', '', $product);
+        $default_version = 'v4';
+        $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
+        $version = sanitize_title($version);
+        return $version !== '' ? $version : $default_version;
+    }
+
+    protected static function get_render_base_dir() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        if ($base_dir === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . 'mockup-renders');
+    }
+
+    protected static function get_render_base_url() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
+        if ($base_url === '') {
+            return '';
+        }
+        return trailingslashit($base_url) . 'mockup-renders';
+    }
+
+    protected static function format_design_folder($design_id) {
+        $design_id = absint($design_id);
+        if ($design_id <= 0) {
+            return '';
+        }
+        return 'd' . sprintf('%03d', $design_id);
+    }
+
+    protected static function build_render_path($render_version, $design_id, $type_slug, $color_slug) {
+        $base_dir = self::get_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp');
+    }
+
+    protected static function build_render_url($render_version, $design_id, $type_slug, $color_slug) {
+        $base_url = self::get_render_base_url();
+        if ($base_url === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
+        return esc_url_raw(trailingslashit($base_url) . $path);
+    }
+
+    protected static function persist_render_file($source_path, $destination_path) {
+        if ($source_path === '' || $destination_path === '') {
+            return false;
+        }
+        $directory = wp_normalize_path(dirname($destination_path));
+        if (!wp_mkdir_p($directory)) {
+            return false;
+        }
+        if (file_exists($destination_path)) {
+            return true;
+        }
+        if (@rename($source_path, $destination_path)) {
+            return true;
+        }
+        if (@copy($source_path, $destination_path)) {
+            @unlink($source_path);
+            return true;
+        }
+        return false;
     }
 
     protected static function get_settings($catalog) {
@@ -623,14 +704,19 @@ class MG_Virtual_Variant_Manager {
         $item->add_meta_data('mg_product_type', $type_slug, true);
         $item->add_meta_data('mg_color', $color_slug, true);
         $item->add_meta_data('mg_size', $size_value, true);
+        $item->add_meta_data('product_type', $type_slug, true);
+        $item->add_meta_data('color', $color_slug, true);
+        $item->add_meta_data('size', $size_value, true);
         if ($design_id) {
             $item->add_meta_data('mg_design_id', $design_id, true);
         }
         if ($preview_url !== '') {
             $item->add_meta_data('mg_preview_url', $preview_url, true);
+            $item->add_meta_data('preview_image_url', $preview_url, true);
         }
         if ($render_version !== '') {
             $item->add_meta_data('mg_render_version', $render_version, true);
+            $item->add_meta_data('render_version', $render_version, true);
         }
     }
 
@@ -714,6 +800,11 @@ class MG_Virtual_Variant_Manager {
         $hidden[] = 'mg_design_id';
         $hidden[] = 'mg_preview_url';
         $hidden[] = 'mg_render_version';
+        $hidden[] = 'preview_image_url';
+        $hidden[] = 'render_version';
+        $hidden[] = 'product_type';
+        $hidden[] = 'color';
+        $hidden[] = 'size';
         return array_unique($hidden);
     }
 
@@ -746,6 +837,15 @@ class MG_Virtual_Variant_Manager {
         $color_slug = sanitize_title($color_slug);
         if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
             return new WP_Error('invalid_request', __('Hiányzó adatok.', 'mgdtp'));
+        }
+
+        $product = wc_get_product($product_id);
+        $render_version = self::get_render_version($product);
+        $design_id = self::get_design_id($product);
+        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug);
+        $render_url = self::build_render_url($render_version, $design_id, $type_slug, $color_slug);
+        if ($render_path !== '' && $render_url !== '' && file_exists($render_path)) {
+            return $render_url;
         }
 
         if (class_exists('MG_Mockup_Maintenance')) {
@@ -795,9 +895,10 @@ class MG_Virtual_Variant_Manager {
                 if (!is_string($path) || $path === '') {
                     continue;
                 }
-                $url = self::convert_path_to_url($path);
-                if ($url !== '') {
-                    return $url;
+                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
+                    if ($render_url !== '') {
+                        return $render_url;
+                    }
                 }
             }
         }
