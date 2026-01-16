@@ -366,7 +366,7 @@ class MG_Variant_Display_Manager {
 
                 if ($variation_id) {
                     $mockup = self::extract_variation_image($variation);
-                    if ($mockup !== '') {
+                    if ($mockup !== '' && self::is_valid_mockup_url($mockup)) {
                         $visuals['variationMockups'][$variation_id] = $mockup;
                         if ($type_slug !== '' && empty($visuals['typeMockups'][$type_slug])) {
                             $visuals['typeMockups'][$type_slug] = $mockup;
@@ -392,7 +392,9 @@ class MG_Variant_Display_Manager {
                     if ($existing !== '' && self::is_valid_mockup_url($existing)) {
                         continue;
                     }
-                    $visuals['typeMockups'][$type_slug] = $mockup_url;
+                    if (self::is_valid_mockup_url($mockup_url)) {
+                        $visuals['typeMockups'][$type_slug] = $mockup_url;
+                    }
                 }
             }
         }
@@ -417,6 +419,15 @@ class MG_Variant_Display_Manager {
         ) {
             $visuals['defaults']['mockup'] = $visuals['typeMockups'][$default_type];
         }
+        if ($visuals['defaults']['mockup'] === '' || !self::is_valid_mockup_url($visuals['defaults']['mockup'])) {
+            $featured_id = method_exists($product, 'get_image_id') ? (int) $product->get_image_id() : 0;
+            if ($featured_id > 0) {
+                $featured_url = wp_get_attachment_image_url($featured_id, 'large');
+                if ($featured_url && self::is_valid_mockup_url($featured_url)) {
+                    $visuals['defaults']['mockup'] = $featured_url;
+                }
+            }
+        }
 
         if ($default_variation_id && isset($visuals['variationPatterns'][$default_variation_id])) {
             $visuals['defaults']['pattern'] = $visuals['variationPatterns'][$default_variation_id];
@@ -431,7 +442,20 @@ class MG_Variant_Display_Manager {
         if (!is_string($url) || $url === '') {
             return false;
         }
-        return (bool) wp_http_validate_url($url);
+        if (!wp_http_validate_url($url)) {
+            return false;
+        }
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
+            return true;
+        }
+        $baseurl = rtrim($uploads['baseurl'], '/') . '/';
+        if (strpos($url, $baseurl) !== 0) {
+            return true;
+        }
+        $relative = ltrim(substr($url, strlen($baseurl)), '/');
+        $path = wp_normalize_path(trailingslashit($uploads['basedir']) . $relative);
+        return file_exists($path);
     }
 
     protected static function get_type_mockups_from_index($product_id, $types_payload) {
@@ -478,7 +502,12 @@ class MG_Variant_Display_Manager {
                 if ($attachment_id <= 0) {
                     continue;
                 }
-                $url = wp_get_attachment_image_url($attachment_id, 'large');
+                $file = get_attached_file($attachment_id);
+                if ($file && file_exists($file)) {
+                    $url = wp_get_attachment_image_url($attachment_id, 'large');
+                } else {
+                    $url = '';
+                }
                 if ($url) {
                     return $url;
                 }
@@ -493,6 +522,9 @@ class MG_Variant_Display_Manager {
         }
         foreach ($images as $path) {
             if (!is_string($path) || $path === '') {
+                continue;
+            }
+            if (!file_exists($path)) {
                 continue;
             }
             $url = self::convert_path_to_url($path);

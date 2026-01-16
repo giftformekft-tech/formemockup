@@ -1784,7 +1784,13 @@ class MG_Mockup_Maintenance {
         }
         require_once __DIR__ . '/class-generator.php';
         $generator = new MG_Generator();
-        $result = $generator->generate_for_product($type['key'], $design_path);
+        $render_version = apply_filters('mg_virtual_variant_render_version', 'v4', $product);
+        $design_id = apply_filters('mg_virtual_variant_design_id', $product_id, $product);
+        $result = $generator->generate_for_product($type['key'], $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+        ));
         if (is_wp_error($result)) {
             $index[$key]['status'] = 'error';
             $index[$key]['last_message'] = $result->get_error_message();
