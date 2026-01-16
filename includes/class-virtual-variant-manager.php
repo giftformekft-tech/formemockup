@@ -835,6 +835,69 @@ class MG_Virtual_Variant_Manager {
         wp_send_json_success(array('preview_url' => esc_url_raw($preview)));
     }
 
+    public static function get_or_generate_preview_path($product_id, $type_slug, $color_slug, $design_path = '') {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            return new WP_Error('invalid_request', __('Hiányzó adatok.', 'mgdtp'));
+        }
+
+        $product = wc_get_product($product_id);
+        $render_version = self::get_render_version($product);
+        $design_id = self::get_design_id($product);
+        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug);
+        if ($render_path !== '' && file_exists($render_path)) {
+            return $render_path;
+        }
+
+        if ($design_path === '') {
+            $design_path = self::resolve_design_path($product_id);
+        }
+        if ($design_path === '') {
+            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
+        }
+
+        if (!function_exists('mgsc_get_products')) {
+            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
+        }
+        $products = mgsc_get_products();
+        if (empty($products[$type_slug])) {
+            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
+        }
+
+        $generator = new MG_Generator();
+        $generated = $generator->generate_for_product($type_slug, $design_path);
+        if (is_wp_error($generated)) {
+            return $generated;
+        }
+
+        if (class_exists('MG_Mockup_Maintenance')) {
+            MG_Mockup_Maintenance::register_generation(
+                $product_id,
+                array($products[$type_slug]),
+                array($type_slug => $generated),
+                array(
+                    'design_path' => $design_path,
+                    'trigger' => 'virtual_preview',
+                )
+            );
+        }
+
+        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
+            foreach ($generated[$color_slug] as $path) {
+                if (!is_string($path) || $path === '') {
+                    continue;
+                }
+                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
+                    return $render_path;
+                }
+            }
+        }
+
+        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
+    }
+
     protected static function get_or_generate_preview_url($product_id, $type_slug, $color_slug) {
         $product_id = absint($product_id);
         $type_slug = sanitize_title($type_slug);
