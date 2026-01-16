@@ -42,6 +42,8 @@ add_action('plugins_loaded', function(){
         'includes/class-product-image-performance.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
+        'includes/variant-surcharge-applier.php',
+        'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
     ];
     foreach ($files as $rel) {
@@ -138,6 +140,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
+    }
+    if (class_exists('MG_Virtual_Variant_Manager')) {
+        MG_Virtual_Variant_Manager::init();
     }
     if (class_exists('MG_Product_Image_Performance')) {
         MG_Product_Image_Performance::init();
