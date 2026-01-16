@@ -123,6 +123,7 @@ class MG_Virtual_Variant_Manager {
         }
 
         $settings = self::get_settings($catalog);
+        $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
@@ -146,6 +147,21 @@ class MG_Virtual_Variant_Manager {
                 $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
             }
 
+            $raw_type = isset($products[$type_slug]) && is_array($products[$type_slug]) ? $products[$type_slug] : array();
+            $color_surcharges = array();
+            if (!empty($raw_type['colors']) && is_array($raw_type['colors'])) {
+                foreach ($raw_type['colors'] as $color_entry) {
+                    if (!is_array($color_entry)) {
+                        continue;
+                    }
+                    $raw_slug = isset($color_entry['slug']) ? sanitize_title($color_entry['slug']) : '';
+                    if ($raw_slug === '') {
+                        continue;
+                    }
+                    $color_surcharges[$raw_slug] = isset($color_entry['surcharge']) ? floatval($color_entry['surcharge']) : 0.0;
+                }
+            }
+
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
                 $default_hex = isset($color_meta['hex']) ? $color_meta['hex'] : '';
@@ -161,7 +177,20 @@ class MG_Virtual_Variant_Manager {
                     'label' => $color_meta['label'],
                     'swatch' => $swatch,
                     'sizes' => self::sizes_for_color($type_meta, $color_slug),
+                    'surcharge' => isset($color_surcharges[$color_slug]) ? $color_surcharges[$color_slug] : 0.0,
                 );
+            }
+
+            $type_price = isset($raw_type['price']) ? floatval($raw_type['price']) : 0.0;
+            $size_surcharges = array();
+            if (!empty($raw_type['size_surcharges']) && is_array($raw_type['size_surcharges'])) {
+                foreach ($raw_type['size_surcharges'] as $size_label => $surcharge) {
+                    $size_key = sanitize_text_field($size_label);
+                    if ($size_key === '') {
+                        continue;
+                    }
+                    $size_surcharges[$size_key] = floatval($surcharge);
+                }
             }
 
             $types_payload[$type_slug] = array(
@@ -172,6 +201,8 @@ class MG_Virtual_Variant_Manager {
                 'size_chart' => $size_chart,
                 'size_chart_models' => $size_chart_models,
                 'description' => $type_description,
+                'price' => $type_price,
+                'size_surcharges' => $size_surcharges,
             );
         }
 
@@ -236,6 +267,13 @@ class MG_Virtual_Variant_Manager {
                 'types' => $type_order,
             ),
             'typeUrls' => $type_urls,
+            'priceFormat' => array(
+                'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '',
+                'priceFormat' => function_exists('get_woocommerce_price_format') ? get_woocommerce_price_format() : '%1$s%2$s',
+                'decimalSeparator' => function_exists('wc_get_price_decimal_separator') ? wc_get_price_decimal_separator() : '.',
+                'thousandSeparator' => function_exists('wc_get_price_thousand_separator') ? wc_get_price_thousand_separator() : ',',
+                'decimals' => function_exists('wc_get_price_decimals') ? wc_get_price_decimals() : 2,
+            ),
             'text' => array(
                 'type' => __('Terméktípus:', 'mgvd'),
                 'typePrompt' => __('Válassz terméket:', 'mgvd'),
@@ -282,18 +320,10 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_version($product) {
-        $default_version = 'v5';
+        $default_version = 'v4';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
         $version = sanitize_title($version);
         return $version !== '' ? $version : $default_version;
-    }
-
-    protected static function get_featured_render_base_dir() {
-        $base_dir = self::get_render_base_dir();
-        if ($base_dir === '') {
-            return '';
-        }
-        return wp_normalize_path(trailingslashit($base_dir) . 'featured');
     }
 
     protected static function get_render_base_dir() {
@@ -351,19 +381,6 @@ class MG_Virtual_Variant_Manager {
         }
         $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
         return esc_url_raw(trailingslashit($base_url) . $path);
-    }
-
-    protected static function build_featured_render_path($render_version, $product_id) {
-        $base_dir = self::get_featured_render_base_dir();
-        if ($base_dir === '') {
-            return '';
-        }
-        $render_version = sanitize_title($render_version);
-        $product_id = absint($product_id);
-        if ($render_version === '' || $product_id <= 0) {
-            return '';
-        }
-        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/product_' . $product_id . '.webp');
     }
 
     protected static function persist_render_file($source_path, $destination_path) {
@@ -888,7 +905,11 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path);
+        $generated = $generator->generate_for_product($type_slug, $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+        ));
         if (is_wp_error($generated)) {
             return $generated;
         }
@@ -901,68 +922,6 @@ class MG_Virtual_Variant_Manager {
                 array(
                     'design_path' => $design_path,
                     'trigger' => 'virtual_preview',
-                )
-            );
-        }
-
-        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
-            foreach ($generated[$color_slug] as $path) {
-                if (!is_string($path) || $path === '') {
-                    continue;
-                }
-                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
-                    return $render_path;
-                }
-            }
-        }
-
-        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
-    }
-
-    public static function get_or_generate_featured_path($product_id, $type_slug, $color_slug, $design_path = '') {
-        $product_id = absint($product_id);
-        $type_slug = sanitize_title($type_slug);
-        $color_slug = sanitize_title($color_slug);
-        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
-            return new WP_Error('invalid_request', __('Hiányzó adatok.', 'mgdtp'));
-        }
-
-        $product = wc_get_product($product_id);
-        $render_version = self::get_render_version($product);
-        $render_path = self::build_featured_render_path($render_version, $product_id);
-        if ($render_path !== '' && file_exists($render_path)) {
-            return $render_path;
-        }
-
-        if ($design_path === '') {
-            $design_path = self::resolve_design_path($product_id);
-        }
-        if ($design_path === '') {
-            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
-        }
-
-        if (!function_exists('mgsc_get_products')) {
-            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
-        }
-        $products = mgsc_get_products();
-        if (empty($products[$type_slug])) {
-            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
-        }
-
-        $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path);
-        if (is_wp_error($generated)) {
-            return $generated;
-        }
-
-        if (class_exists('MG_Mockup_Maintenance')) {
-            MG_Mockup_Maintenance::register_generation(
-                $product_id,
-                array($products[$type_slug]),
-                array($type_slug => $generated),
-                array(
-                    'design_path' => $design_path,
-                    'trigger' => 'woo_featured',
                 )
             );
         }
@@ -1023,7 +982,11 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path);
+        $generated = $generator->generate_for_product($type_slug, $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+        ));
         if (is_wp_error($generated)) {
             return $generated;
         }
