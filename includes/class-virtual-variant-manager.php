@@ -905,7 +905,11 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path);
+        $generated = $generator->generate_for_product($type_slug, $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+        ));
         if (is_wp_error($generated)) {
             return $generated;
         }
@@ -978,7 +982,11 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path);
+        $generated = $generator->generate_for_product($type_slug, $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+        ));
         if (is_wp_error($generated)) {
             return $generated;
         }
