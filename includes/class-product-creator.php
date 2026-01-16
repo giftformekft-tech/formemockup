@@ -334,11 +334,17 @@ class MG_Product_Creator {
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) $filetype['type'] = 'image/webp';
         $wp_upload_dir = wp_upload_dir();
+        $basedir = wp_normalize_path($wp_upload_dir['basedir'] ?? '');
+        $relative = $basedir && strpos($path, $basedir) === 0 ? ltrim(substr($path, strlen($basedir)), '/') : basename($path);
+        $guid = trailingslashit($wp_upload_dir['baseurl'] ?? $wp_upload_dir['url'] ?? '') . $relative;
         $title = $seo_text !== '' ? sanitize_text_field($seo_text) : preg_replace('/\.[^.]+$/','',basename($path));
-        $attachment = array('guid'=>$wp_upload_dir['url'].'/'.basename($path),'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>$title,'post_content'=>'','post_status'=>'inherit');
+        $attachment = array('guid'=>$guid,'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>$title,'post_content'=>'','post_status'=>'inherit');
         $attach_id = wp_insert_attachment($attachment, $path);
         require_once(ABSPATH.'wp-admin/includes/image.php');
-        $attach_data = ['file'=>_wp_relative_upload_path($path)];
+        $attach_data = wp_generate_attachment_metadata($attach_id, $path);
+        if (empty($attach_data)) {
+            $attach_data = ['file' => _wp_relative_upload_path($path)];
+        }
         wp_update_attachment_metadata($attach_id, $attach_data);
         if ($attach_id && $seo_text !== '') update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
         remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
