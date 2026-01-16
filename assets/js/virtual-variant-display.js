@@ -626,7 +626,9 @@
             return;
         }
         $('form.cart').each(function(){
-            new VirtualVariantDisplay($(this), MG_VIRTUAL_VARIANTS);
+            var instance = new VirtualVariantDisplay($(this), MG_VIRTUAL_VARIANTS);
+            window.MG_VIRTUAL_VARIANT_INSTANCES = window.MG_VIRTUAL_VARIANT_INSTANCES || [];
+            window.MG_VIRTUAL_VARIANT_INSTANCES.push(instance);
         });
     });
 })(jQuery);
