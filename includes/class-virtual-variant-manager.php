@@ -314,6 +314,21 @@ class MG_Virtual_Variant_Manager {
         return $config;
     }
 
+    public static function get_default_selection($product) {
+        if (!$product instanceof WC_Product) {
+            return array();
+        }
+        $config = self::get_frontend_config($product);
+        if (empty($config['default']) || !is_array($config['default'])) {
+            return array();
+        }
+        return array(
+            'type' => sanitize_title($config['default']['type'] ?? ''),
+            'color' => sanitize_title($config['default']['color'] ?? ''),
+            'size' => sanitize_text_field($config['default']['size'] ?? ''),
+        );
+    }
+
     protected static function get_design_id($product) {
         $product_id = $product ? $product->get_id() : 0;
         return apply_filters('mg_virtual_variant_design_id', $product_id, $product);

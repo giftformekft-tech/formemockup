@@ -34,7 +34,7 @@ class MG_Surcharge_Frontend {
         if (!$product instanceof WC_Product) {
             return;
         }
-        $virtual_context = self::get_virtual_attribute_context(null, $_POST);
+        $virtual_context = self::get_virtual_attribute_context(null, $_POST, $product);
         $available = self::get_applicable_surcharges($product, null, 'product', $virtual_context);
         if (empty($available)) {
             return;
@@ -70,7 +70,7 @@ class MG_Surcharge_Frontend {
         $parent = $product_id && $variation_id ? wc_get_product($product_id) : ($product->is_type('variation') ? $product->get_parent_id() ? wc_get_product($product->get_parent_id()) : $product : $product);
         $variation = $product->is_type('variation') ? $product : ($variation_id ? wc_get_product($variation_id) : null);
         $parent = $parent instanceof WC_Product ? $parent : $product;
-        $virtual_context = self::get_virtual_attribute_context(null, $_POST);
+        $virtual_context = self::get_virtual_attribute_context(null, $_POST, $parent);
         $available = self::get_applicable_surcharges($parent, $variation, 'product', $virtual_context);
         if (empty($available)) {
             return $passed;
@@ -114,7 +114,7 @@ class MG_Surcharge_Frontend {
         if (!$product instanceof WC_Product) {
             return $cart_item_data;
         }
-        $virtual_context = self::get_virtual_attribute_context(null, $_POST);
+        $virtual_context = self::get_virtual_attribute_context(null, $_POST, $product);
         $available = self::get_applicable_surcharges($product, $variation, 'product', $virtual_context);
         if (empty($available)) {
             return $cart_item_data;
@@ -196,7 +196,7 @@ class MG_Surcharge_Frontend {
             }
             $product = wc_get_product($cart_item['product_id']);
             $variation = !empty($cart_item['variation_id']) ? wc_get_product($cart_item['variation_id']) : null;
-            $virtual_context = self::get_virtual_attribute_context($cart_item, null);
+            $virtual_context = self::get_virtual_attribute_context($cart_item, null, $product);
             $available = self::get_applicable_surcharges($product, $variation, 'any', $virtual_context);
             $valid_ids = wp_list_pluck($available, 'id');
             foreach ($cart_item['mg_surcharge_data'] as $id => $surcharge) {
@@ -231,7 +231,7 @@ class MG_Surcharge_Frontend {
             return;
         }
         $variation = !empty($cart_item['variation_id']) ? wc_get_product($cart_item['variation_id']) : null;
-        $virtual_context = self::get_virtual_attribute_context($cart_item, null);
+        $virtual_context = self::get_virtual_attribute_context($cart_item, null, $product);
         $available = self::get_applicable_surcharges($product, $variation, 'cart', $virtual_context);
         if (empty($available)) {
             return;
@@ -258,7 +258,7 @@ class MG_Surcharge_Frontend {
                 continue;
             }
             $variation = !empty($item['variation_id']) ? wc_get_product($item['variation_id']) : null;
-            $virtual_context = self::get_virtual_attribute_context($item, null);
+            $virtual_context = self::get_virtual_attribute_context($item, null, $product);
             $available = self::get_applicable_surcharges($product, $variation, 'cart', $virtual_context);
             $selection = isset($data[$key]) ? (array)$data[$key] : [];
             $updated = self::prepare_cart_item_surcharges($available, $selection, $item);
@@ -292,7 +292,7 @@ class MG_Surcharge_Frontend {
         return MG_Surcharge_Manager::sort_surcharges($result);
     }
 
-    private static function get_virtual_attribute_context($cart_item = null, $request = null) {
+    private static function get_virtual_attribute_context($cart_item = null, $request = null, $product = null) {
         $type_slug = '';
         $color_slug = '';
         $size_value = '';
@@ -310,6 +310,20 @@ class MG_Surcharge_Frontend {
             }
             if ($size_value === '') {
                 $size_value = sanitize_text_field($request['mg_size'] ?? '');
+            }
+        }
+        if (($type_slug === '' || $color_slug === '' || $size_value === '') && $product instanceof WC_Product) {
+            if (class_exists('MG_Virtual_Variant_Manager') && method_exists('MG_Virtual_Variant_Manager', 'get_default_selection')) {
+                $defaults = MG_Virtual_Variant_Manager::get_default_selection($product);
+                if ($type_slug === '') {
+                    $type_slug = sanitize_title($defaults['type'] ?? '');
+                }
+                if ($color_slug === '') {
+                    $color_slug = sanitize_title($defaults['color'] ?? '');
+                }
+                if ($size_value === '') {
+                    $size_value = sanitize_text_field($defaults['size'] ?? '');
+                }
             }
         }
         $virtual = [];
