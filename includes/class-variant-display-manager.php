@@ -397,6 +397,18 @@ class MG_Variant_Display_Manager {
                     }
                 }
             }
+            $render_fallbacks = self::get_type_mockups_from_renders($product, $types_payload);
+            if (!empty($render_fallbacks)) {
+                foreach ($render_fallbacks as $type_slug => $mockup_url) {
+                    $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
+                    if ($existing !== '' && self::is_valid_mockup_url($existing)) {
+                        continue;
+                    }
+                    if (self::is_valid_mockup_url($mockup_url)) {
+                        $visuals['typeMockups'][$type_slug] = $mockup_url;
+                    }
+                }
+            }
         }
 
         $default_color = '';
@@ -491,6 +503,37 @@ class MG_Variant_Display_Manager {
         return $mockups;
     }
 
+    protected static function get_type_mockups_from_renders($product, $types_payload) {
+        $mockups = array();
+        if (!is_object($product) || empty($types_payload)) {
+            return $mockups;
+        }
+        $render_version = self::get_render_version($product);
+        $design_id = self::get_design_id($product);
+        if ($render_version === '' || $design_id <= 0) {
+            return $mockups;
+        }
+        foreach ($types_payload as $type_slug => $type_meta) {
+            $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+            $fallback_color = $color_order ? reset($color_order) : '';
+            if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                $color_keys = array_keys($type_meta['colors']);
+                $fallback_color = $color_keys ? reset($color_keys) : '';
+            }
+            if ($fallback_color === '') {
+                continue;
+            }
+            $render_path = self::build_render_path($render_version, $design_id, $type_slug, $fallback_color);
+            if ($render_path !== '' && file_exists($render_path)) {
+                $render_url = self::build_render_url($render_version, $design_id, $type_slug, $fallback_color);
+                if ($render_url !== '') {
+                    $mockups[$type_slug] = $render_url;
+                }
+            }
+        }
+        return $mockups;
+    }
+
     protected static function resolve_preview_url_from_entry($entry) {
         if (!is_array($entry)) {
             return '';
@@ -548,6 +591,75 @@ class MG_Variant_Display_Manager {
         }
         $relative = ltrim(str_replace($normalized_base, '', $normalized_path), '/');
         return trailingslashit($uploads['baseurl']) . str_replace('\\', '/', $relative);
+    }
+
+    protected static function get_render_version($product) {
+        $default_version = 'v4';
+        $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
+        $version = sanitize_title($version);
+        return $version !== '' ? $version : $default_version;
+    }
+
+    protected static function get_design_id($product) {
+        $product_id = $product && method_exists($product, 'get_id') ? $product->get_id() : 0;
+        return absint(apply_filters('mg_virtual_variant_design_id', $product_id, $product));
+    }
+
+    protected static function get_render_base_dir() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        if ($base_dir === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . 'mockup-renders');
+    }
+
+    protected static function get_render_base_url() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
+        if ($base_url === '') {
+            return '';
+        }
+        return trailingslashit($base_url) . 'mockup-renders';
+    }
+
+    protected static function format_design_folder($design_id) {
+        $design_id = absint($design_id);
+        if ($design_id <= 0) {
+            return '';
+        }
+        return 'd' . sprintf('%03d', $design_id);
+    }
+
+    protected static function build_render_path($render_version, $design_id, $type_slug, $color_slug) {
+        $base_dir = self::get_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp');
+    }
+
+    protected static function build_render_url($render_version, $design_id, $type_slug, $color_slug) {
+        $base_url = self::get_render_base_url();
+        if ($base_url === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
+        return trailingslashit($base_url) . str_replace('\\', '/', $path);
     }
 
     protected static function resolve_design_url($post_id) {
