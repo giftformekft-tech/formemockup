@@ -125,9 +125,21 @@
             var tax = this.name.replace('attribute_', '');
             context.attributes[tax] = [val];
         });
+        var selectedType = $form.find('[name="mg_product_type"]').val();
+        if (selectedType) {
+            context.attributes.pa_termektipus = [selectedType];
+            context.attributes.pa_product_type = [selectedType];
+        }
+        var selectedColor = $form.find('[name="mg_color"]').val();
+        if (selectedColor) {
+            context.attributes.pa_szin = [selectedColor];
+            context.attributes.pa_color = [selectedColor];
+        }
         var selectedSize = $form.find('[name="mg_size"]').val();
         if (selectedSize) {
             context.attributes.meret = [selectedSize];
+            context.attributes.pa_meret = [selectedSize];
+            context.attributes.pa_size = [selectedSize];
         }
         ['pa_termektipus', 'pa_product_type'].forEach(function(tax){
             if (!context.attributes[tax] || !context.attributes[tax].length) {
