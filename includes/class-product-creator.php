@@ -392,6 +392,7 @@ class MG_Product_Creator {
     public function create_parent_with_type_color_size_webp_fast($parent_name, $selected_products, $images_by_type_color, $cats = array(), $defaults = array(), $generation_context = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
         $generation_context = is_array($generation_context) ? $generation_context : array();
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
         $type_terms=array(); $color_terms=array();
         $price_map=array(); $color_surcharge_map=array(); $sku_prefix_map=array();
         $tags_map = array();foreach ($selected_products as $p) {
@@ -440,8 +441,31 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $product->set_regular_price((string) $min_price);
         }
         $design_attachment_id = isset($generation_context['design_attachment_id']) ? absint($generation_context['design_attachment_id']) : 0;
-        if ($design_attachment_id > 0 && method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id')) {
-            if ((int) $product->get_image_id() <= 0) {
+        if (method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id') && (int) $product->get_image_id() <= 0) {
+            $attachment_ids = isset($generation_context['attachment_ids']) && is_array($generation_context['attachment_ids'])
+                ? $generation_context['attachment_ids']
+                : array();
+            $default_type = sanitize_title($resolved_defaults['type'] ?? '');
+            $default_color = sanitize_title($resolved_defaults['color'] ?? '');
+            $image_id = 0;
+            if ($default_type !== '' && $default_color !== '' && !empty($attachment_ids)) {
+                $type_candidates = array_unique(array_filter(array($default_type, sanitize_title($default_type))));
+                foreach ($type_candidates as $type_key) {
+                    if (empty($attachment_ids[$type_key]) || !is_array($attachment_ids[$type_key])) {
+                        continue;
+                    }
+                    foreach ($attachment_ids[$type_key] as $color_key => $ids) {
+                        if (sanitize_title($color_key) !== $default_color || empty($ids) || !is_array($ids)) {
+                            continue;
+                        }
+                        $image_id = absint(reset($ids));
+                        break 2;
+                    }
+                }
+            }
+            if ($image_id > 0) {
+                $product->set_image_id($image_id);
+            } elseif ($design_attachment_id > 0) {
                 $product->set_image_id($design_attachment_id);
             }
         }
@@ -457,6 +481,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
     public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array(), $generation_context = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
         $generation_context = is_array($generation_context) ? $generation_context : array();
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
         $product = wc_get_product($parent_id);
         if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
         if ($product->is_type('variable')) { return new WP_Error('parent_variable','A kiválasztott termék variálható; a virtuális modell egyszerű terméket vár.'); }
@@ -473,8 +498,31 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $color_pairs=array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
         if ($fallback_parent_name && !$product->get_name()) $product->set_name($fallback_parent_name);
         $design_attachment_id = isset($generation_context['design_attachment_id']) ? absint($generation_context['design_attachment_id']) : 0;
-        if ($design_attachment_id > 0 && method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id')) {
-            if ((int) $product->get_image_id() <= 0) {
+        if (method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id') && (int) $product->get_image_id() <= 0) {
+            $attachment_ids = isset($generation_context['attachment_ids']) && is_array($generation_context['attachment_ids'])
+                ? $generation_context['attachment_ids']
+                : array();
+            $default_type = sanitize_title($resolved_defaults['type'] ?? '');
+            $default_color = sanitize_title($resolved_defaults['color'] ?? '');
+            $image_id = 0;
+            if ($default_type !== '' && $default_color !== '' && !empty($attachment_ids)) {
+                $type_candidates = array_unique(array_filter(array($default_type, sanitize_title($default_type))));
+                foreach ($type_candidates as $type_key) {
+                    if (empty($attachment_ids[$type_key]) || !is_array($attachment_ids[$type_key])) {
+                        continue;
+                    }
+                    foreach ($attachment_ids[$type_key] as $color_key => $ids) {
+                        if (sanitize_title($color_key) !== $default_color || empty($ids) || !is_array($ids)) {
+                            continue;
+                        }
+                        $image_id = absint(reset($ids));
+                        break 2;
+                    }
+                }
+            }
+            if ($image_id > 0) {
+                $product->set_image_id($image_id);
+            } elseif ($design_attachment_id > 0) {
                 $product->set_image_id($design_attachment_id);
             }
         }
