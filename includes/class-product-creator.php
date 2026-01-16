@@ -439,6 +439,12 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if ($min_price > 0) {
             $product->set_regular_price((string) $min_price);
         }
+        $design_attachment_id = isset($generation_context['design_attachment_id']) ? absint($generation_context['design_attachment_id']) : 0;
+        if ($design_attachment_id > 0 && method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id')) {
+            if ((int) $product->get_image_id() <= 0) {
+                $product->set_image_id($design_attachment_id);
+            }
+        }
         $parent_id=$product->save();
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
@@ -466,6 +472,12 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
         $color_pairs=array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
         if ($fallback_parent_name && !$product->get_name()) $product->set_name($fallback_parent_name);
+        $design_attachment_id = isset($generation_context['design_attachment_id']) ? absint($generation_context['design_attachment_id']) : 0;
+        if ($design_attachment_id > 0 && method_exists($product, 'get_image_id') && method_exists($product, 'set_image_id')) {
+            if ((int) $product->get_image_id() <= 0) {
+                $product->set_image_id($design_attachment_id);
+            }
+        }
         $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
         $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
         if ($min_price > 0 && !$product->get_regular_price()) {

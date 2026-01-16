@@ -204,6 +204,10 @@ class MG_Virtual_Variant_Manager {
 
         $type_urls = apply_filters('mg_virtual_variant_type_urls', array(), $product, $types_payload);
         $type_urls = is_array($type_urls) ? $type_urls : array();
+        $meta_urls = get_post_meta($product->get_id(), '_mg_type_urls', true);
+        if (is_array($meta_urls)) {
+            $type_urls = array_merge($type_urls, $meta_urls);
+        }
 
         $default_type = apply_filters('mg_virtual_variant_default_type', '', $product, $types_payload);
         if ($default_type === '' && !empty($type_order)) {
