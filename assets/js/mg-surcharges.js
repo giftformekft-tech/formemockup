@@ -100,6 +100,7 @@
 
     function buildContext(){
         var baseAttributes = cloneAttributes(data.context.base_attributes || {});
+        var virtualDefaults = data.context.virtual_defaults || {};
         var context = {
             product_id: data.context.product_id,
             variation_id: 0,
@@ -125,9 +126,30 @@
             var tax = this.name.replace('attribute_', '');
             context.attributes[tax] = [val];
         });
+        var selectedType = $form.find('[name="mg_product_type"]').val();
+        if (!selectedType && virtualDefaults.type) {
+            selectedType = virtualDefaults.type;
+        }
+        if (selectedType) {
+            context.attributes['pa_termektipus'] = [selectedType];
+            context.attributes['pa_product_type'] = [selectedType];
+        }
+        var selectedColor = $form.find('[name="mg_color"]').val();
+        if (!selectedColor && virtualDefaults.color) {
+            selectedColor = virtualDefaults.color;
+        }
+        if (selectedColor) {
+            context.attributes['pa_szin'] = [selectedColor];
+            context.attributes['pa_color'] = [selectedColor];
+        }
         var selectedSize = $form.find('[name="mg_size"]').val();
+        if (!selectedSize && virtualDefaults.size) {
+            selectedSize = virtualDefaults.size;
+        }
         if (selectedSize) {
             context.attributes.meret = [selectedSize];
+            context.attributes['pa_meret'] = [selectedSize];
+            context.attributes['pa_size'] = [selectedSize];
         }
         ['pa_termektipus', 'pa_product_type'].forEach(function(tax){
             if (!context.attributes[tax] || !context.attributes[tax].length) {
@@ -261,6 +283,10 @@
     updateOptions();
 
     $form.on('change', '.mg-surcharge-option input', function(){
+        updateOptions();
+    });
+
+    $form.on('change', '[name="mg_product_type"], [name="mg_color"], [name="mg_size"]', function(){
         updateOptions();
     });
 

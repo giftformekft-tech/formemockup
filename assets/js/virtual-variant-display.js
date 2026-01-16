@@ -289,7 +289,7 @@
             return;
         }
         this.state.type = value;
-        this.$typeInput.val(value);
+        this.$typeInput.val(value).trigger('change');
         var label = value && this.config.types && this.config.types[value] ? this.config.types[value].label : this.getText('typePlaceholder', 'Válassz terméktípust');
         this.$typeValue.text(label || value);
         this.updateUrlForType(value);
@@ -385,7 +385,7 @@
             return;
         }
         this.state.color = value;
-        this.$colorInput.val(value);
+        this.$colorInput.val(value).trigger('change');
         this.$colorOptions.find('.mg-variant-option').each(function(){
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
@@ -409,7 +409,7 @@
             return;
         }
         this.state.size = value;
-        this.$sizeInput.val(value);
+        this.$sizeInput.val(value).trigger('change');
         this.$sizeOptions.find('.mg-variant-option').each(function(){
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
