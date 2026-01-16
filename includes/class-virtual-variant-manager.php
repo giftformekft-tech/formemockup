@@ -1,0 +1,835 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class MG_Virtual_Variant_Manager {
+    const NONCE_ACTION = 'mg_virtual_variant_preview';
+
+    protected static $config_cache = array();
+    protected static $generated_preview_cache = array();
+
+    public static function init() {
+        add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
+        add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_selection_ui'), 5);
+        add_filter('woocommerce_add_to_cart_validation', array(__CLASS__, 'validate_add_to_cart'), 10, 5);
+        add_filter('woocommerce_add_cart_item_data', array(__CLASS__, 'add_cart_item_data'), 10, 4);
+        add_filter('woocommerce_get_cart_item_from_session', array(__CLASS__, 'restore_cart_item'), 10, 2);
+        add_filter('woocommerce_get_item_data', array(__CLASS__, 'render_cart_item_data'), 10, 2);
+        add_action('woocommerce_checkout_create_order_line_item', array(__CLASS__, 'add_order_item_meta'), 10, 4);
+        add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_pricing'), 20, 1);
+        add_filter('woocommerce_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
+        add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
+        add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
+        add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
+        add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
+    }
+
+    protected static function is_supported_product($product) {
+        if (!$product || !is_a($product, 'WC_Product')) {
+            return false;
+        }
+        return $product->is_type('simple');
+    }
+
+    public static function enqueue_assets() {
+        if (!function_exists('is_product') || !is_product()) {
+            return;
+        }
+
+        global $post;
+        if (!$post) {
+            return;
+        }
+
+        $product = wc_get_product($post->ID);
+        if (!self::is_supported_product($product)) {
+            return;
+        }
+
+        $config = self::get_frontend_config($product);
+        if (empty($config) || empty($config['types'])) {
+            return;
+        }
+
+        $base_file = dirname(__DIR__) . '/mockup-generator.php';
+        $style_path = dirname(__DIR__) . '/assets/css/variant-display.css';
+        $script_path = dirname(__DIR__) . '/assets/js/virtual-variant-display.js';
+
+        wp_enqueue_style(
+            'mg-variant-display',
+            plugins_url('assets/css/variant-display.css', $base_file),
+            array(),
+            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+        );
+
+        wp_enqueue_script(
+            'mg-virtual-variant-display',
+            plugins_url('assets/js/virtual-variant-display.js', $base_file),
+            array('jquery'),
+            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            true
+        );
+
+        $config['ajax'] = array(
+            'url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce(self::NONCE_ACTION),
+        );
+        $config['product'] = array(
+            'id' => $product->get_id(),
+            'design_id' => self::get_design_id($product),
+            'render_version' => self::get_render_version($product),
+        );
+
+        wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', $config);
+    }
+
+    public static function render_selection_ui() {
+        global $product;
+        if (!self::is_supported_product($product)) {
+            return;
+        }
+
+        $config = self::get_frontend_config($product);
+        if (empty($config) || empty($config['types'])) {
+            return;
+        }
+
+        $design_id = self::get_design_id($product);
+        $render_version = self::get_render_version($product);
+
+        echo '<div class="mg-virtual-variant" data-mg-virtual="1"></div>';
+        echo '<input type="hidden" name="mg_product_type" value="" />';
+        echo '<input type="hidden" name="mg_color" value="" />';
+        echo '<input type="hidden" name="mg_size" value="" />';
+        echo '<input type="hidden" name="mg_preview_url" value="" />';
+        echo '<input type="hidden" name="mg_design_id" value="' . esc_attr($design_id) . '" />';
+        echo '<input type="hidden" name="mg_render_version" value="' . esc_attr($render_version) . '" />';
+    }
+
+    protected static function get_frontend_config($product) {
+        $product_id = $product ? $product->get_id() : 0;
+        if (!$product_id) {
+            return array();
+        }
+        if (isset(self::$config_cache[$product_id])) {
+            return self::$config_cache[$product_id];
+        }
+
+        $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+        if (empty($catalog)) {
+            self::$config_cache[$product_id] = array();
+            return array();
+        }
+
+        $settings = self::get_settings($catalog);
+        $types_payload = array();
+        $type_order = array();
+        foreach ($catalog as $type_slug => $type_meta) {
+            $type_slug = sanitize_title($type_slug);
+            if ($type_slug === '' || !is_array($type_meta)) {
+                continue;
+            }
+            $type_order[] = $type_slug;
+            $colors_payload = array();
+            $color_order = array();
+            $size_chart = isset($settings['size_charts'][$type_slug]) ? $settings['size_charts'][$type_slug] : '';
+            if ($size_chart !== '') {
+                $size_chart = do_shortcode($size_chart);
+            }
+            $size_chart_models = isset($settings['size_chart_models'][$type_slug]) ? $settings['size_chart_models'][$type_slug] : '';
+            if ($size_chart_models !== '') {
+                $size_chart_models = do_shortcode($size_chart_models);
+            }
+            $type_description = isset($type_meta['description']) ? $type_meta['description'] : '';
+            if ($type_description !== '') {
+                $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
+            }
+
+            foreach ($type_meta['colors'] as $color_slug => $color_meta) {
+                $color_order[] = $color_slug;
+                $default_hex = isset($color_meta['hex']) ? $color_meta['hex'] : '';
+                $color_settings = self::get_color_settings($settings, $type_slug, $color_slug, $default_hex);
+                $swatch = isset($color_settings['swatch']) ? $color_settings['swatch'] : '';
+                if ($swatch === '' && $default_hex !== '') {
+                    $candidate = sanitize_hex_color($default_hex);
+                    if ($candidate) {
+                        $swatch = $candidate;
+                    }
+                }
+                $colors_payload[$color_slug] = array(
+                    'label' => $color_meta['label'],
+                    'swatch' => $swatch,
+                    'sizes' => self::sizes_for_color($type_meta, $color_slug),
+                );
+            }
+
+            $types_payload[$type_slug] = array(
+                'label' => $type_meta['label'],
+                'color_order' => $color_order,
+                'colors' => $colors_payload,
+                'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
+                'size_chart' => $size_chart,
+                'size_chart_models' => $size_chart_models,
+                'description' => $type_description,
+            );
+        }
+
+        if (empty($types_payload)) {
+            self::$config_cache[$product_id] = array();
+            return array();
+        }
+
+        $description_targets = apply_filters(
+            'mg_variant_display_description_targets',
+            array(
+                '.woocommerce-product-details__short-description',
+                '#tab-description',
+                '.woocommerce-Tabs-panel--description',
+            ),
+            $product
+        );
+
+        if (!is_array($description_targets)) {
+            $description_targets = array();
+        }
+        $description_targets = array_values(array_filter(array_unique(array_map('strval', $description_targets))));
+
+        $visuals = array(
+            'defaults' => array(
+                'pattern' => self::resolve_design_url($product->get_id()),
+            ),
+            'typeMockups' => self::get_type_mockups($product->get_id(), $types_payload),
+        );
+
+        $type_urls = apply_filters('mg_virtual_variant_type_urls', array(), $product, $types_payload);
+        $type_urls = is_array($type_urls) ? $type_urls : array();
+
+        $default_type = apply_filters('mg_virtual_variant_default_type', '', $product, $types_payload);
+        if ($default_type === '' && !empty($type_order)) {
+            $default_type = reset($type_order);
+        }
+        if ($default_type === '' && !empty($types_payload)) {
+            $type_keys = array_keys($types_payload);
+            $default_type = $type_keys ? reset($type_keys) : '';
+        }
+        $default_color = apply_filters('mg_virtual_variant_default_color', '', $product, $default_type, $types_payload);
+        if ($default_color === '' && $default_type !== '' && !empty($types_payload[$default_type]['color_order'])) {
+            $default_color = reset($types_payload[$default_type]['color_order']);
+        }
+        if ($default_color === '' && $default_type !== '' && !empty($types_payload[$default_type]['colors'])) {
+            $color_keys = array_keys($types_payload[$default_type]['colors']);
+            $default_color = $color_keys ? reset($color_keys) : '';
+        }
+        $default_size = apply_filters('mg_virtual_variant_default_size', '', $product, $default_type, $default_color, $types_payload);
+        if ($default_size === '' && $default_type !== '' && $default_color !== '' && !empty($types_payload[$default_type]['colors'][$default_color]['sizes'])) {
+            $default_size = reset($types_payload[$default_type]['colors'][$default_color]['sizes']);
+        }
+
+        $config = array(
+            'types' => $types_payload,
+            'order' => array(
+                'types' => $type_order,
+            ),
+            'typeUrls' => $type_urls,
+            'text' => array(
+                'type' => __('Terméktípus:', 'mgvd'),
+                'typePrompt' => __('Válassz terméket:', 'mgvd'),
+                'color' => __('Szín', 'mgvd'),
+                'size' => __('Méret', 'mgvd'),
+                'typePlaceholder' => __('Válassz terméktípust', 'mgvd'),
+                'typeModalTitle' => __('Válaszd ki a terméktípust', 'mgvd'),
+                'typeModalClose' => __('Bezárás', 'mgvd'),
+                'chooseTypeFirst' => __('Először válassz terméktípust.', 'mgvd'),
+                'chooseColorFirst' => __('Először válassz színt.', 'mgvd'),
+                'noColors' => __('Ehhez a terméktípushoz nincs elérhető szín.', 'mgvd'),
+                'noSizes' => __('Ehhez a kombinációhoz nincs elérhető méret.', 'mgvd'),
+                'sizeChartLink' => __('📏 Mérettáblázat megnyitása', 'mgvd'),
+                'sizeChartTitle' => __('Mérettáblázat', 'mgvd'),
+                'sizeChartModelsTitle' => __('Modelleken', 'mgvd'),
+                'sizeChartModelsLink' => __('Nézd meg modelleken', 'mgvd'),
+                'sizeChartBack' => __('Vissza a mérettáblázatra', 'mgvd'),
+                'sizeChartClose' => __('Bezárás', 'mgvd'),
+                'previewButton' => __('Minta nagyban', 'mgvd'),
+                'previewClose' => __('Bezárás', 'mgvd'),
+                'previewUnavailable' => __('Ehhez a variációhoz nem érhető el minta.', 'mgvd'),
+                'previewNoColor' => __('Ehhez a variációhoz nem található háttérszín.', 'mgvd'),
+                'previewWatermark' => __('www.forme.hu', 'mgvd'),
+                'chooseSizeFirst' => __('Válassz méretet.', 'mgvd'),
+                'inStock' => __('Raktáron', 'mgvd'),
+                'outOfStock' => __('Nincs raktáron', 'mgvd'),
+            ),
+            'default' => array(
+                'type' => $default_type,
+                'color' => $default_color,
+                'size' => $default_size,
+            ),
+            'descriptionTargets' => $description_targets,
+            'visuals' => $visuals,
+        );
+
+        self::$config_cache[$product_id] = $config;
+        return $config;
+    }
+
+    protected static function get_design_id($product) {
+        $product_id = $product ? $product->get_id() : 0;
+        return apply_filters('mg_virtual_variant_design_id', $product_id, $product);
+    }
+
+    protected static function get_render_version($product) {
+        return apply_filters('mg_virtual_variant_render_version', '', $product);
+    }
+
+    protected static function get_settings($catalog) {
+        $raw = get_option('mg_variant_display', array());
+        if (!is_array($catalog)) {
+            $catalog = array();
+        }
+        $sanitized = MG_Variant_Display_Manager::sanitize_settings_block($raw, $catalog);
+        return wp_parse_args($sanitized, array(
+            'colors' => array(),
+            'size_charts' => array(),
+            'size_chart_models' => array(),
+        ));
+    }
+
+    protected static function get_color_settings($settings, $type_slug, $color_slug, $fallback_hex = '') {
+        if (!empty($settings['colors'][$type_slug][$color_slug]) && is_array($settings['colors'][$type_slug][$color_slug])) {
+            $entry = $settings['colors'][$type_slug][$color_slug];
+            if (!empty($entry['swatch'])) {
+                return $entry;
+            }
+        }
+
+        $fallback_hex = sanitize_hex_color($fallback_hex);
+        if ($fallback_hex) {
+            return array('swatch' => $fallback_hex);
+        }
+
+        return array();
+    }
+
+    protected static function sizes_for_color($type_meta, $color_slug) {
+        $sizes = isset($type_meta['sizes']) ? $type_meta['sizes'] : array();
+        if (empty($sizes) || !is_array($sizes)) {
+            return array();
+        }
+
+        $matrix = isset($type_meta['matrix']) && is_array($type_meta['matrix']) ? $type_meta['matrix'] : array();
+        if (empty($matrix)) {
+            return $sizes;
+        }
+
+        $allowed = array();
+        foreach ($sizes as $size_label) {
+            if (!isset($matrix[$size_label]) || !is_array($matrix[$size_label])) {
+                continue;
+            }
+            if (in_array($color_slug, $matrix[$size_label], true)) {
+                $allowed[] = $size_label;
+            }
+        }
+
+        return $allowed;
+    }
+
+    protected static function resolve_design_url($post_id) {
+        $post_id = absint($post_id);
+        if ($post_id <= 0) {
+            return '';
+        }
+
+        $attachment_id = (int) get_post_meta($post_id, '_mg_last_design_attachment', true);
+        if ($attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+            $attachment_url = wp_get_attachment_url($attachment_id);
+            if ($attachment_url) {
+                return esc_url_raw($attachment_url);
+            }
+        }
+
+        $design_path = get_post_meta($post_id, '_mg_last_design_path', true);
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        if ($design_path !== '' && file_exists($design_path)) {
+            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+            $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
+            if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
+                $relative = ltrim(str_replace($base_dir, '', $design_path), '/');
+                $relative = str_replace('\\', '/', $relative);
+                $url = trailingslashit($base_url) . $relative;
+                return esc_url_raw($url);
+            }
+        }
+
+        return '';
+    }
+
+    protected static function get_type_mockups($product_id, $types_payload) {
+        $mockups = array();
+        if (empty($types_payload) || !class_exists('MG_Mockup_Maintenance')) {
+            return $mockups;
+        }
+        $index = MG_Mockup_Maintenance::get_index();
+        if (!is_array($index) || empty($index)) {
+            return $mockups;
+        }
+        foreach ($types_payload as $type_slug => $type_meta) {
+            $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+            $fallback_color = $color_order ? reset($color_order) : '';
+            if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                $color_keys = array_keys($type_meta['colors']);
+                $fallback_color = $color_keys ? reset($color_keys) : '';
+            }
+            $color_slug = $fallback_color;
+            if ($color_slug === '' || !is_array($type_meta['colors'])) {
+                continue;
+            }
+            $key = absint($product_id) . '|' . sanitize_title($type_slug) . '|' . sanitize_title($color_slug);
+            if (!isset($index[$key]) || !is_array($index[$key])) {
+                continue;
+            }
+            $entry = $index[$key];
+            $url = self::resolve_preview_url_from_entry($entry);
+            if ($url !== '') {
+                $mockups[$type_slug] = $url;
+            }
+        }
+        return $mockups;
+    }
+
+    protected static function resolve_preview_url_from_entry($entry) {
+        if (!is_array($entry)) {
+            return '';
+        }
+        $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
+        if (!empty($source['attachment_ids']) && is_array($source['attachment_ids'])) {
+            foreach ($source['attachment_ids'] as $attachment_id) {
+                $attachment_id = absint($attachment_id);
+                if ($attachment_id <= 0) {
+                    continue;
+                }
+                $url = wp_get_attachment_image_url($attachment_id, 'large');
+                if ($url) {
+                    return $url;
+                }
+            }
+        }
+
+        $images = array();
+        if (!empty($source['images']) && is_array($source['images'])) {
+            $images = $source['images'];
+        } elseif (!empty($source['last_generated_files']) && is_array($source['last_generated_files'])) {
+            $images = $source['last_generated_files'];
+        }
+        foreach ($images as $path) {
+            if (!is_string($path) || $path === '') {
+                continue;
+            }
+            $url = self::convert_path_to_url($path);
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        return '';
+    }
+
+    protected static function convert_path_to_url($path) {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
+            return '';
+        }
+        $normalized_base = wp_normalize_path($uploads['basedir']);
+        $normalized_path = wp_normalize_path($path);
+        if (strpos($normalized_path, $normalized_base) !== 0) {
+            return '';
+        }
+        $relative = ltrim(str_replace($normalized_base, '', $normalized_path), '/');
+        return trailingslashit($uploads['baseurl']) . str_replace('\\', '/', $relative);
+    }
+
+    public static function validate_add_to_cart($passed, $product_id, $quantity, $variation_id = 0, $variations = array()) {
+        if (!$passed) {
+            return $passed;
+        }
+        $product = wc_get_product($product_id);
+        if (!self::is_supported_product($product)) {
+            return $passed;
+        }
+
+        $type_slug = sanitize_title($_POST['mg_product_type'] ?? '');
+        $color_slug = sanitize_title($_POST['mg_color'] ?? '');
+        $size_value = sanitize_text_field($_POST['mg_size'] ?? '');
+
+        if ($type_slug === '' || $color_slug === '' || $size_value === '') {
+            wc_add_notice(__('Kérjük válassz terméktípust, színt és méretet.', 'mgdtp'), 'error');
+            return false;
+        }
+
+        $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+        if (empty($catalog[$type_slug]) || !is_array($catalog[$type_slug])) {
+            self::log_error('Ismeretlen terméktípus a kosárba tételnél.', array('type' => $type_slug, 'product_id' => $product_id));
+            wc_add_notice(__('A kiválasztott terméktípus nem elérhető.', 'mgdtp'), 'error');
+            return false;
+        }
+
+        $type_meta = $catalog[$type_slug];
+        if (empty($type_meta['colors'][$color_slug])) {
+            self::log_error('Érvénytelen szín a kosárba tételnél.', array('type' => $type_slug, 'color' => $color_slug, 'product_id' => $product_id));
+            wc_add_notice(__('A kiválasztott szín nem elérhető.', 'mgdtp'), 'error');
+            return false;
+        }
+
+        $allowed_sizes = self::sizes_for_color($type_meta, $color_slug);
+        if (!empty($allowed_sizes) && !in_array($size_value, $allowed_sizes, true)) {
+            self::log_error('Érvénytelen méret a kosárba tételnél.', array('type' => $type_slug, 'color' => $color_slug, 'size' => $size_value, 'product_id' => $product_id));
+            wc_add_notice(__('A kiválasztott méret nem elérhető.', 'mgdtp'), 'error');
+            return false;
+        }
+
+        $preview_url = isset($_POST['mg_preview_url']) ? esc_url_raw(wp_unslash($_POST['mg_preview_url'])) : '';
+        if ($preview_url === '') {
+            $cache_key = $product_id . '|' . $type_slug . '|' . $color_slug;
+            $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+            if (is_wp_error($preview)) {
+                self::log_error('Nem sikerült a mockup előnézet.', array(
+                    'product_id' => $product_id,
+                    'type' => $type_slug,
+                    'color' => $color_slug,
+                    'error' => $preview->get_error_message(),
+                ));
+                wc_add_notice(__('Nem sikerült előnézetet generálni, kérjük próbáld újra.', 'mgdtp'), 'error');
+                return false;
+            }
+            self::$generated_preview_cache[$cache_key] = $preview;
+        }
+
+        return $passed;
+    }
+
+    public static function add_cart_item_data($cart_item_data, $product_id, $variation_id, $quantity) {
+        $product = wc_get_product($product_id);
+        if (!self::is_supported_product($product)) {
+            return $cart_item_data;
+        }
+
+        $type_slug = sanitize_title($_POST['mg_product_type'] ?? '');
+        $color_slug = sanitize_title($_POST['mg_color'] ?? '');
+        $size_value = sanitize_text_field($_POST['mg_size'] ?? '');
+        if ($type_slug === '' || $color_slug === '' || $size_value === '') {
+            return $cart_item_data;
+        }
+
+        $preview_url = isset($_POST['mg_preview_url']) ? esc_url_raw(wp_unslash($_POST['mg_preview_url'])) : '';
+        $cache_key = $product_id . '|' . $type_slug . '|' . $color_slug;
+        if ($preview_url === '' && isset(self::$generated_preview_cache[$cache_key])) {
+            $preview_url = self::$generated_preview_cache[$cache_key];
+        }
+        if ($preview_url === '') {
+            $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+            if (!is_wp_error($preview)) {
+                $preview_url = $preview;
+            }
+        }
+
+        $design_id = absint($_POST['mg_design_id'] ?? 0);
+        if (!$design_id) {
+            $design_id = $product_id;
+        }
+        $render_version = sanitize_text_field($_POST['mg_render_version'] ?? '');
+
+        $cart_item_data['mg_product_type'] = $type_slug;
+        $cart_item_data['mg_color'] = $color_slug;
+        $cart_item_data['mg_size'] = $size_value;
+        $cart_item_data['mg_design_id'] = $design_id;
+        $cart_item_data['mg_preview_url'] = $preview_url;
+        $cart_item_data['mg_render_version'] = $render_version;
+
+        $cart_item_data['unique_key'] = md5('mg_virtual|' . $product_id . '|' . $type_slug . '|' . $color_slug . '|' . $size_value . '|' . $preview_url);
+        return $cart_item_data;
+    }
+
+    public static function restore_cart_item($cart_item, $values) {
+        $fields = array('mg_product_type', 'mg_color', 'mg_size', 'mg_design_id', 'mg_preview_url', 'mg_render_version');
+        foreach ($fields as $field) {
+            if (isset($values[$field])) {
+                $cart_item[$field] = $values[$field];
+            }
+        }
+        return $cart_item;
+    }
+
+    public static function render_cart_item_data($item_data, $cart_item) {
+        if (empty($cart_item['mg_product_type']) || empty($cart_item['mg_color']) || empty($cart_item['mg_size'])) {
+            return $item_data;
+        }
+
+        $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+        $type_slug = sanitize_title($cart_item['mg_product_type']);
+        $color_slug = sanitize_title($cart_item['mg_color']);
+        $size_value = sanitize_text_field($cart_item['mg_size']);
+
+        $type_label = $type_slug;
+        $color_label = $color_slug;
+        if (isset($catalog[$type_slug]['label'])) {
+            $type_label = $catalog[$type_slug]['label'];
+        }
+        if (isset($catalog[$type_slug]['colors'][$color_slug]['label'])) {
+            $color_label = $catalog[$type_slug]['colors'][$color_slug]['label'];
+        }
+
+        $item_data[] = array(
+            'name' => __('Terméktípus', 'mgdtp'),
+            'value' => sanitize_text_field($type_label),
+        );
+        $item_data[] = array(
+            'name' => __('Szín', 'mgdtp'),
+            'value' => sanitize_text_field($color_label),
+        );
+        $item_data[] = array(
+            'name' => __('Méret', 'mgdtp'),
+            'value' => sanitize_text_field($size_value),
+        );
+
+        return $item_data;
+    }
+
+    public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
+        if (empty($values['mg_product_type']) || empty($values['mg_color']) || empty($values['mg_size'])) {
+            return;
+        }
+
+        $type_slug = sanitize_text_field($values['mg_product_type']);
+        $color_slug = sanitize_text_field($values['mg_color']);
+        $size_value = sanitize_text_field($values['mg_size']);
+        $design_id = isset($values['mg_design_id']) ? absint($values['mg_design_id']) : 0;
+        $preview_url = isset($values['mg_preview_url']) ? esc_url_raw($values['mg_preview_url']) : '';
+        $render_version = isset($values['mg_render_version']) ? sanitize_text_field($values['mg_render_version']) : '';
+
+        $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+        $type_label = $type_slug;
+        $color_label = $color_slug;
+        if (isset($catalog[$type_slug]['label'])) {
+            $type_label = $catalog[$type_slug]['label'];
+        }
+        if (isset($catalog[$type_slug]['colors'][$color_slug]['label'])) {
+            $color_label = $catalog[$type_slug]['colors'][$color_slug]['label'];
+        }
+
+        $item->add_meta_data(__('Terméktípus', 'mgdtp'), $type_label, true);
+        $item->add_meta_data(__('Szín', 'mgdtp'), $color_label, true);
+        $item->add_meta_data(__('Méret', 'mgdtp'), $size_value, true);
+        $item->add_meta_data('mg_product_type', $type_slug, true);
+        $item->add_meta_data('mg_color', $color_slug, true);
+        $item->add_meta_data('mg_size', $size_value, true);
+        if ($design_id) {
+            $item->add_meta_data('mg_design_id', $design_id, true);
+        }
+        if ($preview_url !== '') {
+            $item->add_meta_data('mg_preview_url', $preview_url, true);
+        }
+        if ($render_version !== '') {
+            $item->add_meta_data('mg_render_version', $render_version, true);
+        }
+    }
+
+    public static function apply_cart_pricing($cart) {
+        if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+        if (!function_exists('mgsc_get_products')) {
+            return;
+        }
+        $products = mgsc_get_products();
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+            if (empty($cart_item['mg_product_type']) || empty($cart_item['mg_size'])) {
+                continue;
+            }
+            $product = isset($cart_item['data']) ? $cart_item['data'] : null;
+            if (!$product instanceof WC_Product) {
+                continue;
+            }
+            $type_slug = sanitize_title($cart_item['mg_product_type']);
+            if (empty($products[$type_slug])) {
+                continue;
+            }
+            $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
+            $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $cart_item['mg_size'])) : 0.0;
+            $final_price = max(0, $base_price + $size_extra);
+            $product->set_price($final_price);
+            $cart->cart_contents[$cart_item_key]['mg_custom_fields_base_price'] = $final_price;
+        }
+    }
+
+    public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
+        if (empty($cart_item['mg_preview_url'])) {
+            return $thumbnail;
+        }
+        $url = esc_url($cart_item['mg_preview_url']);
+        if ($url === '') {
+            return $thumbnail;
+        }
+        $size = wc_get_image_size('woocommerce_thumbnail');
+        $width = isset($size['width']) ? intval($size['width']) : 300;
+        $height = isset($size['height']) ? intval($size['height']) : 300;
+        return sprintf(
+            '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
+            $url,
+            esc_attr__('Mockup előnézet', 'mgdtp'),
+            $width,
+            $height
+        );
+    }
+
+    public static function filter_order_thumbnail($thumbnail, $item, $order) {
+        if (!is_a($item, 'WC_Order_Item_Product')) {
+            return $thumbnail;
+        }
+        $preview_url = $item->get_meta('mg_preview_url');
+        if (!$preview_url) {
+            return $thumbnail;
+        }
+        $url = esc_url($preview_url);
+        if ($url === '') {
+            return $thumbnail;
+        }
+        $size = wc_get_image_size('woocommerce_thumbnail');
+        $width = isset($size['width']) ? intval($size['width']) : 300;
+        $height = isset($size['height']) ? intval($size['height']) : 300;
+        return sprintf(
+            '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
+            $url,
+            esc_attr__('Mockup előnézet', 'mgdtp'),
+            $width,
+            $height
+        );
+    }
+
+    public static function hide_order_item_meta($hidden) {
+        $hidden = is_array($hidden) ? $hidden : array();
+        $hidden[] = 'mg_product_type';
+        $hidden[] = 'mg_color';
+        $hidden[] = 'mg_size';
+        $hidden[] = 'mg_design_id';
+        $hidden[] = 'mg_preview_url';
+        $hidden[] = 'mg_render_version';
+        return array_unique($hidden);
+    }
+
+    public static function ajax_preview() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+        $product_id = absint($_POST['product_id'] ?? 0);
+        $type_slug = sanitize_title($_POST['product_type'] ?? '');
+        $color_slug = sanitize_title($_POST['color'] ?? '');
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            wp_send_json_error(array('message' => __('Hiányzó adatok.', 'mgdtp')));
+        }
+
+        $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+        if (is_wp_error($preview)) {
+            self::log_error('Mockup preview ajax hiba.', array(
+                'product_id' => $product_id,
+                'type' => $type_slug,
+                'color' => $color_slug,
+                'error' => $preview->get_error_message(),
+            ));
+            wp_send_json_error(array('message' => $preview->get_error_message()));
+        }
+
+        wp_send_json_success(array('preview_url' => esc_url_raw($preview)));
+    }
+
+    protected static function get_or_generate_preview_url($product_id, $type_slug, $color_slug) {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            return new WP_Error('invalid_request', __('Hiányzó adatok.', 'mgdtp'));
+        }
+
+        if (class_exists('MG_Mockup_Maintenance')) {
+            $index = MG_Mockup_Maintenance::get_index();
+            $key = $product_id . '|' . $type_slug . '|' . $color_slug;
+            if (isset($index[$key])) {
+                $cached = self::resolve_preview_url_from_entry($index[$key]);
+                if ($cached !== '') {
+                    return $cached;
+                }
+            }
+        }
+
+        $design_path = self::resolve_design_path($product_id);
+        if ($design_path === '') {
+            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
+        }
+
+        if (!function_exists('mgsc_get_products')) {
+            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
+        }
+        $products = mgsc_get_products();
+        if (empty($products[$type_slug])) {
+            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
+        }
+
+        $generator = new MG_Generator();
+        $generated = $generator->generate_for_product($type_slug, $design_path);
+        if (is_wp_error($generated)) {
+            return $generated;
+        }
+
+        if (class_exists('MG_Mockup_Maintenance')) {
+            MG_Mockup_Maintenance::register_generation(
+                $product_id,
+                array($products[$type_slug]),
+                array($type_slug => $generated),
+                array(
+                    'design_path' => $design_path,
+                    'trigger' => 'virtual_preview',
+                )
+            );
+        }
+
+        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
+            foreach ($generated[$color_slug] as $path) {
+                if (!is_string($path) || $path === '') {
+                    continue;
+                }
+                $url = self::convert_path_to_url($path);
+                if ($url !== '') {
+                    return $url;
+                }
+            }
+        }
+
+        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
+    }
+
+    protected static function resolve_design_path($product_id) {
+        $product_id = absint($product_id);
+        if ($product_id <= 0) {
+            return '';
+        }
+        $attachment_id = absint(get_post_meta($product_id, '_mg_last_design_attachment', true));
+        if ($attachment_id > 0 && function_exists('get_attached_file')) {
+            $file = get_attached_file($attachment_id);
+            if ($file && file_exists($file)) {
+                return wp_normalize_path($file);
+            }
+        }
+        $design_path = get_post_meta($product_id, '_mg_last_design_path', true);
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        if ($design_path !== '' && file_exists($design_path)) {
+            return $design_path;
+        }
+        return '';
+    }
+
+    protected static function log_error($message, $context = array()) {
+        if (!function_exists('wc_get_logger')) {
+            return;
+        }
+        $logger = wc_get_logger();
+        $logger->error($message, array_merge(array('source' => 'mg_virtual_variants'), $context));
+    }
+}
