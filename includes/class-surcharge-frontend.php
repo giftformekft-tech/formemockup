@@ -434,6 +434,10 @@ class MG_Surcharge_Frontend {
 
     private static function get_product_context($product, $variation = null) {
         $is_variable = $product->is_type('variable');
+        $virtual_defaults = [];
+        if (class_exists('MG_Virtual_Variant_Manager') && method_exists('MG_Virtual_Variant_Manager', 'get_default_selection')) {
+            $virtual_defaults = MG_Virtual_Variant_Manager::get_default_selection($product);
+        }
         $context = [
             'product_id' => $product->get_id(),
             'variation_id' => $variation instanceof WC_Product_Variation ? $variation->get_id() : 0,
@@ -441,6 +445,7 @@ class MG_Surcharge_Frontend {
             'base_attributes' => [],
             'categories' => wc_get_product_term_ids($product->get_id(), 'product_cat'),
             'is_variable' => $is_variable,
+            'virtual_defaults' => $virtual_defaults,
         ];
         $taxonomies = ['pa_termektipus', 'pa_product_type', 'pa_szin', 'pa_color', 'pa_meret', 'pa_size', 'meret'];
         foreach ($taxonomies as $taxonomy) {
