@@ -12,6 +12,11 @@
         return;
     }
 
+    var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0;
+    if (shouldDelay) {
+        $box.addClass('mg-surcharge-box--hidden');
+    }
+
     var headingText = $.trim($box.data('title') || '');
     if (!headingText) {
         var $title = $box.find('.mg-surcharge-box__title');
@@ -29,6 +34,10 @@
     var $messageAnchor = $box;
     var variantEmbedded = false;
     var $message = null;
+
+    function revealBox() {
+        $box.removeClass('mg-surcharge-box--hidden');
+    }
 
     function embedIntoVariantDisplay() {
         if (variantEmbedded) {
@@ -61,6 +70,7 @@
         $messageAnchor = $section;
         $variantDisplay = $display;
         variantEmbedded = true;
+        revealBox();
         if ($message) {
             $message.addClass('mg-surcharge-warning--embedded');
             $message.detach().insertAfter($messageAnchor);
@@ -83,6 +93,18 @@
                 }
             }, 100);
         }
+        $(document).on('mgVariantReady', function(_event, $readyForm){
+            if ($readyForm && $readyForm.length && $readyForm[0] === $form[0]) {
+                embedIntoVariantDisplay();
+            }
+        });
+        setTimeout(function(){
+            if (!variantEmbedded) {
+                revealBox();
+            }
+        }, 2000);
+    } else {
+        revealBox();
     }
 
     var currentVariation = null;
