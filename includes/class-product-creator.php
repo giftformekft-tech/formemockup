@@ -393,8 +393,8 @@ class MG_Product_Creator {
             }
         }
 
-        if ($default_type !== '' && $default_color !== '' && class_exists('MG_Virtual_Variant_Manager') && method_exists('MG_Virtual_Variant_Manager', 'get_or_generate_preview_path')) {
-            $preview = MG_Virtual_Variant_Manager::get_or_generate_preview_path($product_id, $default_type, $default_color, $design_path);
+        if ($default_type !== '' && $default_color !== '' && class_exists('MG_Virtual_Variant_Manager') && method_exists('MG_Virtual_Variant_Manager', 'get_or_generate_featured_path')) {
+            $preview = MG_Virtual_Variant_Manager::get_or_generate_featured_path($product_id, $default_type, $default_color, $design_path);
             if (is_wp_error($preview)) {
                 $this->log_error('Alapértelmezett hero kép generálása sikertelen.', array(
                     'product_id' => $product_id,

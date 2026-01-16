@@ -282,10 +282,18 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_version($product) {
-        $default_version = 'v4';
+        $default_version = 'v5';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
         $version = sanitize_title($version);
         return $version !== '' ? $version : $default_version;
+    }
+
+    protected static function get_featured_render_base_dir() {
+        $base_dir = self::get_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . 'featured');
     }
 
     protected static function get_render_base_dir() {
@@ -343,6 +351,19 @@ class MG_Virtual_Variant_Manager {
         }
         $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
         return esc_url_raw(trailingslashit($base_url) . $path);
+    }
+
+    protected static function build_featured_render_path($render_version, $product_id) {
+        $base_dir = self::get_featured_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $product_id = absint($product_id);
+        if ($render_version === '' || $product_id <= 0) {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/product_' . $product_id . '.webp');
     }
 
     protected static function persist_render_file($source_path, $destination_path) {
@@ -880,6 +901,68 @@ class MG_Virtual_Variant_Manager {
                 array(
                     'design_path' => $design_path,
                     'trigger' => 'virtual_preview',
+                )
+            );
+        }
+
+        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
+            foreach ($generated[$color_slug] as $path) {
+                if (!is_string($path) || $path === '') {
+                    continue;
+                }
+                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
+                    return $render_path;
+                }
+            }
+        }
+
+        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
+    }
+
+    public static function get_or_generate_featured_path($product_id, $type_slug, $color_slug, $design_path = '') {
+        $product_id = absint($product_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
+            return new WP_Error('invalid_request', __('Hiányzó adatok.', 'mgdtp'));
+        }
+
+        $product = wc_get_product($product_id);
+        $render_version = self::get_render_version($product);
+        $render_path = self::build_featured_render_path($render_version, $product_id);
+        if ($render_path !== '' && file_exists($render_path)) {
+            return $render_path;
+        }
+
+        if ($design_path === '') {
+            $design_path = self::resolve_design_path($product_id);
+        }
+        if ($design_path === '') {
+            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
+        }
+
+        if (!function_exists('mgsc_get_products')) {
+            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
+        }
+        $products = mgsc_get_products();
+        if (empty($products[$type_slug])) {
+            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
+        }
+
+        $generator = new MG_Generator();
+        $generated = $generator->generate_for_product($type_slug, $design_path);
+        if (is_wp_error($generated)) {
+            return $generated;
+        }
+
+        if (class_exists('MG_Mockup_Maintenance')) {
+            MG_Mockup_Maintenance::register_generation(
+                $product_id,
+                array($products[$type_slug]),
+                array($type_slug => $generated),
+                array(
+                    'design_path' => $design_path,
+                    'trigger' => 'woo_featured',
                 )
             );
         }
