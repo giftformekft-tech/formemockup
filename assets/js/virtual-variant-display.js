@@ -26,6 +26,7 @@
         this.$typeModal = $();
         this.$typeTrigger = $();
         this.$addToCart = $form.find('button.single_add_to_cart_button');
+        this.descriptionTargets = [];
         this.init();
     }
 
@@ -42,6 +43,7 @@
         }
         this.buildLayout();
         this.bindEvents();
+        this.captureDescriptionTargets();
         this.syncDefaults();
         this.refreshAddToCartState();
     };
@@ -242,6 +244,10 @@
         }
         var urlMap = this.config.typeUrls || {};
         if (typeSlug && urlMap[typeSlug]) {
+            if (window.location && window.location.href !== urlMap[typeSlug]) {
+                window.location.href = urlMap[typeSlug];
+                return;
+            }
             window.history.replaceState({}, '', urlMap[typeSlug]);
             return;
         }
@@ -284,6 +290,7 @@
         var label = value && this.config.types && this.config.types[value] ? this.config.types[value].label : this.getText('typePlaceholder', 'Válassz terméktípust');
         this.$typeValue.text(label || value);
         this.updateUrlForType(value);
+        this.updateDescription();
         this.$typeOptions.find('.mg-variant-type-option').each(function(){
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
@@ -293,6 +300,75 @@
         this.setColor('');
         this.rebuildColorOptions();
         this.refreshAddToCartState();
+    };
+
+    VirtualVariantDisplay.prototype.captureDescriptionTargets = function() {
+        this.descriptionTargets = [];
+        var selectors = [];
+        if (this.config && $.isArray(this.config.descriptionTargets) && this.config.descriptionTargets.length) {
+            selectors = this.config.descriptionTargets;
+        } else {
+            selectors = [
+                '.woocommerce-product-details__short-description',
+                '#tab-description',
+                '.woocommerce-Tabs-panel--description'
+            ];
+        }
+
+        var self = this;
+        $.each(selectors, function(_, selector){
+            $(selector).each(function(){
+                var $el = $(this);
+                if (!$el.length) {
+                    return;
+                }
+                var exists = false;
+                for (var i = 0; i < self.descriptionTargets.length; i++) {
+                    if (self.descriptionTargets[i].$el && self.descriptionTargets[i].$el[0] === $el[0]) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (exists) {
+                    return;
+                }
+                self.descriptionTargets.push({
+                    $el: $el,
+                    original: $el.html()
+                });
+            });
+        });
+    };
+
+    VirtualVariantDisplay.prototype.updateDescription = function() {
+        if (!this.descriptionTargets.length) {
+            return;
+        }
+        var html = '';
+        if (this.state.type && this.config && this.config.types && this.config.types[this.state.type]) {
+            html = this.config.types[this.state.type].description || '';
+        }
+
+        var hasHtml = typeof html === 'string' && html !== '';
+        for (var i = 0; i < this.descriptionTargets.length; i++) {
+            var target = this.descriptionTargets[i];
+            if (!target.$el || !target.$el.length) {
+                continue;
+            }
+            var newContent = hasHtml ? html : target.original;
+            if (typeof newContent === 'undefined') {
+                newContent = '';
+            }
+            target.$el.html(newContent);
+            target.$el.toggleClass('mg-variant-description--empty', newContent === '');
+        }
+
+        $(document).trigger('mg:virtualVariantDescriptionChange', {
+            form: this.$form,
+            type: this.state.type,
+            html: html,
+            hasCustomDescription: hasHtml
+        });
     };
 
     VirtualVariantDisplay.prototype.setColor = function(value) {
