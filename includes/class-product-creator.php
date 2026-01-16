@@ -404,14 +404,6 @@ class MG_Product_Creator {
         }
         $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
         $color_pairs = array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
-        $image_ids=array(); $gallery=array();
-        foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $seo_text = $this->compose_image_seo_text($parent_name, $type_slug, $color_slug, $selected_products, $cats);
-            $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id; $gallery[]=$id;
-        }
-        if (!empty($image_ids)) {
-            $generation_context['attachment_ids'] = $image_ids;
-        }
         $product = new WC_Product_Simple();
         $product->set_name($parent_name);
         
@@ -447,16 +439,9 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if ($min_price > 0) {
             $product->set_regular_price((string) $min_price);
         }
-        if (!empty($gallery)) $product->set_image_id($gallery[0]);
         $parent_id=$product->save();
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
-        $needs_save = false;
-        if (!empty($gallery)) {
-            $product->set_gallery_image_ids(array_values(array_unique($gallery)));
-            $needs_save = true;
-        }
-        if ($needs_save) { $product->save(); }
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($parent_id, $selected_products, $images_by_type_color, $generation_context);
         }
@@ -504,14 +489,6 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $this->assign_tags($product->get_id(), array_values(array_unique($all_tags)));
         }
 
-        $image_ids=array();
-        foreach ($images_by_type_color as $type_slug=>$bycolor) foreach ($bycolor as $color_slug=>$files) foreach ($files as $file) {
-            $seo_text = $this->compose_image_seo_text($product->get_name() ?: $fallback_parent_name, $type_slug, $color_slug, $selected_products, $cats);
-            $id=$this->attach_image($file, $seo_text); $image_ids[$type_slug][$color_slug][]=$id;
-        }
-        if (!empty($image_ids)) {
-            $generation_context['attachment_ids'] = $image_ids;
-        }
         $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $result_id = $product->get_id();
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
