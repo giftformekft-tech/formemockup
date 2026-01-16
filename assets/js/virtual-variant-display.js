@@ -26,6 +26,8 @@
         this.$typeModal = $();
         this.$typeTrigger = $();
         this.$addToCart = $form.find('button.single_add_to_cart_button');
+        this.$price = $form.closest('.summary').find('.price').first();
+        this.originalPriceHtml = this.$price.length ? this.$price.html() : '';
         this.descriptionTargets = [];
         this.init();
     }
@@ -45,6 +47,7 @@
         this.bindEvents();
         this.captureDescriptionTargets();
         this.syncDefaults();
+        this.updatePrice();
         this.refreshAddToCartState();
     };
 
@@ -299,6 +302,7 @@
         });
         this.setColor('');
         this.rebuildColorOptions();
+        this.updatePrice();
         this.refreshAddToCartState();
     };
 
@@ -392,6 +396,7 @@
         this.setSize('');
         this.rebuildSizeOptions();
         this.refreshPreview();
+        this.updatePrice();
         this.refreshAddToCartState();
     };
 
@@ -412,7 +417,67 @@
             $btn.attr('aria-pressed', isActive ? 'true' : 'false');
         });
         this.updateAvailabilityText();
+        this.updatePrice();
         this.refreshAddToCartState();
+    };
+
+    VirtualVariantDisplay.prototype.updatePrice = function() {
+        if (!this.$price.length) {
+            return;
+        }
+        if (!this.state.type || !this.config.types || !this.config.types[this.state.type]) {
+            this.$price.html(this.originalPriceHtml);
+            return;
+        }
+        var typeMeta = this.config.types[this.state.type];
+        var basePrice = this.getTypeBasePrice(typeMeta);
+        var colorSurcharge = this.getColorSurcharge(typeMeta);
+        var sizeSurcharge = this.getSizeSurcharge(typeMeta);
+        var total = Math.max(0, basePrice + colorSurcharge + sizeSurcharge);
+        var formatted = this.formatPrice(total);
+        if (formatted) {
+            this.$price.html(formatted);
+        }
+    };
+
+    VirtualVariantDisplay.prototype.getTypeBasePrice = function(typeMeta) {
+        if (!typeMeta || typeof typeMeta.price !== 'number') {
+            return 0;
+        }
+        return typeMeta.price;
+    };
+
+    VirtualVariantDisplay.prototype.getColorSurcharge = function(typeMeta) {
+        if (!typeMeta || !typeMeta.colors || !this.state.color || !typeMeta.colors[this.state.color]) {
+            return 0;
+        }
+        var surcharge = typeMeta.colors[this.state.color].surcharge;
+        return (typeof surcharge === 'number') ? surcharge : 0;
+    };
+
+    VirtualVariantDisplay.prototype.getSizeSurcharge = function(typeMeta) {
+        if (!typeMeta || !typeMeta.size_surcharges || !this.state.size) {
+            return 0;
+        }
+        var surcharge = typeMeta.size_surcharges[this.state.size];
+        return (typeof surcharge === 'number') ? surcharge : 0;
+    };
+
+    VirtualVariantDisplay.prototype.formatPrice = function(amount) {
+        var format = this.config.priceFormat || {};
+        var decimals = (typeof format.decimals === 'number') ? format.decimals : 2;
+        var decimalSeparator = (typeof format.decimalSeparator === 'string') ? format.decimalSeparator : '.';
+        var thousandSeparator = (typeof format.thousandSeparator === 'string') ? format.thousandSeparator : ',';
+        var priceFormat = (typeof format.priceFormat === 'string') ? format.priceFormat : '%1$s%2$s';
+        var currencySymbol = (typeof format.currencySymbol === 'string') ? format.currencySymbol : '';
+
+        var fixed = amount.toFixed(decimals);
+        var parts = fixed.split('.');
+        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, thousandSeparator);
+        var formattedNumber = parts.join(decimalSeparator);
+        var currencyHtml = '<span class="woocommerce-Price-currencySymbol">' + currencySymbol + '</span>';
+        var priceHtml = priceFormat.replace('%1$s', currencyHtml).replace('%2$s', formattedNumber);
+        return '<span class="woocommerce-Price-amount amount"><bdi>' + priceHtml + '</bdi></span>';
     };
 
     VirtualVariantDisplay.prototype.setColorLabelText = function(label) {
