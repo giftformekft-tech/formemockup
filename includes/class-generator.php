@@ -359,10 +359,30 @@ class MG_Generator {
         $product = $this->get_product_definition($product_key);
         if (!$product) return new WP_Error('product_missing','Ismeretlen terméktípus: '.$product_key);
         $views = $product['views']; $colors = $product['colors'];
+        $context = is_array($context) ? $context : array();
+        if (!empty($context['view_filter'])) {
+            $view_filter = is_array($context['view_filter']) ? $context['view_filter'] : array($context['view_filter']);
+            $view_filter = array_values(array_filter(array_map('sanitize_title', $view_filter)));
+            if (!empty($view_filter)) {
+                $views = array_values(array_filter($views, function($view) use ($view_filter) {
+                    $key = isset($view['key']) ? sanitize_title($view['key']) : '';
+                    return $key !== '' && in_array($key, $view_filter, true);
+                }));
+            }
+        }
+        if (!empty($context['color_filter'])) {
+            $color_filter = is_array($context['color_filter']) ? $context['color_filter'] : array($context['color_filter']);
+            $color_filter = array_values(array_filter(array_map('sanitize_title', $color_filter)));
+            if (!empty($color_filter)) {
+                $colors = array_values(array_filter($colors, function($color) use ($color_filter) {
+                    $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                    return $slug !== '' && in_array($slug, $color_filter, true);
+                }));
+            }
+        }
         if (empty($views)) return new WP_Error('views_missing','Nincs nézet.');
         if (empty($colors)) return new WP_Error('colors_missing','Nincs szín.');
 
-        $context = is_array($context) ? $context : array();
         $output_dir = $this->resolve_output_directory($product['key'], $design_path, $context);
         if ($output_dir === '') {
             return new WP_Error('upload_dir_missing', 'A feltöltési könyvtár nem elérhető.');
@@ -447,16 +467,25 @@ class MG_Generator {
         $design_id = $this->resolve_design_id($design_path, $context);
         $type_slug = sanitize_title($type_key);
         $design_folder = $design_id > 0 ? 'd' . sprintf('%03d', $design_id) : '';
+        $render_bucket = $this->resolve_render_bucket($context);
 
         if ($render_version === '' || $design_folder === '' || $type_slug === '') {
             return '';
         }
 
-        $output_dir = wp_normalize_path(trailingslashit($base_dir) . 'mockup-renders/' . $render_version . '/' . $design_folder . '/' . $type_slug);
+        $output_dir = wp_normalize_path(trailingslashit($base_dir) . $render_bucket . '/' . $render_version . '/' . $design_folder . '/' . $type_slug);
         if (!is_dir($output_dir)) {
             wp_mkdir_p($output_dir);
         }
         return is_dir($output_dir) ? $output_dir : '';
+    }
+
+    private function resolve_render_bucket(array $context) {
+        $scope = sanitize_key($context['render_scope'] ?? '');
+        if ($scope === 'woo_featured') {
+            return 'mockup-featured-renders';
+        }
+        return 'mockup-renders';
     }
 
     private function resolve_render_version(array $context) {
