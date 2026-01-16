@@ -202,6 +202,9 @@ class MG_Virtual_Variant_Manager {
             'typeMockups' => self::get_type_mockups($product->get_id(), $types_payload),
         );
 
+        $type_urls = apply_filters('mg_virtual_variant_type_urls', array(), $product, $types_payload);
+        $type_urls = is_array($type_urls) ? $type_urls : array();
+
         $default_type = apply_filters('mg_virtual_variant_default_type', '', $product, $types_payload);
         if ($default_type === '' && !empty($type_order)) {
             $default_type = reset($type_order);
@@ -228,6 +231,7 @@ class MG_Virtual_Variant_Manager {
             'order' => array(
                 'types' => $type_order,
             ),
+            'typeUrls' => $type_urls,
             'text' => array(
                 'type' => __('Terméktípus:', 'mgvd'),
                 'typePrompt' => __('Válassz terméket:', 'mgvd'),

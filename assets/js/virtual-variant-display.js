@@ -223,9 +223,48 @@
         });
     };
 
+    VirtualVariantDisplay.prototype.getTypeFromUrl = function() {
+        if (typeof window === 'undefined' || !window.location) {
+            return '';
+        }
+        try {
+            var params = new URLSearchParams(window.location.search || '');
+            var candidate = params.get('mg_type') || '';
+            return candidate;
+        } catch (err) {
+            return '';
+        }
+    };
+
+    VirtualVariantDisplay.prototype.updateUrlForType = function(typeSlug) {
+        if (typeof window === 'undefined' || !window.history) {
+            return;
+        }
+        var urlMap = this.config.typeUrls || {};
+        if (typeSlug && urlMap[typeSlug]) {
+            window.history.replaceState({}, '', urlMap[typeSlug]);
+            return;
+        }
+        try {
+            var url = new URL(window.location.href);
+            if (typeSlug) {
+                url.searchParams.set('mg_type', typeSlug);
+            } else {
+                url.searchParams.delete('mg_type');
+            }
+            window.history.replaceState({}, '', url.toString());
+        } catch (err) {
+        }
+    };
+
     VirtualVariantDisplay.prototype.syncDefaults = function() {
         var defaults = this.config.default || {};
-        this.setType(defaults.type || '');
+        var urlType = this.getTypeFromUrl();
+        var initialType = urlType || defaults.type || '';
+        this.setType(initialType);
+        if (urlType && this.config.typeUrls && this.config.typeUrls[urlType]) {
+            this.updateUrlForType(urlType);
+        }
         if (defaults.color) {
             this.setColor(defaults.color);
         }
@@ -244,6 +283,7 @@
         this.$typeInput.val(value);
         var label = value && this.config.types && this.config.types[value] ? this.config.types[value].label : this.getText('typePlaceholder', 'Válassz terméktípust');
         this.$typeValue.text(label || value);
+        this.updateUrlForType(value);
         this.$typeOptions.find('.mg-variant-type-option').each(function(){
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
