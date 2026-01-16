@@ -344,6 +344,7 @@ class MG_Variant_Display_Manager {
         );
 
         $base_pattern = self::resolve_design_url($product->get_id());
+        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
 
         $available = $product->get_available_variations();
         if (is_array($available)) {
@@ -383,8 +384,20 @@ class MG_Variant_Display_Manager {
             }
         }
 
+        if (!empty($types_payload)) {
+            $index_mockups = self::get_type_mockups_from_index($product->get_id(), $types_payload);
+            if (!empty($index_mockups)) {
+                foreach ($index_mockups as $type_slug => $mockup_url) {
+                    $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
+                    if ($existing !== '' && self::is_valid_mockup_url($existing)) {
+                        continue;
+                    }
+                    $visuals['typeMockups'][$type_slug] = $mockup_url;
+                }
+            }
+        }
+
         $default_color = '';
-        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
         $default_color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
         if ($default_type && $default_color_slug && isset($types_payload[$default_type]['colors'][$default_color_slug]['swatch'])) {
             $default_color = $types_payload[$default_type]['colors'][$default_color_slug]['swatch'];
@@ -397,6 +410,13 @@ class MG_Variant_Display_Manager {
         if ($default_variation_id && isset($visuals['variationMockups'][$default_variation_id])) {
             $visuals['defaults']['mockup'] = $visuals['variationMockups'][$default_variation_id];
         }
+        if (
+            ($visuals['defaults']['mockup'] === '' || !self::is_valid_mockup_url($visuals['defaults']['mockup']))
+            && $default_type !== ''
+            && !empty($visuals['typeMockups'][$default_type])
+        ) {
+            $visuals['defaults']['mockup'] = $visuals['typeMockups'][$default_type];
+        }
 
         if ($default_variation_id && isset($visuals['variationPatterns'][$default_variation_id])) {
             $visuals['defaults']['pattern'] = $visuals['variationPatterns'][$default_variation_id];
@@ -405,6 +425,97 @@ class MG_Variant_Display_Manager {
         }
 
         return $visuals;
+    }
+
+    protected static function is_valid_mockup_url($url) {
+        if (!is_string($url) || $url === '') {
+            return false;
+        }
+        return (bool) wp_http_validate_url($url);
+    }
+
+    protected static function get_type_mockups_from_index($product_id, $types_payload) {
+        $mockups = array();
+        if (empty($types_payload) || !class_exists('MG_Mockup_Maintenance')) {
+            return $mockups;
+        }
+        $index = MG_Mockup_Maintenance::get_index();
+        if (!is_array($index) || empty($index)) {
+            return $mockups;
+        }
+        foreach ($types_payload as $type_slug => $type_meta) {
+            $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+            $fallback_color = $color_order ? reset($color_order) : '';
+            if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                $color_keys = array_keys($type_meta['colors']);
+                $fallback_color = $color_keys ? reset($color_keys) : '';
+            }
+            $color_slug = $fallback_color;
+            if ($color_slug === '' || !is_array($type_meta['colors'])) {
+                continue;
+            }
+            $key = absint($product_id) . '|' . sanitize_title($type_slug) . '|' . sanitize_title($color_slug);
+            if (!isset($index[$key]) || !is_array($index[$key])) {
+                continue;
+            }
+            $entry = $index[$key];
+            $url = self::resolve_preview_url_from_entry($entry);
+            if ($url !== '') {
+                $mockups[$type_slug] = $url;
+            }
+        }
+        return $mockups;
+    }
+
+    protected static function resolve_preview_url_from_entry($entry) {
+        if (!is_array($entry)) {
+            return '';
+        }
+        $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
+        if (!empty($source['attachment_ids']) && is_array($source['attachment_ids'])) {
+            foreach ($source['attachment_ids'] as $attachment_id) {
+                $attachment_id = absint($attachment_id);
+                if ($attachment_id <= 0) {
+                    continue;
+                }
+                $url = wp_get_attachment_image_url($attachment_id, 'large');
+                if ($url) {
+                    return $url;
+                }
+            }
+        }
+
+        $images = array();
+        if (!empty($source['images']) && is_array($source['images'])) {
+            $images = $source['images'];
+        } elseif (!empty($source['last_generated_files']) && is_array($source['last_generated_files'])) {
+            $images = $source['last_generated_files'];
+        }
+        foreach ($images as $path) {
+            if (!is_string($path) || $path === '') {
+                continue;
+            }
+            $url = self::convert_path_to_url($path);
+            if ($url !== '') {
+                return $url;
+            }
+        }
+
+        return '';
+    }
+
+    protected static function convert_path_to_url($path) {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
+            return '';
+        }
+        $normalized_base = wp_normalize_path($uploads['basedir']);
+        $normalized_path = wp_normalize_path($path);
+        if (strpos($normalized_path, $normalized_base) !== 0) {
+            return '';
+        }
+        $relative = ltrim(str_replace($normalized_base, '', $normalized_path), '/');
+        return trailingslashit($uploads['baseurl']) . str_replace('\\', '/', $relative);
     }
 
     protected static function resolve_design_url($post_id) {
