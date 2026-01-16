@@ -462,9 +462,9 @@ class MG_Generator {
     private function resolve_render_version(array $context) {
         if (!empty($context['render_version'])) {
             $version = sanitize_title($context['render_version']);
-            return $version !== '' ? $version : 'v4';
+            return $version !== '' ? $version : 'v5';
         }
-        $default_version = 'v4';
+        $default_version = 'v5';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, null);
         $version = sanitize_title($version);
         return $version !== '' ? $version : $default_version;

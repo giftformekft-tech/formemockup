@@ -1784,7 +1784,7 @@ class MG_Mockup_Maintenance {
         }
         require_once __DIR__ . '/class-generator.php';
         $generator = new MG_Generator();
-        $render_version = apply_filters('mg_virtual_variant_render_version', 'v4', $product);
+        $render_version = apply_filters('mg_virtual_variant_render_version', 'v5', $product);
         $design_id = apply_filters('mg_virtual_variant_design_id', $product_id, $product);
         $result = $generator->generate_for_product($type['key'], $design_path, array(
             'product_id' => $product_id,

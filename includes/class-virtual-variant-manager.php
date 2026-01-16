@@ -320,7 +320,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_version($product) {
-        $default_version = 'v4';
+        $default_version = 'v5';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
         $version = sanitize_title($version);
         return $version !== '' ? $version : $default_version;
