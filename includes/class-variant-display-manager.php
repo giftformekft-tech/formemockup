@@ -344,6 +344,7 @@ class MG_Variant_Display_Manager {
         );
 
         $base_pattern = self::resolve_design_url($product->get_id());
+        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
 
         $available = $product->get_available_variations();
         if (is_array($available)) {
@@ -387,7 +388,8 @@ class MG_Variant_Display_Manager {
             $index_mockups = self::get_type_mockups_from_index($product->get_id(), $types_payload);
             if (!empty($index_mockups)) {
                 foreach ($index_mockups as $type_slug => $mockup_url) {
-                    if (!empty($visuals['typeMockups'][$type_slug])) {
+                    $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
+                    if ($existing !== '' && self::is_valid_mockup_url($existing)) {
                         continue;
                     }
                     $visuals['typeMockups'][$type_slug] = $mockup_url;
@@ -396,7 +398,6 @@ class MG_Variant_Display_Manager {
         }
 
         $default_color = '';
-        $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
         $default_color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
         if ($default_type && $default_color_slug && isset($types_payload[$default_type]['colors'][$default_color_slug]['swatch'])) {
             $default_color = $types_payload[$default_type]['colors'][$default_color_slug]['swatch'];
@@ -409,7 +410,11 @@ class MG_Variant_Display_Manager {
         if ($default_variation_id && isset($visuals['variationMockups'][$default_variation_id])) {
             $visuals['defaults']['mockup'] = $visuals['variationMockups'][$default_variation_id];
         }
-        if ($visuals['defaults']['mockup'] === '' && $default_type !== '' && !empty($visuals['typeMockups'][$default_type])) {
+        if (
+            ($visuals['defaults']['mockup'] === '' || !self::is_valid_mockup_url($visuals['defaults']['mockup']))
+            && $default_type !== ''
+            && !empty($visuals['typeMockups'][$default_type])
+        ) {
             $visuals['defaults']['mockup'] = $visuals['typeMockups'][$default_type];
         }
 
@@ -420,6 +425,13 @@ class MG_Variant_Display_Manager {
         }
 
         return $visuals;
+    }
+
+    protected static function is_valid_mockup_url($url) {
+        if (!is_string($url) || $url === '') {
+            return false;
+        }
+        return (bool) wp_http_validate_url($url);
     }
 
     protected static function get_type_mockups_from_index($product_id, $types_payload) {
