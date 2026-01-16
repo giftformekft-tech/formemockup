@@ -141,7 +141,7 @@ class MG_Surcharge_Manager {
         return $surcharges;
     }
 
-    public static function conditions_match_product($surcharge, $product, $variation = null, $cart_total = null, $allow_unset_attributes = false) {
+    public static function conditions_match_product($surcharge, $product, $variation = null, $cart_total = null) {
         if (!$surcharge || !$product) {
             return false;
         }
@@ -171,60 +171,13 @@ class MG_Surcharge_Manager {
             }
         }
 
-        if (!self::match_attribute_condition($conditions, 'product_types', $product, $variation, array('pa_termektipus', 'pa_product_type'), $allow_unset_attributes)) {
+        if (!self::match_attribute_condition($conditions, 'product_types', $product, $variation, array('pa_termektipus', 'pa_product_type'))) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'), $allow_unset_attributes)) {
+        if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'))) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'), $allow_unset_attributes)) {
-            return false;
-        }
-
-        if (isset($conditions['min_cart_total']) && $conditions['min_cart_total'] !== '') {
-            $cart_total = $cart_total === null && function_exists('WC') && WC() && WC()->cart ? WC()->cart->get_subtotal() : $cart_total;
-            $cart_total = floatval($cart_total);
-            if ($cart_total < floatval($conditions['min_cart_total'])) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public static function conditions_match_selection($surcharge, $product, $selection, $cart_total = null) {
-        if (!$surcharge || !$product) {
-            return false;
-        }
-        $conditions = isset($surcharge['conditions']) ? $surcharge['conditions'] : [];
-        if (!is_array($conditions)) {
-            $conditions = [];
-        }
-        $selection = is_array($selection) ? $selection : [];
-
-        if (!empty($conditions['products'])) {
-            $ids = array_map('intval', $conditions['products']);
-            if (!in_array($product->get_id(), $ids, true)) {
-                return false;
-            }
-        }
-
-        if (!empty($conditions['categories'])) {
-            $product_cats = wc_get_product_term_ids($product->get_id(), 'product_cat');
-            if (empty(array_intersect($product_cats, array_map('intval', $conditions['categories'])))) {
-                return false;
-            }
-        }
-
-        $selected_types = isset($selection['product_types']) ? self::sanitize_string_array($selection['product_types']) : [];
-        if (!self::values_match($conditions['product_types'] ?? [], $selected_types)) {
-            return false;
-        }
-        $selected_colors = isset($selection['colors']) ? self::sanitize_string_array($selection['colors']) : [];
-        if (!self::values_match($conditions['colors'] ?? [], $selected_colors)) {
-            return false;
-        }
-        $selected_sizes = isset($selection['sizes']) ? self::sanitize_string_array($selection['sizes']) : [];
-        if (!self::values_match($conditions['sizes'] ?? [], $selected_sizes)) {
+        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'))) {
             return false;
         }
 
@@ -238,26 +191,13 @@ class MG_Surcharge_Manager {
         return true;
     }
 
-    private static function match_attribute_condition($conditions, $key, $product, $variation, $taxonomies, $allow_unset_attributes = false) {
+    private static function match_attribute_condition($conditions, $key, $product, $variation, $taxonomies) {
         if (empty($conditions[$key])) {
             return true;
         }
         $required = array_map('sanitize_title', $conditions[$key]);
         $values = self::get_attribute_values($product, $variation, $taxonomies);
         if (empty($values) && $variation === null && $product instanceof WC_Product && $product->is_type('variable')) {
-            return true;
-        }
-        if (empty($values) && $allow_unset_attributes) {
-            return true;
-        }
-        if (empty($values)) {
-            return false;
-        }
-        return !empty(array_intersect($required, $values));
-    }
-
-    private static function values_match($required, $values) {
-        if (empty($required)) {
             return true;
         }
         if (empty($values)) {

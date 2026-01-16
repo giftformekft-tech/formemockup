@@ -27,19 +27,6 @@
     function applySelection(typeSlug, colorSlug) {
         var form = document.querySelector('form.variations_form');
         if (!form) {
-            if (window.MG_VIRTUAL_VARIANT_INSTANCES && window.MG_VIRTUAL_VARIANT_INSTANCES.length) {
-                var instance = window.MG_VIRTUAL_VARIANT_INSTANCES[0];
-                if (instance && typeof instance.setType === 'function') {
-                    instance.setType(typeSlug || '');
-                    if (colorSlug && typeof instance.setColor === 'function') {
-                        setTimeout(function() {
-                            instance.setColor(colorSlug);
-                        }, 30);
-                    }
-                    smoothScrollToTop();
-                    return;
-                }
-            }
             smoothScrollToTop();
             return;
         }

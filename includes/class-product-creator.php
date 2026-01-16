@@ -329,6 +329,8 @@ class MG_Product_Creator {
             }
             return $existing_id;
         }
+        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
+        add_filter('big_image_size_threshold', '__return_false', 99);
         $filetype = wp_check_filetype(basename($path), null);
         if (empty($filetype['type']) && preg_match('/\.webp$/i', $path)) $filetype['type'] = 'image/webp';
         $wp_upload_dir = wp_upload_dir();
@@ -339,9 +341,14 @@ class MG_Product_Creator {
         $attachment = array('guid'=>$guid,'post_mime_type'=>$filetype['type'] ?? 'image/webp','post_title'=>$title,'post_content'=>'','post_status'=>'inherit');
         $attach_id = wp_insert_attachment($attachment, $path);
         require_once(ABSPATH.'wp-admin/includes/image.php');
-        $attach_data = ['file' => _wp_relative_upload_path($path)];
+        $attach_data = wp_generate_attachment_metadata($attach_id, $path);
+        if (empty($attach_data)) {
+            $attach_data = ['file' => _wp_relative_upload_path($path)];
+        }
         wp_update_attachment_metadata($attach_id, $attach_data);
         if ($attach_id && $seo_text !== '') update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
+        remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
+        remove_filter('big_image_size_threshold', '__return_false', 99);
         return $attach_id;
     }
 
@@ -354,7 +361,62 @@ class MG_Product_Creator {
     }
 
     private function maybe_set_default_featured_image($product_id, $resolved_defaults, $selected_products, $cats, $generation_context) {
-        return;
+        $product_id = absint($product_id);
+        if ($product_id <= 0) {
+            return;
+        }
+        $product = wc_get_product($product_id);
+        if (!$product || !method_exists($product, 'get_image_id') || !method_exists($product, 'set_image_id')) {
+            return;
+        }
+        if ((int) $product->get_image_id() > 0) {
+            return;
+        }
+
+        $default_type = sanitize_title($resolved_defaults['type'] ?? '');
+        $default_color = sanitize_title($resolved_defaults['color'] ?? '');
+        $design_attachment_id = isset($generation_context['design_attachment_id']) ? absint($generation_context['design_attachment_id']) : 0;
+        if ($design_attachment_id <= 0) {
+            $design_attachment_id = absint(get_post_meta($product_id, '_mg_last_design_attachment', true));
+        }
+        $design_path = '';
+        if (!empty($generation_context['design_path']) && is_string($generation_context['design_path'])) {
+            $candidate = wp_normalize_path($generation_context['design_path']);
+            if ($candidate !== '' && file_exists($candidate)) {
+                $design_path = $candidate;
+            }
+        }
+        if ($design_path === '' && $design_attachment_id > 0 && function_exists('get_attached_file')) {
+            $file = get_attached_file($design_attachment_id);
+            if ($file && file_exists($file)) {
+                $design_path = wp_normalize_path($file);
+            }
+        }
+
+        if ($default_type !== '' && $default_color !== '' && class_exists('MG_Virtual_Variant_Manager') && method_exists('MG_Virtual_Variant_Manager', 'get_or_generate_preview_path')) {
+            $preview = MG_Virtual_Variant_Manager::get_or_generate_preview_path($product_id, $default_type, $default_color, $design_path);
+            if (is_wp_error($preview)) {
+                $this->log_error('Alapértelmezett hero kép generálása sikertelen.', array(
+                    'product_id' => $product_id,
+                    'type' => $default_type,
+                    'color' => $default_color,
+                    'error' => $preview->get_error_message(),
+                ));
+            } elseif (is_string($preview) && $preview !== '' && file_exists($preview)) {
+                $seo_text = $this->compose_image_seo_text($product->get_name(), $default_type, $default_color, $selected_products, $cats);
+                $image_id = $this->attach_image($preview, $seo_text);
+                if ($image_id > 0) {
+                    $product->set_image_id($image_id);
+                    $product->save();
+                    return;
+                }
+            }
+        }
+
+        if ($design_attachment_id > 0) {
+            $product->set_image_id($design_attachment_id);
+            $product->save();
+        }
     }
 
     private function find_existing_attachment_id($path) {
@@ -457,6 +519,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($parent_id, $selected_products, $images_by_type_color, $generation_context);
         }
+        $this->maybe_set_default_featured_image($parent_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $parent_id;
     }
 
@@ -507,6 +570,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($result_id, $selected_products, $images_by_type_color, $generation_context);
         }
+        $this->maybe_set_default_featured_image($result_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $result_id;
     }
 }

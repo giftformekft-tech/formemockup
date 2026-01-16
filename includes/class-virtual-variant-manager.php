@@ -23,7 +23,6 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
-        add_action('save_post_product', array(__CLASS__, 'maybe_generate_admin_featured_image'), 20, 3);
     }
 
     protected static function is_supported_product($product) {
@@ -124,7 +123,6 @@ class MG_Virtual_Variant_Manager {
         }
 
         $settings = self::get_settings($catalog);
-        $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
@@ -148,21 +146,6 @@ class MG_Virtual_Variant_Manager {
                 $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
             }
 
-            $raw_type = isset($products[$type_slug]) && is_array($products[$type_slug]) ? $products[$type_slug] : array();
-            $color_surcharges = array();
-            if (!empty($raw_type['colors']) && is_array($raw_type['colors'])) {
-                foreach ($raw_type['colors'] as $color_entry) {
-                    if (!is_array($color_entry)) {
-                        continue;
-                    }
-                    $raw_slug = isset($color_entry['slug']) ? sanitize_title($color_entry['slug']) : '';
-                    if ($raw_slug === '') {
-                        continue;
-                    }
-                    $color_surcharges[$raw_slug] = isset($color_entry['surcharge']) ? floatval($color_entry['surcharge']) : 0.0;
-                }
-            }
-
             foreach ($type_meta['colors'] as $color_slug => $color_meta) {
                 $color_order[] = $color_slug;
                 $default_hex = isset($color_meta['hex']) ? $color_meta['hex'] : '';
@@ -178,20 +161,7 @@ class MG_Virtual_Variant_Manager {
                     'label' => $color_meta['label'],
                     'swatch' => $swatch,
                     'sizes' => self::sizes_for_color($type_meta, $color_slug),
-                    'surcharge' => isset($color_surcharges[$color_slug]) ? $color_surcharges[$color_slug] : 0.0,
                 );
-            }
-
-            $type_price = isset($raw_type['price']) ? floatval($raw_type['price']) : 0.0;
-            $size_surcharges = array();
-            if (!empty($raw_type['size_surcharges']) && is_array($raw_type['size_surcharges'])) {
-                foreach ($raw_type['size_surcharges'] as $size_label => $surcharge) {
-                    $size_key = sanitize_text_field($size_label);
-                    if ($size_key === '') {
-                        continue;
-                    }
-                    $size_surcharges[$size_key] = floatval($surcharge);
-                }
             }
 
             $types_payload[$type_slug] = array(
@@ -202,8 +172,6 @@ class MG_Virtual_Variant_Manager {
                 'size_chart' => $size_chart,
                 'size_chart_models' => $size_chart_models,
                 'description' => $type_description,
-                'price' => $type_price,
-                'size_surcharges' => $size_surcharges,
             );
         }
 
@@ -268,13 +236,6 @@ class MG_Virtual_Variant_Manager {
                 'types' => $type_order,
             ),
             'typeUrls' => $type_urls,
-            'priceFormat' => array(
-                'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '',
-                'priceFormat' => function_exists('get_woocommerce_price_format') ? get_woocommerce_price_format() : '%1$s%2$s',
-                'decimalSeparator' => function_exists('wc_get_price_decimal_separator') ? wc_get_price_decimal_separator() : '.',
-                'thousandSeparator' => function_exists('wc_get_price_thousand_separator') ? wc_get_price_thousand_separator() : ',',
-                'decimals' => function_exists('wc_get_price_decimals') ? wc_get_price_decimals() : 2,
-            ),
             'text' => array(
                 'type' => __('Terméktípus:', 'mgvd'),
                 'typePrompt' => __('Válassz terméket:', 'mgvd'),
@@ -906,11 +867,7 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path, array(
-            'product_id' => $product_id,
-            'design_id' => $design_id,
-            'render_version' => $render_version,
-        ));
+        $generated = $generator->generate_for_product($type_slug, $design_path);
         if (is_wp_error($generated)) {
             return $generated;
         }
@@ -983,11 +940,7 @@ class MG_Virtual_Variant_Manager {
         }
 
         $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path, array(
-            'product_id' => $product_id,
-            'design_id' => $design_id,
-            'render_version' => $render_version,
-        ));
+        $generated = $generator->generate_for_product($type_slug, $design_path);
         if (is_wp_error($generated)) {
             return $generated;
         }
@@ -1046,185 +999,5 @@ class MG_Virtual_Variant_Manager {
         }
         $logger = wc_get_logger();
         $logger->error($message, array_merge(array('source' => 'mg_virtual_variants'), $context));
-    }
-
-    public static function maybe_generate_admin_featured_image($post_id, $post, $update) {
-        if (!is_admin()) {
-            return;
-        }
-        if (wp_is_post_revision($post_id) || wp_is_post_autosave($post_id)) {
-            return;
-        }
-        if (!$post || $post->post_type !== 'product') {
-            return;
-        }
-        if (!current_user_can('edit_post', $post_id)) {
-            return;
-        }
-
-        $product = wc_get_product($post_id);
-        if (!self::is_supported_product($product)) {
-            return;
-        }
-
-        $config = self::get_frontend_config($product);
-        $default_type = isset($config['default']['type']) ? sanitize_title($config['default']['type']) : '';
-        $default_color = isset($config['default']['color']) ? sanitize_title($config['default']['color']) : '';
-        if ($default_type === '' || $default_color === '') {
-            return;
-        }
-
-        $stored_type = sanitize_title(get_post_meta($post_id, '_mg_virtual_featured_type', true));
-        $stored_color = sanitize_title(get_post_meta($post_id, '_mg_virtual_featured_color', true));
-        $current_image_id = $product->get_image_id();
-
-        if ($current_image_id && $stored_type === $default_type && $stored_color === $default_color) {
-            $current_path = function_exists('get_attached_file') ? get_attached_file($current_image_id) : '';
-            if (is_string($current_path) && $current_path !== '' && file_exists($current_path)) {
-                return;
-            }
-        }
-
-        $render_path = self::get_or_generate_preview_path($post_id, $default_type, $default_color);
-        if (is_wp_error($render_path)) {
-            self::log_error('Nem sikerült admin featured mockupot generálni.', array(
-                'product_id' => $post_id,
-                'type' => $default_type,
-                'color' => $default_color,
-                'error' => $render_path->get_error_message(),
-            ));
-            return;
-        }
-
-        $featured_path = self::copy_featured_render($render_path, $post_id, $default_type, $default_color);
-        if ($featured_path === '') {
-            return;
-        }
-
-        $attachment_id = self::attach_featured_image($featured_path, $product, $default_type, $default_color);
-        if (!$attachment_id) {
-            return;
-        }
-
-        if ($current_image_id !== $attachment_id) {
-            set_post_thumbnail($post_id, $attachment_id);
-        }
-        update_post_meta($post_id, '_mg_virtual_featured_type', $default_type);
-        update_post_meta($post_id, '_mg_virtual_featured_color', $default_color);
-    }
-
-    private static function copy_featured_render($render_path, $product_id, $type_slug, $color_slug) {
-        if (!function_exists('wp_upload_dir')) {
-            return '';
-        }
-        $render_path = is_string($render_path) ? wp_normalize_path($render_path) : '';
-        if ($render_path === '' || !file_exists($render_path)) {
-            return '';
-        }
-        $uploads = wp_upload_dir();
-        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
-        if ($base_dir === '') {
-            return '';
-        }
-        $target_dir = wp_normalize_path(trailingslashit($base_dir) . 'mockup-featured');
-        if (!wp_mkdir_p($target_dir)) {
-            return '';
-        }
-        $extension = pathinfo($render_path, PATHINFO_EXTENSION);
-        $extension = $extension !== '' ? $extension : 'webp';
-        $filename = sprintf(
-            'featured_%d_%s_%s.%s',
-            absint($product_id),
-            sanitize_title($type_slug),
-            sanitize_title($color_slug),
-            $extension
-        );
-        $target_path = wp_normalize_path(trailingslashit($target_dir) . $filename);
-        $should_copy = !file_exists($target_path);
-        if (!$should_copy) {
-            $render_mtime = filemtime($render_path);
-            $target_mtime = filemtime($target_path);
-            if ($render_mtime && $target_mtime && $render_mtime > $target_mtime) {
-                $should_copy = true;
-            }
-        }
-        if ($should_copy && !@copy($render_path, $target_path)) {
-            return '';
-        }
-        return $target_path;
-    }
-
-    private static function attach_featured_image($path, $product, $type_slug, $color_slug) {
-        if (!function_exists('wp_check_filetype')) {
-            return 0;
-        }
-        $path = wp_normalize_path($path);
-        if ($path === '' || !file_exists($path)) {
-            return 0;
-        }
-        $existing_id = self::find_existing_attachment_id($path);
-        if ($existing_id) {
-            return $existing_id;
-        }
-        $filetype = wp_check_filetype(basename($path), null);
-        if (empty($filetype['type']) && preg_match('/\\.webp$/i', $path)) {
-            $filetype['type'] = 'image/webp';
-        }
-        $uploads = wp_upload_dir();
-        $relative = _wp_relative_upload_path($path);
-        $guid = trailingslashit($uploads['baseurl'] ?? $uploads['url'] ?? '') . ltrim($relative, '/');
-        $title_parts = array_filter(array(
-            $product instanceof WC_Product ? $product->get_name() : '',
-            $type_slug,
-            $color_slug,
-        ));
-        $title = sanitize_text_field(implode(' - ', $title_parts));
-        $attachment = array(
-            'guid'           => $guid,
-            'post_mime_type' => $filetype['type'] ?? 'image/webp',
-            'post_title'     => $title !== '' ? $title : preg_replace('/\\.[^.]+$/', '', basename($path)),
-            'post_content'   => '',
-            'post_status'    => 'inherit',
-        );
-        $attach_id = wp_insert_attachment($attachment, $path);
-        require_once ABSPATH . 'wp-admin/includes/image.php';
-        $attach_data = array('file' => $relative);
-        wp_update_attachment_metadata($attach_id, $attach_data);
-        if ($attach_id && $title !== '') {
-            update_post_meta($attach_id, '_wp_attachment_image_alt', $title);
-        }
-        return $attach_id;
-    }
-
-    private static function find_existing_attachment_id($path) {
-        if (!function_exists('wp_upload_dir')) {
-            return 0;
-        }
-        $path = wp_normalize_path($path);
-        if ($path === '') {
-            return 0;
-        }
-        $uploads = wp_upload_dir();
-        $basedir = wp_normalize_path($uploads['basedir'] ?? '');
-        if ($basedir === '' || strpos($path, $basedir) !== 0) {
-            return 0;
-        }
-        $relative = ltrim(substr($path, strlen($basedir)), '/');
-        if ($relative === '') {
-            return 0;
-        }
-        $query = new WP_Query(array(
-            'post_type'      => 'attachment',
-            'post_status'    => 'inherit',
-            'posts_per_page' => 1,
-            'fields'         => 'ids',
-            'meta_query'     => array(
-                array(
-                    'key'   => '_wp_attached_file',
-                    'value' => $relative,
-                ),
-            ),
-        ));
-        return !empty($query->posts) ? (int) $query->posts[0] : 0;
     }
 }
