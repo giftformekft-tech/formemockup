@@ -352,7 +352,7 @@ class MG_Generator {
         }
     }
 
-    public function generate_for_product($product_key, $design_path) {
+    public function generate_for_product($product_key, $design_path, $context = array()) {
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
         }
@@ -362,11 +362,11 @@ class MG_Generator {
         if (empty($views)) return new WP_Error('views_missing','Nincs nézet.');
         if (empty($colors)) return new WP_Error('colors_missing','Nincs szín.');
 
-        $upload_dir = wp_upload_dir();
-        if (empty($upload_dir['path'])) {
+        $context = is_array($context) ? $context : array();
+        $output_dir = $this->resolve_output_directory($product['key'], $design_path, $context);
+        if ($output_dir === '') {
             return new WP_Error('upload_dir_missing', 'A feltöltési könyvtár nem elérhető.');
         }
-        $upload_path = $upload_dir['path'];
 
         try {
             $design_base = new Imagick($design_path);
@@ -391,7 +391,11 @@ class MG_Generator {
                     }
                     $templates_to_try[] = $this->resolve_default_template_path($product, $slug, $view['file']);
                     $templates_to_try = array_values(array_filter(array_unique($templates_to_try)));
-                    $outfile = $upload_path . '/mockup_' . $product['key'] . '_' . $slug . '_' . $view['key'] . '_' . uniqid() . '.webp';
+                    $type_slug = sanitize_title($product['key']);
+                    $color_slug = sanitize_title($slug);
+                    $view_key = isset($view['key']) ? sanitize_title($view['key']) : 'view';
+                    $filename = 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+                    $outfile = wp_normalize_path(trailingslashit($output_dir) . $filename);
                     $generated = false;
                     $last_error = null;
                     foreach ($templates_to_try as $template) {
@@ -430,6 +434,90 @@ class MG_Generator {
             $design_base->destroy();
         }
         return $out;
+    }
+
+    private function resolve_output_directory($type_key, $design_path, array $context) {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        if ($base_dir === '') {
+            return '';
+        }
+
+        $render_version = $this->resolve_render_version($context);
+        $design_id = $this->resolve_design_id($design_path, $context);
+        $type_slug = sanitize_title($type_key);
+        $design_folder = $design_id > 0 ? 'd' . sprintf('%03d', $design_id) : '';
+
+        if ($render_version === '' || $design_folder === '' || $type_slug === '') {
+            return '';
+        }
+
+        $output_dir = wp_normalize_path(trailingslashit($base_dir) . 'mockup-renders/' . $render_version . '/' . $design_folder . '/' . $type_slug);
+        if (!is_dir($output_dir)) {
+            wp_mkdir_p($output_dir);
+        }
+        return is_dir($output_dir) ? $output_dir : '';
+    }
+
+    private function resolve_render_version(array $context) {
+        if (!empty($context['render_version'])) {
+            $version = sanitize_title($context['render_version']);
+            return $version !== '' ? $version : 'v4';
+        }
+        $default_version = 'v4';
+        $version = apply_filters('mg_virtual_variant_render_version', $default_version, null);
+        $version = sanitize_title($version);
+        return $version !== '' ? $version : $default_version;
+    }
+
+    private function resolve_design_id($design_path, array $context) {
+        if (!empty($context['design_id'])) {
+            return absint($context['design_id']);
+        }
+        if (!empty($context['product_id'])) {
+            return absint($context['product_id']);
+        }
+        $attachment_id = $this->find_attachment_id_for_path($design_path);
+        if ($attachment_id > 0) {
+            return $attachment_id;
+        }
+        $fallback = absint(crc32((string) $design_path));
+        if ($fallback > 0) {
+            return $fallback;
+        }
+        return absint(time());
+    }
+
+    private function find_attachment_id_for_path($path) {
+        if (!function_exists('wp_upload_dir')) {
+            return 0;
+        }
+        $path = wp_normalize_path((string) $path);
+        if ($path === '') {
+            return 0;
+        }
+        $uploads = wp_upload_dir();
+        $basedir = wp_normalize_path($uploads['basedir'] ?? '');
+        if ($basedir === '' || strpos($path, $basedir) !== 0) {
+            return 0;
+        }
+        $relative = ltrim(substr($path, strlen($basedir)), '/');
+        if ($relative === '') {
+            return 0;
+        }
+        $query = new WP_Query([
+            'post_type'      => 'attachment',
+            'post_status'    => 'inherit',
+            'posts_per_page' => 1,
+            'fields'         => 'ids',
+            'meta_query'     => [
+                [
+                    'key'   => '_wp_attached_file',
+                    'value' => $relative,
+                ],
+            ],
+        ]);
+        return !empty($query->posts) ? (int) $query->posts[0] : 0;
     }
 
     // WebP output, preserve alpha, optional output resize from settings
