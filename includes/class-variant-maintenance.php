@@ -1104,7 +1104,8 @@ class MG_Variant_Maintenance {
                 'added_variants' => [],
             ];
         }
-        if ($product->is_type('simple')) {
+        $allow_sync = apply_filters('mg_enable_wc_variation_sync', false, $product_id, $type_slug, $type_data);
+        if (!$allow_sync || $product->is_type('simple')) {
             return [
                 'removed_colors' => [],
                 'added_variants' => [],
