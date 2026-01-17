@@ -63,6 +63,28 @@ class MG_Mockup_Maintenance {
         return $index;
     }
 
+    public static function get_selected_products_for_product($product_id) {
+        $product_id = absint($product_id);
+        if ($product_id <= 0) {
+            return [];
+        }
+        $index = self::get_index();
+        foreach ($index as $entry) {
+            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== $product_id) {
+                continue;
+            }
+            $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : [];
+            if (empty($source['selected_products'])) {
+                continue;
+            }
+            $selected = self::sanitize_selected_products($source['selected_products']);
+            if (!empty($selected)) {
+                return $selected;
+            }
+        }
+        return [];
+    }
+
     private static function normalize_index_entries($raw_index) {
         $normalized = [];
         $needs_update = false;

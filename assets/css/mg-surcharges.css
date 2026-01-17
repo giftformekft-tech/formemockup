@@ -5,6 +5,10 @@
     background-color: #fff;
 }
 
+.mg-surcharge-box--hidden {
+    display: none;
+}
+
 .mg-surcharge-box__header {
     display: flex;
     align-items: center;
