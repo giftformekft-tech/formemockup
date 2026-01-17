@@ -354,7 +354,80 @@ class MG_Product_Creator {
     }
 
     private function maybe_set_default_featured_image($product_id, $resolved_defaults, $selected_products, $cats, $generation_context) {
-        return;
+        $product_id = intval($product_id);
+        if ($product_id <= 0) {
+            return;
+        }
+        if (!is_array($resolved_defaults)) {
+            return;
+        }
+        $default_type = sanitize_title($resolved_defaults['type'] ?? '');
+        $default_color = sanitize_title($resolved_defaults['color'] ?? '');
+        if ($default_type === '' || $default_color === '') {
+            return;
+        }
+        $generation_context = is_array($generation_context) ? $generation_context : array();
+        $design_path = $generation_context['design_path'] ?? '';
+        if ($design_path === '' || !file_exists($design_path)) {
+            return;
+        }
+        $force_featured = !empty($generation_context['force_featured']);
+        $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
+        $current_featured_id = ($product && method_exists($product, 'get_image_id')) ? (int) $product->get_image_id() : 0;
+        if ($current_featured_id > 0 && !$force_featured) {
+            return;
+        }
+        if (!class_exists('MG_Generator')) {
+            $gen_file = plugin_dir_path(__FILE__) . 'class-generator.php';
+            if (file_exists($gen_file)) {
+                require_once $gen_file;
+            }
+        }
+        if (!class_exists('MG_Generator')) {
+            return;
+        }
+        $render_version = apply_filters('mg_virtual_variant_render_version', 'v4', $product);
+        $design_id = apply_filters('mg_virtual_variant_design_id', $product_id, $product);
+        $generator = new MG_Generator();
+        $result = $generator->generate_for_product($default_type, $design_path, array(
+            'product_id' => $product_id,
+            'design_id' => $design_id,
+            'render_version' => $render_version,
+            'render_scope' => 'woo_featured',
+            'color_filter' => array($default_color),
+        ));
+        if (is_wp_error($result)) {
+            $this->log_error('Woo featured render failed: ' . $result->get_error_message(), array(
+                'product_id' => $product_id,
+                'type' => $default_type,
+                'color' => $default_color,
+            ));
+            return;
+        }
+        $files = isset($result[$default_color]) ? (array) $result[$default_color] : array();
+        if (empty($files)) {
+            $this->log_error('Woo featured render missing files.', array(
+                'product_id' => $product_id,
+                'type' => $default_type,
+                'color' => $default_color,
+            ));
+            return;
+        }
+        $featured_file = $files[0] ?? '';
+        if ($featured_file === '' || !file_exists($featured_file)) {
+            $this->log_error('Woo featured render file not found.', array(
+                'product_id' => $product_id,
+                'type' => $default_type,
+                'color' => $default_color,
+            ));
+            return;
+        }
+        $product_name = ($product && method_exists($product, 'get_name')) ? $product->get_name() : '';
+        $seo_text = $this->compose_image_seo_text($product_name, $default_type, $default_color, $selected_products, $cats);
+        $attachment_id = $this->attach_image($featured_file, $seo_text);
+        if ($attachment_id) {
+            set_post_thumbnail($product_id, $attachment_id);
+        }
     }
 
     private function find_existing_attachment_id($path) {
@@ -457,6 +530,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($parent_id, $selected_products, $images_by_type_color, $generation_context);
         }
+        $this->maybe_set_default_featured_image($parent_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $parent_id;
     }
 
@@ -507,6 +581,7 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($result_id, $selected_products, $images_by_type_color, $generation_context);
         }
+        $this->maybe_set_default_featured_image($result_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $result_id;
     }
 }
