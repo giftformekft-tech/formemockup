@@ -1833,7 +1833,9 @@ class MG_Mockup_Maintenance {
             self::log_activity($entry, 'error', $index[$key]['last_message']);
             return;
         }
-        $files = array_values(array_filter($files, 'is_string'));
+        $files = array_values(array_filter($files, function ($file) {
+            return is_string($file) && $file !== '';
+        }));
         if (empty($files)) {
             $index[$key]['status'] = 'error';
             $index[$key]['last_message'] = __('A generált mockup fájlok nem érvényesek.', 'mgdtp');
