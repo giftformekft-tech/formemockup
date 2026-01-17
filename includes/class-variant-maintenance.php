@@ -56,7 +56,6 @@ class MG_Variant_Maintenance {
 
             $added_colors = array_diff(array_keys($type_data['colors']), array_keys($old_data['colors']));
             $removed_colors = array_diff(array_keys($old_data['colors']), array_keys($type_data['colors']));
-
             if (empty($added_colors) && empty($removed_colors)) {
                 continue;
             }
