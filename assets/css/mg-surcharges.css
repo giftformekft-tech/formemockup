@@ -9,7 +9,8 @@
     display: none;
 }
 
-.mg-surcharge-box[data-context="product"] {
+html.mg-variant-preparing .mg-surcharge-box[data-context="product"],
+html.mg-variant-preload .mg-surcharge-box[data-context="product"] {
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.2s ease;
@@ -17,6 +18,13 @@
 }
 
 .mg-surcharge-box--ready {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+html.mg-variant-preparing .mg-surcharge-box--ready[data-context="product"],
+html.mg-variant-preload .mg-surcharge-box--ready[data-context="product"] {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
