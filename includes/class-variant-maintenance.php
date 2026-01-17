@@ -1104,6 +1104,12 @@ class MG_Variant_Maintenance {
                 'added_variants' => [],
             ];
         }
+        if ($product->is_type('simple')) {
+            return [
+                'removed_colors' => [],
+                'added_variants' => [],
+            ];
+        }
         $normalized = self::normalize_type_data_for_queue($type_data);
         $colors = array_keys($normalized['colors']);
         $existing = self::map_existing_variations_with_ids($product, $type_slug);
