@@ -17,6 +17,20 @@
             pending: false
         };
         this.previewCache = {};
+        this.sizeChart = {
+            $link: null,
+            $modal: null,
+            $title: null,
+            $body: null,
+            $close: null,
+            $modelsButton: null,
+            $backButton: null,
+            $chartPanel: null,
+            $modelsPanel: null,
+            $chartBody: null,
+            $modelsBody: null,
+            view: 'chart'
+        };
         this.$typeOptions = $();
         this.$colorOptions = $();
         this.$sizeOptions = $();
@@ -29,6 +43,8 @@
         this.$addToCart = $form.find('button.single_add_to_cart_button');
         this.$price = $form.closest('.summary').find('.price').first();
         this.originalPriceHtml = this.$price.length ? this.$price.html() : '';
+        this.$title = $();
+        this.baseTitle = '';
         this.descriptionTargets = [];
         this.isReady = false;
         this.init();
@@ -41,12 +57,23 @@
         return fallback;
     };
 
+    VirtualVariantDisplay.prototype.getTypeLabel = function(typeSlug) {
+        if (!typeSlug) {
+            return '';
+        }
+        if (this.config && this.config.types && this.config.types[typeSlug]) {
+            return this.config.types[typeSlug].label || typeSlug;
+        }
+        return typeSlug;
+    };
+
     VirtualVariantDisplay.prototype.init = function() {
         if (!this.$wrapper.length || !this.$typeInput.length || !this.$colorInput.length || !this.$sizeInput.length) {
             return;
         }
         this.buildLayout();
         this.bindEvents();
+        this.captureTitle();
         this.captureDescriptionTargets();
         this.syncDefaults();
         this.updatePrice();
@@ -114,14 +141,18 @@
         this.$availabilityValue = $('<span class="mg-variant-availability__value" />');
         this.$availability.append(this.$availabilityValue);
         sizeSection.append(this.$availability);
+        this.sizeChart.$link = $('<button type="button" class="mg-size-chart-link" aria-disabled="true" aria-expanded="false" />').text(this.getText('sizeChartLink', '📏 Mérettáblázat megnyitása'));
+        sizeSection.append(this.sizeChart.$link);
         wrapper.append(sizeSection);
 
         this.$wrapper.append(wrapper);
 
         this.createTypeModal($typeTrigger);
+        this.createSizeChartModal();
         this.buildTypeOptions();
         this.rebuildColorOptions();
         this.rebuildSizeOptions();
+        this.updateSizeChartLink();
     };
 
     VirtualVariantDisplay.prototype.createTypeModal = function($trigger) {
@@ -256,6 +287,15 @@
             }
             self.setSize(value);
         });
+        if (this.sizeChart.$link) {
+            this.sizeChart.$link.on('click', function(e){
+                e.preventDefault();
+                if ($(this).hasClass('is-disabled')) {
+                    return;
+                }
+                self.showSizeChart();
+            });
+        }
     };
 
     VirtualVariantDisplay.prototype.getTypeFromUrl = function() {
@@ -296,6 +336,60 @@
         }
     };
 
+    VirtualVariantDisplay.prototype.captureTitle = function() {
+        if (this.$title && this.$title.length) {
+            return;
+        }
+        var $scope = this.$form.closest('.product');
+        var $title = $scope.find('.product_title').first();
+        if (!$title.length) {
+            $title = $scope.find('.entry-title').first();
+        }
+        if (!$title.length) {
+            $title = $('.product_title').first();
+        }
+        this.$title = $title;
+        if ($title.length) {
+            this.baseTitle = ($title.text() || '').trim();
+            this.normalizeBaseTitle();
+        }
+    };
+
+    VirtualVariantDisplay.prototype.normalizeBaseTitle = function() {
+        if (!this.baseTitle || !this.config || !this.config.types) {
+            return;
+        }
+        var suffix = ' póló pulcsi';
+        if (this.baseTitle.slice(-suffix.length) === suffix) {
+            this.baseTitle = this.baseTitle.slice(0, -suffix.length).trim();
+        }
+        var self = this;
+        var labels = Object.keys(this.config.types).map(function(slug){
+            return self.getTypeLabel(slug).trim();
+        }).filter(function(label){ return label; });
+        labels.forEach(function(label){
+            var dashed = ' - ' + label;
+            var spaced = ' ' + label;
+            if (self.baseTitle.slice(-dashed.length) === dashed) {
+                self.baseTitle = self.baseTitle.slice(0, -dashed.length).trim();
+            } else if (self.baseTitle.slice(-spaced.length) === spaced) {
+                self.baseTitle = self.baseTitle.slice(0, -spaced.length).trim();
+            }
+        });
+    };
+
+    VirtualVariantDisplay.prototype.updateTitleForType = function() {
+        if (!this.$title || !this.$title.length || !this.baseTitle) {
+            return;
+        }
+        var typeLabel = this.getTypeLabel(this.state.type);
+        var nextTitle = this.baseTitle;
+        if (typeLabel) {
+            nextTitle = this.baseTitle + ' ' + typeLabel;
+        }
+        this.$title.text(nextTitle);
+    };
+
     VirtualVariantDisplay.prototype.syncDefaults = function() {
         var defaults = this.config.default || {};
         var urlType = this.getTypeFromUrl();
@@ -311,6 +405,7 @@
             this.setSize(defaults.size);
         }
         this.refreshAddToCartState();
+        this.refreshPreview();
     };
 
     VirtualVariantDisplay.prototype.setType = function(value) {
@@ -323,6 +418,7 @@
         var label = value && this.config.types && this.config.types[value] ? this.config.types[value].label : this.getText('typePlaceholder', 'Válassz terméktípust');
         this.$typeValue.text(label || value);
         this.updateUrlForType(value);
+        this.updateTitleForType();
         this.updateDescription();
         this.$typeOptions.find('.mg-variant-type-option').each(function(){
             var $btn = $(this);
@@ -334,6 +430,7 @@
         this.rebuildColorOptions();
         this.updatePrice();
         this.refreshAddToCartState();
+        this.updateSizeChartLink();
     };
 
     VirtualVariantDisplay.prototype.captureDescriptionTargets = function() {
@@ -374,6 +471,110 @@
         });
     };
 
+    VirtualVariantDisplay.prototype.createSizeChartModal = function() {
+        if (this.sizeChart.$modal) {
+            return;
+        }
+        var $modal = $('<div class="mg-size-chart-modal" role="dialog" aria-modal="true" aria-hidden="true" />');
+        var $dialog = $('<div class="mg-size-chart-modal__dialog" role="document" />');
+        var $header = $('<div class="mg-size-chart-modal__header" />');
+        var $headerMeta = $('<div class="mg-size-chart-modal__meta" />');
+        var $headerActions = $('<div class="mg-size-chart-modal__actions" />');
+        this.sizeChart.$title = $('<h3 class="mg-size-chart-modal__title" />').text(this.getText('sizeChartTitle', 'Mérettáblázat'));
+        this.sizeChart.$close = $('<button type="button" class="mg-size-chart-modal__close" />').text(this.getText('sizeChartClose', 'Bezárás'));
+        var $body = $('<div class="mg-size-chart-modal__body" />');
+        var $chartPanel = $('<div class="mg-size-chart-modal__panel mg-size-chart-modal__panel--chart" />');
+        var $modelsPanel = $('<div class="mg-size-chart-modal__panel mg-size-chart-modal__panel--models" />');
+        var $chartBody = $('<div class="mg-size-chart-modal__content" />');
+        var $modelsBody = $('<div class="mg-size-chart-modal__content" />');
+        this.sizeChart.$modelsButton = $('<button type="button" class="mg-size-chart-modal__switch" />').text(this.getText('sizeChartModelsLink', 'Nézd meg modelleken'));
+        this.sizeChart.$backButton = $('<button type="button" class="mg-size-chart-modal__back" />').text(this.getText('sizeChartBack', 'Vissza a mérettáblázatra'));
+
+        $headerMeta.append(this.sizeChart.$title);
+        $headerMeta.append($headerActions);
+        $header.append($headerMeta);
+        $header.append(this.sizeChart.$close);
+        $dialog.append($header);
+        $dialog.append($body);
+        $modal.append($dialog);
+
+        $('body').append($modal);
+
+        this.sizeChart.$modal = $modal;
+        this.sizeChart.$body = $body;
+        this.sizeChart.$chartPanel = $chartPanel;
+        this.sizeChart.$modelsPanel = $modelsPanel;
+        this.sizeChart.$chartBody = $chartBody;
+        this.sizeChart.$modelsBody = $modelsBody;
+
+        $chartPanel.append($chartBody);
+        $headerActions.append(this.sizeChart.$modelsButton);
+        $headerActions.append(this.sizeChart.$backButton);
+        $modelsPanel.append($modelsBody);
+        $body.append($chartPanel);
+        $body.append($modelsPanel);
+
+        var self = this;
+        this.sizeChart.$close.on('click', function(){
+            self.hideSizeChart();
+        });
+
+        this.sizeChart.$modelsButton.on('click', function(){
+            self.showSizeChartModels();
+        });
+
+        this.sizeChart.$backButton.on('click', function(){
+            self.showSizeChart();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal)) {
+                self.hideSizeChart();
+            }
+        });
+
+        $(document).on('keydown.mgVirtualSizeChart', function(event){
+            if (event.key === 'Escape' && self.sizeChart.$modal && self.sizeChart.$modal.hasClass('is-open')) {
+                self.hideSizeChart();
+            }
+        });
+    };
+
+    VirtualVariantDisplay.prototype.updateSizeChartLink = function() {
+        if (!this.sizeChart.$link) {
+            return;
+        }
+        var chart = this.getSizeChartContent();
+        var models = this.getSizeChartModelsContent();
+        var hasContent = !!chart || !!models;
+        this.sizeChart.$link.toggleClass('is-disabled', !hasContent);
+        this.sizeChart.$link.attr('aria-disabled', hasContent ? 'false' : 'true');
+        this.sizeChart.$link.prop('disabled', !hasContent);
+        this.sizeChart.$link.attr('aria-expanded', this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open') ? 'true' : 'false');
+    };
+
+    VirtualVariantDisplay.prototype.getSizeChartContent = function() {
+        if (!this.state.type) {
+            return '';
+        }
+        var typeMeta = this.config.types[this.state.type];
+        if (!typeMeta || !typeMeta.size_chart) {
+            return '';
+        }
+        return typeMeta.size_chart;
+    };
+
+    VirtualVariantDisplay.prototype.getSizeChartModelsContent = function() {
+        if (!this.state.type) {
+            return '';
+        }
+        var typeMeta = this.config.types[this.state.type];
+        if (!typeMeta || !typeMeta.size_chart_models) {
+            return '';
+        }
+        return typeMeta.size_chart_models;
+    };
+
     VirtualVariantDisplay.prototype.updateDescription = function() {
         if (!this.descriptionTargets.length) {
             return;
@@ -405,6 +606,104 @@
         });
     };
 
+    VirtualVariantDisplay.prototype.showSizeChart = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        var chartContent = this.getSizeChartContent();
+        var modelsContent = this.getSizeChartModelsContent();
+        if (!chartContent && !modelsContent) {
+            return;
+        }
+        this.sizeChart.view = chartContent ? 'chart' : 'models';
+        this.updateSizeChartPanels();
+        this.sizeChart.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        this.sizeChart.$link.attr('aria-expanded', 'true');
+        this.sizeChart.$close.trigger('focus');
+        this.updateSizeChartLink();
+    };
+
+    VirtualVariantDisplay.prototype.showSizeChartModels = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        var modelsContent = this.getSizeChartModelsContent();
+        if (!modelsContent) {
+            return;
+        }
+        this.sizeChart.view = 'models';
+        this.updateSizeChartPanels();
+        if (!this.sizeChart.$modal.hasClass('is-open')) {
+            this.sizeChart.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        }
+        if (this.sizeChart.$backButton) {
+            this.sizeChart.$backButton.trigger('focus');
+        }
+    };
+
+    VirtualVariantDisplay.prototype.hideSizeChart = function() {
+        if (!this.sizeChart.$modal) {
+            return;
+        }
+        this.sizeChart.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        if (this.sizeChart.$chartBody) {
+            this.sizeChart.$chartBody.empty();
+        }
+        if (this.sizeChart.$modelsBody) {
+            this.sizeChart.$modelsBody.empty();
+        }
+        this.sizeChart.view = 'chart';
+        if (this.sizeChart.$link) {
+            this.sizeChart.$link.attr('aria-expanded', 'false');
+            this.sizeChart.$link.trigger('focus');
+        }
+        this.updateSizeChartLink();
+    };
+
+    VirtualVariantDisplay.prototype.updateSizeChartPanels = function() {
+        var chartContent = this.getSizeChartContent();
+        var modelsContent = this.getSizeChartModelsContent();
+        var hasModels = !!modelsContent;
+        var view = this.sizeChart.view || 'chart';
+        if (view === 'models' && !hasModels) {
+            view = 'chart';
+        }
+        this.sizeChart.view = view;
+
+        if (this.sizeChart.$chartBody) {
+            this.sizeChart.$chartBody.html(chartContent || '');
+        }
+        if (this.sizeChart.$modelsBody) {
+            this.sizeChart.$modelsBody.html(modelsContent || '');
+        }
+        if (this.sizeChart.$modelsButton) {
+            this.sizeChart.$modelsButton.toggleClass('is-disabled', !hasModels);
+            this.sizeChart.$modelsButton.prop('disabled', !hasModels);
+            this.sizeChart.$modelsButton.attr('aria-disabled', hasModels ? 'false' : 'true');
+            this.sizeChart.$modelsButton.toggle(view === 'chart');
+        }
+        if (this.sizeChart.$backButton) {
+            this.sizeChart.$backButton.toggle(view === 'models');
+        }
+
+        var typeLabel = this.state.type && this.config.types[this.state.type] ? this.config.types[this.state.type].label : '';
+        var titleKey = view === 'models' ? 'sizeChartModelsTitle' : 'sizeChartTitle';
+        var titleFallback = view === 'models' ? 'Modelleken' : 'Mérettáblázat';
+        var titleBase = this.getText(titleKey, titleFallback);
+        if (typeLabel) {
+            this.sizeChart.$title.text(titleBase + ' – ' + typeLabel);
+        } else {
+            this.sizeChart.$title.text(titleBase);
+        }
+
+        if (this.sizeChart.$chartPanel) {
+            this.sizeChart.$chartPanel.toggleClass('is-active', view === 'chart');
+        }
+        if (this.sizeChart.$modelsPanel) {
+            this.sizeChart.$modelsPanel.toggleClass('is-active', view === 'models');
+        }
+    };
+
     VirtualVariantDisplay.prototype.setColor = function(value) {
         value = value || '';
         if (!this.state.type) {
@@ -428,6 +727,7 @@
         this.refreshPreview();
         this.updatePrice();
         this.refreshAddToCartState();
+        this.updateSizeChartLink();
     };
 
     VirtualVariantDisplay.prototype.setSize = function(value) {
