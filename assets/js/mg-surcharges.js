@@ -37,6 +37,7 @@
 
     function revealBox() {
         $box.removeClass('mg-surcharge-box--hidden');
+        $box.addClass('mg-surcharge-box--ready');
     }
 
     function embedIntoVariantDisplay() {
