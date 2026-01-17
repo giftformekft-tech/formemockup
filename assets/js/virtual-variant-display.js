@@ -998,6 +998,10 @@
             self.previewCache[cacheKey] = url;
             self.preview.activeUrl = url;
             self.$previewInput.val(url);
+            if (typeof Image !== 'undefined') {
+                var preload = new Image();
+                preload.src = url;
+            }
             self.swapGalleryImage(url);
         }).always(function(){
             self.preview.pending = false;
