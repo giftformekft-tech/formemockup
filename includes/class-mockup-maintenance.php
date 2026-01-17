@@ -1833,34 +1833,16 @@ class MG_Mockup_Maintenance {
             self::log_activity($entry, 'error', $index[$key]['last_message']);
             return;
         }
-        $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
-        $seo_text = self::compose_image_seo_text($product, $type, $color_slug);
-        $new_attachment_ids = [];
-        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-        add_filter('big_image_size_threshold', '__return_false', 99);
-        try {
-            foreach ($files as $file) {
-                $attachment_id = self::attach_image($file, $seo_text);
-                if ($attachment_id) {
-                    $new_attachment_ids[] = $attachment_id;
-                }
-            }
-        } finally {
-            remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-            remove_filter('big_image_size_threshold', '__return_false', 99);
-        }
-        if (empty($new_attachment_ids)) {
+        $files = array_values(array_filter($files, 'is_string'));
+        if (empty($files)) {
             $index[$key]['status'] = 'error';
-            $index[$key]['last_message'] = __('Nem sikerült csatolni az új mockup képeket.', 'mgdtp');
+            $index[$key]['last_message'] = __('A generált mockup fájlok nem érvényesek.', 'mgdtp');
             $index[$key]['updated_at'] = self::current_timestamp();
             self::set_index($index);
             self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
             self::log_activity($entry, 'error', $index[$key]['last_message']);
             return;
         }
-        self::apply_variation_images($product, $type_slug, $color_slug, $new_attachment_ids);
-        self::refresh_gallery($product, $old_attachments, $new_attachment_ids);
-        self::delete_old_attachments($old_attachments, $new_attachment_ids);
         $timestamp = self::current_timestamp();
         $index[$key]['status'] = 'ok';
         $index[$key]['updated_at'] = $timestamp;
@@ -1868,7 +1850,8 @@ class MG_Mockup_Maintenance {
         $index[$key]['last_message'] = __('Sikeres újragenerálás.', 'mgdtp');
         $index[$key]['pending_reason'] = '';
         $index[$key]['source']['design_path'] = $design_path;
-        $index[$key]['source']['attachment_ids'] = $new_attachment_ids;
+        $index[$key]['source']['images'] = $files;
+        $index[$key]['source']['attachment_ids'] = [];
         $index[$key]['source']['last_generated_files'] = $files;
         self::set_index($index);
         self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
