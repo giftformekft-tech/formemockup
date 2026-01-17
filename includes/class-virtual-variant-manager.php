@@ -124,6 +124,24 @@ class MG_Virtual_Variant_Manager {
 
         $settings = self::get_settings($catalog);
         $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
+        $allowed_types = array();
+        if (class_exists('MG_Mockup_Maintenance') && method_exists('MG_Mockup_Maintenance', 'get_selected_products_for_product')) {
+            $selected_products = MG_Mockup_Maintenance::get_selected_products_for_product($product_id);
+            if (!empty($selected_products)) {
+                foreach ($selected_products as $item) {
+                    $slug = sanitize_title($item['key'] ?? '');
+                    if ($slug !== '') {
+                        $allowed_types[$slug] = true;
+                    }
+                }
+            }
+        }
+        if (!empty($allowed_types)) {
+            $catalog = array_intersect_key($catalog, $allowed_types);
+            if (is_array($products)) {
+                $products = array_intersect_key($products, $allowed_types);
+            }
+        }
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
