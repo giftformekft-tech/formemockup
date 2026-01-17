@@ -146,6 +146,65 @@ class MG_Mockup_Maintenance {
         update_option(self::OPTION_STATUS_INDEX, $index, false);
     }
 
+    public static function cleanup_missing_products() {
+        if (!function_exists('wc_get_product')) {
+            return [
+                'checked' => 0,
+                'removed' => 0,
+                'queue_removed' => 0,
+            ];
+        }
+        $index = self::get_index();
+        $queue = self::get_queue();
+        $missing_ids = [];
+        $product_cache = [];
+        $removed = 0;
+        $queue_removed = 0;
+
+        foreach ($index as $key => $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $product_id = absint($entry['product_id'] ?? 0);
+            if ($product_id <= 0) {
+                continue;
+            }
+            if (!isset($product_cache[$product_id])) {
+                $product_cache[$product_id] = wc_get_product($product_id) ? true : false;
+            }
+            if ($product_cache[$product_id]) {
+                continue;
+            }
+            $missing_ids[$product_id] = true;
+            $source = is_array($entry['source'] ?? null) ? $entry['source'] : [];
+            $attachment_ids = $source['attachment_ids'] ?? [];
+            self::delete_old_attachments($attachment_ids, []);
+            unset($index[$key]);
+            $removed++;
+        }
+
+        if (!empty($missing_ids)) {
+            $queue = array_values(array_filter($queue, function ($key) use ($missing_ids, &$queue_removed) {
+                $parts = explode('|', (string) $key);
+                $product_id = isset($parts[0]) ? absint($parts[0]) : 0;
+                if ($product_id > 0 && isset($missing_ids[$product_id])) {
+                    $queue_removed++;
+                    return false;
+                }
+                return true;
+            }));
+        }
+
+        self::set_index($index);
+        self::set_queue($queue);
+
+        return [
+            'checked' => count($product_cache),
+            'removed' => $removed,
+            'queue_removed' => $queue_removed,
+        ];
+    }
+
     public static function cleanup_product_mockups($post_id) {
         if (get_post_type($post_id) !== 'product') {
             return;
