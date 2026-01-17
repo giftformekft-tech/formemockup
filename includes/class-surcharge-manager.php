@@ -141,10 +141,11 @@ class MG_Surcharge_Manager {
         return $surcharges;
     }
 
-    public static function conditions_match_product($surcharge, $product, $variation = null, $cart_total = null) {
+    public static function conditions_match_product($surcharge, $product, $variation = null, $cart_total = null, $context = array()) {
         if (!$surcharge || !$product) {
             return false;
         }
+        $context = is_array($context) ? $context : array();
         $conditions = isset($surcharge['conditions']) ? $surcharge['conditions'] : [];
         if (!is_array($conditions)) {
             $conditions = [];
@@ -171,13 +172,13 @@ class MG_Surcharge_Manager {
             }
         }
 
-        if (!self::match_attribute_condition($conditions, 'product_types', $product, $variation, array('pa_termektipus', 'pa_product_type'))) {
+        if (!self::match_attribute_condition($conditions, 'product_types', $product, $variation, array('pa_termektipus', 'pa_product_type'), $context)) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'))) {
+        if (!self::match_attribute_condition($conditions, 'colors', $product, $variation, array('pa_szin', 'pa_color'), $context)) {
             return false;
         }
-        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'))) {
+        if (!self::match_attribute_condition($conditions, 'sizes', $product, $variation, array('pa_meret', 'pa_size', 'meret'), $context)) {
             return false;
         }
 
@@ -191,12 +192,16 @@ class MG_Surcharge_Manager {
         return true;
     }
 
-    private static function match_attribute_condition($conditions, $key, $product, $variation, $taxonomies) {
+    private static function match_attribute_condition($conditions, $key, $product, $variation, $taxonomies, $context) {
         if (empty($conditions[$key])) {
             return true;
         }
         $required = array_map('sanitize_title', $conditions[$key]);
         $values = self::get_attribute_values($product, $variation, $taxonomies);
+        $virtual = self::get_virtual_attribute_values($context, $taxonomies);
+        if (!empty($virtual)) {
+            $values = array_values(array_unique(array_merge($values, $virtual)));
+        }
         if (empty($values) && $variation === null && $product instanceof WC_Product && $product->is_type('variable')) {
             return true;
         }
@@ -210,6 +215,20 @@ class MG_Surcharge_Manager {
         $values = [];
         foreach ($taxonomies as $taxonomy) {
             $values = array_merge($values, self::get_values_for_taxonomy($product, $variation, $taxonomy));
+        }
+        return array_values(array_unique(array_filter($values)));
+    }
+
+    private static function get_virtual_attribute_values($context, $taxonomies) {
+        if (empty($context['virtual_attributes']) || !is_array($context['virtual_attributes'])) {
+            return [];
+        }
+        $values = [];
+        foreach ($taxonomies as $taxonomy) {
+            if (empty($context['virtual_attributes'][$taxonomy])) {
+                continue;
+            }
+            $values = array_merge($values, array_map('sanitize_title', (array) $context['virtual_attributes'][$taxonomy]));
         }
         return array_values(array_unique(array_filter($values)));
     }

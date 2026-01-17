@@ -5,6 +5,31 @@
     background-color: #fff;
 }
 
+.mg-surcharge-box--hidden {
+    display: none;
+}
+
+html.mg-variant-preparing .mg-surcharge-box[data-context="product"],
+html.mg-variant-preload .mg-surcharge-box[data-context="product"] {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+
+.mg-surcharge-box--ready {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+html.mg-variant-preparing .mg-surcharge-box--ready[data-context="product"],
+html.mg-variant-preload .mg-surcharge-box--ready[data-context="product"] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
 .mg-surcharge-box__header {
     display: flex;
     align-items: center;
