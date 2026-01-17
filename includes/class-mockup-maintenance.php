@@ -1853,6 +1853,7 @@ class MG_Mockup_Maintenance {
         $index[$key]['source']['images'] = $files;
         $index[$key]['source']['attachment_ids'] = [];
         $index[$key]['source']['last_generated_files'] = $files;
+        $index[$key]['source']['last_generated_count'] = count($files);
         self::set_index($index);
         self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
         self::log_activity($entry, 'ok', __('Mockup újragenerálva.', 'mgdtp'));
