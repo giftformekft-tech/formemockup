@@ -1677,11 +1677,7 @@ class MG_Mockup_Maintenance {
         try {
             $queue = self::get_queue();
             if (empty($queue)) {
-                self::queue_missing_attachments_from_index();
-                $queue = self::get_queue();
-                if (empty($queue)) {
-                    return;
-                }
+                return;
             }
             $batch = array_slice($queue, 0, self::get_batch_size());
             foreach ($batch as $key) {
@@ -1693,42 +1689,7 @@ class MG_Mockup_Maintenance {
     }
 
     private static function queue_missing_attachments_from_index() {
-        $index = self::get_index();
-        if (empty($index) || !is_array($index)) {
-            return;
-        }
-        $requests = [];
-        foreach ($index as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-            $product_id = absint($entry['product_id'] ?? 0);
-            $type_slug = sanitize_title($entry['type_slug'] ?? '');
-            $color_slug = sanitize_title($entry['color_slug'] ?? '');
-            if ($product_id <= 0 || $type_slug === '' || $color_slug === '') {
-                continue;
-            }
-            $attachment_ids = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
-            $has_attachment = false;
-            foreach ($attachment_ids as $attachment_id) {
-                if (absint($attachment_id) > 0) {
-                    $has_attachment = true;
-                    break;
-                }
-            }
-            if ($has_attachment) {
-                continue;
-            }
-            $requests[] = [
-                'product_id' => $product_id,
-                'type_slug' => $type_slug,
-                'color_slug' => $color_slug,
-                'reason' => __('Hiányzó mockup csatolmány a karbantartási indexben.', 'mgdtp'),
-            ];
-        }
-        if (!empty($requests)) {
-            self::queue_multiple_for_regeneration($requests);
-        }
+        // Bulk-style regeneration does not require mockup attachments.
     }
 
     private static function process_single($key) {
@@ -1833,34 +1794,18 @@ class MG_Mockup_Maintenance {
             self::log_activity($entry, 'error', $index[$key]['last_message']);
             return;
         }
-        $old_attachments = isset($entry['source']['attachment_ids']) ? (array) $entry['source']['attachment_ids'] : [];
-        $seo_text = self::compose_image_seo_text($product, $type, $color_slug);
-        $new_attachment_ids = [];
-        add_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-        add_filter('big_image_size_threshold', '__return_false', 99);
-        try {
-            foreach ($files as $file) {
-                $attachment_id = self::attach_image($file, $seo_text);
-                if ($attachment_id) {
-                    $new_attachment_ids[] = $attachment_id;
-                }
-            }
-        } finally {
-            remove_filter('intermediate_image_sizes_advanced', '__return_empty_array', 99);
-            remove_filter('big_image_size_threshold', '__return_false', 99);
-        }
-        if (empty($new_attachment_ids)) {
+        $files = array_values(array_filter($files, function ($file) {
+            return is_string($file) && $file !== '';
+        }));
+        if (empty($files)) {
             $index[$key]['status'] = 'error';
-            $index[$key]['last_message'] = __('Nem sikerült csatolni az új mockup képeket.', 'mgdtp');
+            $index[$key]['last_message'] = __('A generált mockup fájlok nem érvényesek.', 'mgdtp');
             $index[$key]['updated_at'] = self::current_timestamp();
             self::set_index($index);
             self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
             self::log_activity($entry, 'error', $index[$key]['last_message']);
             return;
         }
-        self::apply_variation_images($product, $type_slug, $color_slug, $new_attachment_ids);
-        self::refresh_gallery($product, $old_attachments, $new_attachment_ids);
-        self::delete_old_attachments($old_attachments, $new_attachment_ids);
         $timestamp = self::current_timestamp();
         $index[$key]['status'] = 'ok';
         $index[$key]['updated_at'] = $timestamp;
@@ -1868,8 +1813,10 @@ class MG_Mockup_Maintenance {
         $index[$key]['last_message'] = __('Sikeres újragenerálás.', 'mgdtp');
         $index[$key]['pending_reason'] = '';
         $index[$key]['source']['design_path'] = $design_path;
-        $index[$key]['source']['attachment_ids'] = $new_attachment_ids;
+        $index[$key]['source']['images'] = $files;
+        $index[$key]['source']['attachment_ids'] = [];
         $index[$key]['source']['last_generated_files'] = $files;
+        $index[$key]['source']['last_generated_count'] = count($files);
         self::set_index($index);
         self::set_queue(array_values(array_diff(self::get_queue(), [$key])));
         self::log_activity($entry, 'ok', __('Mockup újragenerálva.', 'mgdtp'));
