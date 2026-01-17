@@ -96,13 +96,14 @@
         $(document).on('mgVariantReady', function(_event, $readyForm){
             if ($readyForm && $readyForm.length && $readyForm[0] === $form[0]) {
                 embedIntoVariantDisplay();
+                if (shouldDelay) {
+                    revealBox();
+                }
             }
         });
-        setTimeout(function(){
-            if (!variantEmbedded) {
-                revealBox();
-            }
-        }, 2000);
+        if (!shouldDelay) {
+            revealBox();
+        }
     } else {
         revealBox();
     }

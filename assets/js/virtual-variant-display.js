@@ -29,6 +29,7 @@
         this.$price = $form.closest('.summary').find('.price').first();
         this.originalPriceHtml = this.$price.length ? this.$price.html() : '';
         this.descriptionTargets = [];
+        this.isReady = false;
         this.init();
     }
 
@@ -49,6 +50,34 @@
         this.syncDefaults();
         this.updatePrice();
         this.refreshAddToCartState();
+        this.markReady();
+    };
+
+    VirtualVariantDisplay.prototype.markReady = function() {
+        if (this.isReady) {
+            return;
+        }
+        this.isReady = true;
+        var detail = {
+            form: (this.$form && this.$form.length) ? this.$form[0] : null
+        };
+        if (typeof document !== 'undefined') {
+            var nativeEvent;
+            if (typeof window !== 'undefined' && typeof window.CustomEvent === 'function') {
+                nativeEvent = new CustomEvent('mgVariantReady', { detail: detail });
+            } else if (document.createEvent) {
+                nativeEvent = document.createEvent('CustomEvent');
+                if (nativeEvent && nativeEvent.initCustomEvent) {
+                    nativeEvent.initCustomEvent('mgVariantReady', true, true, detail);
+                }
+            }
+            if (nativeEvent) {
+                document.dispatchEvent(nativeEvent);
+            }
+        }
+        if (typeof jQuery !== 'undefined' && jQuery && jQuery(document)) {
+            jQuery(document).trigger('mgVariantReady', [this.$form]);
+        }
     };
 
     VirtualVariantDisplay.prototype.buildLayout = function() {
