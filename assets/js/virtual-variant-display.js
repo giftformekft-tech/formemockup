@@ -16,6 +16,7 @@
             activeUrl: '',
             pending: false
         };
+        this.previewCache = {};
         this.$typeOptions = $();
         this.$colorOptions = $();
         this.$sizeOptions = $();
@@ -668,6 +669,13 @@
             this.$previewInput.val('');
             return;
         }
+        var cacheKey = this.state.type + '|' + this.state.color;
+        if (this.previewCache[cacheKey]) {
+            this.preview.activeUrl = this.previewCache[cacheKey];
+            this.$previewInput.val(this.previewCache[cacheKey]);
+            this.swapGalleryImage(this.previewCache[cacheKey]);
+            return;
+        }
         if (!this.config.ajax || !this.config.ajax.url || !this.config.ajax.nonce) {
             return;
         }
@@ -687,6 +695,7 @@
             if (!url) {
                 return;
             }
+            self.previewCache[cacheKey] = url;
             self.preview.activeUrl = url;
             self.$previewInput.val(url);
             self.swapGalleryImage(url);

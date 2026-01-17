@@ -93,6 +93,19 @@ class MG_Mockup_Maintenance_Page {
                 MG_Variant_Maintenance::process_queue();
                 self::add_notice(__('A variáns frissítés elindult.', 'mgdtp'));
                 break;
+            case 'cleanup_missing_products':
+                if (!class_exists('MG_Mockup_Maintenance')) {
+                    self::add_notice(__('Hiányzik a Mockup karbantartó modul.', 'mgdtp'), 'error');
+                    break;
+                }
+                $result = MG_Mockup_Maintenance::cleanup_missing_products();
+                if (empty($result['removed']) && empty($result['queue_removed'])) {
+                    self::add_notice(__('Nem találtunk törölt termékhez tartozó bejegyzést.', 'mgdtp'), 'warning');
+                    break;
+                }
+                /* translators: %1$d: removed index entries, %2$d: removed queue items */
+                self::add_notice(sprintf(__('Törölt termékek tisztítása kész: %1$d bejegyzés törölve, %2$d sorban álló feladat eltávolítva.', 'mgdtp'), (int) ($result['removed'] ?? 0), (int) ($result['queue_removed'] ?? 0)));
+                break;
         }
     }
 
@@ -375,6 +388,11 @@ class MG_Mockup_Maintenance_Page {
                 <input type="hidden" name="mg_mockup_action" value="manual_variant_sync" />
                 <button type="submit" class="button button-secondary"><?php esc_html_e('Variánsok frissítése most', 'mgdtp'); ?></button>
             </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="cleanup_missing_products" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Törölt termékek tisztítása', 'mgdtp'); ?></button>
+            </form>
             <form method="post" class="mg-batch-size-form">
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
                 <input type="hidden" name="mg_mockup_action" value="save_batch_size" />
@@ -450,6 +468,14 @@ class MG_Mockup_Maintenance_Page {
         ?>
         <div class="wrap mg-mockup-maintenance">
             <h1><?php esc_html_e('Mockup karbantartás', 'mgdtp'); ?></h1>
+            <div class="notice notice-info">
+                <p><strong><?php esc_html_e('Regenerálás működése (részletes leírás)', 'mgdtp'); ?></strong></p>
+                <ul>
+                    <li><?php esc_html_e('Az Újragenerálás a kijelölt mockupokat sorba teszi, majd a háttérfolyamat batch-ekben dolgozza fel.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A „Frissítendő” állapot jelzi, hogy a mockup hiányzik vagy hibás, ezeket érdemes sorba helyezni.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A variáns frissítés külön queue-ban fut, és a mockup indexet is karbantartja.', 'mgdtp'); ?></li>
+                </ul>
+            </div>
             <?php self::render_notices(); ?>
             <?php self::render_filters($filters, $entries); ?>
             <?php self::render_summary($entries, $queue); ?>
