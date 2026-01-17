@@ -450,6 +450,14 @@ class MG_Mockup_Maintenance_Page {
         ?>
         <div class="wrap mg-mockup-maintenance">
             <h1><?php esc_html_e('Mockup karbantartás', 'mgdtp'); ?></h1>
+            <div class="notice notice-info">
+                <p><strong><?php esc_html_e('Regenerálás működése (részletes leírás)', 'mgdtp'); ?></strong></p>
+                <ul>
+                    <li><?php esc_html_e('Az Újragenerálás a kijelölt mockupokat sorba teszi, majd a háttérfolyamat batch-ekben dolgozza fel.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A „Frissítendő” állapot jelzi, hogy a mockup hiányzik vagy hibás, ezeket érdemes sorba helyezni.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A variáns frissítés külön queue-ban fut, és a mockup indexet is karbantartja.', 'mgdtp'); ?></li>
+                </ul>
+            </div>
             <?php self::render_notices(); ?>
             <?php self::render_filters($filters, $entries); ?>
             <?php self::render_summary($entries, $queue); ?>
