@@ -19,6 +19,7 @@ class MG_Virtual_Variant_Manager {
         add_action('woocommerce_checkout_create_order_line_item', array(__CLASS__, 'add_order_item_meta'), 10, 4);
         add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_pricing'), 20, 1);
         add_filter('woocommerce_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
+        add_filter('woocommerce_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), 10, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
@@ -803,6 +804,26 @@ class MG_Virtual_Variant_Manager {
             $product->set_price($final_price);
             $cart->cart_contents[$cart_item_key]['mg_custom_fields_base_price'] = $final_price;
         }
+    }
+
+    public static function format_mini_cart_price($price, $cart_item, $cart_item_key) {
+        if (function_exists('is_cart') && is_cart()) {
+            return $price;
+        }
+        if (empty($cart_item['mg_product_type'])) {
+            return $price;
+        }
+        $product = isset($cart_item['data']) ? $cart_item['data'] : null;
+        $display_price = $product instanceof WC_Product ? $product->get_price() : null;
+        if ($display_price === null || $display_price === '') {
+            $display_price = isset($cart_item['mg_custom_fields_base_price'])
+                ? $cart_item['mg_custom_fields_base_price']
+                : null;
+        }
+        if ($display_price === null || $display_price === '') {
+            return $price;
+        }
+        return wc_price(floatval($display_price));
     }
 
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
