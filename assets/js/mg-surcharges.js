@@ -81,6 +81,7 @@
             $messageAnchor = $section;
             $variantDisplay = $display;
             variantEmbedded = true;
+            variantReady = true;
             if ($message) {
                 $message.addClass('mg-surcharge-warning--embedded');
                 $message.detach().insertAfter($messageAnchor);
