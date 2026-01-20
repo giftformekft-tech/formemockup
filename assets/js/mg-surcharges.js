@@ -16,7 +16,9 @@
             return;
         }
 
-        var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0;
+        var hasVirtualDefaults = data.context && data.context.virtual_defaults && Object.keys(data.context.virtual_defaults).length > 0;
+        var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0 || hasVirtualDefaults;
+        var variantReady = !shouldDelay;
         if (shouldDelay) {
             $box.addClass('mg-surcharge-box--hidden');
         }
@@ -40,6 +42,9 @@
         var $message = null;
 
         function revealBox() {
+            if (shouldDelay && !variantReady) {
+                return;
+            }
             $box.removeClass('mg-surcharge-box--hidden');
             $box.addClass('mg-surcharge-box--ready');
         }
@@ -76,7 +81,7 @@
             $messageAnchor = $section;
             $variantDisplay = $display;
             variantEmbedded = true;
-            revealBox();
+            variantReady = true;
             if ($message) {
                 $message.addClass('mg-surcharge-warning--embedded');
                 $message.detach().insertAfter($messageAnchor);
@@ -102,6 +107,7 @@
             $(document).on('mgVariantReady', function(_event, $readyForm){
                 if ($readyForm && $readyForm.length && $readyForm[0] === $form[0]) {
                     embedIntoVariantDisplay();
+                    variantReady = true;
                     if (shouldDelay) {
                         revealBox();
                     }
@@ -264,6 +270,7 @@
         function updateOptions(){
             var context = buildContext();
             var requiredMissing = false;
+            var hasMatchingOption = false;
             $box.find('.mg-surcharge-option').each(function(){
                 var $option = $(this);
                 var optionId = $option.data('id');
@@ -279,6 +286,7 @@
                 }
                 if (optionMatches(option, context)) {
                     enableOption($option);
+                    hasMatchingOption = true;
                 } else {
                     disableOption($option);
                     return;
@@ -290,6 +298,14 @@
                     }
                 }
             });
+            if (hasMatchingOption && (!shouldDelay || variantReady || variantEmbedded)) {
+                revealBox();
+            } else {
+                $box.addClass('mg-surcharge-box--hidden');
+                $box.removeClass('mg-surcharge-box--ready');
+                $message.hide();
+                requiredMissing = false;
+            }
             toggleButton(requiredMissing);
         }
 
