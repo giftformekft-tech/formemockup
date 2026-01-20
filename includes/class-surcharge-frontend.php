@@ -137,15 +137,17 @@ class MG_Surcharge_Frontend {
         if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
             return $item_data;
         }
+        $is_mini_cart = !(function_exists('is_cart') && is_cart()) && !(function_exists('is_checkout') && is_checkout());
         $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
         foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
             if (empty($surcharge['enabled'])) {
                 continue;
             }
             $amount = floatval($surcharge['amount']) * $quantity;
+            $display = $is_mini_cart ? sprintf('+%s', wc_price($amount)) : wc_price($amount);
             $item_data[] = [
                 'key' => $surcharge['name'],
-                'display' => wc_price($amount),
+                'display' => $display,
             ];
         }
         return $item_data;
