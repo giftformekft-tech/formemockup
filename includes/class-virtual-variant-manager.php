@@ -19,6 +19,9 @@ class MG_Virtual_Variant_Manager {
         add_action('woocommerce_checkout_create_order_line_item', array(__CLASS__, 'add_order_item_meta'), 10, 4);
         add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_pricing'), 20, 1);
         add_filter('woocommerce_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
+        add_filter('woocommerce_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
+        add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
+        add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
@@ -805,6 +808,51 @@ class MG_Virtual_Variant_Manager {
         }
     }
 
+    public static function format_mini_cart_price($price, $cart_item, $cart_item_key) {
+        if (function_exists('is_cart') && is_cart()) {
+            return $price;
+        }
+        $final_price = self::get_virtual_variant_price($cart_item);
+        if ($final_price === null) {
+            return $price;
+        }
+        return wc_price($final_price);
+    }
+
+    public static function format_widget_cart_item_quantity($quantity, $cart_item, $cart_item_key) {
+        if (function_exists('is_cart') && is_cart()) {
+            return $quantity;
+        }
+        $final_price = self::get_virtual_variant_price($cart_item);
+        if ($final_price === null) {
+            return $quantity;
+        }
+        $product_quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
+        return sprintf('%s &times; %s', $product_quantity, wc_price($final_price));
+    }
+
+    private static function get_virtual_variant_price($cart_item) {
+        if (empty($cart_item['mg_product_type']) || empty($cart_item['mg_size'])) {
+            return null;
+        }
+        if (!function_exists('mgsc_get_products')) {
+            return null;
+        }
+        $products = mgsc_get_products();
+        $type_slug = sanitize_title($cart_item['mg_product_type']);
+        if (empty($products[$type_slug])) {
+            return null;
+        }
+        $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
+        $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $cart_item['mg_size'])) : 0.0;
+        $final_price = max(0, $base_price + $size_extra);
+        $product = isset($cart_item['data']) ? $cart_item['data'] : null;
+        if ($product instanceof WC_Product) {
+            $final_price = wc_get_price_to_display($product, array('price' => $final_price));
+        }
+        return $final_price;
+    }
+
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
         if (empty($cart_item['mg_preview_url'])) {
             return $thumbnail;
@@ -825,7 +873,7 @@ class MG_Virtual_Variant_Manager {
         );
     }
 
-    public static function filter_order_thumbnail($thumbnail, $item, $order) {
+    public static function filter_order_thumbnail($thumbnail, $item, $order = null) {
         if (!is_a($item, 'WC_Order_Item_Product')) {
             return $thumbnail;
         }
