@@ -103,6 +103,9 @@ class MG_Size_Selection {
         if (empty($cart_item['mg_size'])) {
             return $item_data;
         }
+        if (!empty($cart_item['mg_product_type'])) {
+            return $item_data;
+        }
         $item_data[] = [
             'name' => __('Méret', 'mgdtp'),
             'value' => sanitize_text_field($cart_item['mg_size']),
