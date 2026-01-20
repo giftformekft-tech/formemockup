@@ -32,6 +32,10 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     margin-bottom: 0;
 }
 
+.mg-variant-section--size {
+    margin-bottom: 0.75em;
+}
+
 .mg-variant-section--custom {
     margin-top: 1.25em;
     padding-top: 1em;
@@ -380,7 +384,7 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     display: inline-flex;
     align-items: center;
     gap: 0.35em;
-    margin-top: 0.75em;
+    margin-top: 0.35em;
     font-size: 0.9rem;
     font-weight: 600;
     color: #2563eb;
