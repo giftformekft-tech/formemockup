@@ -43,3 +43,7 @@
     letter-spacing: 0.02em;
     margin-bottom: 2px;
 }
+
+.wc-block-components-product-metadata__description {
+    display: none;
+}
