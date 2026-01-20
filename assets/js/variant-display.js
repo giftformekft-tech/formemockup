@@ -250,7 +250,11 @@
         wrapper.append(colorSection);
 
         var sizeSection = $('<div class="mg-variant-section mg-variant-section--size" />');
-        sizeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('size', 'Méret')));
+        this.sizeChart.$link = $('<button type="button" class="mg-size-chart-link" aria-disabled="true" aria-expanded="false" />').text(this.getText('sizeChartLink', '📏 Mérettáblázat megnyitása'));
+        var sizeLabel = $('<div class="mg-variant-section__label mg-variant-section__label--with-action" />');
+        sizeLabel.append($('<span class="mg-variant-section__label-text" />').text(this.getText('size', 'Méret')));
+        sizeLabel.append(this.sizeChart.$link);
+        sizeSection.append(sizeLabel);
         this.$sizeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
         sizeSection.append(this.$sizeOptions);
         this.$availability = $('<div class="mg-variant-availability" />');
@@ -258,8 +262,6 @@
         this.$availabilityValue = $('<span class="mg-variant-availability__value" />');
         this.$availability.append(this.$availabilityValue);
         sizeSection.append(this.$availability);
-        this.sizeChart.$link = $('<button type="button" class="mg-size-chart-link" aria-disabled="true" aria-expanded="false" />').text(this.getText('sizeChartLink', '📏 Mérettáblázat megnyitása'));
-        sizeSection.append(this.sizeChart.$link);
         wrapper.append(sizeSection);
 
         this.$form.find('.variations').addClass('mg-variant-hidden').before(wrapper);

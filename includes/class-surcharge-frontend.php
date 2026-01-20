@@ -19,6 +19,8 @@ class MG_Surcharge_Frontend {
         add_action('woocommerce_before_calculate_totals', [__CLASS__, 'validate_cart_items']);
         add_action('woocommerce_after_cart_item_name', [__CLASS__, 'render_cart_item_controls'], 20, 2);
         add_action('woocommerce_update_cart_action_cart_updated', [__CLASS__, 'handle_cart_update']);
+        add_filter('woocommerce_cart_subtotal', [__CLASS__, 'filter_mini_cart_subtotal'], 20, 3);
+        add_filter('woocommerce_widget_cart_subtotal', [__CLASS__, 'filter_mini_cart_subtotal'], 20, 3);
     }
 
     public static function register_assets() {
@@ -135,15 +137,17 @@ class MG_Surcharge_Frontend {
         if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
             return $item_data;
         }
+        $is_mini_cart = !(function_exists('is_cart') && is_cart()) && !(function_exists('is_checkout') && is_checkout());
         $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
         foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
             if (empty($surcharge['enabled'])) {
                 continue;
             }
             $amount = floatval($surcharge['amount']) * $quantity;
+            $display = $is_mini_cart ? sprintf('+%s', wc_price($amount)) : wc_price($amount);
             $item_data[] = [
                 'key' => $surcharge['name'],
-                'display' => wc_price($amount),
+                'display' => $display,
             ];
         }
         return $item_data;
@@ -272,6 +276,24 @@ class MG_Surcharge_Frontend {
         }
         unset($item);
         WC()->cart->set_session();
+    }
+
+    public static function filter_mini_cart_subtotal($subtotal, $compound = false, $cart = null) {
+        if ((function_exists('is_cart') && is_cart()) || (function_exists('is_checkout') && is_checkout())) {
+            return $subtotal;
+        }
+        if (!$cart instanceof WC_Cart) {
+            $cart = WC()->cart;
+        }
+        if (!$cart) {
+            return $subtotal;
+        }
+        $surcharge_total = self::get_cart_surcharge_total($cart);
+        if ($surcharge_total <= 0) {
+            return $subtotal;
+        }
+        $base_subtotal = floatval($cart->get_subtotal());
+        return wc_price($base_subtotal + $surcharge_total);
     }
 
     private static function get_applicable_surcharges($product, $variation = null, $location = 'product', $context = array()) {
@@ -511,5 +533,22 @@ class MG_Surcharge_Frontend {
             return __('A kosárban már van olyan termék, amely feltételhez kötött feláras opciót tartalmaz, ezért most csak ilyen opcióval rendelkező terméket adhatsz hozzá. Ha más terméket szeretnél, külön vásárlásban teheted meg.', 'mockup-generator');
         }
         return wp_kses_post($message);
+    }
+
+    private static function get_cart_surcharge_total($cart) {
+        $total = 0.0;
+        foreach ($cart->get_cart() as $cart_item) {
+            if (empty($cart_item['mg_surcharge_data']) || !is_array($cart_item['mg_surcharge_data'])) {
+                continue;
+            }
+            $quantity = isset($cart_item['quantity']) ? max(1, intval($cart_item['quantity'])) : 1;
+            foreach ($cart_item['mg_surcharge_data'] as $surcharge) {
+                if (empty($surcharge['enabled'])) {
+                    continue;
+                }
+                $total += floatval($surcharge['amount']) * $quantity;
+            }
+        }
+        return $total;
     }
 }
