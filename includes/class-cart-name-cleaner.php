@@ -8,14 +8,11 @@ class MG_Cart_Name_Cleaner {
     const BULK_SUFFIX = ' póló pulcsi';
 
     public static function init() {
-        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 9999, 3);
-        add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 9999, 3);
+        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
+        add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
-        if (!function_exists('is_cart') || !is_cart()) {
-            return $product_name;
-        }
         if (!isset($cart_item['data']) || !($cart_item['data'] instanceof WC_Product)) {
             return $product_name;
         }
