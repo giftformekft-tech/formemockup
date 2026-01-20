@@ -41,6 +41,9 @@
         var $message = null;
 
         function revealBox() {
+            if (shouldDelay && !variantReady) {
+                return;
+            }
             $box.removeClass('mg-surcharge-box--hidden');
             $box.addClass('mg-surcharge-box--ready');
         }
@@ -77,8 +80,6 @@
             $messageAnchor = $section;
             $variantDisplay = $display;
             variantEmbedded = true;
-            variantReady = true;
-            revealBox();
             if ($message) {
                 $message.addClass('mg-surcharge-warning--embedded');
                 $message.detach().insertAfter($messageAnchor);
