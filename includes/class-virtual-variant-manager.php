@@ -810,20 +810,25 @@ class MG_Virtual_Variant_Manager {
         if (function_exists('is_cart') && is_cart()) {
             return $price;
         }
-        if (empty($cart_item['mg_product_type'])) {
+        if (empty($cart_item['mg_product_type']) || empty($cart_item['mg_size'])) {
             return $price;
         }
+        if (!function_exists('mgsc_get_products')) {
+            return $price;
+        }
+        $products = mgsc_get_products();
+        $type_slug = sanitize_title($cart_item['mg_product_type']);
+        if (empty($products[$type_slug])) {
+            return $price;
+        }
+        $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
+        $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $cart_item['mg_size'])) : 0.0;
+        $final_price = max(0, $base_price + $size_extra);
         $product = isset($cart_item['data']) ? $cart_item['data'] : null;
-        $display_price = $product instanceof WC_Product ? $product->get_price() : null;
-        if ($display_price === null || $display_price === '') {
-            $display_price = isset($cart_item['mg_custom_fields_base_price'])
-                ? $cart_item['mg_custom_fields_base_price']
-                : null;
+        if ($product instanceof WC_Product) {
+            $final_price = wc_get_price_to_display($product, array('price' => $final_price));
         }
-        if ($display_price === null || $display_price === '') {
-            return $price;
-        }
-        return wc_price(floatval($display_price));
+        return wc_price($final_price);
     }
 
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
