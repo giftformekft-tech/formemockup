@@ -9,6 +9,7 @@
     display: none;
 }
 
+
 html.mg-variant-preparing .mg-surcharge-box[data-context="product"],
 html.mg-variant-preload .mg-surcharge-box[data-context="product"] {
     opacity: 0;
@@ -188,14 +189,26 @@ html.mg-variant-preload .mg-surcharge-box--ready[data-context="product"] {
 .mg-variant-options--surcharges {
     display: flex;
     flex-direction: column;
-    gap: 0.75em;
+    gap: 0.25em;
+    border: 1px solid #cbd5f5;
+    border-radius: 12px;
+    padding: 0.6em 0.8em;
+    background: #f8fafc;
 }
 
 .mg-variant-options--surcharges .mg-surcharge-option {
-    border: 1px solid #cbd5f5;
-    border-radius: 12px;
-    padding: 0.9em 1em;
-    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    padding: 0.5em 0;
+    background: transparent;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option:first-of-type {
+    border-top: none;
+    padding-top: 0;
+}
+
+.mg-variant-options--surcharges .mg-surcharge-option:last-of-type {
+    padding-bottom: 0;
 }
 
 .mg-variant-options--surcharges .mg-surcharge-option__amount {
