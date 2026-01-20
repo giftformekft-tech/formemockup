@@ -17,6 +17,7 @@
         }
 
         var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0;
+        var variantReady = !shouldDelay;
         if (shouldDelay) {
             $box.addClass('mg-surcharge-box--hidden');
         }
@@ -76,6 +77,7 @@
             $messageAnchor = $section;
             $variantDisplay = $display;
             variantEmbedded = true;
+            variantReady = true;
             revealBox();
             if ($message) {
                 $message.addClass('mg-surcharge-warning--embedded');
@@ -102,6 +104,7 @@
             $(document).on('mgVariantReady', function(_event, $readyForm){
                 if ($readyForm && $readyForm.length && $readyForm[0] === $form[0]) {
                     embedIntoVariantDisplay();
+                    variantReady = true;
                     if (shouldDelay) {
                         revealBox();
                     }
@@ -292,7 +295,7 @@
                     }
                 }
             });
-            if (hasMatchingOption) {
+            if (hasMatchingOption && (!shouldDelay || variantReady || variantEmbedded)) {
                 revealBox();
             } else {
                 $box.addClass('mg-surcharge-box--hidden');
