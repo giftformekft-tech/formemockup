@@ -264,6 +264,7 @@
         function updateOptions(){
             var context = buildContext();
             var requiredMissing = false;
+            var hasMatchingOption = false;
             $box.find('.mg-surcharge-option').each(function(){
                 var $option = $(this);
                 var optionId = $option.data('id');
@@ -279,6 +280,7 @@
                 }
                 if (optionMatches(option, context)) {
                     enableOption($option);
+                    hasMatchingOption = true;
                 } else {
                     disableOption($option);
                     return;
@@ -290,6 +292,14 @@
                     }
                 }
             });
+            if (hasMatchingOption) {
+                revealBox();
+            } else {
+                $box.addClass('mg-surcharge-box--hidden');
+                $box.removeClass('mg-surcharge-box--ready');
+                $message.hide();
+                requiredMissing = false;
+            }
             toggleButton(requiredMissing);
         }
 
