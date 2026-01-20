@@ -16,7 +16,8 @@
             return;
         }
 
-        var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0;
+        var hasVirtualDefaults = data.context && data.context.virtual_defaults && Object.keys(data.context.virtual_defaults).length > 0;
+        var shouldDelay = $form.find('.mg-virtual-variant').length > 0 || $form.find('.variations').length > 0 || hasVirtualDefaults;
         var variantReady = !shouldDelay;
         if (shouldDelay) {
             $box.addClass('mg-surcharge-box--hidden');
