@@ -9,6 +9,7 @@
     display: none;
 }
 
+
 html.mg-variant-preparing .mg-surcharge-box[data-context="product"],
 html.mg-variant-preload .mg-surcharge-box[data-context="product"] {
     opacity: 0;

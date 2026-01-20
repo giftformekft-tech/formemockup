@@ -113,6 +113,10 @@
                     }
                 }
             });
+            $(document).on('mgVariantPreparing mgVariantPreload', function(){
+                variantReady = false;
+                $box.addClass('mg-surcharge-box--hidden');
+            });
             if (!shouldDelay) {
                 revealBox();
             }
