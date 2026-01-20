@@ -8,7 +8,7 @@ class MG_Cart_Name_Cleaner {
     const BULK_SUFFIX = ' póló pulcsi';
 
     public static function init() {
-        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 10, 3);
+        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 99, 3);
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
