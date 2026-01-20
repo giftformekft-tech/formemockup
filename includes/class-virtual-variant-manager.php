@@ -873,7 +873,7 @@ class MG_Virtual_Variant_Manager {
         );
     }
 
-    public static function filter_order_thumbnail($thumbnail, $item, $order) {
+    public static function filter_order_thumbnail($thumbnail, $item, $order = null) {
         if (!is_a($item, 'WC_Order_Item_Product')) {
             return $thumbnail;
         }
