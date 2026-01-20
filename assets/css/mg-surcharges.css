@@ -188,16 +188,16 @@ html.mg-variant-preload .mg-surcharge-box--ready[data-context="product"] {
 .mg-variant-options--surcharges {
     display: flex;
     flex-direction: column;
-    gap: 0.5em;
+    gap: 0.25em;
     border: 1px solid #cbd5f5;
     border-radius: 12px;
-    padding: 0.9em 1em;
+    padding: 0.6em 0.8em;
     background: #f8fafc;
 }
 
 .mg-variant-options--surcharges .mg-surcharge-option {
     border-top: 1px solid #e2e8f0;
-    padding: 0.75em 0;
+    padding: 0.5em 0;
     background: transparent;
 }
 
