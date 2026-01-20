@@ -9,6 +9,7 @@ class MG_Cart_Name_Cleaner {
 
     public static function init() {
         add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 9999, 3);
+        add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 9999, 3);
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
