@@ -8,29 +8,33 @@ class MG_Cart_Name_Cleaner {
     const BULK_SUFFIX = ' póló pulcsi';
 
     public static function init() {
-        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], 10, 3);
+        add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
+        add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
-        if (!function_exists('is_cart') || !is_cart()) {
-            return $product_name;
-        }
         if (!isset($cart_item['data']) || !($cart_item['data'] instanceof WC_Product)) {
             return $product_name;
         }
         $original_name = $cart_item['data']->get_name();
-        if (!$original_name || strpos($original_name, self::BULK_SUFFIX) === false) {
+        if (!$original_name) {
             return $product_name;
         }
         $clean_name = self::strip_suffix($original_name);
-        if ($clean_name === $original_name) {
+        if (!$clean_name) {
             return $product_name;
         }
-        $updated = str_replace($original_name, $clean_name, $product_name);
-        if ($updated !== $product_name) {
-            return $updated;
+        $product = $cart_item['data'];
+        $permalink = apply_filters(
+            'woocommerce_cart_item_permalink',
+            $product->is_visible() ? $product->get_permalink($cart_item) : '',
+            $cart_item,
+            $cart_item_key
+        );
+        if ($permalink) {
+            return sprintf('<a href="%s">%s</a>', esc_url($permalink), esc_html($clean_name));
         }
-        return self::strip_suffix_from_html($product_name);
+        return esc_html($clean_name);
     }
 
     private static function strip_suffix($name) {
