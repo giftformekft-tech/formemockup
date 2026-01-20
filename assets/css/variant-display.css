@@ -73,6 +73,13 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     font-size: 0.95rem;
 }
 
+.mg-variant-section__label--with-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75em;
+}
+
 .mg-variant-type-trigger {
     display: flex;
     align-items: center;
@@ -384,7 +391,7 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     display: inline-flex;
     align-items: center;
     gap: 0.35em;
-    margin-top: 0.35em;
+    margin-top: 0;
     font-size: 0.9rem;
     font-weight: 600;
     color: #2563eb;
