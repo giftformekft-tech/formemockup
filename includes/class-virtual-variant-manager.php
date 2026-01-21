@@ -35,6 +35,14 @@ class MG_Virtual_Variant_Manager {
         return $product->is_type('simple');
     }
 
+    public static function has_virtual_variants($product) {
+        if (!self::is_supported_product($product)) {
+            return false;
+        }
+        $config = self::get_frontend_config($product);
+        return !empty($config) && !empty($config['types']);
+    }
+
     public static function enqueue_assets() {
         if (!function_exists('is_product') || !is_product()) {
             return;
