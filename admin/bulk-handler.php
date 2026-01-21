@@ -90,16 +90,26 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 
     try {
+        $parent_sku = MG_Product_Creator::generate_next_sku();
+        $render_context = array(
+            'naming' => 'bulk',
+            'parent_name' => $parent_name,
+            'parent_sku' => $parent_sku,
+        );
         $gen = new MG_Generator();
         $images_by_type_color = array();
         foreach ($selected as $prod) {
-            $res = $gen->generate_for_product($prod['key'], $design_path);
+            $res = $gen->generate_for_product($prod['key'], $design_path, $render_context);
             if (is_wp_error($res)) wp_send_json_error(array('message'=>$res->get_error_message()), 500);
             $images_by_type_color[$prod['key']] = $res;
         }
 
         $creator = new MG_Product_Creator();
-        $generation_context = array('design_path' => $design_path, 'trigger' => 'legacy_bulk');
+        $generation_context = array(
+            'design_path' => $design_path,
+            'trigger' => 'legacy_bulk',
+            'parent_sku' => $parent_sku,
+        );
         $defaults = array('type' => '', 'color' => '', 'size' => '');
         $primary_candidate = null;
         foreach ($selected as $prod) {

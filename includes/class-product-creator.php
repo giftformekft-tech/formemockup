@@ -3,6 +3,30 @@ if (!defined('ABSPATH')) exit;
 
 
 class MG_Product_Creator {
+    const SKU_OPTION_KEY = 'mg_next_sku_number';
+    const SKU_START_NUMBER = 10000;
+
+    public static function generate_next_sku() {
+        $next = (int) get_option(self::SKU_OPTION_KEY, self::SKU_START_NUMBER);
+        if ($next < self::SKU_START_NUMBER) {
+            $next = self::SKU_START_NUMBER;
+        }
+
+        $attempts = 0;
+        $sku = '';
+        do {
+            $sku = 'forme' . $next;
+            $existing = function_exists('wc_get_product_id_by_sku') ? (int) wc_get_product_id_by_sku($sku) : 0;
+            if ($existing <= 0) {
+                break;
+            }
+            $next++;
+            $attempts++;
+        } while ($attempts < 1000);
+
+        update_option(self::SKU_OPTION_KEY, $next + 1, false);
+        return $sku;
+    }
     const BULK_SUFFIX = 'póló pulcsi';
 
     public static function apply_bulk_suffix_slug($product_id, $base_name) {
@@ -517,7 +541,13 @@ class MG_Product_Creator {
                 $product->set_props(['short_description' => $short]);
             }
         }
-$parent_sku_base = strtoupper(sanitize_title($parent_name));
+        $parent_sku_base = '';
+        if (!empty($generation_context['parent_sku'])) {
+            $parent_sku_base = sanitize_text_field($generation_context['parent_sku']);
+        }
+        if ($parent_sku_base === '') {
+            $parent_sku_base = self::generate_next_sku();
+        }
         $product->set_sku($parent_sku_base);
         $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
         $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
@@ -558,6 +588,16 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
         if ($min_price > 0 && !$product->get_regular_price()) {
             $product->set_regular_price((string) $min_price);
         }
+        if (!$product->get_sku()) {
+            $parent_sku_base = '';
+            if (!empty($generation_context['parent_sku'])) {
+                $parent_sku_base = sanitize_text_field($generation_context['parent_sku']);
+            }
+            if ($parent_sku_base === '') {
+                $parent_sku_base = self::generate_next_sku();
+            }
+            $product->set_sku($parent_sku_base);
+        }
         $product->save();
         // assign categories merge
         $this->assign_categories($product->get_id(), $cats);
@@ -576,7 +616,6 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $this->assign_tags($product->get_id(), array_values(array_unique($all_tags)));
         }
 
-        $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $result_id = $product->get_id();
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
             MG_Mockup_Maintenance::register_generation($result_id, $selected_products, $images_by_type_color, $generation_context);
