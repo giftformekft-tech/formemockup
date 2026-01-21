@@ -14,7 +14,14 @@
         };
         this.preview = {
             activeUrl: '',
-            pending: false
+            pending: false,
+            $button: null,
+            $modal: null,
+            $backdrop: null,
+            $content: null,
+            $close: null,
+            $image: null,
+            $fallback: null
         };
         this.previewCache = {};
         this.sizeChart = {
@@ -111,6 +118,11 @@
     VirtualVariantDisplay.prototype.buildLayout = function() {
         var wrapper = $('<div class="mg-variant-display" />');
 
+        var previewButtonWrap = this.createPatternPreview();
+        if (previewButtonWrap) {
+            wrapper.append(previewButtonWrap);
+        }
+
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
         typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
         var $typeTrigger = $('<button type="button" class="mg-variant-type-trigger" aria-haspopup="dialog" aria-expanded="false" />');
@@ -155,6 +167,70 @@
         this.rebuildColorOptions();
         this.rebuildSizeOptions();
         this.updateSizeChartLink();
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return null;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $image = $('<img class="mg-pattern-preview__image" alt="" loading="lazy" />');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($image).append($fallback);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$close = $close;
+        this.preview.$image = $image;
+        this.preview.$fallback = $fallback;
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgVirtualPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        return $buttonWrap;
     };
 
     VirtualVariantDisplay.prototype.createTypeModal = function($trigger) {
@@ -969,6 +1045,7 @@
         if (!this.state.type || !this.state.color) {
             this.preview.activeUrl = '';
             this.$previewInput.val('');
+            this.refreshPreviewState();
             return;
         }
         var cacheKey = this.state.type + '|' + this.state.color;
@@ -976,6 +1053,7 @@
             this.preview.activeUrl = this.previewCache[cacheKey];
             this.$previewInput.val(this.previewCache[cacheKey]);
             this.swapGalleryImage(this.previewCache[cacheKey]);
+            this.refreshPreviewState();
             return;
         }
         if (!this.config.ajax || !this.config.ajax.url || !this.config.ajax.nonce) {
@@ -1005,9 +1083,53 @@
                 preload.src = url;
             }
             self.swapGalleryImage(url);
+            self.refreshPreviewState();
         }).always(function(){
             self.preview.pending = false;
         });
+    };
+
+    VirtualVariantDisplay.prototype.refreshPreviewState = function() {
+        if (!this.preview.$button) {
+            return;
+        }
+        var hasPreview = !!this.preview.activeUrl;
+        this.preview.$button.toggleClass('is-disabled', !hasPreview);
+        this.preview.$button.attr('aria-disabled', hasPreview ? 'false' : 'true');
+
+        if (this.preview.$image) {
+            if (hasPreview) {
+                this.preview.$image.attr('src', this.preview.activeUrl).show();
+            } else {
+                this.preview.$image.removeAttr('src').hide();
+            }
+        }
+
+        if (this.preview.$fallback) {
+            var message = hasPreview ? '' : this.getText('previewUnavailable', 'Ehhez a variációhoz nem érhető el minta.');
+            this.preview.$fallback.text(message).toggle(message !== '');
+        }
+    };
+
+    VirtualVariantDisplay.prototype.showPatternPreview = function() {
+        if (!this.preview.$modal || !this.preview.activeUrl) {
+            return;
+        }
+        this.preview.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        if (this.preview.$close) {
+            this.preview.$close.trigger('focus');
+        }
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.hidePatternPreview = function() {
+        if (!this.preview.$modal) {
+            return;
+        }
+        this.preview.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        if (this.preview.$button) {
+            this.preview.$button.trigger('focus');
+        }
     };
 
     VirtualVariantDisplay.prototype.swapGalleryImage = function(url) {
