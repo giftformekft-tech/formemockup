@@ -18,6 +18,7 @@ add_action('plugins_loaded', function(){
     }
     // SAFE includes
     $files = [
+        'includes/global-catalog.php',
         'includes/class-bulk-queue.php',
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',

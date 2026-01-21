@@ -713,7 +713,7 @@ class MG_Variant_Maintenance {
     }
 
     public static function queue_full_sync() {
-        $catalog = get_option('mg_products', []);
+        $catalog = mg_get_catalog_products();
         $types = self::normalize_catalog($catalog);
         if (empty($types)) {
             return 0;
@@ -736,7 +736,7 @@ class MG_Variant_Maintenance {
         if ($type_slug === '') {
             return false;
         }
-        $catalog = get_option('mg_products', []);
+        $catalog = mg_get_catalog_products();
         $types = self::normalize_catalog($catalog);
         if (empty($types[$type_slug])) {
             return false;

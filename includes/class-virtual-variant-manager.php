@@ -410,6 +410,13 @@ class MG_Virtual_Variant_Manager {
         return trailingslashit($base_url) . 'mockup-renders';
     }
 
+    protected static function get_preview_view_key($product) {
+        $default_view = 'front';
+        $view = apply_filters('mg_virtual_variant_preview_view', $default_view, $product);
+        $view = sanitize_title($view);
+        return $view !== '' ? $view : $default_view;
+    }
+
     protected static function format_design_folder($design_id) {
         $design_id = absint($design_id);
         if ($design_id <= 0) {
@@ -418,7 +425,17 @@ class MG_Virtual_Variant_Manager {
         return 'd' . sprintf('%03d', $design_id);
     }
 
-    protected static function build_render_path($render_version, $design_id, $type_slug, $color_slug) {
+    protected static function build_render_filename($type_slug, $color_slug, $view_key) {
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $view_key = sanitize_title($view_key);
+        if ($type_slug === '' || $color_slug === '' || $view_key === '') {
+            return '';
+        }
+        return 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+    }
+
+    protected static function build_render_path($render_version, $design_id, $type_slug, $color_slug, $view_key) {
         $base_dir = self::get_render_base_dir();
         if ($base_dir === '') {
             return '';
@@ -427,13 +444,14 @@ class MG_Virtual_Variant_Manager {
         $design_folder = self::format_design_folder($design_id);
         $type_slug = sanitize_title($type_slug);
         $color_slug = sanitize_title($color_slug);
-        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+        $filename = self::build_render_filename($type_slug, $color_slug, $view_key);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '' || $filename === '') {
             return '';
         }
-        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp');
+        return wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $filename);
     }
 
-    protected static function build_render_url($render_version, $design_id, $type_slug, $color_slug) {
+    protected static function build_render_url($render_version, $design_id, $type_slug, $color_slug, $view_key) {
         $base_url = self::get_render_base_url();
         if ($base_url === '') {
             return '';
@@ -442,10 +460,11 @@ class MG_Virtual_Variant_Manager {
         $design_folder = self::format_design_folder($design_id);
         $type_slug = sanitize_title($type_slug);
         $color_slug = sanitize_title($color_slug);
-        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+        $filename = self::build_render_filename($type_slug, $color_slug, $view_key);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '' || $filename === '') {
             return '';
         }
-        $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $color_slug . '.webp';
+        $path = $render_version . '/' . $design_folder . '/' . $type_slug . '/' . $filename;
         return esc_url_raw(trailingslashit($base_url) . $path);
     }
 
@@ -468,6 +487,34 @@ class MG_Virtual_Variant_Manager {
             return true;
         }
         return false;
+    }
+
+    protected static function find_preview_fallback_path($render_version, $design_id, $type_slug, $color_slug) {
+        $base_dir = self::get_render_base_dir();
+        if ($base_dir === '') {
+            return '';
+        }
+        $render_version = sanitize_title($render_version);
+        $design_folder = self::format_design_folder($design_id);
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($render_version === '' || $design_folder === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+        $dir = wp_normalize_path(trailingslashit($base_dir) . $render_version . '/' . $design_folder . '/' . $type_slug);
+        if (!is_dir($dir)) {
+            return '';
+        }
+        $pattern = $dir . '/mockup_' . $type_slug . '_' . $color_slug . '_*.webp';
+        $candidates = glob($pattern);
+        if (empty($candidates)) {
+            return '';
+        }
+        $candidate = $candidates[0];
+        if (is_string($candidate) && $candidate !== '' && file_exists($candidate)) {
+            return $candidate;
+        }
+        return '';
     }
 
     protected static function get_settings($catalog) {
@@ -995,9 +1042,14 @@ class MG_Virtual_Variant_Manager {
         $product = wc_get_product($product_id);
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
-        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug);
+        $view_key = self::get_preview_view_key($product);
+        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug, $view_key);
         if ($render_path !== '' && file_exists($render_path)) {
             return $render_path;
+        }
+        $fallback = self::find_preview_fallback_path($render_version, $design_id, $type_slug, $color_slug);
+        if ($fallback !== '') {
+            return $fallback;
         }
         return new WP_Error('preview_missing', __('Az előnézet nincs legenerálva ehhez a variációhoz.', 'mgdtp'));
     }
@@ -1013,10 +1065,18 @@ class MG_Virtual_Variant_Manager {
         $product = wc_get_product($product_id);
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
-        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug);
-        $render_url = self::build_render_url($render_version, $design_id, $type_slug, $color_slug);
+        $view_key = self::get_preview_view_key($product);
+        $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug, $view_key);
+        $render_url = self::build_render_url($render_version, $design_id, $type_slug, $color_slug, $view_key);
         if ($render_path !== '' && $render_url !== '' && file_exists($render_path)) {
             return $render_url;
+        }
+        $fallback_path = self::find_preview_fallback_path($render_version, $design_id, $type_slug, $color_slug);
+        if ($fallback_path !== '') {
+            $fallback_url = self::convert_path_to_url($fallback_path);
+            if ($fallback_url !== '') {
+                return $fallback_url;
+            }
         }
 
         if (class_exists('MG_Mockup_Maintenance')) {
