@@ -52,6 +52,21 @@ select.mg-subs { min-width: 240px; min-height: 88px; }
 .mg-worker-feedback { margin-top:6px; font-size:12px; color:#50575e; min-height:16px; }
 .mg-worker-feedback.is-error { color:#b32d2e; }
 .mg-worker-feedback.is-success { color:#1d7e34; }
+.mg-processing-control,
+.mg-queue-control { margin-top:20px; padding:14px; border:1px solid #dcdcde; border-radius:4px; background:#f6f7f7; }
+.mg-processing-options { display:flex; flex-direction:column; gap:8px; }
+.mg-processing-option { display:flex; align-items:center; gap:8px; }
+.mg-queue-control { display:none; }
+.mg-panel-body--bulk.is-queue-mode .mg-queue-control { display:block; }
+.mg-panel-body--bulk.is-queue-mode .mg-worker-control { display:none; }
+.mg-queue-sliders { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:12px; }
+.mg-queue-sliders label { display:flex; flex-direction:column; gap:6px; font-weight:600; min-width:240px; }
+.mg-range-wrapper { display:flex; align-items:center; gap:8px; }
+.mg-range-value { font-weight:700; min-width:32px; text-align:center; }
+.mg-range-suffix { color:#50575e; font-size:12px; }
+.mg-queue-feedback { margin-top:8px; font-size:12px; color:#50575e; min-height:16px; }
+.mg-queue-feedback.is-error { color:#b32d2e; }
+.mg-queue-feedback.is-success { color:#1d7e34; }
 @media (max-width: 1280px) {
   .mg-bulk-table th:nth-child(2), .mg-bulk-table td:nth-child(2) { width: 6.25rem; }
   .mg-bulk-table th:nth-child(6), .mg-bulk-table td:nth-child(6) { width: 16rem; }
@@ -100,8 +115,13 @@ select.mg-subs { min-width: 240px; min-height: 88px; }
   #mg-drop-zone .mg-drop-inner{ color:#e6e6e6; }
   #mg-drop-zone.is-dragover{ background:#23282d; border-color:#72aee6; }
   .mg-worker-control { background:#1f1f1f; border-color:#3a3a3a; }
+  .mg-processing-control,
+  .mg-queue-control { background:#1f1f1f; border-color:#3a3a3a; }
   .mg-worker-label { color:#e6e6e6; }
   .mg-worker-feedback { color:#c3c4c7; }
   .mg-worker-feedback.is-success { color:#8ddb8c; }
   .mg-worker-feedback.is-error { color:#f28c86; }
+  .mg-queue-feedback { color:#c3c4c7; }
+  .mg-queue-feedback.is-success { color:#8ddb8c; }
+  .mg-queue-feedback.is-error { color:#f28c86; }
 }

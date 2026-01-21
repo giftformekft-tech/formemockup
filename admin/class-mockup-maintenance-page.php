@@ -80,6 +80,12 @@ class MG_Mockup_Maintenance_Page {
                 /* translators: %d: number of mockups processed per cron run */
                 self::add_notice(sprintf(__('A cron mostantól egyszerre %d mockupot dolgoz fel.', 'mgdtp'), $new_value));
                 break;
+            case 'save_interval':
+                $raw_value = isset($_POST['mg_interval_minutes']) ? sanitize_text_field(wp_unslash($_POST['mg_interval_minutes'])) : 0;
+                $new_value = MG_Mockup_Maintenance::set_interval_minutes($raw_value);
+                /* translators: %d: interval minutes */
+                self::add_notice(sprintf(__('A cron mostantól %d percenként fut.', 'mgdtp'), $new_value));
+                break;
             case 'manual_variant_sync':
                 if (!class_exists('MG_Variant_Maintenance')) {
                     self::add_notice(__('Hiányzik a variáns karbantartó modul.', 'mgdtp'), 'error');
@@ -376,6 +382,9 @@ class MG_Mockup_Maintenance_Page {
         $batch_size = MG_Mockup_Maintenance::get_batch_size();
         $min_batch = MG_Mockup_Maintenance::MIN_BATCH;
         $max_batch = MG_Mockup_Maintenance::MAX_BATCH;
+        $interval_minutes = MG_Mockup_Maintenance::get_interval_minutes();
+        $min_interval = MG_Mockup_Maintenance::MIN_INTERVAL;
+        $max_interval = MG_Mockup_Maintenance::MAX_INTERVAL;
         ?>
         <div class="mg-queue-controls">
             <form method="post" class="mg-run-queue">
@@ -392,6 +401,29 @@ class MG_Mockup_Maintenance_Page {
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
                 <input type="hidden" name="mg_mockup_action" value="cleanup_missing_products" />
                 <button type="submit" class="button button-secondary"><?php esc_html_e('Törölt termékek tisztítása', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-batch-size-form">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="save_interval" />
+                <label for="mg_interval_minutes">
+                    <span><?php esc_html_e('Cron futási időköz', 'mgdtp'); ?></span>
+                    <div class="mg-range-wrapper">
+                        <input
+                            type="range"
+                            id="mg_interval_minutes"
+                            name="mg_interval_minutes"
+                            class="mg-batch-size-slider"
+                            min="<?php echo esc_attr($min_interval); ?>"
+                            max="<?php echo esc_attr($max_interval); ?>"
+                            step="1"
+                            value="<?php echo esc_attr($interval_minutes); ?>"
+                        />
+                        <output for="mg_interval_minutes" id="mg_interval_minutes_value" class="mg-batch-size-value"><?php echo esc_html($interval_minutes); ?></output>
+                        <span class="mg-range-suffix"><?php esc_html_e('perc', 'mgdtp'); ?></span>
+                    </div>
+                </label>
+                <p class="description"><?php esc_html_e('A háttérfolyamat ilyen gyakran fut le, és ennyi percenként dolgozza a sorban álló mockupokat.', 'mgdtp'); ?></p>
+                <button type="submit" class="button button-primary"><?php esc_html_e('Időköz mentése', 'mgdtp'); ?></button>
             </form>
             <form method="post" class="mg-batch-size-form">
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>

@@ -951,56 +951,7 @@ class MG_Virtual_Variant_Manager {
         if ($render_path !== '' && file_exists($render_path)) {
             return $render_path;
         }
-
-        if ($design_path === '') {
-            $design_path = self::resolve_design_path($product_id);
-        }
-        if ($design_path === '') {
-            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
-        }
-
-        if (!function_exists('mgsc_get_products')) {
-            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
-        }
-        $products = mgsc_get_products();
-        if (empty($products[$type_slug])) {
-            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
-        }
-
-        $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path, array(
-            'product_id' => $product_id,
-            'design_id' => $design_id,
-            'render_version' => $render_version,
-        ));
-        if (is_wp_error($generated)) {
-            return $generated;
-        }
-
-        if (class_exists('MG_Mockup_Maintenance')) {
-            MG_Mockup_Maintenance::register_generation(
-                $product_id,
-                array($products[$type_slug]),
-                array($type_slug => $generated),
-                array(
-                    'design_path' => $design_path,
-                    'trigger' => 'virtual_preview',
-                )
-            );
-        }
-
-        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
-            foreach ($generated[$color_slug] as $path) {
-                if (!is_string($path) || $path === '') {
-                    continue;
-                }
-                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
-                    return $render_path;
-                }
-            }
-        }
-
-        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
+        return new WP_Error('preview_missing', __('Az előnézet nincs legenerálva ehhez a variációhoz.', 'mgdtp'));
     }
 
     protected static function get_or_generate_preview_url($product_id, $type_slug, $color_slug) {
@@ -1030,56 +981,7 @@ class MG_Virtual_Variant_Manager {
                 }
             }
         }
-
-        $design_path = self::resolve_design_path($product_id);
-        if ($design_path === '') {
-            return new WP_Error('design_missing', __('Hiányzik a design fájl.', 'mgdtp'));
-        }
-
-        if (!function_exists('mgsc_get_products')) {
-            return new WP_Error('config_missing', __('Hiányzik a termékkonfiguráció.', 'mgdtp'));
-        }
-        $products = mgsc_get_products();
-        if (empty($products[$type_slug])) {
-            return new WP_Error('type_missing', __('A terméktípus nem található.', 'mgdtp'));
-        }
-
-        $generator = new MG_Generator();
-        $generated = $generator->generate_for_product($type_slug, $design_path, array(
-            'product_id' => $product_id,
-            'design_id' => $design_id,
-            'render_version' => $render_version,
-        ));
-        if (is_wp_error($generated)) {
-            return $generated;
-        }
-
-        if (class_exists('MG_Mockup_Maintenance')) {
-            MG_Mockup_Maintenance::register_generation(
-                $product_id,
-                array($products[$type_slug]),
-                array($type_slug => $generated),
-                array(
-                    'design_path' => $design_path,
-                    'trigger' => 'virtual_preview',
-                )
-            );
-        }
-
-        if (!empty($generated[$color_slug]) && is_array($generated[$color_slug])) {
-            foreach ($generated[$color_slug] as $path) {
-                if (!is_string($path) || $path === '') {
-                    continue;
-                }
-                if ($render_path !== '' && self::persist_render_file($path, $render_path)) {
-                    if ($render_url !== '') {
-                        return $render_url;
-                    }
-                }
-            }
-        }
-
-        return new WP_Error('preview_missing', __('Nem található előnézet.', 'mgdtp'));
+        return new WP_Error('preview_missing', __('Az előnézet nincs legenerálva ehhez a variációhoz.', 'mgdtp'));
     }
 
     protected static function resolve_design_path($product_id) {
