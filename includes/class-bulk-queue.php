@@ -17,6 +17,98 @@ class MG_Bulk_Queue {
     const LOCK_TTL = 180; // seconds
     const STALE_TTL = 300; // seconds
     const MAX_JOBS_PER_WORKER = 10;
+    const CRON_HOOK = 'mg_bulk_process_queue';
+    const CRON_LOCK = 'mg_bulk_queue_lock';
+    const OPTION_BATCH_SIZE = 'mg_bulk_queue_batch_size';
+    const OPTION_INTERVAL_MINUTES = 'mg_bulk_queue_interval_minutes';
+    const DEFAULT_BATCH = 5;
+    const MIN_BATCH = 1;
+    const MAX_BATCH = 50;
+    const DEFAULT_INTERVAL = 2;
+    const MIN_INTERVAL = 1;
+    const MAX_INTERVAL = 60;
+
+    public static function init() {
+        add_action('init', [__CLASS__, 'register_cron_schedule']);
+        add_filter('cron_schedules', [__CLASS__, 'register_interval']);
+        add_action(self::CRON_HOOK, [__CLASS__, 'process_queue']);
+    }
+
+    public static function register_interval($schedules) {
+        $interval = self::get_interval_minutes();
+        $schedules['mg_bulk_interval'] = [
+            'interval' => $interval * MINUTE_IN_SECONDS,
+            /* translators: %d: interval minutes */
+            'display'  => sprintf(__('Bulk queue (%d perc)', 'mgdtp'), $interval),
+        ];
+        return $schedules;
+    }
+
+    public static function register_cron_schedule() {
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'mg_bulk_interval', self::CRON_HOOK);
+        }
+    }
+
+    private static function maybe_schedule_processor() {
+        if (!wp_next_scheduled(self::CRON_HOOK)) {
+            self::register_cron_schedule();
+        }
+    }
+
+    public static function get_batch_size() {
+        $stored = get_option(self::OPTION_BATCH_SIZE, self::DEFAULT_BATCH);
+        $normalized = self::normalize_batch_size($stored);
+        if ((int) $stored !== $normalized) {
+            update_option(self::OPTION_BATCH_SIZE, $normalized, false);
+        }
+        return $normalized;
+    }
+
+    public static function set_batch_size($value) {
+        $normalized = self::normalize_batch_size($value);
+        update_option(self::OPTION_BATCH_SIZE, $normalized, false);
+        return $normalized;
+    }
+
+    private static function normalize_batch_size($value) {
+        $value = absint($value);
+        if ($value < self::MIN_BATCH) {
+            return self::MIN_BATCH;
+        }
+        if ($value > self::MAX_BATCH) {
+            return self::MAX_BATCH;
+        }
+        return $value;
+    }
+
+    public static function get_interval_minutes() {
+        $stored = get_option(self::OPTION_INTERVAL_MINUTES, self::DEFAULT_INTERVAL);
+        $normalized = self::normalize_interval_minutes($stored);
+        if ((int) $stored !== $normalized) {
+            update_option(self::OPTION_INTERVAL_MINUTES, $normalized, false);
+        }
+        return $normalized;
+    }
+
+    public static function set_interval_minutes($value) {
+        $normalized = self::normalize_interval_minutes($value);
+        update_option(self::OPTION_INTERVAL_MINUTES, $normalized, false);
+        wp_clear_scheduled_hook(self::CRON_HOOK);
+        self::register_cron_schedule();
+        return $normalized;
+    }
+
+    private static function normalize_interval_minutes($value) {
+        $value = absint($value);
+        if ($value < self::MIN_INTERVAL) {
+            return self::MIN_INTERVAL;
+        }
+        if ($value > self::MAX_INTERVAL) {
+            return self::MAX_INTERVAL;
+        }
+        return $value;
+    }
 
     public static function get_allowed_worker_counts() {
         $choices = apply_filters('mg_bulk_worker_counts', self::WORKER_COUNT_CHOICES);
@@ -57,7 +149,7 @@ class MG_Bulk_Queue {
         return $normalized;
     }
 
-    public static function enqueue(array $payload) {
+    public static function enqueue(array $payload, $dispatch = true) {
         $job_id = 'mgjob_' . wp_generate_uuid4();
         $job = array(
             'id' => $job_id,
@@ -79,7 +171,11 @@ class MG_Bulk_Queue {
         $order[] = $job_id;
         update_option(self::ORDER_OPTION, array_values(array_unique($order)), false);
 
-        self::dispatch_workers();
+        if ($dispatch) {
+            self::dispatch_workers();
+        } else {
+            self::maybe_schedule_processor();
+        }
 
         return $job_id;
     }
@@ -211,6 +307,34 @@ class MG_Bulk_Queue {
         wp_die();
     }
 
+    public static function process_queue() {
+        if (get_transient(self::CRON_LOCK)) {
+            return;
+        }
+        set_transient(self::CRON_LOCK, 1, 300);
+        $worker_id = uniqid('cron_', true);
+        self::mark_worker_active($worker_id, true);
+        try {
+            $batch = self::get_batch_size();
+            $processed = 0;
+            while ($processed < $batch) {
+                self::mark_worker_active($worker_id);
+                $job = self::claim_next_job($worker_id);
+                if (!$job) {
+                    break;
+                }
+                self::execute_job($job, $worker_id, false);
+                $processed++;
+            }
+        } finally {
+            self::unregister_worker($worker_id);
+            delete_transient(self::CRON_LOCK);
+        }
+        if (self::has_pending_jobs()) {
+            self::maybe_schedule_processor();
+        }
+    }
+
     private static function claim_next_job($worker_id) {
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order) || empty($order)) {
@@ -240,7 +364,7 @@ class MG_Bulk_Queue {
         return null;
     }
 
-    private static function execute_job(array $job, $worker_id) {
+    private static function execute_job(array $job, $worker_id, $dispatch_after = true) {
         $job_id = $job['id'];
         self::mark_worker_active($worker_id, true);
         try {
@@ -347,13 +471,13 @@ class MG_Bulk_Queue {
 
             self::complete_job($job_id, array(
                 'product_id' => $result_product_id,
-            ));
+            ), $dispatch_after);
         } catch (Throwable $e) {
-            self::fail_job($job_id, $e->getMessage());
+            self::fail_job($job_id, $e->getMessage(), $dispatch_after);
         }
     }
 
-    private static function complete_job($job_id, array $result) {
+    private static function complete_job($job_id, array $result, $dispatch_after = true) {
         $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
         if (!is_array($job)) {
             self::release_lock($job_id);
@@ -368,12 +492,12 @@ class MG_Bulk_Queue {
         $job['result'] = $result;
         update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
         self::release_lock($job_id);
-        if (self::has_pending_jobs()) {
+        if ($dispatch_after && self::has_pending_jobs()) {
             self::dispatch_workers(null, true);
         }
     }
 
-    private static function fail_job($job_id, $message) {
+    private static function fail_job($job_id, $message, $dispatch_after = true) {
         $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
         if (!is_array($job)) {
             self::release_lock($job_id);
@@ -387,7 +511,7 @@ class MG_Bulk_Queue {
         $job['finished_at'] = time();
         update_option(self::JOB_OPTION_PREFIX . $job_id, $job, false);
         self::release_lock($job_id);
-        if (self::has_pending_jobs()) {
+        if ($dispatch_after && self::has_pending_jobs()) {
             self::dispatch_workers(null, true);
         }
     }

@@ -365,6 +365,15 @@
     $target.text(message || '');
   }
 
+  function showQueueFeedback(message, state){
+    var $target = $('.mg-queue-feedback');
+    if (!$target.length) { return; }
+    $target.removeClass('is-error is-success');
+    if (state === 'error') { $target.addClass('is-error'); }
+    else if (state === 'success') { $target.addClass('is-success'); }
+    $target.text(message || '');
+  }
+
   function initWorkerToggle(){
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
     var opts = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
@@ -376,6 +385,52 @@
     window.MG_BULK_ADV.worker_count = current;
     updateWorkerToggleUI(current);
     showWorkerFeedback('', null);
+  }
+
+  function applyBulkMode(mode){
+    var $panel = $('.mg-panel-body--bulk');
+    if (!$panel.length) { return; }
+    var selected = (mode === 'queue') ? 'queue' : 'direct';
+    $panel.toggleClass('is-queue-mode', selected === 'queue');
+    $('.mg-queue-control').attr('aria-hidden', selected !== 'queue');
+    $('.mg-worker-control').attr('aria-hidden', selected === 'queue');
+    try {
+      window.localStorage.setItem('mg_bulk_mode', selected);
+    } catch (e) {}
+    $('input[name="mg-bulk-mode"][value="' + selected + '"]').prop('checked', true);
+  }
+
+  function getBulkMode(){
+    var checked = $('input[name="mg-bulk-mode"]:checked').val();
+    if (checked === 'queue') { return 'queue'; }
+    return 'direct';
+  }
+
+  function initBulkMode(){
+    var stored = '';
+    try {
+      stored = window.localStorage.getItem('mg_bulk_mode') || '';
+    } catch (e) {}
+    if (stored !== 'queue' && stored !== 'direct') {
+      stored = 'direct';
+    }
+    applyBulkMode(stored);
+  }
+
+  function initQueueSliders(){
+    var $batch = $('#mg-bulk-queue-batch');
+    var $batchValue = $('#mg-bulk-queue-batch-value');
+    var $interval = $('#mg-bulk-queue-interval');
+    var $intervalValue = $('#mg-bulk-queue-interval-value');
+    if ($batch.length && $batchValue.length) {
+      $batchValue.text($batch.val());
+      $batch.on('input change', function(){ $batchValue.text($(this).val()); });
+    }
+    if ($interval.length && $intervalValue.length) {
+      $intervalValue.text($interval.val());
+      $interval.on('input change', function(){ $intervalValue.text($(this).val()); });
+    }
+    showQueueFeedback('', null);
   }
 
   function mgEnsureHeader(){
@@ -607,8 +662,53 @@
   $(setupCopyButtons);
   $(initDefaultSelectors);
   $(initWorkerToggle);
+  $(initBulkMode);
+  $(initQueueSliders);
   $(document).on('change', '#mg-ai-mode-toggle, .mg-ai-field-cb', function(){
     applyAiToExistingRows();
+  });
+
+  $(document).on('change', 'input[name="mg-bulk-mode"]', function(){
+    applyBulkMode($(this).val());
+  });
+
+  $(document).on('click', '#mg-bulk-queue-save', function(e){
+    e.preventDefault();
+    if (!window.MG_BULK_ADV || window.MG_BULK_ADV._savingQueueConfig) { return; }
+    var batch = parseInt($('#mg-bulk-queue-batch').val(), 10);
+    var interval = parseInt($('#mg-bulk-queue-interval').val(), 10);
+    if (isNaN(batch)) { batch = 1; }
+    if (isNaN(interval)) { interval = 1; }
+    var savingMsg = window.MG_BULK_ADV.queue_feedback_saving || 'Mentés…';
+    showQueueFeedback(savingMsg, null);
+    window.MG_BULK_ADV._savingQueueConfig = true;
+    $.post(window.MG_BULK_ADV.ajax_url, {
+      action: 'mg_bulk_queue_config',
+      nonce: window.MG_BULK_ADV.nonce,
+      batch_size: batch,
+      interval_minutes: interval
+    }, function(resp){
+      if (resp && resp.success && resp.data) {
+        if (typeof resp.data.batch_size !== 'undefined') {
+          $('#mg-bulk-queue-batch').val(resp.data.batch_size);
+          $('#mg-bulk-queue-batch-value').text(resp.data.batch_size);
+        }
+        if (typeof resp.data.interval_minutes !== 'undefined') {
+          $('#mg-bulk-queue-interval').val(resp.data.interval_minutes);
+          $('#mg-bulk-queue-interval-value').text(resp.data.interval_minutes);
+        }
+        var okMsg = window.MG_BULK_ADV.queue_feedback_saved || 'Mentve.';
+        showQueueFeedback(okMsg, 'success');
+      } else {
+        var errMsg = window.MG_BULK_ADV.queue_feedback_error || 'Nem sikerült menteni.';
+        showQueueFeedback(errMsg, 'error');
+      }
+    }, 'json').fail(function(){
+      var errMsg = window.MG_BULK_ADV.queue_feedback_error || 'Nem sikerült menteni.';
+      showQueueFeedback(errMsg, 'error');
+    }).always(function(){
+      window.MG_BULK_ADV._savingQueueConfig = false;
+    });
   });
 
   $(document).on('click', '#mg-bulk-copy-main', function(e){
@@ -697,6 +797,188 @@
     return 'Ismeretlen hiba';
   }
 
+  function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot){
+    var rows = $rowsCollection.toArray();
+    var total = rows.length;
+    var active = 0;
+    var nextIndex = 0;
+    var uploadLimit = 2;
+    var jobIds = [];
+    var jobRows = {};
+    var failedLocal = 0;
+    var pollingTimer = null;
+
+    window.MG_BULK_ADV._isRunning = true;
+    $('#mg-bulk-start').prop('disabled', true);
+    $('.mg-worker-toggle').prop('disabled', true);
+    $('#mg-bulk-queue-save').prop('disabled', true);
+    $('input[name="mg-bulk-mode"]').prop('disabled', true);
+    $rowsCollection.each(function(){ $(this).find('.mg-state').text('Feltöltésre vár…'); });
+
+    function updateProgressFromStats(stats){
+      var totalCount = (stats && typeof stats.total === 'number') ? stats.total : jobIds.length;
+      totalCount += failedLocal;
+      var completed = 0;
+      if (stats) {
+        completed = (stats.completed || 0) + (stats.failed || 0);
+      }
+      completed += failedLocal;
+      var pct = totalCount > 0 ? Math.round((completed / totalCount) * 100) : 100;
+      if (pct < 0) { pct = 0; }
+      if (pct > 100) { pct = 100; }
+      $('#mg-bulk-bar').css('width', pct+'%');
+      var statusParts = [pct + '%'];
+      if (totalCount > 0) {
+        statusParts.push(completed + '/' + totalCount);
+      }
+      $('#mg-bulk-status').text(statusParts.join(' · '));
+    }
+
+    function updateEnqueueProgress(enqueuedCount){
+      var pct = total > 0 ? Math.round((enqueuedCount / total) * 100) : 0;
+      if (pct < 0) { pct = 0; }
+      if (pct > 100) { pct = 100; }
+      $('#mg-bulk-bar').css('width', pct+'%');
+      $('#mg-bulk-status').text(pct + '% · feltöltés: ' + enqueuedCount + '/' + total);
+    }
+
+    function finalize(){
+      window.MG_BULK_ADV._isRunning = false;
+      $('#mg-bulk-start').prop('disabled', false);
+      $('.mg-worker-toggle').prop('disabled', false);
+      $('#mg-bulk-queue-save').prop('disabled', false);
+      $('input[name="mg-bulk-mode"]').prop('disabled', false);
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    }
+
+    function updateRowStatus(job){
+      if (!job || !job.id || !jobRows[job.id]) { return; }
+      var $row = jobRows[job.id];
+      var status = job.status || '';
+      if (status === 'pending') {
+        $row.find('.mg-state').text('Sorban áll…');
+      } else if (status === 'running') {
+        $row.find('.mg-state').text('Feldolgozás…');
+      } else if (status === 'completed') {
+        $row.find('.mg-state').text('Kész');
+      } else if (status === 'failed') {
+        var msg = job.message ? ('Hiba: ' + job.message) : 'Hiba';
+        $row.find('.mg-state').text(msg);
+      } else {
+        $row.find('.mg-state').text('Ismeretlen');
+      }
+    }
+
+    function pollQueue(){
+      if (!jobIds.length) {
+        updateProgressFromStats({ total: failedLocal, completed: failedLocal, failed: 0 });
+        finalize();
+        return;
+      }
+      $.post(MG_BULK_ADV.ajax_url, {
+        action: 'mg_bulk_queue_status',
+        nonce: MG_BULK_ADV.nonce,
+        job_ids: jobIds
+      }, function(resp){
+        if (!resp || !resp.success || !resp.data) {
+          return;
+        }
+        var jobs = resp.data.jobs || [];
+        jobs.forEach(updateRowStatus);
+        updateProgressFromStats(resp.data.stats || {});
+        var stats = resp.data.stats || {};
+        var totalCount = (typeof stats.total === 'number') ? stats.total : jobIds.length;
+        totalCount += failedLocal;
+        var completedCount = (stats.completed || 0) + (stats.failed || 0) + failedLocal;
+        if (totalCount > 0 && completedCount >= totalCount) {
+          finalize();
+        }
+      }, 'json');
+    }
+
+    function enqueueJob(index){
+      var $row = $(rows[index]);
+      if (!$row.length) {
+        failedLocal++;
+        updateEnqueueProgress(nextIndex);
+        return;
+      }
+      var file = files[index];
+      if (!file) {
+        $row.find('.mg-state').text('Hiba: hiányzó fájl');
+        failedLocal++;
+        updateEnqueueProgress(nextIndex);
+        return;
+      }
+      active++;
+      var $state = $row.find('.mg-state');
+      $state.text('Feltöltés…');
+      var $mainSel = $row.find('select.mg-main');
+      var $subsSel = $row.find('select.mg-subs');
+      var $name = $row.find('input.mg-name');
+      var parentId = parseInt($row.find('.mg-parent-id').val(),10)||0;
+      var form = new FormData();
+      form.append('action', 'mg_bulk_queue_enqueue');
+      form.append('nonce', MG_BULK_ADV.nonce);
+      form.append('design_file', file);
+      keys.forEach(function(k){ form.append('product_keys[]', k); });
+      form.append('product_name', $name.val().trim());
+      form.append('main_cat', $mainSel.val()||'0');
+      collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
+      form.append('parent_id', String(parentId));
+      form.append('tags', ($row.find('.mg-tags-input').val()||'').trim());
+      form.append('custom_product', $row.find('.mg-custom-flag').is(':checked') ? '1' : '0');
+      form.append('primary_type', defaultsSnapshot.type || '');
+      form.append('primary_color', defaultsSnapshot.color || '');
+      form.append('primary_size', defaultsSnapshot.size || '');
+
+      $.ajax({
+        url: MG_BULK_ADV.ajax_url,
+        method:'POST',
+        data: form,
+        processData:false,
+        contentType:false,
+        dataType:'json'
+      }).done(function(resp){
+        if (resp && resp.success && resp.data && resp.data.job_id) {
+          var jobId = resp.data.job_id;
+          jobIds.push(jobId);
+          jobRows[jobId] = $row;
+          $state.text('Sorban áll…');
+        } else {
+          var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
+          $state.text('Hiba: ' + msg);
+          failedLocal++;
+        }
+      }).fail(function(xhr){
+        $state.text('Hiba: ' + serverErrorToText(xhr));
+        failedLocal++;
+      }).always(function(){
+        active--;
+        updateEnqueueProgress(jobIds.length + failedLocal);
+        enqueueNext();
+      });
+    }
+
+    function enqueueNext(){
+      if (nextIndex >= total && active === 0) {
+        updateEnqueueProgress(jobIds.length + failedLocal);
+        pollQueue();
+        pollingTimer = setInterval(pollQueue, 4000);
+        return;
+      }
+      while (active < uploadLimit && nextIndex < total) {
+        enqueueJob(nextIndex++);
+      }
+    }
+
+    updateEnqueueProgress(0);
+    enqueueNext();
+  }
+
   $('#mg-bulk-start').on('click', function(e){
     e.preventDefault();
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
@@ -708,6 +990,14 @@
     if (!keys.length){ alert('Válassz legalább egy terméktípust.'); return; }
     var $rowsCollection = $('#mg-bulk-rows .mg-item-row');
     if (!$rowsCollection.length){ alert('Nincs feldolgozható sor.'); return; }
+
+    var defaultsSnapshot = $.extend({}, window.MG_BULK_ADV.activeDefaults || {});
+
+    mgDedupeTagInputs();
+    if (getBulkMode() === 'queue') {
+      startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot);
+      return;
+    }
 
     var rows = $rowsCollection.toArray();
     var total = rows.length;
@@ -721,12 +1011,12 @@
     var maxOption = options.length ? options[options.length - 1] : limit;
     if (limit > maxOption) { limit = maxOption; }
     limit = Math.max(1, Math.min(limit, total));
-    var defaultsSnapshot = $.extend({}, window.MG_BULK_ADV.activeDefaults || {});
 
-    mgDedupeTagInputs();
     window.MG_BULK_ADV._isRunning = true;
     $('#mg-bulk-start').prop('disabled', true);
     $('.mg-worker-toggle').prop('disabled', true);
+    $('#mg-bulk-queue-save').prop('disabled', true);
+    $('input[name="mg-bulk-mode"]').prop('disabled', true);
     $rowsCollection.each(function(){ $(this).find('.mg-state').text('Sorban áll…'); });
 
     var jobProgress = {};
@@ -761,6 +1051,8 @@
       window.MG_BULK_ADV._isRunning = false;
       $('#mg-bulk-start').prop('disabled', false);
       $('.mg-worker-toggle').prop('disabled', false);
+      $('#mg-bulk-queue-save').prop('disabled', false);
+      $('input[name="mg-bulk-mode"]').prop('disabled', false);
     }
 
     function launchNext(){

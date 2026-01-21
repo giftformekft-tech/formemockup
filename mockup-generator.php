@@ -167,6 +167,9 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Design_Gallery')) {
         MG_Design_Gallery::init();
     }
+    if (class_exists('MG_Bulk_Queue')) {
+        MG_Bulk_Queue::init();
+    }
 }, 20);
 
 if (class_exists('MG_Variant_Display_Page')) {

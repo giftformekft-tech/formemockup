@@ -11,9 +11,13 @@ class MG_Mockup_Maintenance {
     const OPTION_QUEUE = 'mg_mockup_regen_queue';
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
     const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
+    const OPTION_INTERVAL_MINUTES = 'mg_mockup_interval_minutes';
     const DEFAULT_BATCH = 3;
     const MIN_BATCH = 1;
     const MAX_BATCH = 200;
+    const DEFAULT_INTERVAL = 5;
+    const MIN_INTERVAL = 1;
+    const MAX_INTERVAL = 60;
     const CRON_HOOK = 'mg_mockup_process_queue';
     const META_LAST_DESIGN_PATH = '_mg_last_design_path';
     const META_LAST_DESIGN_ATTACHMENT = '_mg_last_design_attachment';
@@ -29,16 +33,18 @@ class MG_Mockup_Maintenance {
     }
 
     public static function register_interval($schedules) {
-        $schedules['mg_mockup_five_minutes'] = [
-            'interval' => 5 * MINUTE_IN_SECONDS,
-            'display'  => __('Mockup karbantartás (5 perc)', 'mgdtp'),
+        $interval = self::get_interval_minutes();
+        $schedules['mg_mockup_interval'] = [
+            'interval' => $interval * MINUTE_IN_SECONDS,
+            /* translators: %d: interval minutes */
+            'display'  => sprintf(__('Mockup karbantartás (%d perc)', 'mgdtp'), $interval),
         ];
         return $schedules;
     }
 
     public static function register_cron_schedule() {
         if (!wp_next_scheduled(self::CRON_HOOK)) {
-            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'mg_mockup_five_minutes', self::CRON_HOOK);
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'mg_mockup_interval', self::CRON_HOOK);
         }
     }
 
@@ -320,6 +326,34 @@ class MG_Mockup_Maintenance {
         $normalized = self::normalize_batch_size($value);
         update_option(self::OPTION_BATCH_SIZE, $normalized, false);
         return $normalized;
+    }
+
+    public static function get_interval_minutes() {
+        $stored = get_option(self::OPTION_INTERVAL_MINUTES, self::DEFAULT_INTERVAL);
+        $normalized = self::normalize_interval_minutes($stored);
+        if ((int) $stored !== $normalized) {
+            update_option(self::OPTION_INTERVAL_MINUTES, $normalized, false);
+        }
+        return $normalized;
+    }
+
+    public static function set_interval_minutes($value) {
+        $normalized = self::normalize_interval_minutes($value);
+        update_option(self::OPTION_INTERVAL_MINUTES, $normalized, false);
+        wp_clear_scheduled_hook(self::CRON_HOOK);
+        self::register_cron_schedule();
+        return $normalized;
+    }
+
+    private static function normalize_interval_minutes($value) {
+        $value = absint($value);
+        if ($value < self::MIN_INTERVAL) {
+            return self::MIN_INTERVAL;
+        }
+        if ($value > self::MAX_INTERVAL) {
+            return self::MAX_INTERVAL;
+        }
+        return $value;
     }
 
     private static function normalize_batch_size($value) {

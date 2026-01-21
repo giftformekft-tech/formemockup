@@ -521,6 +521,39 @@ class MG_Admin_Page {
         echo '<button type="button" class="button" id="mg-bulk-apply-first">' . esc_html__('Első sor beállításainak másolása az összes sorba', 'mockup-generator') . '</button>';
         echo '</div>';
 
+        echo '<div class="mg-processing-control">';
+        echo '<span class="mg-worker-label">' . esc_html__('Feldolgozás módja', 'mockup-generator') . '</span>';
+        echo '<div class="mg-processing-options">';
+        echo '<label class="mg-processing-option"><input type="radio" name="mg-bulk-mode" value="direct" checked /> ' . esc_html__('Azonnali feldolgozás (böngészőből, párhuzamos)', 'mockup-generator') . '</label>';
+        echo '<label class="mg-processing-option"><input type="radio" name="mg-bulk-mode" value="queue" /> ' . esc_html__('Queue + cron (batch feldolgozás időzítve)', 'mockup-generator') . '</label>';
+        echo '</div>';
+        echo '<p class="description">' . esc_html__('Queue módban a feltöltések sorba kerülnek, a cron pedig beállított időközönként dolgozza fel őket a megadott csomagméretben.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
+        echo '<div class="mg-queue-control" aria-hidden="true">';
+        echo '<span class="mg-worker-label">' . esc_html__('Queue beállítások', 'mockup-generator') . '</span>';
+        echo '<div class="mg-queue-sliders">';
+        echo '<label for="mg-bulk-queue-batch">';
+        echo '<span>' . esc_html__('Batch méret', 'mockup-generator') . '</span>';
+        echo '<div class="mg-range-wrapper">';
+        echo '<input type="range" id="mg-bulk-queue-batch" class="mg-queue-slider" min="' . esc_attr($data['queue_batch_min']) . '" max="' . esc_attr($data['queue_batch_max']) . '" step="1" value="' . esc_attr($data['queue_batch_size']) . '" />';
+        echo '<output id="mg-bulk-queue-batch-value" class="mg-range-value">' . esc_html($data['queue_batch_size']) . '</output>';
+        echo '<span class="mg-range-suffix">' . esc_html__('db', 'mockup-generator') . '</span>';
+        echo '</div>';
+        echo '</label>';
+        echo '<label for="mg-bulk-queue-interval">';
+        echo '<span>' . esc_html__('Cron időköz', 'mockup-generator') . '</span>';
+        echo '<div class="mg-range-wrapper">';
+        echo '<input type="range" id="mg-bulk-queue-interval" class="mg-queue-slider" min="' . esc_attr($data['queue_interval_min']) . '" max="' . esc_attr($data['queue_interval_max']) . '" step="1" value="' . esc_attr($data['queue_interval_minutes']) . '" />';
+        echo '<output id="mg-bulk-queue-interval-value" class="mg-range-value">' . esc_html($data['queue_interval_minutes']) . '</output>';
+        echo '<span class="mg-range-suffix">' . esc_html__('perc', 'mockup-generator') . '</span>';
+        echo '</div>';
+        echo '</label>';
+        echo '</div>';
+        echo '<button type="button" class="button button-primary" id="mg-bulk-queue-save">' . esc_html__('Queue beállítás mentése', 'mockup-generator') . '</button>';
+        echo '<p class="mg-queue-feedback" aria-live="polite"></p>';
+        echo '</div>';
+
         echo '<div class="mg-worker-control">';
         echo '<span class="mg-worker-label">' . esc_html__('Párhuzamos generáló folyamatok', 'mockup-generator') . '</span>';
         echo '<div class="mg-worker-toggle-group">';
@@ -753,9 +786,21 @@ class MG_Admin_Page {
 
         $worker_options = array();
         $worker_count = 1;
+        $queue_batch_size = 5;
+        $queue_interval_minutes = 2;
+        $queue_batch_min = 1;
+        $queue_batch_max = 50;
+        $queue_interval_min = 1;
+        $queue_interval_max = 60;
         if (class_exists('MG_Bulk_Queue')) {
             $worker_options = MG_Bulk_Queue::get_allowed_worker_counts();
             $worker_count = MG_Bulk_Queue::get_configured_worker_count();
+            $queue_batch_size = MG_Bulk_Queue::get_batch_size();
+            $queue_interval_minutes = MG_Bulk_Queue::get_interval_minutes();
+            $queue_batch_min = MG_Bulk_Queue::MIN_BATCH;
+            $queue_batch_max = MG_Bulk_Queue::MAX_BATCH;
+            $queue_interval_min = MG_Bulk_Queue::MIN_INTERVAL;
+            $queue_interval_max = MG_Bulk_Queue::MAX_INTERVAL;
         }
 
         self::$bulk_data = array(
@@ -767,6 +812,12 @@ class MG_Admin_Page {
             'subs'           => $subs,
             'worker_options' => $worker_options,
             'worker_count'   => $worker_count,
+            'queue_batch_size' => $queue_batch_size,
+            'queue_interval_minutes' => $queue_interval_minutes,
+            'queue_batch_min' => $queue_batch_min,
+            'queue_batch_max' => $queue_batch_max,
+            'queue_interval_min' => $queue_interval_min,
+            'queue_interval_max' => $queue_interval_max,
         );
 
         return self::$bulk_data;
@@ -816,9 +867,18 @@ class MG_Admin_Page {
             'default_size'          => $bulk_data['default_size'],
             'worker_options'        => $bulk_data['worker_options'],
             'worker_count'          => $bulk_data['worker_count'],
+            'queue_batch_size'      => $bulk_data['queue_batch_size'],
+            'queue_interval_minutes'=> $bulk_data['queue_interval_minutes'],
+            'queue_batch_min'       => $bulk_data['queue_batch_min'],
+            'queue_batch_max'       => $bulk_data['queue_batch_max'],
+            'queue_interval_min'    => $bulk_data['queue_interval_min'],
+            'queue_interval_max'    => $bulk_data['queue_interval_max'],
             'worker_feedback_saving'=> __('Mentés folyamatban…', 'mockup-generator'),
             'worker_feedback_saved' => __('Beállítva: %d worker.', 'mockup-generator'),
             'worker_feedback_error' => __('Nem sikerült menteni. Próbáld újra.', 'mockup-generator'),
+            'queue_feedback_saving' => __('Queue mentés folyamatban…', 'mockup-generator'),
+            'queue_feedback_saved'  => __('Queue beállítások elmentve.', 'mockup-generator'),
+            'queue_feedback_error'  => __('Nem sikerült menteni. Próbáld újra.', 'mockup-generator'),
         );
 
         wp_localize_script('mg-bulk-advanced', 'MG_BULK_ADV', $payload);
