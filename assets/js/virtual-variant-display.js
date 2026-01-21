@@ -1454,37 +1454,46 @@
             this.refreshPreviewState();
             return;
         }
-        if (!this.config.ajax || !this.config.ajax.url || !this.config.ajax.nonce) {
+        var renderUrl = this.getRenderPreviewUrl(this.state.type, this.state.color);
+        if (renderUrl) {
+            this.storePreviewCache(cacheKey, renderUrl);
+            this.preview.activeUrl = renderUrl;
+            this.$previewInput.val(renderUrl);
+            if (this.shouldPreloadPreview() && typeof Image !== 'undefined') {
+                var preload = new Image();
+                preload.src = renderUrl;
+            }
+            this.swapGalleryImage(renderUrl);
+            this.refreshPreviewState();
             return;
         }
-        var self = this;
-        this.preview.pending = true;
-        $.post(this.config.ajax.url, {
-            action: 'mg_virtual_preview',
-            nonce: this.config.ajax.nonce,
-            product_id: this.config.product ? this.config.product.id : 0,
-            product_type: this.state.type,
-            color: this.state.color
-        }).done(function(response){
-            if (!response || !response.success || !response.data) {
-                return;
-            }
-            var url = response.data.preview_url || '';
-            if (!url) {
-                return;
-            }
-            self.storePreviewCache(cacheKey, url);
-            self.preview.activeUrl = url;
-            self.$previewInput.val(url);
-            if (self.shouldPreloadPreview() && typeof Image !== 'undefined') {
-                var preload = new Image();
-                preload.src = url;
-            }
-            self.swapGalleryImage(url);
-            self.refreshPreviewState();
-        }).always(function(){
-            self.preview.pending = false;
-        });
+        return;
+    };
+
+    VirtualVariantDisplay.prototype.getRenderPreviewUrl = function(type, color) {
+        if (!type || !color || !this.config) {
+            return '';
+        }
+        var baseUrl = (this.config.render_base_url || '').replace(/\/$/, '');
+        if (!baseUrl || !this.config.product || !this.config.product.render_version) {
+            return '';
+        }
+        var designId = parseInt(this.config.product.design_id, 10);
+        if (!designId || !isFinite(designId)) {
+            return '';
+        }
+        var designFolder = 'd' + String(designId).padStart(3, '0');
+        var renderVersion = String(this.config.product.render_version || '').trim();
+        if (!renderVersion) {
+            return '';
+        }
+        var segments = [
+            encodeURIComponent(renderVersion),
+            encodeURIComponent(designFolder),
+            encodeURIComponent(type),
+            encodeURIComponent(color) + '.webp'
+        ];
+        return baseUrl + '/' + segments.join('/');
     };
 
     VirtualVariantDisplay.prototype.getPreviewColor = function() {

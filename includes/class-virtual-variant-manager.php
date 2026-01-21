@@ -74,15 +74,12 @@ class MG_Virtual_Variant_Manager {
             true
         );
 
-        $config['ajax'] = array(
-            'url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce(self::NONCE_ACTION),
-        );
         $config['product'] = array(
             'id' => $product->get_id(),
             'design_id' => self::get_design_id($product),
             'render_version' => self::get_render_version($product),
         );
+        $config['render_base_url'] = self::get_render_base_url();
 
         wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', $config);
     }
