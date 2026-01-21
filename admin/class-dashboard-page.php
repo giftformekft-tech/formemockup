@@ -15,7 +15,7 @@ class MG_Dashboard_Page {
 
     protected static function get_sku_prefixes(){
         $prefixes = array();
-        $products = get_option('mg_products', array());
+        $products = mg_get_catalog_products();
         if (is_array($products)){
             foreach ($products as $p){
                 if (is_array($p) && !empty($p['sku_prefix'])){

@@ -377,7 +377,7 @@ class MG_Bulk_Queue {
             if (empty($product_keys)) {
                 throw new RuntimeException(__('Nincs terméktípus megadva.', 'mgdtp'));
             }
-            $all = get_option('mg_products', array());
+            $all = mg_get_catalog_products();
             $selected = array_values(array_filter(is_array($all) ? $all : array(), function($p) use ($product_keys){
                 return is_array($p) && !empty($p['key']) && in_array($p['key'], $product_keys, true);
             }));
