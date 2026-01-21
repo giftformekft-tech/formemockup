@@ -138,25 +138,15 @@ add_action('admin_post_mg_upload_design_bulk', function(){
             $typed = isset($names[$i]) ? trim($names[$i]) : '';
             if ($typed === '') $typed = pathinfo($design_path, PATHINFO_FILENAME);
             $parent_name = sanitize_text_field($typed);
-            $parent_sku = MG_Product_Creator::generate_next_sku();
-            $render_context = array(
-                'naming' => 'bulk',
-                'parent_name' => $parent_name,
-                'parent_sku' => $parent_sku,
-            );
             $images_by_type_color = array();
             foreach ($selected as $prod) {
-                $res = $generator->generate_for_product($prod['key'], $design_path, $render_context);
+                $res = $generator->generate_for_product($prod['key'], $design_path);
                 if (is_wp_error($res)) { $images_by_type_color = array(); break; }
                 $images_by_type_color[$prod['key']] = $res;
             }
             if (empty($images_by_type_color)) continue;
             $cats = array('main'=> intval($main[$i] ?? 0), 'sub'=> intval($sub[$i] ?? 0));
-            $generation_context = array(
-                'design_path' => $design_path,
-                'trigger' => 'multi_upload',
-                'parent_sku' => $parent_sku,
-            );
+            $generation_context = array('design_path' => $design_path, 'trigger' => 'multi_upload');
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (!is_wp_error($pid)) {
                 MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);

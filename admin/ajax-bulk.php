@@ -189,16 +189,10 @@ add_action('wp_ajax_mg_bulk_process', function(){
         }
         require_once $gen_path; require_once $creator_path;
 
-        $parent_sku = MG_Product_Creator::generate_next_sku();
-        $render_context = array(
-            'naming' => 'bulk',
-            'parent_name' => $parent_name,
-            'parent_sku' => $parent_sku,
-        );
         $gen = new MG_Generator();
         $images_by_type_color = array();
         foreach ($selected as $prod) {
-            $res = $gen->generate_for_product($prod['key'], $design_path, $render_context);
+            $res = $gen->generate_for_product($prod['key'], $design_path);
             if (is_wp_error($res)) {
                 wp_send_json_error(array('message'=>$res->get_error_message()), 500);
             }
@@ -211,11 +205,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $defaults = mg_bulk_resolve_defaults($selected, $primary_type, $primary_color_input, $primary_size_input);
 
         $creator = new MG_Product_Creator();
-        $generation_context = array(
-            'design_path' => $design_path,
-            'trigger' => 'ajax_bulk',
-            'parent_sku' => $parent_sku,
-        );
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk');
         $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
         if ($parent_id > 0) {
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
@@ -306,13 +296,11 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
 
         $tags_raw = isset($_POST['tags']) ? (string) $_POST['tags'] : '';
         $tags = array_values(array_unique(array_filter(array_map('trim', explode(',', $tags_raw)))));
-        $parent_sku = MG_Product_Creator::generate_next_sku();
         $payload = array(
             'design_path' => $design_path,
             'product_keys' => $keys,
             'parent_id' => $parent_id,
             'parent_name' => $parent_name,
-            'parent_sku' => $parent_sku,
             'categories' => array('main' => $main_cat, 'subs' => $sub_cats),
             'defaults' => $defaults,
             'tags' => $tags,
