@@ -444,6 +444,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         $original_key = $prod['key'];
         if (!isset($prod['size_color_matrix']) || !is_array($prod['size_color_matrix'])) { $prod['size_color_matrix'] = array(); }
         $price_job = self::get_latest_price_update_job($prod['key']);
+        $global_catalog_enabled = function_exists('mg_global_catalog_enabled') && mg_global_catalog_enabled();
 
         $sanitized_overrides = null;
         $working_overrides   = null;
@@ -461,80 +462,84 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
                 $requested_key = self::generate_unique_key($requested_key, get_option('mg_products', array()));
                 $prod['key'] = $requested_key;
             }
-            $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
-            if (!empty($sizes)) $prod['sizes']=$sizes;
+            if (!$global_catalog_enabled) {
+                $sizes = array_filter(array_map('trim', explode(',', sanitize_text_field($_POST['sizes'] ?? ''))));
+                if (!empty($sizes)) $prod['sizes']=$sizes;
 
-            $colors_text = sanitize_textarea_field($_POST['colors'] ?? '');
-            $color_lines = array_filter(array_map('trim', explode(PHP_EOL, $colors_text)));
-            $colors = array();
-            foreach ($color_lines as $line) {
-                if (strpos($line, ':') === false) {
-                    continue;
-                }
-                list($name_part, $slug_part) = array_map('trim', explode(':', $line, 2));
-                if ($name_part === '' || $slug_part === '') {
-                    continue;
-                }
-                $name_only = $name_part;
-                $hex_value = '';
-                if (strpos($name_part, '|') !== false) {
-                    list($name_only, $hex_value) = array_map('trim', explode('|', $name_part, 2));
-                    if ($name_only === '') {
-                        $name_only = $name_part;
+                $colors_text = sanitize_textarea_field($_POST['colors'] ?? '');
+                $color_lines = array_filter(array_map('trim', explode(PHP_EOL, $colors_text)));
+                $colors = array();
+                foreach ($color_lines as $line) {
+                    if (strpos($line, ':') === false) {
+                        continue;
                     }
-                }
-                $hex_clean = '';
-                if ($hex_value !== '') {
-                    $hex_candidate = sanitize_hex_color($hex_value);
-                    if ($hex_candidate) {
-                        $hex_clean = $hex_candidate;
+                    list($name_part, $slug_part) = array_map('trim', explode(':', $line, 2));
+                    if ($name_part === '' || $slug_part === '') {
+                        continue;
                     }
+                    $name_only = $name_part;
+                    $hex_value = '';
+                    if (strpos($name_part, '|') !== false) {
+                        list($name_only, $hex_value) = array_map('trim', explode('|', $name_part, 2));
+                        if ($name_only === '') {
+                            $name_only = $name_part;
+                        }
+                    }
+                    $hex_clean = '';
+                    if ($hex_value !== '') {
+                        $hex_candidate = sanitize_hex_color($hex_value);
+                        if ($hex_candidate) {
+                            $hex_clean = $hex_candidate;
+                        }
+                    }
+                    $slug_clean = sanitize_title($slug_part);
+                    if ($slug_clean === '') {
+                        continue;
+                    }
+                    $color_entry = array(
+                        'name' => $name_only,
+                        'slug' => $slug_clean,
+                    );
+                    if ($hex_clean !== '') {
+                        $color_entry['hex'] = $hex_clean;
+                    }
+                    $colors[] = $color_entry;
                 }
-                $slug_clean = sanitize_title($slug_part);
-                if ($slug_clean === '') {
-                    continue;
+                if (!empty($colors)) {
+                    $prod['colors'] = $colors;
                 }
-                $color_entry = array(
-                    'name' => $name_only,
-                    'slug' => $slug_clean,
-                );
-                if ($hex_clean !== '') {
-                    $color_entry['hex'] = $hex_clean;
-                }
-                $colors[] = $color_entry;
-            }
-            if (!empty($colors)) {
-                $prod['colors'] = $colors;
             }
 
             $is_primary = !empty($_POST['is_primary']) ? 1 : 0;
-            $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
-            $chosen_size = isset($_POST['primary_size']) ? sanitize_text_field($_POST['primary_size']) : ($prod['primary_size'] ?? '');
-            $color_slugs = array();
-            if (!empty($prod['colors']) && is_array($prod['colors'])) {
-                foreach ($prod['colors'] as $c) {
-                    if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
-                }
-            }
-            $size_values = isset($prod['sizes']) && is_array($prod['sizes']) ? array_values(array_filter(array_map('trim', $prod['sizes']), function($s){ return $s !== ''; })) : array();
-            if ($chosen_color && !in_array($chosen_color, $color_slugs, true)) {
-                $chosen_color = '';
-            }
-            if ($chosen_size && !in_array($chosen_size, $size_values, true)) {
-                $chosen_size = '';
-            }
-            if ($is_primary && !$chosen_color && !empty($color_slugs)) {
-                $chosen_color = $color_slugs[0];
-            }
-            if ($is_primary && !$chosen_size && !empty($size_values)) {
-                $chosen_size = $size_values[0];
-            }
             $prod['is_primary'] = $is_primary;
-            $prod['primary_color'] = $chosen_color;
-            $prod['primary_size'] = $chosen_size;
+            if (!$global_catalog_enabled) {
+                $chosen_color = isset($_POST['primary_color']) ? sanitize_title($_POST['primary_color']) : ($prod['primary_color'] ?? '');
+                $chosen_size = isset($_POST['primary_size']) ? sanitize_text_field($_POST['primary_size']) : ($prod['primary_size'] ?? '');
+                $color_slugs = array();
+                if (!empty($prod['colors']) && is_array($prod['colors'])) {
+                    foreach ($prod['colors'] as $c) {
+                        if (isset($c['slug'])) { $color_slugs[] = $c['slug']; }
+                    }
+                }
+                $size_values = isset($prod['sizes']) && is_array($prod['sizes']) ? array_values(array_filter(array_map('trim', $prod['sizes']), function($s){ return $s !== ''; })) : array();
+                if ($chosen_color && !in_array($chosen_color, $color_slugs, true)) {
+                    $chosen_color = '';
+                }
+                if ($chosen_size && !in_array($chosen_size, $size_values, true)) {
+                    $chosen_size = '';
+                }
+                if ($is_primary && !$chosen_color && !empty($color_slugs)) {
+                    $chosen_color = $color_slugs[0];
+                }
+                if ($is_primary && !$chosen_size && !empty($size_values)) {
+                    $chosen_size = $size_values[0];
+                }
+                $prod['primary_color'] = $chosen_color;
+                $prod['primary_size'] = $chosen_size;
 
-            $matrix_input = isset($_POST['size_color_matrix']) ? $_POST['size_color_matrix'] : array();
-            $prod['size_color_matrix'] = self::normalize_size_color_matrix_for_product($prod['sizes'], $prod['colors'], $matrix_input);
+                $matrix_input = isset($_POST['size_color_matrix']) ? $_POST['size_color_matrix'] : array();
+                $prod['size_color_matrix'] = self::normalize_size_color_matrix_for_product($prod['sizes'], $prod['colors'], $matrix_input);
+            }
 
             $views_json = stripslashes($_POST['views'] ?? '');
             $views = json_decode($views_json, true);
@@ -543,8 +548,10 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
             $base = sanitize_text_field($_POST['template_base'] ?? $prod['template_base']);
             $prod['template_base']=$base;
 
-            $price = intval($_POST['price'] ?? $prod['price'] ?? 0);
-            $prod['price'] = $price;
+            if (!$global_catalog_enabled) {
+                $price = intval($_POST['price'] ?? $prod['price'] ?? 0);
+                $prod['price'] = $price;
+            }
 
             $prod['sku_prefix'] = strtoupper(sanitize_text_field($_POST['sku_prefix'] ?? ($prod['sku_prefix'] ?? '')));
 
@@ -687,6 +694,9 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
             }
 
             self::save_product($prod, $original_key);
+            if ($global_catalog_enabled) {
+                $prod = mg_apply_global_catalog_to_product($prod);
+            }
             echo '<div class="notice notice-success is-dismissible"><p>Termék beállításai elmentve.</p></div>';
             if ($removed_overrides > 0) {
                 echo '<div class="notice notice-warning is-dismissible"><p>';
@@ -715,6 +725,9 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
             }
         }
 
+        if ($global_catalog_enabled) {
+            $prod = mg_apply_global_catalog_to_product($prod);
+        }
         $sizes = $prod['sizes'];
         $colors = $prod['colors'];
         $size_color_matrix = self::normalize_size_color_matrix_for_product($sizes, $colors, $prod['size_color_matrix']);
@@ -775,6 +788,11 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
 <a href="<?php echo esc_url(add_query_arg('mg_delete_key', $prod['key'])); ?>"
    class="button button-link-delete"
    onclick="return confirm('Biztosan törlöd ezt a terméktípust?');">Törlés</a> (<code><?php echo esc_html($prod['key']); ?></code>)</h1>
+            <?php if ($global_catalog_enabled): ?>
+                <div class="notice notice-info">
+                    <p><?php esc_html_e('Globális katalógus aktív: az ár/szín/méret beállítások központilag vannak kezelve.', 'mgdtp'); ?></p>
+                </div>
+            <?php endif; ?>
             <style>
                 .mg-price-update-status { margin: 8px 0 16px; max-width: 420px; }
                 .mg-price-update-label { margin-bottom: 6px; font-size: 13px; color: #50575e; }
