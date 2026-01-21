@@ -14,7 +14,23 @@
         };
         this.preview = {
             activeUrl: '',
-            pending: false
+            pending: false,
+            $button: null,
+            $modal: null,
+            $backdrop: null,
+            $content: null,
+            $watermark: null,
+            $close: null,
+            $canvas: null,
+            $fallback: null,
+            useCanvas: false,
+            pendingPattern: '',
+            pendingColor: '',
+            pendingWatermark: '',
+            renderQueued: false,
+            renderTimer: null,
+            loadFailed: false,
+            failedPattern: ''
         };
         this.previewCache = {};
         this.sizeChart = {
@@ -57,6 +73,18 @@
         return fallback;
     };
 
+    VirtualVariantDisplay.prototype.supportsCanvas = function() {
+        if (typeof document === 'undefined') {
+            return false;
+        }
+        try {
+            var canvas = document.createElement('canvas');
+            return !!(canvas && canvas.getContext && canvas.getContext('2d'));
+        } catch (err) {
+            return false;
+        }
+    };
+
     VirtualVariantDisplay.prototype.getTypeLabel = function(typeSlug) {
         if (!typeSlug) {
             return '';
@@ -71,10 +99,11 @@
         if (!this.$wrapper.length || !this.$typeInput.length || !this.$colorInput.length || !this.$sizeInput.length) {
             return;
         }
-        this.buildLayout();
-        this.bindEvents();
         this.captureTitle();
+        this.buildLayout();
         this.captureDescriptionTargets();
+        this.bindEvents();
+        this.createPatternPreview();
         this.syncDefaults();
         this.updatePrice();
         this.refreshAddToCartState();
@@ -110,6 +139,7 @@
 
     VirtualVariantDisplay.prototype.buildLayout = function() {
         var wrapper = $('<div class="mg-variant-display" />');
+        this.$variantWrapper = wrapper;
 
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
         typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
@@ -155,6 +185,87 @@
         this.rebuildColorOptions();
         this.rebuildSizeOptions();
         this.updateSizeChartLink();
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else if (this.$variantWrapper && this.$variantWrapper.length) {
+            this.$variantWrapper.prepend($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
     };
 
     VirtualVariantDisplay.prototype.createTypeModal = function($trigger) {
@@ -969,6 +1080,7 @@
         if (!this.state.type || !this.state.color) {
             this.preview.activeUrl = '';
             this.$previewInput.val('');
+            this.refreshPreviewState();
             return;
         }
         var cacheKey = this.state.type + '|' + this.state.color;
@@ -976,6 +1088,7 @@
             this.preview.activeUrl = this.previewCache[cacheKey];
             this.$previewInput.val(this.previewCache[cacheKey]);
             this.swapGalleryImage(this.previewCache[cacheKey]);
+            this.refreshPreviewState();
             return;
         }
         if (!this.config.ajax || !this.config.ajax.url || !this.config.ajax.nonce) {
@@ -1005,9 +1118,244 @@
                 preload.src = url;
             }
             self.swapGalleryImage(url);
+            self.refreshPreviewState();
         }).always(function(){
             self.preview.pending = false;
         });
+    };
+
+    VirtualVariantDisplay.prototype.getPreviewColor = function() {
+        if (!this.state.type || !this.state.color || !this.config.types || !this.config.types[this.state.type]) {
+            return '';
+        }
+        var typeMeta = this.config.types[this.state.type];
+        if (!typeMeta.colors || !typeMeta.colors[this.state.color]) {
+            return '';
+        }
+        return typeMeta.colors[this.state.color].swatch || '';
+    };
+
+    VirtualVariantDisplay.prototype.refreshPreviewState = function() {
+        if (!this.preview || !this.preview.$modal) {
+            return;
+        }
+
+        var pattern = this.preview.activeUrl || '';
+        var hasPattern = !!pattern;
+        var colorHex = this.getPreviewColor();
+        var hasColor = !!colorHex;
+        var watermarkText = this.getText('previewWatermark', 'www.forme.hu');
+
+        var patternFailed = this.preview.loadFailed && this.preview.failedPattern === pattern;
+        var patternReady = hasPattern && !patternFailed;
+
+        var usingCanvas = this.preview.useCanvas && patternReady;
+
+        if (this.preview.$content) {
+            this.preview.$content.css('background-color', hasColor ? colorHex : '');
+        }
+
+        if (this.preview.$watermark) {
+            this.applyPreviewWatermark(patternReady, colorHex, watermarkText);
+        }
+
+        if (usingCanvas) {
+            this.queueCanvasRender(pattern, colorHex, watermarkText);
+            if (this.preview.$canvas) {
+                this.preview.$canvas.show();
+            }
+        } else if (this.preview.$canvas) {
+            this.preview.$canvas.hide();
+        }
+
+        if (this.preview.$fallback) {
+            var message = '';
+            if (!hasPattern) {
+                message = this.getText('previewUnavailable', 'Ehhez a variációhoz nem érhető el minta.');
+            } else if (!hasColor) {
+                message = this.getText('previewNoColor', 'Ehhez a variációhoz nem található háttérszín.');
+            } else if (patternFailed) {
+                message = this.getText('previewUnavailable', 'A minta előnézet nem tölthető be.');
+            } else if (!this.preview.useCanvas) {
+                message = this.getText('previewUnavailable', 'A böngésző nem támogatja a vízjeles előnézetet.');
+            }
+            this.preview.$fallback.text(message).toggle(message !== '');
+        }
+
+        if (this.preview.$button) {
+            this.preview.$button.toggleClass('is-disabled', !patternReady);
+            this.preview.$button.attr('aria-disabled', patternReady ? 'false' : 'true');
+        }
+    };
+
+    VirtualVariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex, watermarkText) {
+        if (!this.preview.$watermark) {
+            return;
+        }
+
+        var safeText = watermarkText || this.getText('previewWatermark', 'www.forme.hu');
+        if (!hasPattern) {
+            this.preview.$watermark.removeAttr('style').removeClass('is-visible');
+            return;
+        }
+
+        var fillColor = '#0f172a';
+        if (colorHex && typeof colorHex === 'string') {
+            fillColor = colorHex;
+        }
+
+        var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="360" height="260" viewBox="0 0 360 260">' +
+            '<rect width="360" height="260" fill="' + fillColor + '" fill-opacity="0" />' +
+            '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="rgba(255,255,255,0.32)" font-family="sans-serif" font-size="26" font-weight="700" transform="rotate(-24 180 130)">' +
+            safeText +
+            '</text>' +
+            '</svg>';
+
+        var dataUrl = 'url("data:image/svg+xml,' + encodeURIComponent(svg) + '")';
+
+        this.preview.$watermark
+            .addClass('is-visible')
+            .text(safeText)
+            .css({
+                'background-image': dataUrl,
+                'background-size': '240px 180px'
+            });
+    };
+
+    VirtualVariantDisplay.prototype.queueCanvasRender = function(patternUrl, colorHex, watermarkText) {
+        if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
+            return;
+        }
+
+        this.preview.pendingPattern = patternUrl || '';
+        this.preview.pendingColor = colorHex || '#0f172a';
+        this.preview.pendingWatermark = watermarkText || this.getText('previewWatermark', 'www.forme.hu');
+        this.preview.loadFailed = false;
+        this.preview.failedPattern = '';
+
+        if (this.preview.renderQueued) {
+            return;
+        }
+
+        this.preview.renderQueued = true;
+        var self = this;
+        var delay = 120;
+        this.preview.renderTimer = window.setTimeout(function(){
+            self.preview.renderQueued = false;
+            self.renderCanvasPattern();
+        }, delay);
+    };
+
+    VirtualVariantDisplay.prototype.paintCanvasWatermark = function(ctx, width, height, text) {
+        if (!ctx || !text) {
+            return;
+        }
+        ctx.save();
+        ctx.globalAlpha = 0.24;
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = 'rgba(15, 23, 42, 0.18)';
+        ctx.lineWidth = 0.75;
+        ctx.font = '600 26px sans-serif';
+        ctx.translate(width / 2, height / 2);
+        ctx.rotate(-Math.PI / 8);
+        ctx.translate(-width / 2, -height / 2);
+        var stepX = 180;
+        var stepY = 140;
+        for (var y = -stepY; y < height + stepY; y += stepY) {
+            for (var x = -stepX; x < width + stepX; x += stepX) {
+                ctx.fillText(text, x, y);
+                ctx.strokeText(text, x, y);
+            }
+        }
+        ctx.restore();
+    };
+
+    VirtualVariantDisplay.prototype.renderCanvasPattern = function() {
+        if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
+            return;
+        }
+
+        var canvas = this.preview.$canvas[0];
+        if (!canvas || typeof canvas.getContext !== 'function') {
+            return;
+        }
+
+        var ctx = canvas.getContext('2d');
+        if (!ctx) {
+            return;
+        }
+
+        var patternUrl = this.preview.pendingPattern;
+        var colorHex = this.preview.pendingColor || '#0f172a';
+        var watermarkText = this.preview.pendingWatermark || this.getText('previewWatermark', 'www.forme.hu');
+
+        if (!patternUrl) {
+            ctx.clearRect(0, 0, canvas.width || 0, canvas.height || 0);
+            return;
+        }
+
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        var self = this;
+
+        img.onload = function() {
+            var naturalWidth = img.naturalWidth || img.width || 1024;
+            var naturalHeight = img.naturalHeight || img.height || 1024;
+            var maxWidth = 1400;
+            var maxHeight = 1400;
+            var scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
+            if (!isFinite(scale) || scale <= 0) {
+                scale = 1;
+            }
+
+            var drawWidth = Math.max(1, Math.round(naturalWidth * scale));
+            var drawHeight = Math.max(1, Math.round(naturalHeight * scale));
+
+            canvas.width = drawWidth;
+            canvas.height = drawHeight;
+
+            ctx.clearRect(0, 0, drawWidth, drawHeight);
+            ctx.fillStyle = colorHex || '#0f172a';
+            ctx.fillRect(0, 0, drawWidth, drawHeight);
+
+            ctx.drawImage(img, 0, 0, drawWidth, drawHeight);
+
+            self.paintCanvasWatermark(ctx, drawWidth, drawHeight, watermarkText);
+        };
+
+        img.onerror = function() {
+            self.preview.loadFailed = true;
+            self.preview.failedPattern = patternUrl;
+            self.refreshPreviewState();
+        };
+
+        img.src = patternUrl;
+    };
+
+    VirtualVariantDisplay.prototype.showPatternPreview = function() {
+        if (!this.preview.$modal) {
+            return;
+        }
+        this.preview.$modal.addClass('is-open').attr('aria-hidden', 'false');
+        if (this.preview.$close) {
+            this.preview.$close.trigger('focus');
+        }
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.hidePatternPreview = function() {
+        if (!this.preview.$modal) {
+            return;
+        }
+        this.preview.$modal.removeClass('is-open').attr('aria-hidden', 'true');
+        if (this.preview.$button) {
+            this.preview.$button.trigger('focus');
+        }
+        if (this.preview.renderTimer) {
+            window.clearTimeout(this.preview.renderTimer);
+            this.preview.renderTimer = null;
+            this.preview.renderQueued = false;
+        }
     };
 
     VirtualVariantDisplay.prototype.swapGalleryImage = function(url) {
