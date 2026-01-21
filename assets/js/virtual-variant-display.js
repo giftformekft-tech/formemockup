@@ -86,6 +86,13 @@
         return Math.max(0, limit);
     };
 
+    VirtualVariantDisplay.prototype.shouldPreloadPreview = function() {
+        if (!this.config || typeof this.config.preview_preload === 'undefined') {
+            return true;
+        }
+        return !!this.config.preview_preload;
+    };
+
     VirtualVariantDisplay.prototype.touchPreviewCacheKey = function(cacheKey) {
         if (!cacheKey || !this.previewCacheOrder.length) {
             return;
@@ -1469,7 +1476,7 @@
             self.storePreviewCache(cacheKey, url);
             self.preview.activeUrl = url;
             self.$previewInput.val(url);
-            if (typeof Image !== 'undefined') {
+            if (self.shouldPreloadPreview() && typeof Image !== 'undefined') {
                 var preload = new Image();
                 preload.src = url;
             }

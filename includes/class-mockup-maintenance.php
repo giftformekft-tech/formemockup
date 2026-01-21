@@ -12,6 +12,7 @@ class MG_Mockup_Maintenance {
     const OPTION_ACTIVITY_LOG = 'mg_mockup_activity_log';
     const OPTION_BATCH_SIZE = 'mg_mockup_batch_size';
     const OPTION_INTERVAL_MINUTES = 'mg_mockup_interval_minutes';
+    const OPTION_REGEN_ENABLED = 'mg_mockup_regen_enabled';
     const DEFAULT_BATCH = 3;
     const MIN_BATCH = 1;
     const MAX_BATCH = 200;
@@ -67,6 +68,16 @@ class MG_Mockup_Maintenance {
             $index = $normalized;
         }
         return $index;
+    }
+
+    public static function is_regeneration_enabled() {
+        return (bool) get_option(self::OPTION_REGEN_ENABLED, true);
+    }
+
+    public static function set_regeneration_enabled($enabled) {
+        $enabled = (bool) $enabled;
+        update_option(self::OPTION_REGEN_ENABLED, $enabled ? 1 : 0, false);
+        return $enabled;
     }
 
     public static function get_selected_products_for_product($product_id) {
@@ -1239,6 +1250,9 @@ class MG_Mockup_Maintenance {
     }
 
     public static function queue_for_regeneration($product_id, $type_slug, $color_slug, $reason = '', $context = []) {
+        if (!self::is_regeneration_enabled()) {
+            return;
+        }
         self::queue_multiple_for_regeneration([
             [
                 'product_id' => $product_id,
@@ -1251,6 +1265,9 @@ class MG_Mockup_Maintenance {
     }
 
     public static function queue_multiple_for_regeneration($items) {
+        if (!self::is_regeneration_enabled()) {
+            return;
+        }
         $normalized = [];
         if (is_array($items)) {
             foreach ($items as $item) {
@@ -1762,6 +1779,9 @@ class MG_Mockup_Maintenance {
     }
 
     public static function process_queue() {
+        if (!self::is_regeneration_enabled()) {
+            return;
+        }
         $lock_key = 'mg_mockup_queue_lock';
         if (get_transient($lock_key)) {
             return;

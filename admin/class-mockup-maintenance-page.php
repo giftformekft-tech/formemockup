@@ -86,6 +86,15 @@ class MG_Mockup_Maintenance_Page {
                 /* translators: %d: interval minutes */
                 self::add_notice(sprintf(__('A cron mostantól %d percenként fut.', 'mgdtp'), $new_value));
                 break;
+            case 'toggle_regeneration':
+                $enabled = !empty($_POST['mg_regen_enabled']);
+                $enabled = MG_Mockup_Maintenance::set_regeneration_enabled($enabled);
+                if ($enabled) {
+                    self::add_notice(__('A regenerálás engedélyezve.', 'mgdtp'));
+                } else {
+                    self::add_notice(__('A regenerálás leállítva.', 'mgdtp'), 'warning');
+                }
+                break;
             case 'manual_variant_sync':
                 if (!class_exists('MG_Variant_Maintenance')) {
                     self::add_notice(__('Hiányzik a variáns karbantartó modul.', 'mgdtp'), 'error');
@@ -385,8 +394,19 @@ class MG_Mockup_Maintenance_Page {
         $interval_minutes = MG_Mockup_Maintenance::get_interval_minutes();
         $min_interval = MG_Mockup_Maintenance::MIN_INTERVAL;
         $max_interval = MG_Mockup_Maintenance::MAX_INTERVAL;
+        $regen_enabled = MG_Mockup_Maintenance::is_regeneration_enabled();
         ?>
         <div class="mg-queue-controls">
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="toggle_regeneration" />
+                <label>
+                    <input type="hidden" name="mg_regen_enabled" value="0" />
+                    <input type="checkbox" name="mg_regen_enabled" value="1" <?php checked($regen_enabled, true); ?> />
+                    <span><?php esc_html_e('Regenerálás engedélyezve', 'mgdtp'); ?></span>
+                </label>
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Mentés', 'mgdtp'); ?></button>
+            </form>
             <form method="post" class="mg-run-queue">
                 <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
                 <input type="hidden" name="mg_mockup_action" value="process_queue_now" />

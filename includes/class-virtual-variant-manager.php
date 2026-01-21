@@ -253,13 +253,6 @@ class MG_Virtual_Variant_Manager {
         }
         $description_targets = array_values(array_filter(array_unique(array_map('strval', $description_targets))));
 
-        $visuals = array(
-            'defaults' => array(
-                'pattern' => self::resolve_design_url($product->get_id()),
-            ),
-            'typeMockups' => self::get_type_mockups($product->get_id(), $types_payload),
-        );
-
         $type_urls = apply_filters('mg_virtual_variant_type_urls', array(), $product, $types_payload);
         $type_urls = is_array($type_urls) ? $type_urls : array();
         $meta_urls = get_post_meta($product->get_id(), '_mg_type_urls', true);
@@ -288,7 +281,34 @@ class MG_Virtual_Variant_Manager {
             $default_size = reset($types_payload[$default_type]['colors'][$default_color]['sizes']);
         }
 
-        $preview_cache_limit = absint(apply_filters('mg_virtual_variant_preview_cache_limit', 60, $product, $types_payload));
+        $total_colors = 0;
+        foreach ($types_payload as $type_meta) {
+            if (!empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                $total_colors += count($type_meta['colors']);
+            }
+        }
+
+        $type_mockups_default = $total_colors < 80;
+        $type_mockups_enabled = (bool) apply_filters('mg_virtual_variant_type_mockups_enabled', $type_mockups_default, $product, $types_payload, $total_colors);
+        $type_mockups = $type_mockups_enabled ? self::get_type_mockups($product->get_id(), $types_payload) : array();
+        $visuals = array(
+            'defaults' => array(
+                'pattern' => self::resolve_design_url($product->get_id()),
+            ),
+            'typeMockups' => $type_mockups,
+        );
+
+        $default_cache_limit = 60;
+        if ($total_colors >= 100) {
+            $default_cache_limit = 0;
+        } elseif ($total_colors >= 80) {
+            $default_cache_limit = 20;
+        } elseif ($total_colors >= 40) {
+            $default_cache_limit = 30;
+        }
+        $preview_cache_limit = absint(apply_filters('mg_virtual_variant_preview_cache_limit', $default_cache_limit, $product, $types_payload, $total_colors));
+        $preview_preload_default = $total_colors < 80;
+        $preview_preload = (bool) apply_filters('mg_virtual_variant_preview_preload', $preview_preload_default, $product, $types_payload, $total_colors);
 
         $config = array(
             'types' => $types_payload,
@@ -297,6 +317,7 @@ class MG_Virtual_Variant_Manager {
             ),
             'typeUrls' => $type_urls,
             'preview_cache_limit' => $preview_cache_limit,
+            'preview_preload' => $preview_preload,
             'priceFormat' => array(
                 'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '',
                 'priceFormat' => function_exists('get_woocommerce_price_format') ? get_woocommerce_price_format() : '%1$s%2$s',
