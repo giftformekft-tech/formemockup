@@ -33,6 +33,8 @@
             failedPattern: ''
         };
         this.previewCache = {};
+        this.previewCacheOrder = [];
+        this.previewCacheLimit = this.getPreviewCacheLimit();
         this.sizeChart = {
             $link: null,
             $modal: null,
@@ -73,6 +75,51 @@
         return fallback;
     };
 
+    VirtualVariantDisplay.prototype.getPreviewCacheLimit = function() {
+        var limit = 60;
+        if (this.config && typeof this.config.preview_cache_limit !== 'undefined') {
+            limit = parseInt(this.config.preview_cache_limit, 10);
+        }
+        if (!isFinite(limit)) {
+            limit = 60;
+        }
+        return Math.max(0, limit);
+    };
+
+    VirtualVariantDisplay.prototype.touchPreviewCacheKey = function(cacheKey) {
+        if (!cacheKey || !this.previewCacheOrder.length) {
+            return;
+        }
+        var index = this.previewCacheOrder.indexOf(cacheKey);
+        if (index === -1) {
+            return;
+        }
+        this.previewCacheOrder.splice(index, 1);
+        this.previewCacheOrder.push(cacheKey);
+    };
+
+    VirtualVariantDisplay.prototype.storePreviewCache = function(cacheKey, url) {
+        if (!cacheKey || !url) {
+            return;
+        }
+        if (this.previewCacheLimit === 0) {
+            return;
+        }
+        if (this.previewCache[cacheKey]) {
+            this.previewCache[cacheKey] = url;
+            this.touchPreviewCacheKey(cacheKey);
+            return;
+        }
+        this.previewCache[cacheKey] = url;
+        this.previewCacheOrder.push(cacheKey);
+        if (this.previewCacheOrder.length > this.previewCacheLimit) {
+            var oldestKey = this.previewCacheOrder.shift();
+            if (oldestKey && this.previewCache[oldestKey]) {
+                delete this.previewCache[oldestKey];
+            }
+        }
+    };
+
     VirtualVariantDisplay.prototype.supportsCanvas = function() {
         if (typeof document === 'undefined') {
             return false;
@@ -103,7 +150,7 @@
         this.buildLayout();
         this.captureDescriptionTargets();
         this.bindEvents();
-        this.createPatternPreview();
+        // Preview canvas is intentionally disabled to reduce frontend memory usage.
         this.syncDefaults();
         this.updatePrice();
         this.refreshAddToCartState();
@@ -1396,6 +1443,7 @@
             this.preview.activeUrl = this.previewCache[cacheKey];
             this.$previewInput.val(this.previewCache[cacheKey]);
             this.swapGalleryImage(this.previewCache[cacheKey]);
+            this.touchPreviewCacheKey(cacheKey);
             this.refreshPreviewState();
             return;
         }
@@ -1418,7 +1466,7 @@
             if (!url) {
                 return;
             }
-            self.previewCache[cacheKey] = url;
+            self.storePreviewCache(cacheKey, url);
             self.preview.activeUrl = url;
             self.$previewInput.val(url);
             if (typeof Image !== 'undefined') {

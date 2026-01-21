@@ -127,11 +127,35 @@ class MG_Virtual_Variant_Manager {
 
         $settings = self::get_settings($catalog);
         $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
+        $allowed_types = array();
+        if (class_exists('MG_Mockup_Maintenance')) {
+            $selected_products = MG_Mockup_Maintenance::get_selected_products_for_product($product_id);
+            if (!empty($selected_products)) {
+                foreach ($selected_products as $selected) {
+                    if (!is_array($selected)) {
+                        continue;
+                    }
+                    $key = isset($selected['key']) ? sanitize_title($selected['key']) : '';
+                    if ($key !== '') {
+                        $allowed_types[$key] = true;
+                    }
+                }
+            }
+        }
+        if (!empty($allowed_types)) {
+            $catalog = array_intersect_key($catalog, $allowed_types);
+            if (is_array($products)) {
+                $products = array_intersect_key($products, $allowed_types);
+            }
+        }
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
             $type_slug = sanitize_title($type_slug);
             if ($type_slug === '' || !is_array($type_meta)) {
+                continue;
+            }
+            if (!empty($allowed_types) && empty($allowed_types[$type_slug])) {
                 continue;
             }
             $type_order[] = $type_slug;
@@ -264,12 +288,15 @@ class MG_Virtual_Variant_Manager {
             $default_size = reset($types_payload[$default_type]['colors'][$default_color]['sizes']);
         }
 
+        $preview_cache_limit = absint(apply_filters('mg_virtual_variant_preview_cache_limit', 60, $product, $types_payload));
+
         $config = array(
             'types' => $types_payload,
             'order' => array(
                 'types' => $type_order,
             ),
             'typeUrls' => $type_urls,
+            'preview_cache_limit' => $preview_cache_limit,
             'priceFormat' => array(
                 'currencySymbol' => function_exists('get_woocommerce_currency_symbol') ? get_woocommerce_currency_symbol() : '',
                 'priceFormat' => function_exists('get_woocommerce_price_format') ? get_woocommerce_price_format() : '%1$s%2$s',
