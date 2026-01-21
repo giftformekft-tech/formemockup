@@ -410,10 +410,24 @@ class MG_Bulk_Queue {
 
             remove_all_actions('save_post_product');
 
+            $parent_sku = isset($payload['parent_sku']) ? sanitize_text_field($payload['parent_sku']) : '';
+            if ($parent_sku === '') {
+                $parent_sku = MG_Product_Creator::generate_next_sku();
+            }
+            $parent_name = isset($payload['parent_name']) ? $payload['parent_name'] : '';
+            if ($parent_name === '') {
+                $parent_name = basename($design_path);
+            }
+            $render_context = array(
+                'naming' => 'bulk',
+                'parent_name' => $parent_name,
+                'parent_sku' => $parent_sku,
+            );
+
             $generator = new MG_Generator();
             $images_by_type_color = array();
             foreach ($selected as $prod) {
-                $res = $generator->generate_for_product($prod['key'], $design_path);
+                $res = $generator->generate_for_product($prod['key'], $design_path, $render_context);
                 if (is_wp_error($res)) {
                     throw new RuntimeException($res->get_error_message());
                 }
@@ -430,14 +444,11 @@ class MG_Bulk_Queue {
                 'subs' => isset($cats['subs']) ? array_map('intval', (array)$cats['subs']) : array(),
             );
             $parent_id = isset($payload['parent_id']) ? intval($payload['parent_id']) : 0;
-            $parent_name = isset($payload['parent_name']) ? $payload['parent_name'] : '';
-            if ($parent_name === '') {
-                $parent_name = basename($design_path);
-            }
             $context_trigger = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
             $generation_context = array(
                 'design_path' => $design_path,
                 'trigger' => $context_trigger,
+                'parent_sku' => $parent_sku,
             );
 
             $creator = new MG_Product_Creator();

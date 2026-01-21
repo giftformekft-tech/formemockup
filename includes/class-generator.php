@@ -95,6 +95,26 @@ class MG_Generator {
         return wp_normalize_path($abs2);
     }
 
+    private function build_mockup_filename($type_slug, $color_slug, $view_key, array $context) {
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $view_key = sanitize_title($view_key);
+
+        if (
+            !empty($context['naming'])
+            && $context['naming'] === 'bulk'
+            && !empty($context['parent_name'])
+            && !empty($context['parent_sku'])
+        ) {
+            $parent_name = sanitize_title($context['parent_name']);
+            $parent_sku = sanitize_title($context['parent_sku']);
+            $parent_part = $parent_name !== '' ? $parent_name : 'termek';
+            return 'mockup_' . $parent_part . '_' . $parent_sku . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+        }
+
+        return 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+    }
+
     private function webp_supported() {
         if (!class_exists('Imagick')) return false;
         try { $fmts = @Imagick::queryFormats('WEBP'); if (is_array($fmts) && !empty($fmts)) return true; }
@@ -414,7 +434,7 @@ class MG_Generator {
                     $type_slug = sanitize_title($product['key']);
                     $color_slug = sanitize_title($slug);
                     $view_key = isset($view['key']) ? sanitize_title($view['key']) : 'view';
-                    $filename = 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+                    $filename = $this->build_mockup_filename($type_slug, $color_slug, $view_key, $context);
                     $outfile = wp_normalize_path(trailingslashit($output_dir) . $filename);
                     $generated = false;
                     $last_error = null;
