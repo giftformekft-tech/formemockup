@@ -33,7 +33,7 @@
     if (!sku) {
       return;
     }
-    var filename = sku + '_' + typeId + '_' + colorId + '.jpg';
+    var filename = sku + '_' + typeId + '_' + colorId + '.webp';
     var url = baseUrl + '/' + encodeURIComponent(filename);
     var img = getImageElement();
     if (!img) {

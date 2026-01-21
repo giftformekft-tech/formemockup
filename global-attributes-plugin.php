@@ -219,7 +219,7 @@ class MG_Global_Attributes_Plugin {
         }
         $type_id = sanitize_title($cart_item['mg_global_type']);
         $color_id = sanitize_title($cart_item['mg_global_color']);
-        $url = trailingslashit($mockup_base) . rawurlencode($sku . '_' . $type_id . '_' . $color_id . '.jpg');
+        $url = trailingslashit($mockup_base) . rawurlencode($sku . '_' . $type_id . '_' . $color_id . '.webp');
         $size = wc_get_image_size('woocommerce_thumbnail');
         $width = isset($size['width']) ? intval($size['width']) : 300;
         $height = isset($size['height']) ? intval($size['height']) : 300;
