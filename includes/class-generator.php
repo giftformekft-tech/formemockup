@@ -6,7 +6,7 @@ class MG_Generator {
 
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
-            $raw_products = get_option('mg_products', array());
+            $raw_products = mg_get_catalog_products();
             $indexed = array();
             if (is_array($raw_products)) {
                 foreach ($raw_products as $item) {

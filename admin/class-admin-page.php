@@ -595,7 +595,7 @@ class MG_Admin_Page {
             return self::$bulk_data;
         }
 
-        $products_raw = get_option('mg_products', array());
+        $products_raw = mg_get_catalog_products();
         $products_raw = is_array($products_raw) ? $products_raw : array();
 
         $products = array();
@@ -916,7 +916,7 @@ class MG_Admin_Page {
      * Outputs the mockup overview cards and quick stats.
      */
     private static function render_mockup_overview() {
-        $products = get_option('mg_products', array());
+        $products = mg_get_catalog_products();
         $total_products = is_array($products) ? count($products) : 0;
         $colors = 0;
         $views = 0;
