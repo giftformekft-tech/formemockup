@@ -142,6 +142,12 @@ class MG_Virtual_Variant_Manager {
                 }
             }
         }
+        if (!empty($allowed_types)) {
+            $catalog = array_intersect_key($catalog, $allowed_types);
+            if (is_array($products)) {
+                $products = array_intersect_key($products, $allowed_types);
+            }
+        }
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
