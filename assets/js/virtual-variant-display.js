@@ -185,6 +185,314 @@
         this.rebuildColorOptions();
         this.rebuildSizeOptions();
         this.updateSizeChartLink();
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return null;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgVirtualPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        return $buttonWrap;
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else if (this.$variantWrapper && this.$variantWrapper.length) {
+            this.$variantWrapper.prepend($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function(){
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function(){
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function(event){
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function(event){
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function(event){
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function(event){
+            event.preventDefault();
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else if (this.$variantWrapper && this.$variantWrapper.length) {
+            this.$variantWrapper.prepend($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
     };
 
     VirtualVariantDisplay.prototype.createPatternPreview = function() {
