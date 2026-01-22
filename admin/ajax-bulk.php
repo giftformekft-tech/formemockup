@@ -178,7 +178,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         }
 
         // Load config & engine
-        $all = get_option('mg_products', array());
+        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 
@@ -283,7 +283,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             $sub_cats = array_values(array_unique($valid_subs));
         }
 
-        $all = get_option('mg_products', array());
+        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) {
             wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
