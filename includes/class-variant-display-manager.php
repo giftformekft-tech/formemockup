@@ -368,9 +368,6 @@ class MG_Variant_Display_Manager {
                     $mockup = self::extract_variation_image($variation);
                     if ($mockup !== '' && self::is_valid_mockup_url($mockup)) {
                         $visuals['variationMockups'][$variation_id] = $mockup;
-                        if ($type_slug !== '' && empty($visuals['typeMockups'][$type_slug])) {
-                            $visuals['typeMockups'][$type_slug] = $mockup;
-                        }
                     }
                 }
 
@@ -384,37 +381,48 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        if (!empty($types_payload)) {
-            $index_mockups = self::get_type_mockups_from_index($product->get_id(), $types_payload);
-            if (!empty($index_mockups)) {
-                foreach ($index_mockups as $type_slug => $mockup_url) {
-                    $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
-                    if ($existing !== '' && self::is_valid_mockup_url($existing)) {
+        // NEW: Use same logic as MG_Design_Gallery to get type mockups
+        // For each type, find the first variation that has that type and get its image
+        if (!empty($types_payload) && method_exists($product, 'get_children')) {
+            $children = $product->get_children();
+            foreach ($types_payload as $type_slug => $type_meta) {
+                if (isset($visuals['typeMockups'][$type_slug])) {
+                    continue; // Already have a mockup for this type
+                }
+                
+                // Find the preferred color for this type (same logic as design gallery)
+                $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+                $preferred_color = $color_order ? reset($color_order) : '';
+                if ($preferred_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                    $color_keys = array_keys($type_meta['colors']);
+                    $preferred_color = $color_keys ? reset($color_keys) : '';
+                }
+                
+                // Search through variations to find one matching this type
+                foreach ((array) $children as $child_id) {
+                    $variation = wc_get_product($child_id);
+                    if (!$variation || !method_exists($variation, 'get_attributes')) {
                         continue;
                     }
-                    if (self::is_valid_mockup_url($mockup_url)) {
-                        $visuals['typeMockups'][$type_slug] = $mockup_url;
+                    $attrs = $variation->get_attributes();
+                    $var_type = sanitize_title($attrs['pa_termektipus'] ?? '');
+                    
+                    if ($var_type !== $type_slug) {
+                        continue; // Not the type we're looking for
+                    }
+                    
+                    // Found a variation with this type, now get its image
+                    if (method_exists($variation, 'get_image_id')) {
+                        $image_id = (int) $variation->get_image_id();
+                        if ($image_id > 0 && function_exists('wp_get_attachment_image_url')) {
+                            $url = wp_get_attachment_image_url($image_id, 'large');
+                            if ($url && self::is_valid_mockup_url($url)) {
+                                $visuals['typeMockups'][$type_slug] = $url;
+                                break; // Found image for this type, move to next type
+                            }
+                        }
                     }
                 }
-            }
-            $render_fallbacks = self::get_type_mockups_from_renders($product, $types_payload);
-            if (!empty($render_fallbacks)) {
-                foreach ($render_fallbacks as $type_slug => $mockup_url) {
-                    // SKU-based mockups always override because they are specific to the product type
-                    if (self::is_valid_mockup_url($mockup_url)) {
-                        $visuals['typeMockups'][$type_slug] = $mockup_url;
-                    }
-                }
-            }
-        }
-
-        // TEMPORARY TEST: Hardcode a mockup URL for ALL types to test if JS rendering works
-        if (!empty($types_payload)) {
-            $uploads = wp_upload_dir();
-            $test_url = $uploads['baseurl'] . '/mg_mockups/FORME10012/FORME10012_ferfi-polo_fekete_front.webp';
-            foreach ($types_payload as $type_slug => $type_meta) {
-                $visuals['typeMockups'][$type_slug] = $test_url;
-                // Set for ALL types now
             }
         }
 
