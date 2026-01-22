@@ -122,6 +122,85 @@ if (!function_exists('mg_bulk_resolve_defaults')) {
     }
 }
 
+if (!function_exists('mg_bulk_normalize_option_products')) {
+    function mg_bulk_normalize_option_products($products_raw) {
+        if (!is_array($products_raw)) {
+            return array();
+        }
+        $normalized = array();
+        foreach ($products_raw as $index => $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $key = isset($product['key']) ? sanitize_title($product['key']) : '';
+            if ($key === '' && is_string($index)) {
+                $key = sanitize_title($index);
+            }
+            if ($key === '') {
+                continue;
+            }
+            $colors = array();
+            if (!empty($product['colors']) && is_array($product['colors'])) {
+                foreach ($product['colors'] as $color) {
+                    if (is_string($color)) {
+                        $color = array('slug' => $color, 'name' => $color);
+                    }
+                    if (!is_array($color)) {
+                        continue;
+                    }
+                    $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                    if ($slug === '' && isset($color['name'])) {
+                        $slug = sanitize_title($color['name']);
+                    }
+                    if ($slug === '') {
+                        continue;
+                    }
+                    $name = isset($color['name']) && $color['name'] !== '' ? wp_strip_all_tags($color['name']) : $slug;
+                    $colors[] = array(
+                        'slug' => $slug,
+                        'name' => $name,
+                    );
+                }
+            }
+            $sizes = array();
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) {
+                        continue;
+                    }
+                    $size_value = trim($size_value);
+                    if ($size_value === '' || in_array($size_value, $sizes, true)) {
+                        continue;
+                    }
+                    $sizes[] = $size_value;
+                }
+            }
+            $normalized[] = array(
+                'key'              => $key,
+                'label'            => isset($product['label']) ? wp_strip_all_tags($product['label']) : $key,
+                'colors'           => $colors,
+                'sizes'            => $sizes,
+                'primary_color'    => isset($product['primary_color']) ? sanitize_title($product['primary_color']) : '',
+                'primary_size'     => isset($product['primary_size']) ? sanitize_text_field($product['primary_size']) : '',
+                'size_color_matrix'=> isset($product['size_color_matrix']) && is_array($product['size_color_matrix']) ? $product['size_color_matrix'] : array(),
+                'is_primary'       => !empty($product['is_primary']),
+            );
+        }
+        return $normalized;
+    }
+}
+
+if (!function_exists('mg_bulk_get_catalog_products')) {
+    function mg_bulk_get_catalog_products() {
+        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
+        $all = is_array($all) ? $all : array();
+        if (!empty($all)) {
+            return $all;
+        }
+        return mg_bulk_normalize_option_products(get_option('mg_products', array()));
+    }
+}
+
 if (!class_exists('MG_Custom_Fields_Manager')) {
     require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
 }
@@ -178,7 +257,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         }
 
         // Load config & engine
-        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
+        $all = mg_bulk_get_catalog_products();
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 
@@ -283,7 +362,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             $sub_cats = array_values(array_unique($valid_subs));
         }
 
-        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
+        $all = mg_bulk_get_catalog_products();
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) {
             wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
