@@ -29,7 +29,6 @@ add_action('plugins_loaded', function(){
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
-        'admin/class-mockup-maintenance-page.php',
         'admin/class-surcharge-options-page.php',
         'admin/class-migration-page.php',
         'includes/class-generator.php',
