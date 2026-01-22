@@ -877,6 +877,73 @@ class MG_Virtual_Variant_Manager {
             $item->add_meta_data('mg_render_version', $render_version, true);
             $item->add_meta_data('render_version', $render_version, true);
         }
+
+        // Add design reference for download functionality
+        $design_reference = self::capture_design_reference_for_order_item($item, $values);
+        if (!empty($design_reference)) {
+            $item->add_meta_data('_mg_print_design_reference', $design_reference, true);
+        }
+    }
+
+    protected static function capture_design_reference_for_order_item($item, $values) {
+        $product_id = isset($values['product_id']) ? absint($values['product_id']) : 0;
+        $design_id = isset($values['mg_design_id']) ? absint($values['mg_design_id']) : 0;
+        
+        // Try to use design_id if available, otherwise fall back to product_id
+        $source_id = $design_id > 0 ? $design_id : $product_id;
+        
+        if ($source_id <= 0) {
+            return array();
+        }
+
+        // Get design file information from product meta
+        $design_path = get_post_meta($source_id, '_mg_last_design_path', true);
+        $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
+        
+        $design_attachment_id = absint(get_post_meta($source_id, '_mg_last_design_attachment', true));
+        
+        // If no path or attachment, return empty
+        if ($design_path === '' && $design_attachment_id <= 0) {
+            return array();
+        }
+
+        // Resolve design URL
+        $design_url = '';
+        if ($design_attachment_id > 0 && function_exists('wp_get_attachment_url')) {
+            $design_url = wp_get_attachment_url($design_attachment_id);
+        }
+        
+        if ($design_url === '' && $design_path !== '' && file_exists($design_path)) {
+            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+            $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
+            if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
+                $relative = ltrim(str_replace($base_dir, '', $design_path), '/');
+                $relative = str_replace('\\', '/', $relative);
+                $design_url = trailingslashit($base_url) . $relative;
+            }
+        }
+
+        // Get filename
+        $filename = '';
+        if ($design_path !== '') {
+            $filename = function_exists('wp_basename') ? wp_basename($design_path) : basename($design_path);
+        } elseif ($design_url !== '') {
+            $url_path = wp_parse_url($design_url, PHP_URL_PATH);
+            if (!empty($url_path)) {
+                $filename = function_exists('wp_basename') ? wp_basename($url_path) : basename($url_path);
+            }
+        }
+
+        return array(
+            'ordered_product_id'   => $product_id,
+            'source_product_id'    => $source_id,
+            'design_path'          => $design_path,
+            'design_filename'      => $filename,
+            'design_url'           => $design_url,
+            'design_attachment_id' => $design_attachment_id,
+            'captured_at'          => function_exists('current_time') ? current_time('mysql') : gmdate('Y-m-d H:i:s'),
+        );
     }
 
     public static function apply_cart_pricing($cart) {
