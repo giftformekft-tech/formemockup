@@ -529,7 +529,8 @@ class MG_Bulk_Queue {
                 $images_by_type_color = array();
                 
                 $generation_context_base = array(
-                    'product_id' => $result_product_id,  // NOW we have product_id and SKU!
+                    'product_id' => $result_product_id,
+                    'product_sku' => $actual_sku, // Explicitly pass SKU to ensure correct file paths
                     'design_path' => $design_path,
                 );
                 
