@@ -246,6 +246,18 @@ class MG_Virtual_Variant_Manager {
                 }
             }
 
+            // Generate preview URL for type selector
+            $preview_url = '';
+            if ($sku && !empty($color_order)) {
+                $preview_color = reset($color_order);
+                $uploads = wp_upload_dir();
+                $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+                if ($base_url !== '') {
+                    $filename = $sku . '_' . $type_slug . '_' . $preview_color . '_front.webp';
+                    $preview_url = $base_url . '/' . $sku . '/' . $filename;
+                }
+            }
+
             $types_payload[$type_slug] = array(
                 'label' => $type_meta['label'],
                 'color_order' => $color_order,
@@ -256,6 +268,7 @@ class MG_Virtual_Variant_Manager {
                 'description' => $type_description,
                 'price' => $type_price,
                 'size_surcharges' => $size_surcharges,
+                'preview_url' => $preview_url,
             );
         }
 

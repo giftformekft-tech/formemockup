@@ -708,10 +708,15 @@
     };
 
     VirtualVariantDisplay.prototype.getTypeMockup = function (typeSlug) {
-        if (!typeSlug || !this.config || !this.config.visuals) {
+        if (!typeSlug || !this.config) {
             return '';
         }
-        if (this.config.visuals.typeMockups && this.config.visuals.typeMockups[typeSlug]) {
+        // Priority 1: Direct preview_url from type config
+        if (this.config.types && this.config.types[typeSlug] && this.config.types[typeSlug].preview_url) {
+            return this.config.types[typeSlug].preview_url;
+        }
+        // Priority 2: Legacy typeMockups from visuals
+        if (this.config.visuals && this.config.visuals.typeMockups && this.config.visuals.typeMockups[typeSlug]) {
             return this.config.visuals.typeMockups[typeSlug];
         }
         return '';
