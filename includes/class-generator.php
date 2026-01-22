@@ -356,25 +356,29 @@ class MG_Generator {
      * Get product SKU from context for predictable file naming
      */
     private function get_product_sku_from_context(array $context) {
+        $sku = '';
+        
         // 1. Check if SKU is already in context
         if (!empty($context['product_sku'])) {
-            return MG_Product_Creator::sanitize_sku($context['product_sku']);
+            $sku = $context['product_sku'];
+        }
+        // 2. If product_id exists, get SKU from DB
+        else {
+            $product_id = !empty($context['product_id']) ? absint($context['product_id']) : 0;
+            if ($product_id > 0) {
+                $sku = get_post_meta($product_id, '_sku', true);
+            }
         }
         
-        // 2. If product_id exists, get/generate SKU
-        $product_id = !empty($context['product_id']) ? absint($context['product_id']) : 0;
-        if ($product_id > 0) {
-            if (class_exists('MG_Product_Creator')) {
-                $sku = MG_Product_Creator::generate_product_sku($product_id, '');
-                if ($sku) {
-                    return $sku;
-                }
-            }
+        // Sanitize SKU locally to avoid dependency on MG_Product_Creator
+        if ($sku && is_string($sku)) {
+            $sku = trim($sku);
+            // Allow alphanumeric, hyphens, underscores. Remove spaces and special chars.
+            $sku = preg_replace('/[^a-zA-Z0-9\-_]/', '', $sku);
+            $sku = strtoupper($sku);
             
-            // Fallback: check postmeta directly
-            $sku = get_post_meta($product_id, '_sku', true);
-            if ($sku && trim($sku) !== '') {
-                return MG_Product_Creator::sanitize_sku($sku);
+            if ($sku !== '') {
+                return $sku;
             }
         }
         
@@ -504,10 +508,18 @@ class MG_Generator {
         // NEW: SKU-based directory structure
         $sku = $this->get_product_sku_from_context($context);
         
+        // DEBUG LOGGING
+        error_log("[MG Generator] Resolving output dir. Context SKU: " . ($sku ? $sku : 'NONE'));
+        if (empty($sku) && !empty($context['product_sku'])) {
+             error_log("[MG Generator] SKU in context array but get_product_sku_from_context returned empty! Raw context SKU: " . $context['product_sku']);
+        }
+        
         if ($sku) {
             // Simple structure: /uploads/mg_mockups/{SKU}/
             $output_dir = wp_normalize_path(trailingslashit($base_dir) . 'mg_mockups/' . $sku);
+            error_log("[MG Generator] Using SKU path: $output_dir");
         } else {
+            error_log("[MG Generator] Fallback to OLD path structure because SKU is missing.");
             // Fallback to old complex structure
             $render_version = $this->resolve_render_version($context);
             $design_id = $this->resolve_design_id($design_path, $context);
