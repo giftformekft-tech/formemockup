@@ -1,5 +1,9 @@
 
 (function ($) {
+  // AJAX retry configuration
+  var MG_AJAX_MAX_RETRIES = 3;
+  var MG_AJAX_RETRY_DELAY = 1000; // 1 second base delay
+  var MG_AJAX_TIMEOUT = 120000; // 120 seconds
   function basename(name) { return (name || '').replace(/\.[^.]+$/, ''); }
   function normalizeLabel(value) { return (value || '').toString().trim().toLowerCase(); }
   function isJsonFile(file) {
@@ -849,6 +853,55 @@
     return 'Ismeretlen hiba';
   }
 
+  function ajaxWithRetry(options, retryCount, $statusElement) {
+    retryCount = retryCount || 0;
+    var maxRetries = MG_AJAX_MAX_RETRIES;
+    var baseDelay = MG_AJAX_RETRY_DELAY;
+
+    var deferred = $.Deferred();
+
+    $.ajax(options)
+      .done(function (data, textStatus, jqXHR) {
+        deferred.resolve(data, textStatus, jqXHR);
+      })
+      .fail(function (xhr, status, error) {
+        if (retryCount < maxRetries) {
+          var delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff: 1s, 2s, 4s
+          var attemptMsg = 'Újrapróbálkozás ' + (retryCount + 1) + '/' + maxRetries + ' (' + (delay / 1000) + 's)...';
+
+          if ($statusElement && $statusElement.length) {
+            $statusElement.text(attemptMsg);
+          }
+
+          console.log('AJAX failed, retrying in ' + delay + 'ms... (attempt ' + (retryCount + 1) + '/' + maxRetries + ')', {
+            status: status,
+            error: error,
+            url: options.url
+          });
+
+          setTimeout(function () {
+            ajaxWithRetry(options, retryCount + 1, $statusElement)
+              .done(function (data, textStatus, jqXHR) {
+                deferred.resolve(data, textStatus, jqXHR);
+              })
+              .fail(function (xhr, status, error) {
+                deferred.reject(xhr, status, error);
+              });
+          }, delay);
+        } else {
+          // Max retries exceeded
+          console.error('AJAX failed after ' + maxRetries + ' retries', {
+            status: status,
+            error: error,
+            xhr: xhr
+          });
+          deferred.reject(xhr, status, error);
+        }
+      });
+
+    return deferred.promise();
+  }
+
   function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot) {
     var rows = $rowsCollection.toArray();
     var total = rows.length;
@@ -1157,13 +1210,14 @@
       form.append('primary_color', defaultsSnapshot.color || '');
       form.append('primary_size', defaultsSnapshot.size || '');
 
-      $.ajax({
+      ajaxWithRetry({
         url: MG_BULK_ADV.ajax_url,
         method: 'POST',
         data: form,
         processData: false,
         contentType: false,
         dataType: 'json',
+        timeout: MG_AJAX_TIMEOUT,
         xhr: function () {
           var xhr = $.ajaxSettings.xhr();
           if (xhr && xhr.upload) {
@@ -1186,7 +1240,7 @@
           }
           return xhr;
         }
-      }).done(function (resp) {
+      }, 0, $state).done(function (resp) {
         if (resp && resp.success) {
           $state.text('OK…');
           var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id, 10) : 0;
@@ -1208,8 +1262,24 @@
           var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
           $state.text('Hiba: ' + msg);
         }
-      }).fail(function (xhr) {
-        $state.text('Hiba: ' + serverErrorToText(xhr));
+      }).fail(function (xhr, status, error) {
+        var errorMsg = serverErrorToText(xhr);
+        if (status === 'timeout') {
+          errorMsg = 'Időtúllépés (120s)';
+        } else if (xhr.status === 0) {
+          errorMsg = 'Hálózati hiba';
+        } else if (xhr.status === 404) {
+          errorMsg = 'AJAX endpoint nem található (404)';
+        } else if (xhr.status === 500) {
+          errorMsg = 'Szerver hiba (500)';
+        }
+        $state.text('Hiba: ' + errorMsg);
+        console.error('Bulk upload failed after retries:', {
+          status: status,
+          error: error,
+          xhr: xhr,
+          file: file.name
+        });
       }).always(function () {
         done++;
         active--;
