@@ -730,6 +730,37 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     .mg-pattern-preview__body {
         padding: 1rem;
     }
+
+    .mg-variant-type-modal__panel {
+        max-height: 65vh;
+    }
+
+    .mg-variant-type-modal__header {
+        padding: 0.85rem 1rem 0.6rem;
+    }
+
+    .mg-variant-type-modal__title {
+        font-size: 0.95rem;
+    }
+
+    .mg-variant-type-modal__body {
+        padding: 0.5rem 1rem 1rem;
+    }
+
+    .mg-variant-type-option {
+        padding: 0.55rem 0.75rem;
+        gap: 0.75rem;
+    }
+
+    .mg-variant-type-option__thumb {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+    }
+
+    .mg-variant-type-option__label {
+        font-size: 0.9rem;
+    }
 }
 
 @media (min-width: 769px) {
