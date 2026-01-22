@@ -510,7 +510,7 @@ class MG_Generator {
         
         // DEBUG FILE LOG
         $debug_file = wp_upload_dir()['basedir'] . '/mg_debug_log.txt';
-        $log_msg = date('Y-m-d H:i:s') . " [MG Generator] Context SKU: " . ($sku ? $sku : 'NONE') . " | Context Raw: " . ($context['product_sku'] ?? 'N/A') . "\n";
+        $log_msg = date('Y-m-d H:i:s') . " [MG Generator] Context SKU: " . ($sku ? $sku : 'NONE') . " | Context Keys: " . implode(',', array_keys($context)) . "\n";
         file_put_contents($debug_file, $log_msg, FILE_APPEND);
         
         if ($sku) {

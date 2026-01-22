@@ -539,6 +539,9 @@ class MG_Bulk_Queue {
                     'design_path' => $design_path,
                 );
                 
+                // DEBUG: Log context to verify SKU presence
+                error_log("[MG Bulk Queue] Context prepared for generator: " . print_r($generation_context_base, true));
+                
                 foreach ($selected as $prod) {
                     $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
                     if (is_wp_error($res)) {
