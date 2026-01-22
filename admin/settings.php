@@ -187,6 +187,7 @@ function mgstp_render_settings(){
 
     if ($is_detail && isset($_POST['mgstp_save_detail']) && check_admin_referer('mgstp_save_detail_'.$current_key)) {
         $row = isset($_POST['mg']) ? wp_unslash($_POST['mg']) : array();
+        $sync_global_catalog = !empty($_POST['mg_sync_global_catalog']) ? 1 : 0;
         $label = isset($row['label']) ? wp_kses_post($row['label']) : $products[$current_key]['label'];
         $sku   = isset($row['sku_prefix']) ? sanitize_text_field($row['sku_prefix']) : $products[$current_key]['sku_prefix'];
         $price = isset($row['price']) ? intval($row['price']) : $products[$current_key]['price'];
@@ -245,6 +246,15 @@ function mgstp_render_settings(){
             'size_color_matrix' => $matrix,
         );
         mgstp_save_products($products);
+        update_option('mg_sync_global_catalog', $sync_global_catalog);
+        if ($sync_global_catalog && function_exists('mg_update_global_catalog_from_products')) {
+            $sync_result = mg_update_global_catalog_from_products($products);
+            if (is_wp_error($sync_result)) {
+                echo '<div class="notice notice-error"><p>' . esc_html($sync_result->get_error_message()) . '</p></div>';
+            } else {
+                echo '<div class="notice notice-info"><p>' . esc_html__('A global catalog frissítve lett az mg_products adatok alapján.', 'mgstp') . '</p></div>';
+            }
+        }
         echo '<div class="notice notice-success is-dismissible"><p>'.esc_html__('Mentve.','mgstp').'</p></div>';
     }
 
@@ -333,6 +343,11 @@ function mgstp_render_settings(){
     echo '</td></tr>';
 
     echo '</tbody></table>';
+
+    $sync_enabled = (bool) get_option('mg_sync_global_catalog', 0);
+    echo '<h3 style="margin-top:24px">' . esc_html__('Global catalog szinkron', 'mgstp') . '</h3>';
+    echo '<p class="description">' . esc_html__('Ha bejelölöd, a mentéskor az mg_products tartalma bekerül a global-attributes.php fájlba.', 'mgstp') . '</p>';
+    echo '<label><input type="checkbox" name="mg_sync_global_catalog" value="1"' . checked($sync_enabled, true, false) . '> ' . esc_html__('Szinkronizálás mentéskor', 'mgstp') . '</label>';
 
     submit_button(__('Mentés','mgstp'), 'primary', 'mgstp_save_detail', true);
     echo ' <a class="button" href="'.esc_url(admin_url('admin.php?page=mockup-generator-settings')).'">← '.esc_html__('Vissza a listához','mgstp').'</a>';
