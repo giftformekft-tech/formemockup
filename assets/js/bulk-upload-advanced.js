@@ -1,67 +1,67 @@
 
-(function($){
-  function basename(name){ return (name||'').replace(/\.[^.]+$/, ''); }
-  function normalizeLabel(value){ return (value || '').toString().trim().toLowerCase(); }
-  function isJsonFile(file){
+(function ($) {
+  function basename(name) { return (name || '').replace(/\.[^.]+$/, ''); }
+  function normalizeLabel(value) { return (value || '').toString().trim().toLowerCase(); }
+  function isJsonFile(file) {
     if (!file) { return false; }
     var name = (file.name || '').toLowerCase();
     return file.type === 'application/json' || /\.json$/i.test(name);
   }
-  function isImageFile(file){
+  function isImageFile(file) {
     if (!file) { return false; }
     if (file.type && /^image\/(png|jpe?g|webp|gif|svg\+xml)$/i.test(file.type)) { return true; }
     return /\.(png|jpe?g|jpg|webp|gif|svg)$/i.test(file.name || '');
   }
-  function buildAutoName(baseName, mainLabel){
+  function buildAutoName(baseName, mainLabel) {
     var parts = [];
-    if (baseName){ parts.push(baseName); }
-    if (mainLabel){ parts.push(mainLabel); }
+    if (baseName) { parts.push(baseName); }
+    if (mainLabel) { parts.push(mainLabel); }
     return parts.join(' ');
   }
-  function updateRowAutoName($row){
-    if (!$row || !$row.length){ return; }
+  function updateRowAutoName($row) {
+    if (!$row || !$row.length) { return; }
     var $name = $row.find('input.mg-name');
-    if (!$name.length){ return; }
+    if (!$name.length) { return; }
     var autoEnabled = $name.data('mgAutoName') !== false;
-    if (!autoEnabled){ return; }
+    if (!autoEnabled) { return; }
     var baseName = $row.data('mgBaseName') || '';
     var mainLabel = '';
     var $mainSel = $row.find('select.mg-main');
-    if ($mainSel.length){
+    if ($mainSel.length) {
       var selectedText = $mainSel.find('option:selected').text() || '';
       var selectedVal = $mainSel.val() || '';
-      if (selectedVal && selectedVal !== '0'){
+      if (selectedVal && selectedVal !== '0') {
         mainLabel = selectedText;
       }
     }
     $name.val(buildAutoName(baseName, mainLabel));
   }
-  function buildMainSelect(){
+  function buildMainSelect() {
     var html = '<select class="mg-main">';
     html += '<option value="0">— Nincs —</option>';
-    (MG_BULK_ADV.mains||[]).forEach(function(m){
-      html += '<option value="'+m.id+'">'+m.name+'</option>';
+    (MG_BULK_ADV.mains || []).forEach(function (m) {
+      html += '<option value="' + m.id + '">' + m.name + '</option>';
     });
     html += '</select>';
     return $(html);
   }
-  function buildSubMulti(parentId){
+  function buildSubMulti(parentId) {
     var list = (MG_BULK_ADV.subs && MG_BULK_ADV.subs[parentId]) ? MG_BULK_ADV.subs[parentId] : [];
     var html = '<select class="mg-subs" multiple size="3">';
-    list.forEach(function(s){ html += '<option value="'+s.id+'">'+s.name+'</option>'; });
+    list.forEach(function (s) { html += '<option value="' + s.id + '">' + s.name + '</option>'; });
     html += '</select>';
     return $(html);
   }
-  function refreshSubSelect($row, parentId){
+  function refreshSubSelect($row, parentId) {
     var $current = $row.find('select.mg-subs');
     var $new = buildSubMulti(parentId);
-    if ($current.length){ $current.replaceWith($new); }
+    if ($current.length) { $current.replaceWith($new); }
     else { $row.find('td').eq(4).append($new); }
     return $new;
   }
-  function collectSubValues($sel){ var out=[]; $sel.find('option:selected').each(function(){ out.push($(this).val()); }); return out; }
+  function collectSubValues($sel) { var out = []; $sel.find('option:selected').each(function () { out.push($(this).val()); }); return out; }
 
-  function getAiConfig(){
+  function getAiConfig() {
     return {
       enabled: $('#mg-ai-mode-toggle').is(':checked'),
       fields: {
@@ -72,47 +72,47 @@
     };
   }
 
-  function setJsonStatus($row, message, state){
-    if (!$row || !$row.length){ return; }
+  function setJsonStatus($row, message, state) {
+    if (!$row || !$row.length) { return; }
     var $status = $row.find('.mg-json-status');
-    if (!$status.length){ return; }
+    if (!$status.length) { return; }
     $status.removeClass('is-warning is-error is-success');
-    if (state){ $status.addClass(state); }
+    if (state) { $status.addClass(state); }
     $status.text(message || '');
   }
 
-  function selectOptionByText($select, label){
-    if (!$select || !$select.length){ return false; }
+  function selectOptionByText($select, label) {
+    if (!$select || !$select.length) { return false; }
     var target = normalizeLabel(label);
-    if (!target){ return false; }
+    if (!target) { return false; }
     var matched = '';
-    $select.find('option').each(function(){
-      if (normalizeLabel($(this).text()) === target){
+    $select.find('option').each(function () {
+      if (normalizeLabel($(this).text()) === target) {
         matched = $(this).val();
         return false;
       }
     });
-    if (matched !== ''){
+    if (matched !== '') {
       $select.val(matched);
       return true;
     }
     return false;
   }
 
-  function selectMultiByText($select, labels){
-    if (!$select || !$select.length){ return; }
+  function selectMultiByText($select, labels) {
+    if (!$select || !$select.length) { return; }
     var targets = (Array.isArray(labels) ? labels : [labels]).map(normalizeLabel).filter(Boolean);
-    if (!targets.length){ return; }
-    $select.find('option').each(function(){
+    if (!targets.length) { return; }
+    $select.find('option').each(function () {
       var text = normalizeLabel($(this).text());
       $(this).prop('selected', targets.indexOf(text) !== -1);
     });
   }
 
-  function applyAiDataToRow($row, payload){
-    if (!$row || !$row.length || !payload || typeof payload !== 'object'){ return; }
+  function applyAiDataToRow($row, payload) {
+    if (!$row || !$row.length || !payload || typeof payload !== 'object') { return; }
     var config = getAiConfig();
-    if (!config.enabled){ return; }
+    if (!config.enabled) { return; }
     var categories = payload.categories || {};
     var mainLabel = (categories && typeof categories.main === 'string') ? categories.main : '';
     var subLabel = (categories && typeof categories.sub === 'string') ? categories.sub : '';
@@ -121,8 +121,8 @@
     var $subsSel = $row.find('select.mg-subs');
     var mainChanged = false;
 
-    if (config.fields.main && mainLabel){
-      if (selectOptionByText($mainSel, mainLabel)){
+    if (config.fields.main && mainLabel) {
+      if (selectOptionByText($mainSel, mainLabel)) {
         mainChanged = true;
         var mainId = parseInt($mainSel.val(), 10) || 0;
         $subsSel = refreshSubSelect($row, mainId);
@@ -130,71 +130,71 @@
       }
     }
 
-    if (config.fields.sub && subLabel){
+    if (config.fields.sub && subLabel) {
       var currentMain = parseInt($mainSel.val(), 10) || 0;
-      if (!$subsSel.length || mainChanged){
+      if (!$subsSel.length || mainChanged) {
         $subsSel = refreshSubSelect($row, currentMain);
       }
       selectMultiByText($subsSel, [subLabel]);
     }
 
-    if (config.fields.tags){
+    if (config.fields.tags) {
       var tagList = [];
-      if (Array.isArray(tags)){
-        tagList = tags.map(function(tag){ return (tag || '').toString().trim(); }).filter(Boolean);
-      } else if (typeof tags === 'string'){
-        tagList = tags.split(',').map(function(tag){ return tag.trim(); }).filter(Boolean);
+      if (Array.isArray(tags)) {
+        tagList = tags.map(function (tag) { return (tag || '').toString().trim(); }).filter(Boolean);
+      } else if (typeof tags === 'string') {
+        tagList = tags.split(',').map(function (tag) { return tag.trim(); }).filter(Boolean);
       }
-      if (tagList.length){
+      if (tagList.length) {
         $row.find('.mg-tags-input').val(tagList.join(', '));
       }
     }
   }
 
-  function applyAiToExistingRows(){
+  function applyAiToExistingRows() {
     var config = getAiConfig();
-    if (!config.enabled){ return; }
-    $('#mg-bulk-rows .mg-item-row').each(function(){
+    if (!config.enabled) { return; }
+    $('#mg-bulk-rows .mg-item-row').each(function () {
       var payload = $(this).data('mgAiPayload');
-      if (payload){ applyAiDataToRow($(this), payload); }
+      if (payload) { applyAiDataToRow($(this), payload); }
     });
   }
 
-  function getProductByKey(key){
+  function getProductByKey(key) {
     var list = (MG_BULK_ADV.products || []);
-    for (var i=0; i<list.length; i++){
-      if (list[i] && list[i].key === key){ return list[i]; }
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].key === key) { return list[i]; }
     }
     return null;
   }
 
-  function renderDefaultColorOptions($select, typeKey, preferredColor){
+  function renderDefaultColorOptions($select, typeKey, preferredColor) {
     var product = getProductByKey(typeKey || '');
     var colors = (product && Array.isArray(product.colors)) ? product.colors : [];
     var targetColor = preferredColor;
-    if ((!targetColor || typeof targetColor !== 'string' || targetColor === '') && product && product.primary_color){
+    if ((!targetColor || typeof targetColor !== 'string' || targetColor === '') && product && product.primary_color) {
       targetColor = product.primary_color;
     }
     var activeColor = '';
     $select.empty();
-    if (!colors.length){
+    if (!colors.length) {
       $select.append($('<option>', { value: '', text: '— Ehhez a típushoz nincs szín —' }));
       return '';
     }
-    colors.forEach(function(c, idx){
+    colors.forEach(function (c, idx) {
       if (!c || !c.slug) { return; }
       var name = c.name || c.slug;
       var selectThis = false;
-      if (targetColor && c.slug === targetColor){ selectThis = true; }
-      else if (!targetColor && idx === 0){ selectThis = true; }
+      if (targetColor && c.slug === targetColor) { selectThis = true; }
+      else if (!targetColor && idx === 0) { selectThis = true; }
       var $opt = $('<option>', { value: c.slug, text: name });
-      if (selectThis){
+      if (selectThis) {
         $opt.prop('selected', true);
         activeColor = c.slug;
       }
       $select.append($opt);
     });
-    if (!activeColor && colors.length){
+    if (!activeColor && colors.length) {
       activeColor = colors[0].slug;
       $select.val(activeColor);
     }
@@ -223,7 +223,7 @@
     return activeColor;
   }
 
-  function renderDefaultSizeOptions($select, typeKey, colorSlug, preferredSize){
+  function renderDefaultSizeOptions($select, typeKey, colorSlug, preferredSize) {
     if (!$select || !$select.length) { return ''; }
     var product = getProductByKey(typeKey || '');
     var sizes = [];
@@ -245,10 +245,10 @@
     }
     if (!Array.isArray(sizes)) { sizes = []; }
     sizes = sizes
-      .map(function(item){ return (typeof item === 'string') ? item.trim() : ''; })
-      .filter(function(item){ return item !== ''; });
+      .map(function (item) { return (typeof item === 'string') ? item.trim() : ''; })
+      .filter(function (item) { return item !== ''; });
     var unique = [];
-    sizes.forEach(function(item){ if (unique.indexOf(item) === -1) { unique.push(item); } });
+    sizes.forEach(function (item) { if (unique.indexOf(item) === -1) { unique.push(item); } });
     sizes = unique;
     var targetSize = preferredSize;
     if ((!targetSize || typeof targetSize !== 'string' || targetSize === '') && product && typeof product.primary_size === 'string') {
@@ -258,38 +258,38 @@
       targetSize = '';
     }
     $select.empty();
-    if (!sizes.length){
+    if (!sizes.length) {
       $select.append($('<option>', { value: '', text: '— Ehhez a színhez nincs méret —' }));
       $select.prop('disabled', true);
       return '';
     }
     $select.prop('disabled', false);
     var activeSize = '';
-    sizes.forEach(function(sizeLabel, idx){
+    sizes.forEach(function (sizeLabel, idx) {
       var selectThis = false;
-      if (targetSize && sizeLabel === targetSize){ selectThis = true; }
-      else if (!targetSize && idx === 0){ selectThis = true; }
+      if (targetSize && sizeLabel === targetSize) { selectThis = true; }
+      else if (!targetSize && idx === 0) { selectThis = true; }
       var $opt = $('<option>', { value: sizeLabel, text: sizeLabel });
-      if (selectThis){
+      if (selectThis) {
         $opt.prop('selected', true);
         activeSize = sizeLabel;
       }
       $select.append($opt);
     });
-    if (!activeSize && sizes.length){
+    if (!activeSize && sizes.length) {
       activeSize = sizes[0];
       $select.val(activeSize);
     }
     return activeSize;
   }
 
-  function initDefaultSelectors(){
+  function initDefaultSelectors() {
     var $type = $('#mg-default-type');
     var $color = $('#mg-default-color');
     var $size = $('#mg-default-size');
-    if (!$type.length){ return; }
+    if (!$type.length) { return; }
     var initialType = (MG_BULK_ADV.default_type && typeof MG_BULK_ADV.default_type === 'string') ? MG_BULK_ADV.default_type : ($type.val() || '');
-    if (initialType){ $type.val(initialType); }
+    if (initialType) { $type.val(initialType); }
     var initialColorPref = (MG_BULK_ADV.default_color && typeof MG_BULK_ADV.default_color === 'string' && MG_BULK_ADV.default_color !== '') ? MG_BULK_ADV.default_color : null;
     var initialSizePref = (MG_BULK_ADV.default_size && typeof MG_BULK_ADV.default_size === 'string' && MG_BULK_ADV.default_size !== '') ? MG_BULK_ADV.default_size : null;
     var resolvedColor = $color.length ? renderDefaultColorOptions($color, $type.val(), initialColorPref) : '';
@@ -299,7 +299,7 @@
       color: resolvedColor || '',
       size: resolvedSize || ''
     };
-    $type.on('change', function(){
+    $type.on('change', function () {
       var selectedType = $(this).val();
       var updatedColor = $color.length ? renderDefaultColorOptions($color, selectedType, null) : '';
       var updatedSize = $size.length ? renderDefaultSizeOptions($size, selectedType, updatedColor, null) : '';
@@ -309,8 +309,8 @@
         size: updatedSize || ''
       };
     });
-    if ($color.length){
-      $color.on('change', function(){
+    if ($color.length) {
+      $color.on('change', function () {
         if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
         MG_BULK_ADV.activeDefaults.type = $type.val() || '';
         var activeColor = $(this).val() || '';
@@ -320,8 +320,8 @@
         MG_BULK_ADV.activeDefaults.size = resolved || '';
       });
     }
-    if ($size.length){
-      $size.on('change', function(){
+    if ($size.length) {
+      $size.on('change', function () {
         if (!MG_BULK_ADV.activeDefaults) MG_BULK_ADV.activeDefaults = {};
         MG_BULK_ADV.activeDefaults.type = $type.val() || '';
         MG_BULK_ADV.activeDefaults.size = $(this).val() || '';
@@ -329,10 +329,10 @@
     }
   }
 
-  function sanitizeWorkerOptions(list){
+  function sanitizeWorkerOptions(list) {
     var out = [];
     if (Array.isArray(list)) {
-      list.forEach(function(item){
+      list.forEach(function (item) {
         var parsed = parseInt(item, 10);
         if (!isNaN(parsed) && out.indexOf(parsed) === -1) {
           out.push(parsed);
@@ -340,14 +340,14 @@
       });
     }
     if (!out.length) { out.push(1); }
-    out.sort(function(a, b){ return a - b; });
+    out.sort(function (a, b) { return a - b; });
     return out;
   }
 
-  function updateWorkerToggleUI(activeCount){
+  function updateWorkerToggleUI(activeCount) {
     var count = parseInt(activeCount, 10);
     if (isNaN(count)) { count = 1; }
-    $('.mg-worker-toggle').each(function(){
+    $('.mg-worker-toggle').each(function () {
       var val = parseInt($(this).attr('data-workers'), 10);
       var isActive = (!isNaN(val) && val === count);
       $(this).toggleClass('is-active', isActive);
@@ -356,7 +356,7 @@
     $('.mg-worker-active-count').text(count);
   }
 
-  function showWorkerFeedback(message, state){
+  function showWorkerFeedback(message, state) {
     var $target = $('.mg-worker-feedback');
     if (!$target.length) { return; }
     $target.removeClass('is-error is-success');
@@ -365,7 +365,7 @@
     $target.text(message || '');
   }
 
-  function showQueueFeedback(message, state){
+  function showQueueFeedback(message, state) {
     var $target = $('.mg-queue-feedback');
     if (!$target.length) { return; }
     $target.removeClass('is-error is-success');
@@ -374,7 +374,7 @@
     $target.text(message || '');
   }
 
-  function initWorkerToggle(){
+  function initWorkerToggle() {
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
     var opts = sanitizeWorkerOptions(window.MG_BULK_ADV.worker_options);
     window.MG_BULK_ADV.worker_options = opts;
@@ -387,7 +387,7 @@
     showWorkerFeedback('', null);
   }
 
-  function applyBulkMode(mode){
+  function applyBulkMode(mode) {
     var $panel = $('.mg-panel-body--bulk');
     if (!$panel.length) { return; }
     var selected = (mode === 'queue') ? 'queue' : 'direct';
@@ -396,44 +396,44 @@
     $('.mg-worker-control').attr('aria-hidden', selected === 'queue');
     try {
       window.localStorage.setItem('mg_bulk_mode', selected);
-    } catch (e) {}
+    } catch (e) { }
     $('input[name="mg-bulk-mode"][value="' + selected + '"]').prop('checked', true);
   }
 
-  function getBulkMode(){
+  function getBulkMode() {
     var checked = $('input[name="mg-bulk-mode"]:checked').val();
     if (checked === 'queue') { return 'queue'; }
     return 'direct';
   }
 
-  function initBulkMode(){
+  function initBulkMode() {
     var stored = '';
     try {
       stored = window.localStorage.getItem('mg_bulk_mode') || '';
-    } catch (e) {}
+    } catch (e) { }
     if (stored !== 'queue' && stored !== 'direct') {
       stored = 'direct';
     }
     applyBulkMode(stored);
   }
 
-  function initQueueSliders(){
+  function initQueueSliders() {
     var $batch = $('#mg-bulk-queue-batch');
     var $batchValue = $('#mg-bulk-queue-batch-value');
     var $interval = $('#mg-bulk-queue-interval');
     var $intervalValue = $('#mg-bulk-queue-interval-value');
     if ($batch.length && $batchValue.length) {
       $batchValue.text($batch.val());
-      $batch.on('input change', function(){ $batchValue.text($(this).val()); });
+      $batch.on('input change', function () { $batchValue.text($(this).val()); });
     }
     if ($interval.length && $intervalValue.length) {
       $intervalValue.text($interval.val());
-      $interval.on('input change', function(){ $intervalValue.text($(this).val()); });
+      $interval.on('input change', function () { $intervalValue.text($(this).val()); });
     }
     showQueueFeedback('', null);
   }
 
-  function mgEnsureHeader(){
+  function mgEnsureHeader() {
     var $thead = $('.mg-bulk-table thead tr');
     if ($thead.length) {
       if ($thead.find('th:contains("Előnézet")').length === 0) { $('<th>Előnézet</th>').insertAfter($thead.find('th').first()); }
@@ -445,28 +445,28 @@
       $('<th>Tag-ek</th>').insertBefore($thead.find('th').last());
     }
   }
-  function mgDedupeTagInputs(){
-    $('#mg-bulk-rows tr.mg-item-row').each(function(){
+  function mgDedupeTagInputs() {
+    $('#mg-bulk-rows tr.mg-item-row').each(function () {
       var $inputs = $(this).find('.mg-tags-input');
-      if ($inputs.length > 1){ $inputs.slice(1).closest('td').remove(); }
+      if ($inputs.length > 1) { $inputs.slice(1).closest('td').remove(); }
     });
   }
 
-  function renderRows(files){
+  function renderRows(files) {
     var $tbody = $('#mg-bulk-rows').empty();
     var allFiles = Array.from(files || []);
     var imageFiles = allFiles.filter(isImageFile);
     var jsonFiles = allFiles.filter(isJsonFile);
     var jsonByBase = {};
-    jsonFiles.forEach(function(file){
+    jsonFiles.forEach(function (file) {
       var base = basename(file.name || '');
-      if (!base){ return; }
+      if (!base) { return; }
       var key = base.toLowerCase();
-      if (!jsonByBase[key]){
+      if (!jsonByBase[key]) {
         jsonByBase[key] = file;
       }
     });
-    if (!imageFiles.length){
+    if (!imageFiles.length) {
       $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
       return;
     }
@@ -474,36 +474,36 @@
     window.MG_BULK_ADV.imageFiles = imageFiles;
     window.MG_BULK_ADV.jsonFiles = jsonByBase;
     mgEnsureHeader();
-    imageFiles.forEach(function(file, idx){
+    imageFiles.forEach(function (file, idx) {
       var $tr = $('<tr class="mg-item-row">');
-      $tr.append('<td>'+(idx+1)+'</td>');
+      $tr.append('<td>' + (idx + 1) + '</td>');
       /* Preview cell */
-      (function(){
+      (function () {
         var td = $('<td class="mg-thumb"><div class="mg-thumb-box"></div></td>');
-        if (isImageFile(file)){
-          var url = (window.URL||window.webkitURL).createObjectURL(file);
-          td.find('.mg-thumb-box').append($('<img>',{src:url, alt:file.name, loading:'lazy'}));
+        if (isImageFile(file)) {
+          var url = (window.URL || window.webkitURL).createObjectURL(file);
+          td.find('.mg-thumb-box').append($('<img>', { src: url, alt: file.name, loading: 'lazy' }));
           window.MG_BULK_ADV = window.MG_BULK_ADV || {}; MG_BULK_ADV._blobUrls = MG_BULK_ADV._blobUrls || []; MG_BULK_ADV._blobUrls.push(url);
         } else { td.find('.mg-thumb-box').text('—'); }
         $tr.append(td);
       })();
-      $tr.append('<td class="mg-filename">'+(file.name||'')+'<div class="mg-json-status"></div></td>');
+      $tr.append('<td class="mg-filename">' + (file.name || '') + '<div class="mg-json-status"></div></td>');
       var $main = $('<td>'); var $mainSel = buildMainSelect();
-      var $sub = $('<td>');  var $subsSel = buildSubMulti(0);
+      var $sub = $('<td>'); var $subsSel = buildSubMulti(0);
       $main.append($mainSel); $sub.append($subsSel);
       $tr.append($main).append($sub);
       /* V8: bind main->subs change */
-      $mainSel.on('change', function(){
-        var pid = parseInt($(this).val(),10) || 0;
+      $mainSel.on('change', function () {
+        var pid = parseInt($(this).val(), 10) || 0;
         $subsSel = refreshSubSelect($tr, pid);
         updateRowAutoName($tr);
       });
-      var baseName = basename(file.name||'');
+      var baseName = basename(file.name || '');
       $tr.data('mgBaseName', baseName);
       $tr.append('<td><input type="text" class="mg-name" value=""></td>');
       var $nameInput = $tr.find('input.mg-name');
       $nameInput.data('mgAutoName', true);
-      $nameInput.on('input', function(){ $(this).data('mgAutoName', false); });
+      $nameInput.on('input', function () { $(this).data('mgAutoName', false); });
       updateRowAutoName($tr);
       $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
       $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
@@ -511,16 +511,16 @@
       $tr.append('<td class="mg-tags"><input type="text" class="mg-tags-input" placeholder="pl. horgaszat, ponty, kapucnis"></td>');
       $tr.append('<td class="mg-state">Várakozik</td>');
       $tbody.append($tr);
-    mgDedupeTagInputs();
+      mgDedupeTagInputs();
 
       var jsonFile = jsonByBase[baseName.toLowerCase()] || null;
-      if (!jsonFile){
+      if (!jsonFile) {
         setJsonStatus($tr, 'Nincs páros JSON.', 'is-warning');
         return;
       }
 
       var reader = new FileReader();
-      reader.onload = function(){
+      reader.onload = function () {
         var text = reader.result || '';
         try {
           var payload = JSON.parse(text);
@@ -531,7 +531,7 @@
           setJsonStatus($tr, 'Hibás JSON – kézi kitöltés.', 'is-error');
         }
       };
-      reader.onerror = function(){
+      reader.onerror = function () {
         setJsonStatus($tr, 'Nem olvasható JSON – kézi kitöltés.', 'is-error');
       };
       reader.readAsText(jsonFile);
@@ -540,123 +540,165 @@
     mgDedupeTagInputs();
   }
 
-  function updateAllAutoNames(){
-    $('#mg-bulk-rows .mg-item-row').each(function(){
+  function updateAllAutoNames() {
+    $('#mg-bulk-rows .mg-item-row').each(function () {
       updateRowAutoName($(this));
     });
   }
 
-  function bindParentSearch(){
-    $(document).off('input.mgps','.mg-parent-search').on('input.mgps', '.mg-parent-search', function(){
+  function bindParentSearch() {
+    $(document).off('input.mgps', '.mg-parent-search').on('input.mgps', '.mg-parent-search', function () {
       var $wrap = $(this).closest('.mg-parent');
       var q = $(this).val().trim();
-      if (!q){ $wrap.find('.mg-parent-results').empty(); return; }
+      if (!q) { $wrap.find('.mg-parent-results').empty(); return; }
       $.ajax({
-        url: MG_SEARCH.ajax_url, method:'POST', dataType:'json',
-        data: { action:'mg_search_products', nonce:MG_SEARCH.nonce, q:q }
-      }).done(function(resp){
+        url: MG_SEARCH.ajax_url, method: 'POST', dataType: 'json',
+        data: { action: 'mg_search_products', nonce: MG_SEARCH.nonce, q: q }
+      }).done(function (resp) {
         var html = '';
-        if (resp && resp.success && Array.isArray(resp.data)){
-          resp.data.forEach(function(r){
-            html += '<div class="mg-option" data-id="'+r.id+'">'+r.text+'</div>';
+        if (resp && resp.success && Array.isArray(resp.data)) {
+          resp.data.forEach(function (r) {
+            html += '<div class="mg-option" data-id="' + r.id + '">' + r.text + '</div>';
           });
         }
         $wrap.find('.mg-parent-results').html(html);
       });
     });
-    $(document).off('click.mgps','.mg-parent .mg-option').on('click.mgps', '.mg-parent .mg-option', function(){
-      var id = parseInt($(this).data('id'),10)||0;
+    $(document).off('click.mgps', '.mg-parent .mg-option').on('click.mgps', '.mg-parent .mg-option', function () {
+      var id = parseInt($(this).data('id'), 10) || 0;
       var $wrap = $(this).closest('.mg-parent');
       $wrap.find('.mg-parent-id').val(String(id));
-      $wrap.find('.mg-parent-results').html('<div class="mg-picked">Kiválasztva: '+$(this).text()+'</div>');
+      $wrap.find('.mg-parent-results').html('<div class="mg-picked">Kiválasztva: ' + $(this).text() + '</div>');
     });
   }
 
-  $('#mg-bulk-files-adv').on('change', function(){ renderRows(this.files); });
-  $(document).on('change', '#mg-default-type', function(){ updateAllAutoNames(); });
+  $('#mg-bulk-files-adv').on('change', function () { renderRows(this.files); });
+  $(document).on('change', '#mg-default-type', function () { updateAllAutoNames(); });
 
-  function copyMainFromFirst(){
+  function copyMainFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
+    if ($rows.length <= 1) { return; }
     var $first = $rows.first();
     var mainVal = $first.find('select.mg-main').val() || '0';
-    $rows.slice(1).each(function(){
+    $rows.slice(1).each(function () {
       var $row = $(this);
       var $mainSel = $row.find('select.mg-main');
-      if ($mainSel.val() !== mainVal){
+      if ($mainSel.val() !== mainVal) {
         $mainSel.val(mainVal);
-        var pid = parseInt(mainVal,10) || 0;
+        var pid = parseInt(mainVal, 10) || 0;
         refreshSubSelect($row, pid);
       }
     });
   }
 
-  function copySubsFromFirst(){
+  function copySubsFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
+    if ($rows.length <= 1) { return; }
     var $first = $rows.first();
     var subVals = $first.find('select.mg-subs').val() || [];
     if (!Array.isArray(subVals)) { subVals = subVals ? [subVals] : []; }
-    $rows.slice(1).each(function(){
+    $rows.slice(1).each(function () {
       var $row = $(this);
       var $subsSel = $row.find('select.mg-subs');
-      if (!$subsSel.length){
-        var pid = parseInt($row.find('select.mg-main').val(),10) || 0;
+      if (!$subsSel.length) {
+        var pid = parseInt($row.find('select.mg-main').val(), 10) || 0;
         $subsSel = refreshSubSelect($row, pid);
       }
-      if (!subVals.length){
+      if (!subVals.length) {
         $subsSel.val([]);
         return;
       }
-      $subsSel.find('option').each(function(){
+      $subsSel.find('option').each(function () {
         var $opt = $(this);
         $opt.prop('selected', subVals.indexOf($opt.val()) !== -1);
       });
     });
   }
 
-  function copyParentFromFirst(){
+  function copyParentFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
+    if ($rows.length <= 1) { return; }
     var $first = $rows.first();
     var parentId = $first.find('.mg-parent-id').val() || '0';
     var parentHtml = $first.find('.mg-parent-results').html();
-    $rows.slice(1).each(function(){
+    $rows.slice(1).each(function () {
       var $row = $(this);
       $row.find('.mg-parent-id').val(parentId);
       $row.find('.mg-parent-results').html(parentHtml);
     });
   }
 
-  function copyTagsFromFirst(){
+  function copyTagsFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
-    var tagsVal = ($rows.first().find('.mg-tags-input').val()||'').trim();
-    $rows.slice(1).each(function(){
+    if ($rows.length <= 1) { return; }
+    var tagsVal = ($rows.first().find('.mg-tags-input').val() || '').trim();
+    $rows.slice(1).each(function () {
       $(this).find('.mg-tags-input').val(tagsVal);
     });
   }
 
-  function copyCustomFlagFromFirst(){
+  function copyCustomFlagFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
+    if ($rows.length <= 1) { return; }
     var checked = $rows.first().find('.mg-custom-flag').is(':checked');
-    $rows.slice(1).each(function(){
+    $rows.slice(1).each(function () {
       $(this).find('.mg-custom-flag').prop('checked', checked);
     });
   }
 
-  function setupCopyButtons(){
+  function appendMainCategoryToAll() {
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if (!$rows.length) { return; }
+    $rows.each(function () {
+      var $row = $(this);
+      var $name = $row.find('input.mg-name');
+      if (!$name.length) { return; }
+      var $mainSel = $row.find('select.mg-main');
+      if (!$mainSel.length) { return; }
+      var mainVal = $mainSel.val() || '0';
+      if (mainVal === '0') { return; }
+      var mainLabel = $mainSel.find('option:selected').text() || '';
+      if (!mainLabel) { return; }
+      var currentName = $name.val() || '';
+      var newName = currentName ? (currentName + ' ' + mainLabel) : mainLabel;
+      $name.val(newName);
+      $name.data('mgAutoName', false);
+    });
+  }
+
+  function appendSubCategoryToAll() {
+    var $rows = $('#mg-bulk-rows .mg-item-row');
+    if (!$rows.length) { return; }
+    $rows.each(function () {
+      var $row = $(this);
+      var $name = $row.find('input.mg-name');
+      if (!$name.length) { return; }
+      var $subsSel = $row.find('select.mg-subs');
+      if (!$subsSel.length) { return; }
+      var $firstSelected = $subsSel.find('option:selected').first();
+      if (!$firstSelected.length) { return; }
+      var subLabel = $firstSelected.text() || '';
+      if (!subLabel) { return; }
+      var currentName = $name.val() || '';
+      var newName = currentName ? (currentName + ' ' + subLabel) : subLabel;
+      $name.val(newName);
+      $name.data('mgAutoName', false);
+    });
+  }
+
+  function setupCopyButtons() {
     var $legacy = $('#mg-bulk-apply-first');
-    if (!$legacy.length || $legacy.data('mgSplitReady')){ return; }
+    if (!$legacy.length || $legacy.data('mgSplitReady')) { return; }
     $legacy.data('mgSplitReady', true);
     var $wrapper = $legacy.parent();
-    if ($wrapper.length){ $wrapper.addClass('mg-copy-actions'); }
+    if ($wrapper.length) { $wrapper.addClass('mg-copy-actions'); }
     var $mainBtn = $('<button type="button" class="button" id="mg-bulk-copy-main">Főkategória másolása az első sorból</button>');
     var $subsBtn = $('<button type="button" class="button" id="mg-bulk-copy-subs">Alkategóriák másolása az első sorból</button>');
     var $tagsBtn = $('<button type="button" class="button" id="mg-bulk-copy-tags">Tag-ek másolása az első sorból</button>');
     var $customBtn = $('<button type="button" class="button" id="mg-bulk-copy-custom">Egyedi jelölés másolása</button>');
-    $legacy.after($customBtn).after($tagsBtn).after($subsBtn).after($mainBtn);
+    var $appendMainBtn = $('<button type="button" class="button" id="mg-bulk-append-main">Főkategória hozzáadása a névhez</button>');
+    var $appendSubBtn = $('<button type="button" class="button" id="mg-bulk-append-sub">Alkategória hozzáadása a névhez</button>');
+    $legacy.after($appendSubBtn).after($appendMainBtn).after($customBtn).after($tagsBtn).after($subsBtn).after($mainBtn);
   }
 
   $(setupCopyButtons);
@@ -664,15 +706,15 @@
   $(initWorkerToggle);
   $(initBulkMode);
   $(initQueueSliders);
-  $(document).on('change', '#mg-ai-mode-toggle, .mg-ai-field-cb', function(){
+  $(document).on('change', '#mg-ai-mode-toggle, .mg-ai-field-cb', function () {
     applyAiToExistingRows();
   });
 
-  $(document).on('change', 'input[name="mg-bulk-mode"]', function(){
+  $(document).on('change', 'input[name="mg-bulk-mode"]', function () {
     applyBulkMode($(this).val());
   });
 
-  $(document).on('click', '#mg-bulk-queue-save', function(e){
+  $(document).on('click', '#mg-bulk-queue-save', function (e) {
     e.preventDefault();
     if (!window.MG_BULK_ADV || window.MG_BULK_ADV._savingQueueConfig) { return; }
     var batch = parseInt($('#mg-bulk-queue-batch').val(), 10);
@@ -687,7 +729,7 @@
       nonce: window.MG_BULK_ADV.nonce,
       batch_size: batch,
       interval_minutes: interval
-    }, function(resp){
+    }, function (resp) {
       if (resp && resp.success && resp.data) {
         if (typeof resp.data.batch_size !== 'undefined') {
           $('#mg-bulk-queue-batch').val(resp.data.batch_size);
@@ -703,35 +745,45 @@
         var errMsg = window.MG_BULK_ADV.queue_feedback_error || 'Nem sikerült menteni.';
         showQueueFeedback(errMsg, 'error');
       }
-    }, 'json').fail(function(){
+    }, 'json').fail(function () {
       var errMsg = window.MG_BULK_ADV.queue_feedback_error || 'Nem sikerült menteni.';
       showQueueFeedback(errMsg, 'error');
-    }).always(function(){
+    }).always(function () {
       window.MG_BULK_ADV._savingQueueConfig = false;
     });
   });
 
-  $(document).on('click', '#mg-bulk-copy-main', function(e){
+  $(document).on('click', '#mg-bulk-copy-main', function (e) {
     e.preventDefault();
     copyMainFromFirst();
   });
 
-  $(document).on('click', '#mg-bulk-copy-subs', function(e){
+  $(document).on('click', '#mg-bulk-copy-subs', function (e) {
     e.preventDefault();
     copySubsFromFirst();
   });
 
-  $(document).on('click', '#mg-bulk-copy-tags', function(e){
+  $(document).on('click', '#mg-bulk-copy-tags', function (e) {
     e.preventDefault();
     copyTagsFromFirst();
   });
 
-  $(document).on('click', '#mg-bulk-copy-custom', function(e){
+  $(document).on('click', '#mg-bulk-copy-custom', function (e) {
     e.preventDefault();
     copyCustomFlagFromFirst();
   });
 
-  $(document).on('click', '.mg-worker-toggle', function(e){
+  $(document).on('click', '#mg-bulk-append-main', function (e) {
+    e.preventDefault();
+    appendMainCategoryToAll();
+  });
+
+  $(document).on('click', '#mg-bulk-append-sub', function (e) {
+    e.preventDefault();
+    appendSubCategoryToAll();
+  });
+
+  $(document).on('click', '.mg-worker-toggle', function (e) {
     e.preventDefault();
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
     if (window.MG_BULK_ADV._savingWorkerCount) { return; }
@@ -749,7 +801,7 @@
       action: 'mg_bulk_set_worker_count',
       nonce: window.MG_BULK_ADV.nonce,
       count: requested
-    }, function(resp){
+    }, function (resp) {
       if (resp && resp.success && resp.data && typeof resp.data.count !== 'undefined') {
         var saved = parseInt(resp.data.count, 10);
         if (isNaN(saved)) { saved = requested; }
@@ -765,19 +817,19 @@
         var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
         showWorkerFeedback(errMsg, 'error');
       }
-    }, 'json').fail(function(){
+    }, 'json').fail(function () {
       updateWorkerToggleUI(window.MG_BULK_ADV.worker_count || options[0]);
       var errMsg = window.MG_BULK_ADV.worker_feedback_error || 'Nem sikerült menteni. Próbáld újra.';
       showWorkerFeedback(errMsg, 'error');
-    }).always(function(){
+    }).always(function () {
       window.MG_BULK_ADV._savingWorkerCount = false;
     });
   });
 
-  $(document).on('click', '#mg-bulk-apply-first', function(e){
+  $(document).on('click', '#mg-bulk-apply-first', function (e) {
     e.preventDefault();
     var $rows = $('#mg-bulk-rows .mg-item-row');
-    if ($rows.length <= 1){ return; }
+    if ($rows.length <= 1) { return; }
     copyMainFromFirst();
     copySubsFromFirst();
     copyParentFromFirst();
@@ -785,19 +837,19 @@
     copyCustomFlagFromFirst();
   });
 
-  function getSelectedProductKeys(){
-    var keys=[]; $('.mg-type-cb:checked').each(function(){ keys.push($(this).val()); }); return keys;
+  function getSelectedProductKeys() {
+    var keys = []; $('.mg-type-cb:checked').each(function () { keys.push($(this).val()); }); return keys;
   }
 
-  function serverErrorToText(xhr){
+  function serverErrorToText(xhr) {
     try {
       if (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) return xhr.responseJSON.data.message;
-      if (xhr && typeof xhr.responseText === 'string') return xhr.responseText.substring(0,200);
-    } catch(e){}
+      if (xhr && typeof xhr.responseText === 'string') return xhr.responseText.substring(0, 200);
+    } catch (e) { }
     return 'Ismeretlen hiba';
   }
 
-  function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot){
+  function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot) {
     var rows = $rowsCollection.toArray();
     var total = rows.length;
     var active = 0;
@@ -813,9 +865,9 @@
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
-    $rowsCollection.each(function(){ $(this).find('.mg-state').text('Feltöltésre vár…'); });
+    $rowsCollection.each(function () { $(this).find('.mg-state').text('Feltöltésre vár…'); });
 
-    function updateProgressFromStats(stats){
+    function updateProgressFromStats(stats) {
       var totalCount = (stats && typeof stats.total === 'number') ? stats.total : jobIds.length;
       totalCount += failedLocal;
       var completed = 0;
@@ -826,7 +878,7 @@
       var pct = totalCount > 0 ? Math.round((completed / totalCount) * 100) : 100;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
-      $('#mg-bulk-bar').css('width', pct+'%');
+      $('#mg-bulk-bar').css('width', pct + '%');
       var statusParts = [pct + '%'];
       if (totalCount > 0) {
         statusParts.push(completed + '/' + totalCount);
@@ -834,15 +886,15 @@
       $('#mg-bulk-status').text(statusParts.join(' · '));
     }
 
-    function updateEnqueueProgress(enqueuedCount){
+    function updateEnqueueProgress(enqueuedCount) {
       var pct = total > 0 ? Math.round((enqueuedCount / total) * 100) : 0;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
-      $('#mg-bulk-bar').css('width', pct+'%');
+      $('#mg-bulk-bar').css('width', pct + '%');
       $('#mg-bulk-status').text(pct + '% · feltöltés: ' + enqueuedCount + '/' + total);
     }
 
-    function finalize(){
+    function finalize() {
       window.MG_BULK_ADV._isRunning = false;
       $('#mg-bulk-start').prop('disabled', false);
       $('.mg-worker-toggle').prop('disabled', false);
@@ -854,7 +906,7 @@
       }
     }
 
-    function updateRowStatus(job){
+    function updateRowStatus(job) {
       if (!job || !job.id || !jobRows[job.id]) { return; }
       var $row = jobRows[job.id];
       var status = job.status || '';
@@ -872,7 +924,7 @@
       }
     }
 
-    function pollQueue(){
+    function pollQueue() {
       if (!jobIds.length) {
         updateProgressFromStats({ total: failedLocal, completed: failedLocal, failed: 0 });
         finalize();
@@ -882,7 +934,7 @@
         action: 'mg_bulk_queue_status',
         nonce: MG_BULK_ADV.nonce,
         job_ids: jobIds
-      }, function(resp){
+      }, function (resp) {
         if (!resp || !resp.success || !resp.data) {
           return;
         }
@@ -899,7 +951,7 @@
       }, 'json');
     }
 
-    function enqueueJob(index){
+    function enqueueJob(index) {
       var $row = $(rows[index]);
       if (!$row.length) {
         failedLocal++;
@@ -919,17 +971,17 @@
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
-      var parentId = parseInt($row.find('.mg-parent-id').val(),10)||0;
+      var parentId = parseInt($row.find('.mg-parent-id').val(), 10) || 0;
       var form = new FormData();
       form.append('action', 'mg_bulk_queue_enqueue');
       form.append('nonce', MG_BULK_ADV.nonce);
       form.append('design_file', file);
-      keys.forEach(function(k){ form.append('product_keys[]', k); });
+      keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
-      form.append('main_cat', $mainSel.val()||'0');
-      collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
+      form.append('main_cat', $mainSel.val() || '0');
+      collectSubValues($subsSel).forEach(function (id) { form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
-      form.append('tags', ($row.find('.mg-tags-input').val()||'').trim());
+      form.append('tags', ($row.find('.mg-tags-input').val() || '').trim());
       form.append('custom_product', $row.find('.mg-custom-flag').is(':checked') ? '1' : '0');
       form.append('primary_type', defaultsSnapshot.type || '');
       form.append('primary_color', defaultsSnapshot.color || '');
@@ -937,12 +989,12 @@
 
       $.ajax({
         url: MG_BULK_ADV.ajax_url,
-        method:'POST',
+        method: 'POST',
         data: form,
-        processData:false,
-        contentType:false,
-        dataType:'json'
-      }).done(function(resp){
+        processData: false,
+        contentType: false,
+        dataType: 'json'
+      }).done(function (resp) {
         if (resp && resp.success && resp.data && resp.data.job_id) {
           var jobId = resp.data.job_id;
           jobIds.push(jobId);
@@ -953,17 +1005,17 @@
           $state.text('Hiba: ' + msg);
           failedLocal++;
         }
-      }).fail(function(xhr){
+      }).fail(function (xhr) {
         $state.text('Hiba: ' + serverErrorToText(xhr));
         failedLocal++;
-      }).always(function(){
+      }).always(function () {
         active--;
         updateEnqueueProgress(jobIds.length + failedLocal);
         enqueueNext();
       });
     }
 
-    function enqueueNext(){
+    function enqueueNext() {
       if (nextIndex >= total && active === 0) {
         updateEnqueueProgress(jobIds.length + failedLocal);
         pollQueue();
@@ -979,17 +1031,17 @@
     enqueueNext();
   }
 
-  $('#mg-bulk-start').on('click', function(e){
+  $('#mg-bulk-start').on('click', function (e) {
     e.preventDefault();
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
     if (window.MG_BULK_ADV._isRunning) { return; }
     var inputEl = $('#mg-bulk-files-adv')[0];
     var files = (window.MG_BULK_ADV && Array.isArray(window.MG_BULK_ADV.imageFiles)) ? window.MG_BULK_ADV.imageFiles : ((inputEl && inputEl.files) ? Array.from(inputEl.files).filter(isImageFile) : null);
-    if (!files || !files.length){ alert('Válassz fájlokat.'); return; }
+    if (!files || !files.length) { alert('Válassz fájlokat.'); return; }
     var keys = getSelectedProductKeys();
-    if (!keys.length){ alert('Válassz legalább egy terméktípust.'); return; }
+    if (!keys.length) { alert('Válassz legalább egy terméktípust.'); return; }
     var $rowsCollection = $('#mg-bulk-rows .mg-item-row');
-    if (!$rowsCollection.length){ alert('Nincs feldolgozható sor.'); return; }
+    if (!$rowsCollection.length) { alert('Nincs feldolgozható sor.'); return; }
 
     var defaultsSnapshot = $.extend({}, window.MG_BULK_ADV.activeDefaults || {});
 
@@ -1017,24 +1069,24 @@
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
-    $rowsCollection.each(function(){ $(this).find('.mg-state').text('Sorban áll…'); });
+    $rowsCollection.each(function () { $(this).find('.mg-state').text('Sorban áll…'); });
 
     var jobProgress = {};
 
-    function getActiveProgress(){
+    function getActiveProgress() {
       var sum = 0;
-      Object.keys(jobProgress).forEach(function(key){
+      Object.keys(jobProgress).forEach(function (key) {
         var value = jobProgress[key];
         if (typeof value === 'number' && value > 0) { sum += value; }
       });
       return sum;
     }
 
-    function updateProgress(){
+    function updateProgress() {
       var pct = total > 0 ? Math.round((done / total) * 100) : 0;
       if (pct < 0) { pct = 0; }
       if (pct > 100) { pct = 100; }
-      $('#mg-bulk-bar').css('width', pct+'%');
+      $('#mg-bulk-bar').css('width', pct + '%');
       var statusParts = [pct + '%'];
       if (total > 0) {
         statusParts.push(done + '/' + total);
@@ -1047,7 +1099,7 @@
     }
     updateProgress();
 
-    function finalize(){
+    function finalize() {
       window.MG_BULK_ADV._isRunning = false;
       $('#mg-bulk-start').prop('disabled', false);
       $('.mg-worker-toggle').prop('disabled', false);
@@ -1055,7 +1107,7 @@
       $('input[name="mg-bulk-mode"]').prop('disabled', false);
     }
 
-    function launchNext(){
+    function launchNext() {
       if (done >= total && active === 0) {
         finalize();
         updateProgress();
@@ -1066,7 +1118,7 @@
       }
     }
 
-    function startJob(index){
+    function startJob(index) {
       var $row = $(rows[index]);
       if (!$row.length) {
         done++;
@@ -1088,17 +1140,17 @@
       var $mainSel = $row.find('select.mg-main');
       var $subsSel = $row.find('select.mg-subs');
       var $name = $row.find('input.mg-name');
-      var parentId = parseInt($row.find('.mg-parent-id').val(),10)||0;
+      var parentId = parseInt($row.find('.mg-parent-id').val(), 10) || 0;
       var form = new FormData();
       form.append('action', 'mg_bulk_process');
       form.append('nonce', MG_BULK_ADV.nonce);
       form.append('design_file', file);
-      keys.forEach(function(k){ form.append('product_keys[]', k); });
+      keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
-      form.append('main_cat', $mainSel.val()||'0');
-      collectSubValues($subsSel).forEach(function(id){ form.append('sub_cats[]', id); });
+      form.append('main_cat', $mainSel.val() || '0');
+      collectSubValues($subsSel).forEach(function (id) { form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
-      var initialTags = ($row.find('.mg-tags-input').val()||'').trim();
+      var initialTags = ($row.find('.mg-tags-input').val() || '').trim();
       form.append('tags', initialTags);
       form.append('custom_product', $row.find('.mg-custom-flag').is(':checked') ? '1' : '0');
       form.append('primary_type', defaultsSnapshot.type || '');
@@ -1107,15 +1159,15 @@
 
       $.ajax({
         url: MG_BULK_ADV.ajax_url,
-        method:'POST',
+        method: 'POST',
         data: form,
-        processData:false,
-        contentType:false,
-        dataType:'json',
-        xhr: function(){
+        processData: false,
+        contentType: false,
+        dataType: 'json',
+        xhr: function () {
           var xhr = $.ajaxSettings.xhr();
           if (xhr && xhr.upload) {
-            xhr.upload.addEventListener('progress', function(evt){
+            xhr.upload.addEventListener('progress', function (evt) {
               if (!evt || !evt.lengthComputable) { return; }
               var ratio = evt.total > 0 ? (evt.loaded / evt.total) : 0;
               if (ratio < 0) { ratio = 0; }
@@ -1124,7 +1176,7 @@
               $state.text('Feltöltés... ' + Math.round(ratio * 100) + '%');
               updateProgress();
             });
-            xhr.upload.addEventListener('load', function(){
+            xhr.upload.addEventListener('load', function () {
               if (typeof jobProgress[index] === 'number') {
                 jobProgress[index] = Math.max(jobProgress[index], 0.9);
                 updateProgress();
@@ -1134,31 +1186,31 @@
           }
           return xhr;
         }
-      }).done(function(resp){
-        if (resp && resp.success){
+      }).done(function (resp) {
+        if (resp && resp.success) {
           $state.text('OK…');
-          var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id,10) : 0;
-          var latestTags = ($row.find('.mg-tags-input').val()||'').trim();
-          if (pid && latestTags){
+          var pid = resp.data && resp.data.product_id ? parseInt(resp.data.product_id, 10) : 0;
+          var latestTags = ($row.find('.mg-tags-input').val() || '').trim();
+          if (pid && latestTags) {
             $.post(MG_BULK_ADV.ajax_url, {
               action: 'mg_set_product_tags',
               nonce: MG_BULK_ADV.nonce,
               product_id: pid,
               tags: latestTags
-            }, function(r){
-              if (r && r.success){ $state.text('OK'); }
+            }, function (r) {
+              if (r && r.success) { $state.text('OK'); }
               else { $state.text('OK – tagek hiba'); }
-            }, 'json').fail(function(){ $state.text('OK – tagek hiba'); });
+            }, 'json').fail(function () { $state.text('OK – tagek hiba'); });
           } else {
             $state.text('OK');
           }
         } else {
           var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
-          $state.text('Hiba: '+msg);
+          $state.text('Hiba: ' + msg);
         }
-      }).fail(function(xhr){
-        $state.text('Hiba: '+serverErrorToText(xhr));
-      }).always(function(){
+      }).fail(function (xhr) {
+        $state.text('Hiba: ' + serverErrorToText(xhr));
+      }).always(function () {
         done++;
         active--;
         delete jobProgress[index];
@@ -1174,38 +1226,38 @@
 
 
 // ---- Drag & drop zone ----
-(function($){
+(function ($) {
   var $zone = $('#mg-drop-zone');
   var $input = $('#mg-bulk-files-adv');
-  if ($zone.length && $input.length){
-    function isJsonCandidate(file){
+  if ($zone.length && $input.length) {
+    function isJsonCandidate(file) {
       if (!file) { return false; }
       return file.type === 'application/json' || /\.json$/i.test(file.name || '');
     }
-    function isImageCandidate(file){
+    function isImageCandidate(file) {
       if (!file) { return false; }
       if (file.type && /^image\/(png|jpe?g|webp|gif|svg\+xml)$/i.test(file.type)) { return true; }
       return /\.(png|jpe?g|jpg|webp|gif|svg)$/i.test(file.name || '');
     }
-    function accept(f){
+    function accept(f) {
       return isImageCandidate(f) || isJsonCandidate(f);
     }
-    function setFiles(list){
-      try{
+    function setFiles(list) {
+      try {
         var dt = new DataTransfer();
-        Array.from(list||[]).forEach(function(f){ if (accept(f)) dt.items.add(f); });
-        if (dt.files && dt.files.length){ $input[0].files = dt.files; renderRows($input[0].files); return; }
-      }catch(e){}
-      renderRows(Array.from(list||[]).filter(accept));
+        Array.from(list || []).forEach(function (f) { if (accept(f)) dt.items.add(f); });
+        if (dt.files && dt.files.length) { $input[0].files = dt.files; renderRows($input[0].files); return; }
+      } catch (e) { }
+      renderRows(Array.from(list || []).filter(accept));
     }
-    $zone.on('click', '.button-link', function(e){ e.preventDefault(); $input.trigger('click'); });
-    $zone.on('drag dragstart dragend dragover dragenter dragleave drop', function(e){ e.preventDefault(); e.stopPropagation(); });
-    $zone.on('dragover dragenter', function(){ $zone.addClass('is-dragover'); });
-    $zone.on('dragleave dragend drop', function(){ $zone.removeClass('is-dragover'); });
-    $zone.on('drop', function(e){ var dt = e.originalEvent && e.originalEvent.dataTransfer; setFiles((dt&&dt.files)||[]); });
+    $zone.on('click', '.button-link', function (e) { e.preventDefault(); $input.trigger('click'); });
+    $zone.on('drag dragstart dragend dragover dragenter dragleave drop', function (e) { e.preventDefault(); e.stopPropagation(); });
+    $zone.on('dragover dragenter', function () { $zone.addClass('is-dragover'); });
+    $zone.on('dragleave dragend drop', function () { $zone.removeClass('is-dragover'); });
+    $zone.on('drop', function (e) { var dt = e.originalEvent && e.originalEvent.dataTransfer; setFiles((dt && dt.files) || []); });
   }
   // Revoke blobs on start
-  $(document).on('click', '#mg-bulk-start', function(){
-    try{ (MG_BULK_ADV._blobUrls||[]).forEach(function(u){ (window.URL||window.webkitURL).revokeObjectURL(u); }); MG_BULK_ADV._blobUrls=[]; }catch(e){}
+  $(document).on('click', '#mg-bulk-start', function () {
+    try { (MG_BULK_ADV._blobUrls || []).forEach(function (u) { (window.URL || window.webkitURL).revokeObjectURL(u); }); MG_BULK_ADV._blobUrls = []; } catch (e) { }
   });
 })(jQuery);
