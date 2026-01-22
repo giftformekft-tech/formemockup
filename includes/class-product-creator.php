@@ -590,8 +590,12 @@ class MG_Product_Creator {
                 $product->set_props(['short_description' => $short]);
             }
         }
-$parent_sku_base = strtoupper(sanitize_title($parent_name));
-        $product->set_sku($parent_sku_base);
+        
+        // Don't set manual SKU - will be auto-generated after save!
+        // OLD CODE (REMOVED):
+        // $parent_sku_base = strtoupper(sanitize_title($parent_name));
+        // $product->set_sku($parent_sku_base);
+        
         $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
         $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
         if ($min_price > 0) {
