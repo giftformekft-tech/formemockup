@@ -21,6 +21,7 @@ add_action('plugins_loaded', function(){
         'includes/class-bulk-queue.php',
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',
+        'includes/global-catalog.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
