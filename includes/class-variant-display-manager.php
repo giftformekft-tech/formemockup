@@ -64,6 +64,15 @@ class MG_Variant_Display_Manager {
         );
 
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
+        
+        // DEBUG: Output to HTML comment
+        add_action('wp_footer', function() use ($config) {
+            echo "\n<!-- MG_DEBUG CONFIG -->\n";
+            echo "<!-- visuals.typeMockups: " . esc_html(print_r($config['visuals']['typeMockups'] ?? array(), true)) . " -->\n";
+            echo "<!-- visuals.debug: " . esc_html(print_r($config['visuals']['debug'] ?? array(), true)) . " -->\n";
+            echo "<!-- types: " . esc_html(print_r(array_keys($config['types'] ?? array()), true)) . " -->\n";
+            echo "<!-- /MG_DEBUG CONFIG -->\n\n";
+        }, 999);
     }
 
     protected static function hook_preload_assets() {
