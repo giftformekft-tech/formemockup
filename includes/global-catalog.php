@@ -56,12 +56,15 @@ if (!class_exists('MG_Global_Attributes')) {
                 return $out;
             }
 
-            foreach ($products as $product) {
+            foreach ($products as $product_key => $product) {
                 if (!is_array($product)) {
                     continue;
                 }
 
                 $key = isset($product['key']) ? sanitize_title($product['key']) : '';
+                if ($key === '' && is_string($product_key)) {
+                    $key = sanitize_title($product_key);
+                }
                 if ($key === '') {
                     continue;
                 }
