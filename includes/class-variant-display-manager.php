@@ -400,10 +400,7 @@ class MG_Variant_Display_Manager {
             $render_fallbacks = self::get_type_mockups_from_renders($product, $types_payload);
             if (!empty($render_fallbacks)) {
                 foreach ($render_fallbacks as $type_slug => $mockup_url) {
-                    $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
-                    if ($existing !== '' && self::is_valid_mockup_url($existing)) {
-                        continue;
-                    }
+                    // SKU-based mockups always override because they are specific to the product type
                     if (self::is_valid_mockup_url($mockup_url)) {
                         $visuals['typeMockups'][$type_slug] = $mockup_url;
                     }
