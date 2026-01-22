@@ -1,0 +1,30 @@
+# MG Mockup Generator - Git Ignore
+
+# Config file with actual data (DO NOT commit!)
+/includes/config/global-attributes.php
+
+# Keep the example file in Git
+!/includes/config/global-attributes.example.php
+
+# Debug scripts (temporary)
+debug-catalog-source.php
+export-products.php
+
+# WordPress
+wp-config.php
+.htaccess
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+npm-debug.log*

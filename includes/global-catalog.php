@@ -15,8 +15,15 @@ if (!class_exists('MG_Global_Attributes')) {
 
             $path = dirname(__DIR__) . '/includes/config/global-attributes.php';
             if (!file_exists($path)) {
-                self::$config = array();
-                return self::$config;
+                // Fallback to example file if main doesn't exist
+                // This prevents Git updates from breaking the site
+                $example_path = dirname(__DIR__) . '/includes/config/global-attributes.example.php';
+                if (file_exists($example_path)) {
+                    $path = $example_path;
+                } else {
+                    self::$config = array();
+                    return self::$config;
+                }
             }
 
             $config = require $path;

@@ -377,7 +377,11 @@ class MG_Bulk_Queue {
             if (empty($product_keys)) {
                 throw new RuntimeException(__('Nincs terméktípus megadva.', 'mgdtp'));
             }
-            $all = get_option('mg_products', array());
+            
+            // FIX: Use global catalog (PHP file) instead of database
+            // This uses the same source as the frontend (global-attributes.php or mg_products fallback)
+            $all = function_exists('mg_get_catalog_products') ? mg_get_catalog_products() : get_option('mg_products', array());
+            
             $selected = array_values(array_filter(is_array($all) ? $all : array(), function($p) use ($product_keys){
                 return is_array($p) && !empty($p['key']) && in_array($p['key'], $product_keys, true);
             }));
