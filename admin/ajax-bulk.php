@@ -191,8 +191,41 @@ add_action('wp_ajax_mg_bulk_process', function(){
 
         $gen = new MG_Generator();
         $images_by_type_color = array();
+        
+        // NEW: Pre-create product to get ID and SKU for correct file naming
+        $pre_created_id = 0;
+        $pre_created_sku = '';
+        
+        if ($parent_id <= 0) {
+            $temp_product = new WC_Product_Simple();
+            $temp_product->set_name($parent_name);
+            $temp_product->set_status('publish'); 
+            $pre_created_id = $temp_product->save();
+            
+            if ($pre_created_id > 0 && class_exists('MG_Product_Creator')) {
+                $pre_created_sku = MG_Product_Creator::generate_product_sku($pre_created_id, $parent_name);
+                if ($pre_created_sku) {
+                    $temp_product->set_sku($pre_created_sku);
+                    $temp_product->save();
+                    // Clear cache to ensure visibility
+                    clean_post_cache($pre_created_id);
+                }
+            }
+        } else {
+            // Existing parent logic
+             $existing_prod = wc_get_product($parent_id);
+             $pre_created_id = $parent_id;
+             $pre_created_sku = $existing_prod ? $existing_prod->get_sku() : '';
+        }
+
+        $generation_context_base = array(
+            'product_id' => $pre_created_id,
+            'product_sku' => $pre_created_sku,
+            'design_path' => $design_path,
+        );
+
         foreach ($selected as $prod) {
-            $res = $gen->generate_for_product($prod['key'], $design_path);
+            $res = $gen->generate_for_product($prod['key'], $design_path, $generation_context_base);
             if (is_wp_error($res)) {
                 wp_send_json_error(array('message'=>$res->get_error_message()), 500);
             }
@@ -207,12 +240,16 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $creator = new MG_Product_Creator();
         $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk');
         $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
+        
         if ($parent_id > 0) {
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
             MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
+            // Pass the pre-created ID to the creator
+            $generation_context['existing_product_id'] = $pre_created_id;
+            
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
             MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);

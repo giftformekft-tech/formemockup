@@ -562,8 +562,19 @@ class MG_Product_Creator {
         }
         $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
         $color_pairs = array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
-        $product = new WC_Product_Simple();
-        $product->set_name($parent_name);
+        
+        // Support using an existing product ID (created for SKU generation purposes)
+        $existing_id = isset($generation_context['existing_product_id']) ? intval($generation_context['existing_product_id']) : 0;
+        if ($existing_id > 0) {
+            $product = wc_get_product($existing_id);
+            if (!$product) {
+                $product = new WC_Product_Simple();
+                $product->set_name($parent_name);
+            }
+        } else {
+            $product = new WC_Product_Simple();
+            $product->set_name($parent_name);
+        }
         
         // Leírás beállítása (első talált type_description alapján)
         $desc = '';
