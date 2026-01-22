@@ -237,7 +237,7 @@ class MG_Surcharge_Options_Page {
     }
 
     private static function get_product_types_for_conditions() {
-        $products = mg_get_catalog_products();
+        $products = get_option('mg_products', []);
         if (!is_array($products)) {
             return [];
         }
@@ -295,7 +295,7 @@ class MG_Surcharge_Options_Page {
 
     private static function get_plugin_sizes() {
         $sizes = [];
-        $products = mg_get_catalog_products();
+        $products = get_option('mg_products', []);
         if (!is_array($products)) {
             return $sizes;
         }
