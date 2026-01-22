@@ -408,6 +408,16 @@ class MG_Variant_Display_Manager {
             }
         }
 
+        // TEMPORARY TEST: Hardcode a mockup URL to test if JS rendering works
+        if (!empty($types_payload)) {
+            $uploads = wp_upload_dir();
+            $test_url = $uploads['baseurl'] . '/mg_mockups/FORME10012/FORME10012_ferfi-polo_fekete_front.webp';
+            foreach ($types_payload as $type_slug => $type_meta) {
+                $visuals['typeMockups'][$type_slug] = $test_url;
+                break; // Only set first type for testing
+            }
+        }
+
         $default_color = '';
         $default_color_slug = isset($defaults['pa_szin']) ? sanitize_title($defaults['pa_szin']) : '';
         if ($default_type && $default_color_slug && isset($types_payload[$default_type]['colors'][$default_color_slug]['swatch'])) {
