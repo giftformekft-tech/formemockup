@@ -414,50 +414,140 @@ class MG_Bulk_Queue {
 
             remove_all_actions('save_post_product');
 
-            $generator = new MG_Generator();
-            $images_by_type_color = array();
-            foreach ($selected as $prod) {
-                $res = $generator->generate_for_product($prod['key'], $design_path);
-                if (is_wp_error($res)) {
-                    throw new RuntimeException($res->get_error_message());
-                }
-                $images_by_type_color[$prod['key']] = $res;
+            // Extract parent info FIRST (needed for SKU-based generation)
+            $parent_id = isset($payload['parent_id']) ? intval($payload['parent_id']) : 0;
+            $parent_name = isset($payload['parent_name']) ? $payload['parent_name'] : '';
+            if ($parent_name === '') {
+                $parent_name = basename($design_path);
             }
-            if (empty($images_by_type_color)) {
-                throw new RuntimeException(__('Nem sikerült mockupot generálni.', 'mgdtp'));
-            }
-
+            
             $defaults = isset($payload['defaults']) && is_array($payload['defaults']) ? $payload['defaults'] : array('type' => '', 'color' => '', 'size' => '');
             $cats = isset($payload['categories']) && is_array($payload['categories']) ? $payload['categories'] : array();
             $cats = array(
                 'main' => isset($cats['main']) ? intval($cats['main']) : 0,
                 'subs' => isset($cats['subs']) ? array_map('intval', (array)$cats['subs']) : array(),
             );
-            $parent_id = isset($payload['parent_id']) ? intval($payload['parent_id']) : 0;
-            $parent_name = isset($payload['parent_name']) ? $payload['parent_name'] : '';
-            if ($parent_name === '') {
-                $parent_name = basename($design_path);
-            }
             $context_trigger = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
-            $generation_context = array(
-                'design_path' => $design_path,
-                'trigger' => $context_trigger,
-            );
 
             $creator = new MG_Product_Creator();
             $result_product_id = 0;
+            
+            // TWO-PHASE GENERATION FOR NEW PRODUCTS
             if ($parent_id > 0) {
+                // EXISTING PRODUCT - can generate mockups immediately (SKU exists)
+                $generator = new MG_Generator();
+                $images_by_type_color = array();
+                
+                $generation_context_base = array(
+                    'product_id' => $parent_id,
+                    'design_path' => $design_path,
+                );
+                
+                foreach ($selected as $prod) {
+                    $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
+                    if (is_wp_error($res)) {
+                        throw new RuntimeException($res->get_error_message());
+                    }
+                    $images_by_type_color[$prod['key']] = $res;
+                }
+                
+                if (empty($images_by_type_color)) {
+                    throw new RuntimeException(__('Nem sikerült mockupot generálni.', 'mgdtp'));
+                }
+                
+                $generation_context = array(
+                    'design_path' => $design_path,
+                    'trigger' => $context_trigger,
+                );
+                
                 $res = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
                 if (is_wp_error($res)) {
                     throw new RuntimeException($res->get_error_message());
                 }
                 $result_product_id = intval($parent_id);
+                
             } else {
-                $res = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
-                if (is_wp_error($res)) {
-                    throw new RuntimeException($res->get_error_message());
+                // NEW PRODUCT - Two-phase generation
+                
+                // PHASE 1: Create product WITHOUT mockups (skip_register_maintenance flag)
+                $generation_context_phase1 = array(
+                    'design_path' => $design_path,
+                    'trigger' => $context_trigger,
+                    'skip_register_maintenance' => true,  // Don't register mockups yet
+                );
+                
+                // Create product with empty images array (product creation generates SKU)
+                $empty_images = array();
+                foreach ($selected as $prod) {
+                    $empty_images[$prod['key']] = array();
                 }
-                $result_product_id = intval($res);
+                
+                $result_product_id = $creator->create_parent_with_type_color_size_webp_fast(
+                    $parent_name, 
+                    $selected, 
+                    $empty_images,  // Empty - no mockups yet
+                    $cats, 
+                    $defaults, 
+                    $generation_context_phase1
+                );
+                
+                if (is_wp_error($result_product_id)) {
+                    throw new RuntimeException($result_product_id->get_error_message());
+                }
+                $result_product_id = intval($result_product_id);
+                
+                if ($result_product_id <= 0) {
+                    throw new RuntimeException(__('Nem sikerült terméket létrehozni.', 'mgdtp'));
+                }
+                
+                // PHASE 2: Generate mockups with product_id/SKU
+                $generator = new MG_Generator();
+                $images_by_type_color = array();
+                
+                $generation_context_base = array(
+                    'product_id' => $result_product_id,  // NOW we have product_id and SKU!
+                    'design_path' => $design_path,
+                );
+                
+                foreach ($selected as $prod) {
+                    $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
+                    if (is_wp_error($res)) {
+                        throw new RuntimeException($res->get_error_message());
+                    }
+                    $images_by_type_color[$prod['key']] = $res;
+                }
+                
+                if (empty($images_by_type_color)) {
+                    throw new RuntimeException(__('Nem sikerült mockupot generálni.', 'mgdtp'));
+                }
+                
+                // PHASE 3: Register mockups in maintenance index
+                if (class_exists('MG_Mockup_Maintenance')) {
+                    $maintenance_context = array(
+                        'design_path' => $design_path,
+                        'trigger' => $context_trigger,
+                    );
+                    MG_Mockup_Maintenance::register_generation($result_product_id, $selected, $images_by_type_color, $maintenance_context);
+                }
+                
+                // PHASE 4: Set featured image from generated mockups
+                $product = function_exists('wc_get_product') ? wc_get_product($result_product_id) : null;
+                if ($product) {
+                    $creator_reflection = new ReflectionClass($creator);
+                    $method = $creator_reflection->getMethod('maybe_set_default_featured_image');
+                    $method->setAccessible(true);
+                    
+                    $resolved_defaults = $creator_reflection->getMethod('resolve_default_combo');
+                    $resolved_defaults->setAccessible(true);
+                    $defaults_result = $resolved_defaults->invoke($creator, $selected, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
+                    
+                    $maintenance_context = array(
+                        'design_path' => $design_path,
+                        'trigger' => $context_trigger,
+                    );
+                    
+                    $method->invoke($creator, $result_product_id, $defaults_result, $selected, $cats, $maintenance_context);
+                }
             }
 
             if ($result_product_id > 0 && !empty($payload['tags']) && taxonomy_exists('product_tag')) {
