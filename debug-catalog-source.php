@@ -29,8 +29,9 @@ add_action('wp_footer', function() {
     $product_count = 0;
     $source_details = '';
     
-    // Fájl ellenőrzés
-    $config_file = dirname(dirname(__FILE__)) . '/includes/config/global-attributes.php';
+    // Fájl ellenőrzés - FIX: helyes plugin útvonal
+    $plugin_dir = dirname(dirname(__FILE__));  // mockup-generator plugin root
+    $config_file = $plugin_dir . '/includes/config/global-attributes.php';
     $file_exists = file_exists($config_file);
     $file_readable = is_readable($config_file);
     $file_size = $file_exists ? filesize($config_file) : 0;

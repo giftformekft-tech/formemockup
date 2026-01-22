@@ -34,7 +34,11 @@ class MG_Migration_Admin_Page {
         }
 
         $mg_products = get_option('mg_products', array());
-        $global_config_path = dirname(dirname(__FILE__)) . '/includes/config/global-attributes.php';
+        
+        // FIX: Use __FILE__ based path to work with any plugin folder name
+        $plugin_root = dirname(dirname(__FILE__));  // Go up from admin/ to plugin root
+        $global_config_path = $plugin_root . '/includes/config/global-attributes.php';
+        
         $global_config_exists = file_exists($global_config_path);
         $global_config_writable = is_writable($global_config_path) || is_writable(dirname($global_config_path));
 
@@ -158,7 +162,10 @@ class MG_Migration_Admin_Page {
             exit;
         }
 
-        $global_config_path = dirname(dirname(__FILE__)) . '/includes/config/global-attributes.php';
+        // FIX: Use __FILE__ based path
+        $plugin_root = dirname(dirname(__FILE__));
+        $global_config_path = $plugin_root . '/includes/config/global-attributes.php';
+        
         $content = self::format_migration_output($mg_products);
 
         $result = file_put_contents($global_config_path, $content);
