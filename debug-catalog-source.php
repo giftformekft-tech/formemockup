@@ -49,7 +49,7 @@ add_action('wp_footer', function() {
     }
     
     // HTML comment kimenet
-    echo "\n<!-- ========================================= -->\n";
+    echo "<!-- ========================================= -->\n";
     echo "<!-- CATALOG SOURCE DEBUG                      -->\n";
     echo "<!-- ========================================= -->\n";
     echo "<!-- Data Source: " . esc_html($source) . " -->\n";
@@ -64,9 +64,17 @@ add_action('wp_footer', function() {
     echo "<!-- Global Catalog Count: " . count($global_catalog) . " -->\n";
     echo "<!-- DB Products Count: " . count($db_products) . " -->\n";
     echo "<!-- ========================================= -->\n";
+    echo "<!-- CATALOG CONTENTS:                         -->\n";
+    if (!empty($global_catalog)) {
+        $first = reset($global_catalog);
+        echo "<!-- First Product Key: " . esc_html(isset($first['label']) ? $first['label'] : 'N/A') . " -->\n";
+        echo "<!-- First Product Colors: " . (isset($first['colors']) ? count($first['colors']) : 0) . " -->\n";
+    } else {
+        echo "<!-- WARNING: Global catalog is EMPTY!        -->\n";
+    }
+    echo "<!-- ========================================= -->\n";
     echo "<!-- Timestamp: " . date('Y-m-d H:i:s') . " -->\n";
     echo "<!-- ========================================= -->\n";
-    echo "<!-- Ha 'PHP FILE' látható, akkor jól működik! -->\n";
-    echo "<!-- Ha 'File Size' = 1170 bytes, akkor ÜRES!  -->\n";
+    echo "<!-- Ha 'Product Types: 0' akkor PROBLÉMA!    -->\n";
     echo "<!-- ========================================= -->\n\n";
 }, 999);
