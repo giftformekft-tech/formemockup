@@ -177,3 +177,8 @@ add_action('plugins_loaded', function(){
 if (class_exists('MG_Variant_Display_Page')) {
     add_action('admin_enqueue_scripts', array('MG_Variant_Display_Page', 'enqueue_assets'));
 }
+
+// TEMPORARY: Debug catalog source (remove after verification)
+if (file_exists(__DIR__ . '/debug-catalog-source.php')) {
+    require_once __DIR__ . '/debug-catalog-source.php';
+}
