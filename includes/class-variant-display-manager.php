@@ -408,13 +408,13 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        // TEMPORARY TEST: Hardcode a mockup URL to test if JS rendering works
+        // TEMPORARY TEST: Hardcode a mockup URL for ALL types to test if JS rendering works
         if (!empty($types_payload)) {
             $uploads = wp_upload_dir();
             $test_url = $uploads['baseurl'] . '/mg_mockups/FORME10012/FORME10012_ferfi-polo_fekete_front.webp';
             foreach ($types_payload as $type_slug => $type_meta) {
                 $visuals['typeMockups'][$type_slug] = $test_url;
-                break; // Only set first type for testing
+                // Set for ALL types now
             }
         }
 
