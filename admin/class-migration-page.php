@@ -18,6 +18,56 @@ class MG_Migration_Admin_Page {
         add_action('admin_post_mg_migrate_to_global', array(__CLASS__, 'handle_migration'));
     }
 
+    public static function init_auto_migration() {
+        // Real-time update when option changes
+        add_action('updated_option_mg_products', array(__CLASS__, 'run_auto_migration'), 10, 3);
+        // Check consistency on admin init (e.g. login/plugin load in admin)
+        add_action('admin_init', array(__CLASS__, 'check_consistency'), 20);
+    }
+
+    public static function check_consistency() {
+        // Optimized: Only run on our own plugin pages to avoid overhead on dashboard/other plugins
+        $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+        if (strpos($page, 'mockup-generator') === false && $page !== 'mg-migration') {
+            return;
+        }
+
+        // Only run if we have data to sync
+        $products = get_option('mg_products', array());
+        if (empty($products)) {
+            return;
+        }
+        // Force a check/sync
+        self::run_auto_migration(null, $products, 'mg_products');
+    }
+
+    public static function run_auto_migration($old_value, $value, $option) {
+        // Ensure we have the logic available
+        if (!is_array($value)) {
+            return;
+        }
+
+        $content = self::format_migration_output($value);
+        
+        // Determine path safely
+        $plugin_root = dirname(dirname(__FILE__));
+        $file_path = $plugin_root . '/includes/config/global-attributes.php';
+        
+        // Check if update is needed
+        if (file_exists($file_path)) {
+            $current_content = file_get_contents($file_path);
+            // Ignore whitespace differences in generated code
+            if (trim($current_content) === trim($content)) {
+                return;
+            }
+        }
+        
+        // Try to write
+        if (is_writable(dirname($file_path)) || (file_exists($file_path) && is_writable($file_path))) {
+            file_put_contents($file_path, $content);
+        }
+    }
+
     public static function add_menu_page() {
         add_management_page(
             'Migrate to Global Config',
@@ -179,7 +229,7 @@ class MG_Migration_Admin_Page {
         exit;
     }
 
-    protected static function format_migration_output($mg_products) {
+    public static function format_migration_output($mg_products) {
         $output = "<?php\n";
         $output .= "/**\n";
         $output .= " * Global attributes source of truth.\n";

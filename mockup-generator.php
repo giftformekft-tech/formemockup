@@ -137,6 +137,9 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Bulk_Queue')) {
         MG_Bulk_Queue::init();
     }
+    if (class_exists('MG_Migration_Admin_Page')) {
+        MG_Migration_Admin_Page::init_auto_migration();
+    }
 }, 20);
 
 if (class_exists('MG_Variant_Display_Page')) {
