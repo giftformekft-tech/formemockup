@@ -152,9 +152,12 @@ class MG_Virtual_Variant_Manager {
             'name' => $product->get_name(),
         );
         
-        // Add SKU if available
+        // Add SKU if available (use the locally resolved $sku variable)
         if ($sku) {
             $product_config['sku'] = $sku;
+        } else {
+            // Last ditch attempt to get it from the object
+            $product_config['sku'] = $product->get_sku();
         }
         
         // Mockup configuration for predictable URLs
