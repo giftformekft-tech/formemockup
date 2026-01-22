@@ -115,9 +115,10 @@ class MG_Virtual_Variant_Manager {
         if (!$product_id) {
             return array();
         }
-        if (isset(self::$config_cache[$product_id])) {
-            return self::$config_cache[$product_id];
-        }
+        // BYPASS CACHE to ensure SKU is always fresh during this debugging phase
+        // if (isset(self::$config_cache[$product_id])) {
+        //    return self::$config_cache[$product_id];
+        // }
 
         // Ensure Product Creator is available
         if (!class_exists('MG_Product_Creator')) {
