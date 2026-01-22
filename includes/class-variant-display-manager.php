@@ -714,10 +714,16 @@ class MG_Variant_Display_Manager {
             return '';
         }
 
-        // Glob pattern: {SKU}_{TYPE}_{COLOR}_*.webp
+        // 1. Try exact match: {SKU}_{TYPE}_{COLOR}_*.webp
         $pattern = $sku . '_' . $type_slug . '_' . $color_slug . '_*.webp';
         $candidates = glob($sku_dir . '/' . $pattern);
         
+        // 2. Fallback: Try type match only: {SKU}_{TYPE}_*.webp
+        if (empty($candidates)) {
+            $pattern_loose = $sku . '_' . $type_slug . '_*.webp';
+            $candidates = glob($sku_dir . '/' . $pattern_loose);
+        }
+
         if (empty($candidates)) {
             return '';
         }
