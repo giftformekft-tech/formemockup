@@ -127,35 +127,15 @@ class MG_Virtual_Variant_Manager {
 
         $settings = self::get_settings($catalog);
         $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
-        $allowed_types = array();
-        if (class_exists('MG_Mockup_Maintenance')) {
-            $selected_products = MG_Mockup_Maintenance::get_selected_products_for_product($product_id);
-            if (!empty($selected_products)) {
-                foreach ($selected_products as $selected) {
-                    if (!is_array($selected)) {
-                        continue;
-                    }
-                    $key = isset($selected['key']) ? sanitize_title($selected['key']) : '';
-                    if ($key !== '') {
-                        $allowed_types[$key] = true;
-                    }
-                }
-            }
-        }
-        if (!empty($allowed_types)) {
-            $catalog = array_intersect_key($catalog, $allowed_types);
-            if (is_array($products)) {
-                $products = array_intersect_key($products, $allowed_types);
-            }
-        }
+        
+        // Product-specific type filtering removed - all products now show all available types
+        // from the global catalog (global-attributes.php or mg_products option)
+        
         $types_payload = array();
         $type_order = array();
         foreach ($catalog as $type_slug => $type_meta) {
             $type_slug = sanitize_title($type_slug);
             if ($type_slug === '' || !is_array($type_meta)) {
-                continue;
-            }
-            if (!empty($allowed_types) && empty($allowed_types[$type_slug])) {
                 continue;
             }
             $type_order[] = $type_slug;
