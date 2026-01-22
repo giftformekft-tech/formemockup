@@ -120,11 +120,6 @@ class MG_Admin_Page {
                 'type'      => 'legacy',
                 'page_slug' => 'mockup-generator-variant-display',
             ),
-            'regenerate' => array(
-                'label'     => __('Regenerálás', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-maintenance',
-            ),
             'surcharges' => array(
                 'label'     => __('Felárak', 'mockup-generator'),
                 'type'      => 'legacy',
@@ -196,7 +191,6 @@ class MG_Admin_Page {
         return array(
             'mockup-generator-dashboard'        => 'dashboard',
             'mockup-generator-variant-display'  => 'variants',
-            'mockup-generator-maintenance'      => 'regenerate',
             'mockup-generator-surcharges'       => 'surcharges',
             'mockup-generator-custom-fields'    => 'custom_fields',
             'mockup-generator-settings'         => 'settings',
@@ -217,9 +211,6 @@ class MG_Admin_Page {
         }
         if (class_exists('MG_Variant_Display_Page')) {
             $callbacks['mockup-generator-variant-display'] = array('MG_Variant_Display_Page', 'render_page');
-        }
-        if (class_exists('MG_Mockup_Maintenance_Page')) {
-            $callbacks['mockup-generator-maintenance'] = array('MG_Mockup_Maintenance_Page', 'render_page');
         }
         if (class_exists('MG_Surcharge_Options_Page')) {
             $callbacks['mockup-generator-surcharges'] = array('MG_Surcharge_Options_Page', 'render');

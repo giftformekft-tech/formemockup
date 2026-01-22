@@ -300,34 +300,9 @@ class MG_Design_Gallery {
         }
 
         $entries = array();
-        $index = array();
-        if (class_exists('MG_Mockup_Maintenance')) {
-            $index = MG_Mockup_Maintenance::get_index();
-        }
-
-        if (!empty($index) && is_array($index)) {
-            foreach ($index as $entry) {
-                if (!is_array($entry)) {
-                    continue;
-                }
-                if ((int) ($entry['product_id'] ?? 0) !== $product->get_id()) {
-                    continue;
-                }
-                $type_slug = sanitize_title($entry['type_slug'] ?? '');
-                $color_slug = sanitize_title($entry['color_slug'] ?? '');
-                if ($type_slug === '' || $color_slug === '') {
-                    continue;
-                }
-                if (!isset($entries[$type_slug])) {
-                    $entries[$type_slug] = array();
-                }
-                $entries[$type_slug][$color_slug] = $entry;
-            }
-        }
-
-        if (empty($entries)) {
-            $entries = self::collect_entries_from_variations($product);
-        }
+        
+        // REMOVED: Index lookup. Using variations directly.
+        $entries = self::collect_entries_from_variations($product);
 
         if (empty($entries)) {
             return array();

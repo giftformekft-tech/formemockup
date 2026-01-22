@@ -661,15 +661,6 @@ class MG_Custom_Fields_Frontend {
         $path_key = '_mg_last_design_path';
         $attachment_key = '_mg_last_design_attachment';
 
-        if (class_exists('MG_Mockup_Maintenance')) {
-            if (defined('MG_Mockup_Maintenance::META_LAST_DESIGN_PATH')) {
-                $path_key = MG_Mockup_Maintenance::META_LAST_DESIGN_PATH;
-            }
-            if (defined('MG_Mockup_Maintenance::META_LAST_DESIGN_ATTACHMENT')) {
-                $attachment_key = MG_Mockup_Maintenance::META_LAST_DESIGN_ATTACHMENT;
-            }
-        }
-
         return array(
             'path'       => $path_key,
             'attachment' => $attachment_key,
@@ -678,32 +669,6 @@ class MG_Custom_Fields_Frontend {
 
     protected static function locate_design_reference_from_index($product_id) {
         $reference = array();
-        $product_id = absint($product_id);
-        if ($product_id <= 0 || !class_exists('MG_Mockup_Maintenance') || !method_exists('MG_Mockup_Maintenance', 'get_index')) {
-            return $reference;
-        }
-
-        $index = MG_Mockup_Maintenance::get_index();
-        if (empty($index) || !is_array($index)) {
-            return $reference;
-        }
-
-        foreach ($index as $entry) {
-            if (!is_array($entry) || (int) ($entry['product_id'] ?? 0) !== $product_id) {
-                continue;
-            }
-            $source = isset($entry['source']) && is_array($entry['source']) ? $entry['source'] : array();
-            if (!empty($source['design_attachment_id']) && empty($reference['design_attachment_id'])) {
-                $reference['design_attachment_id'] = (int) $source['design_attachment_id'];
-            }
-            if (!empty($source['design_path']) && empty($reference['design_path'])) {
-                $reference['design_path'] = $source['design_path'];
-            }
-            if (!empty($reference['design_path']) && !empty($reference['design_attachment_id'])) {
-                break;
-            }
-        }
-
         return $reference;
     }
 

@@ -551,14 +551,7 @@ class MG_Bulk_Queue {
                     throw new RuntimeException(__('Nem sikerült mockupot generálni.', 'mgdtp'));
                 }
                 
-                // PHASE 3: Register mockups in maintenance index
-                if (class_exists('MG_Mockup_Maintenance')) {
-                    $maintenance_context = array(
-                        'design_path' => $design_path,
-                        'trigger' => $context_trigger,
-                    );
-                    MG_Mockup_Maintenance::register_generation($result_product_id, $selected, $images_by_type_color, $maintenance_context);
-                }
+                // REMOVED: MG_Mockup_Maintenance::register_generation(...)
                 
                 // PHASE 4: Set featured image from generated mockups
                 $product = function_exists('wc_get_product') ? wc_get_product($result_product_id) : null;

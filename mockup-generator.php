@@ -38,8 +38,6 @@ add_action('plugins_loaded', function(){
         'includes/class-custom-fields-frontend.php',
         'includes/class-size-selection.php',
         'includes/class-delivery-estimate.php',
-        'includes/class-mockup-maintenance.php',
-        'includes/class-variant-maintenance.php',
         'includes/class-variant-display-manager.php',
         'includes/class-product-image-performance.php',
         'includes/class-surcharge-manager.php',
@@ -73,9 +71,6 @@ add_action('plugins_loaded', function(){
         if (class_exists('MG_Custom_Fields_Page')) {
             MG_Custom_Fields_Page::add_submenu_page();
         }
-        if (class_exists('MG_Mockup_Maintenance_Page')) {
-            MG_Mockup_Maintenance_Page::add_submenu_page();
-        }
         if (class_exists('MG_Variant_Display_Page')) {
             MG_Variant_Display_Page::add_submenu_page();
         }
@@ -105,29 +100,6 @@ add_action('plugins_loaded', function(){
             ));
         }
 
-        $needs_maintenance_assets = ($hook === 'mockup-generator_page_mockup-generator-maintenance') || ($is_shell && $tab === 'regenerate');
-        if ($needs_maintenance_assets) {
-            $maintenance_css = plugin_dir_path(__FILE__) . 'assets/css/mockup-maintenance.css';
-            $maintenance_js  = plugin_dir_path(__FILE__) . 'assets/js/mockup-maintenance.js';
-            wp_enqueue_style(
-                'mg-mockup-maintenance',
-                plugins_url('assets/css/mockup-maintenance.css', __FILE__),
-                [],
-                file_exists($maintenance_css) ? filemtime($maintenance_css) : '1.0.0'
-            );
-            wp_enqueue_script(
-                'mg-mockup-maintenance',
-                plugins_url('assets/js/mockup-maintenance.js', __FILE__),
-                [],
-                file_exists($maintenance_js) ? filemtime($maintenance_js) : '1.0.0',
-                true
-            );
-            wp_localize_script('mg-mockup-maintenance', 'MG_MOCKUP_MAINTENANCE', array(
-                'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('mg_ajax_nonce'),
-            ));
-        }
-
         if ($is_shell && $tab === 'variants' && class_exists('MG_Variant_Display_Page')) {
             MG_Variant_Display_Page::enqueue_assets($hook);
         }
@@ -147,12 +119,6 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Cart_Pricing')) {
         MG_Cart_Pricing::init();
-    }
-    if (class_exists('MG_Mockup_Maintenance')) {
-        MG_Mockup_Maintenance::init();
-    }
-    if (class_exists('MG_Variant_Maintenance')) {
-        MG_Variant_Maintenance::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();

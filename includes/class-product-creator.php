@@ -623,9 +623,7 @@ class MG_Product_Creator {
         
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
-        if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
-            MG_Mockup_Maintenance::register_generation($parent_id, $selected_products, $images_by_type_color, $generation_context);
-        }
+        // REMOVED: MG_Mockup_Maintenance::register_generation(...)
         $this->maybe_set_default_featured_image($parent_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $parent_id;
     }
@@ -674,9 +672,7 @@ class MG_Product_Creator {
 
         $parent_sku_base=$product->get_sku(); if (!$parent_sku_base) $parent_sku_base=strtoupper(sanitize_title($product->get_name()));
         $result_id = $product->get_id();
-        if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
-            MG_Mockup_Maintenance::register_generation($result_id, $selected_products, $images_by_type_color, $generation_context);
-        }
+        // REMOVED: MG_Mockup_Maintenance::register_generation(...)
         $this->maybe_set_default_featured_image($result_id, $resolved_defaults, $selected_products, $cats, $generation_context);
         return $result_id;
     }

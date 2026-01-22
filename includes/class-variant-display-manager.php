@@ -487,34 +487,6 @@ class MG_Variant_Display_Manager {
 
     protected static function get_type_mockups_from_index($product_id, $types_payload) {
         $mockups = array();
-        if (empty($types_payload) || !class_exists('MG_Mockup_Maintenance')) {
-            return $mockups;
-        }
-        $index = MG_Mockup_Maintenance::get_index();
-        if (!is_array($index) || empty($index)) {
-            return $mockups;
-        }
-        foreach ($types_payload as $type_slug => $type_meta) {
-            $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
-            $fallback_color = $color_order ? reset($color_order) : '';
-            if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
-                $color_keys = array_keys($type_meta['colors']);
-                $fallback_color = $color_keys ? reset($color_keys) : '';
-            }
-            $color_slug = $fallback_color;
-            if ($color_slug === '' || !is_array($type_meta['colors'])) {
-                continue;
-            }
-            $key = absint($product_id) . '|' . sanitize_title($type_slug) . '|' . sanitize_title($color_slug);
-            if (!isset($index[$key]) || !is_array($index[$key])) {
-                continue;
-            }
-            $entry = $index[$key];
-            $url = self::resolve_preview_url_from_entry($entry);
-            if ($url !== '') {
-                $mockups[$type_slug] = $url;
-            }
-        }
         return $mockups;
     }
 

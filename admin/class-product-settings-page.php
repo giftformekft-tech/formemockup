@@ -313,9 +313,6 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
         }
         update_option('mg_products',$products);
         self::sync_variant_display_colors($prod);
-        if (class_exists('MG_Mockup_Maintenance')) {
-            MG_Mockup_Maintenance::sync_type_label($prod['key'], $prod['label'] ?? '');
-        }
     }
 
     private static function sync_variant_display_colors($prod) {
@@ -704,14 +701,8 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                 }
             }
             if ($run_variant_sync) {
-                if (!class_exists('MG_Variant_Maintenance')) {
-                    echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Hiányzik a variáns karbantartó modul.', 'mgdtp') . '</p></div>';
-                } elseif (!MG_Variant_Maintenance::queue_type_sync($prod['key'])) {
-                    echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__('Nincs frissítendő variáns ehhez a terméktípushoz.', 'mgdtp') . '</p></div>';
-                } else {
-                    $variant_sync_queued = true;
-                    echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns frissítés elindult ehhez a terméktípushoz. A feldolgozás a háttérben fut.', 'mgdtp') . '</p></div>';
-                }
+                // REMOVED: MG_Variant_Maintenance check
+                echo '<div class="notice notice-info is-dismissible"><p>' . esc_html__('A variáns szinkronizáció funkció megszűnt.', 'mgdtp') . '</p></div>';
             }
         }
 
