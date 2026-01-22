@@ -121,8 +121,18 @@ class MG_Virtual_Variant_Manager {
 
         // Get or generate SKU for predictable file structure
         $sku = $product->get_sku();
-        if (!$sku && class_exists('MG_Product_Creator')) {
-            $sku = MG_Product_Creator::generate_product_sku($product_id, $product->get_name());
+        
+        // DEBUG: Trace SKU
+        if (!$sku) {
+            error_log("[MG Virtual Variant] SKU missing for product " . $product_id . ". Trying to generate...");
+            if (class_exists('MG_Product_Creator')) {
+                $sku = MG_Product_Creator::generate_product_sku($product_id, $product->get_name());
+                error_log("[MG Virtual Variant] Generated SKU result: " . ($sku ? $sku : 'FAILED'));
+            } else {
+                error_log("[MG Virtual Variant] MG_Product_Creator class not found!");
+            }
+        } else {
+            // error_log("[MG Virtual Variant] Found existing SKU: " . $sku);
         }
 
         $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
