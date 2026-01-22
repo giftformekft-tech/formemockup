@@ -277,16 +277,5 @@ function mg_apply_global_catalog_to_product($product, $catalog = null) {
 }
 
 function mg_get_catalog_products($products = null) {
-    $catalog = mg_get_global_catalog();
-    if (!empty($catalog)) {
-        return $catalog;
-    }
-
-    if ($products === null) {
-        $products = get_option('mg_products', array());
-    }
-    if (!is_array($products)) {
-        $products = array();
-    }
-    return $products;
+    return mg_get_global_catalog();
 }
