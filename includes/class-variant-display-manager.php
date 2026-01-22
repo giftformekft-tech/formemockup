@@ -516,8 +516,10 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function get_type_mockups_from_renders($product, $types_payload) {
+        error_log('MG_DEBUG: get_type_mockups_from_renders START');
         $mockups = array();
         if (!is_object($product) || empty($types_payload)) {
+            error_log('MG_DEBUG: early return - no product or types_payload');
             return $mockups;
         }
 
@@ -531,6 +533,9 @@ class MG_Variant_Display_Manager {
             $sku = preg_replace('/[^a-zA-Z0-9\-_]/', '', $sku);
             $sku = strtoupper($sku);
         }
+        
+        error_log('MG_DEBUG: SKU = ' . $sku);
+        error_log('MG_DEBUG: types_payload = ' . print_r(array_keys($types_payload), true));
 
         if ($sku !== '') {
             foreach ($types_payload as $type_slug => $type_meta) {
@@ -541,10 +546,13 @@ class MG_Variant_Display_Manager {
                     $fallback_color = $color_keys ? reset($color_keys) : '';
                 }
                 if ($fallback_color === '') {
+                    error_log('MG_DEBUG: no fallback color for type ' . $type_slug);
                     continue;
                 }
 
+                error_log('MG_DEBUG: checking SKU for type=' . $type_slug . ' color=' . $fallback_color);
                 $sku_url = self::find_sku_render_url($sku, $type_slug, $fallback_color);
+                error_log('MG_DEBUG: sku_url result = ' . $sku_url);
                 if ($sku_url !== '') {
                     $mockups[$type_slug] = $sku_url;
                     continue; // Found SKU based, skip legacy
@@ -552,9 +560,12 @@ class MG_Variant_Display_Manager {
             }
         }
 
+        error_log('MG_DEBUG: SKU mockups found = ' . print_r($mockups, true));
+
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
         if ($render_version === '' || $design_id <= 0) {
+            error_log('MG_DEBUG: return mockups (no render version or design_id)');
             return $mockups;
         }
         foreach ($types_payload as $type_slug => $type_meta) {
@@ -598,6 +609,7 @@ class MG_Variant_Display_Manager {
                 }
             }
         }
+        error_log('MG_DEBUG: FINAL mockups = ' . print_r($mockups, true));
         return $mockups;
     }
 
