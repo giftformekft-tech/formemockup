@@ -597,6 +597,9 @@ class MG_Admin_Page {
 
         $products_raw = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
         $products_raw = is_array($products_raw) ? $products_raw : array();
+        if (empty($products_raw)) {
+            $products_raw = self::normalize_products_from_option(get_option('mg_products', array()));
+        }
 
         $products = array();
         $default_type = '';
@@ -821,6 +824,83 @@ class MG_Admin_Page {
         );
 
         return self::$bulk_data;
+    }
+
+    /**
+     * Normalizes product data from the mg_products option into a bulk-friendly array.
+     *
+     * @param array $products_raw
+     * @return array
+     */
+    private static function normalize_products_from_option($products_raw) {
+        if (!is_array($products_raw)) {
+            return array();
+        }
+
+        $normalized = array();
+        foreach ($products_raw as $index => $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $key = isset($product['key']) ? sanitize_title($product['key']) : '';
+            if ($key === '' && is_string($index)) {
+                $key = sanitize_title($index);
+            }
+            if ($key === '') {
+                continue;
+            }
+
+            $colors = array();
+            if (!empty($product['colors']) && is_array($product['colors'])) {
+                foreach ($product['colors'] as $color) {
+                    if (is_string($color)) {
+                        $color = array('slug' => $color, 'name' => $color);
+                    }
+                    if (!is_array($color)) {
+                        continue;
+                    }
+                    $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                    if ($slug === '' && isset($color['name'])) {
+                        $slug = sanitize_title($color['name']);
+                    }
+                    if ($slug === '') {
+                        continue;
+                    }
+                    $name = isset($color['name']) && $color['name'] !== '' ? wp_strip_all_tags($color['name']) : $slug;
+                    $colors[] = array(
+                        'slug' => $slug,
+                        'name' => $name,
+                    );
+                }
+            }
+
+            $sizes = array();
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) {
+                        continue;
+                    }
+                    $size_value = trim($size_value);
+                    if ($size_value === '' || in_array($size_value, $sizes, true)) {
+                        continue;
+                    }
+                    $sizes[] = $size_value;
+                }
+            }
+
+            $normalized[] = array(
+                'key'              => $key,
+                'label'            => isset($product['label']) ? wp_strip_all_tags($product['label']) : $key,
+                'colors'           => $colors,
+                'sizes'            => $sizes,
+                'primary_color'    => isset($product['primary_color']) ? sanitize_title($product['primary_color']) : '',
+                'primary_size'     => isset($product['primary_size']) ? sanitize_text_field($product['primary_size']) : '',
+                'size_color_matrix'=> isset($product['size_color_matrix']) && is_array($product['size_color_matrix']) ? $product['size_color_matrix'] : array(),
+                'is_primary'       => !empty($product['is_primary']),
+            );
+        }
+
+        return $normalized;
     }
 
     /**
