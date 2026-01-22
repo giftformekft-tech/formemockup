@@ -508,12 +508,52 @@ class MG_Variant_Display_Manager {
         if (!is_object($product) || empty($types_payload)) {
             return $mockups;
         }
+
+        // NEW: Try SKU-based lookup first
+        $sku = '';
+        if (method_exists($product, 'get_sku')) {
+            $sku = $product->get_sku();
+        }
+        if ($sku !== '') {
+            $sku = trim($sku);
+            $sku = preg_replace('/[^a-zA-Z0-9\-_]/', '', $sku);
+            $sku = strtoupper($sku);
+        }
+
+        if ($sku !== '') {
+            foreach ($types_payload as $type_slug => $type_meta) {
+                 $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+                $fallback_color = $color_order ? reset($color_order) : '';
+                if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+                    $color_keys = array_keys($type_meta['colors']);
+                    $fallback_color = $color_keys ? reset($color_keys) : '';
+                }
+                if ($fallback_color === '') {
+                    continue;
+                }
+
+                $sku_path = self::build_sku_render_path($sku, $type_slug, $fallback_color);
+                if ($sku_path !== '' && file_exists($sku_path)) {
+                    $sku_url = self::build_sku_render_url($sku, $type_slug, $fallback_color);
+                    if ($sku_url !== '') {
+                        $mockups[$type_slug] = $sku_url;
+                        continue; // Found SKU based, skip legacy
+                    }
+                }
+            }
+        }
+
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
         if ($render_version === '' || $design_id <= 0) {
             return $mockups;
         }
         foreach ($types_payload as $type_slug => $type_meta) {
+            // IF we already found a mockup via SKU, skip this type
+            if (isset($mockups[$type_slug])) {
+                continue;
+            }
+
             $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
             $fallback_color = $color_order ? reset($color_order) : '';
             if ($fallback_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
@@ -639,6 +679,49 @@ class MG_Variant_Display_Manager {
             return '';
         }
         return trailingslashit($base_url) . 'mockup-renders';
+    }
+
+    // NEW HELPERS FOR SKU BASED PATHS
+
+    protected static function get_sku_render_base_dir() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        if ($base_dir === '') {
+            return '';
+        }
+        return wp_normalize_path(trailingslashit($base_dir) . 'mg_mockups');
+    }
+
+    protected static function get_sku_render_base_url() {
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
+        if ($base_url === '') {
+            return '';
+        }
+        return trailingslashit($base_url) . 'mg_mockups';
+    }
+
+    protected static function build_sku_render_path($sku, $type_slug, $color_slug) {
+        $base_dir = self::get_sku_render_base_dir();
+        if ($base_dir === '' || $sku === '') {
+            return '';
+        }
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        // Filename: {SKU}_{TYPE}_{COLOR}_{VIEW}.webp - assuming 'front' view as default for type selector
+        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        return wp_normalize_path(trailingslashit($base_dir) . $sku . '/' . $filename);
+    }
+
+    protected static function build_sku_render_url($sku, $type_slug, $color_slug) {
+        $base_url = self::get_sku_render_base_url();
+        if ($base_url === '' || $sku === '') {
+            return '';
+        }
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        return trailingslashit($base_url) . $sku . '/' . $filename;
     }
 
     protected static function format_design_folder($design_id) {
