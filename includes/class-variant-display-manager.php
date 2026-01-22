@@ -341,10 +341,22 @@ class MG_Variant_Display_Manager {
             'variationColors' => array(),
             'variationMockups' => array(),
             'variationPatterns' => array(),
+            'debug' => array(
+                'sku' => '',
+                'product_id' => $product->get_id(),
+                'from_variations' => array(),
+                'from_index' => array(),
+                'from_renders' => array(),
+            ),
         );
 
         $base_pattern = self::resolve_design_url($product->get_id());
         $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
+        
+        // DEBUG: Store SKU
+        if (method_exists($product, 'get_sku')) {
+            $visuals['debug']['sku'] = $product->get_sku();
+        }
 
         $available = $product->get_available_variations();
         if (is_array($available)) {
@@ -370,6 +382,7 @@ class MG_Variant_Display_Manager {
                         $visuals['variationMockups'][$variation_id] = $mockup;
                         if ($type_slug !== '' && empty($visuals['typeMockups'][$type_slug])) {
                             $visuals['typeMockups'][$type_slug] = $mockup;
+                            $visuals['debug']['from_variations'][$type_slug] = $mockup;
                         }
                     }
                 }
@@ -387,6 +400,7 @@ class MG_Variant_Display_Manager {
         if (!empty($types_payload)) {
             $index_mockups = self::get_type_mockups_from_index($product->get_id(), $types_payload);
             if (!empty($index_mockups)) {
+                $visuals['debug']['from_index'] = $index_mockups;
                 foreach ($index_mockups as $type_slug => $mockup_url) {
                     $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
                     if ($existing !== '' && self::is_valid_mockup_url($existing)) {
@@ -399,6 +413,7 @@ class MG_Variant_Display_Manager {
             }
             $render_fallbacks = self::get_type_mockups_from_renders($product, $types_payload);
             if (!empty($render_fallbacks)) {
+                $visuals['debug']['from_renders'] = $render_fallbacks;
                 foreach ($render_fallbacks as $type_slug => $mockup_url) {
                     // SKU-based mockups always override because they are specific to the product type
                     if (self::is_valid_mockup_url($mockup_url)) {
