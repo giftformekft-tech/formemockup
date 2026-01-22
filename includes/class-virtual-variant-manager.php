@@ -160,6 +160,15 @@ class MG_Virtual_Variant_Manager {
             // Last ditch attempt to get it from the object
             $product_config['sku'] = $product->get_sku();
         }
+
+        // SUPER DEBUG: If still no SKU, force one to prove data passing works
+        if (empty($product_config['sku'])) {
+            $product_config['sku'] = 'DEBUG-SKU-' . time();
+            $product_config['debug_note'] = 'Forced by debugger';
+            echo '<!-- MG DEBUG: SKU was missing, forced debug SKU: ' . $product_config['sku'] . ' -->';
+        } else {
+            echo '<!-- MG DEBUG: SKU found: ' . $product_config['sku'] . ' -->';
+        }
         
         // Mockup configuration for predictable URLs
         $uploads = wp_upload_dir();
