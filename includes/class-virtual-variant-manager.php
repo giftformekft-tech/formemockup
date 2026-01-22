@@ -78,11 +78,19 @@ class MG_Virtual_Variant_Manager {
             'url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce(self::NONCE_ACTION),
         );
-        $config['product'] = array(
+        
+        // Merge with existing product config to preserve SKU
+        $product_extras = array(
             'id' => $product->get_id(),
             'design_id' => self::get_design_id($product),
             'render_version' => self::get_render_version($product),
         );
+        
+        if (isset($config['product']) && is_array($config['product'])) {
+            $config['product'] = array_merge($config['product'], $product_extras);
+        } else {
+            $config['product'] = $product_extras;
+        }
 
         wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', $config);
     }
@@ -115,10 +123,9 @@ class MG_Virtual_Variant_Manager {
         if (!$product_id) {
             return array();
         }
-        // BYPASS CACHE to ensure SKU is always fresh during this debugging phase
-        // if (isset(self::$config_cache[$product_id])) {
-        //    return self::$config_cache[$product_id];
-        // }
+        if (isset(self::$config_cache[$product_id])) {
+            return self::$config_cache[$product_id];
+        }
 
         // Ensure Product Creator is available
         if (!class_exists('MG_Product_Creator')) {
@@ -153,21 +160,11 @@ class MG_Virtual_Variant_Manager {
             'name' => $product->get_name(),
         );
         
-        // Add SKU if available (use the locally resolved $sku variable)
+        // Add SKU if available
         if ($sku) {
             $product_config['sku'] = $sku;
         } else {
-            // Last ditch attempt to get it from the object
             $product_config['sku'] = $product->get_sku();
-        }
-
-        // SUPER DEBUG: If still no SKU, force one to prove data passing works
-        if (empty($product_config['sku'])) {
-            $product_config['sku'] = 'DEBUG-SKU-' . time();
-            $product_config['debug_note'] = 'Forced by debugger';
-            echo '<!-- MG DEBUG: SKU was missing, forced debug SKU: ' . $product_config['sku'] . ' -->';
-        } else {
-            echo '<!-- MG DEBUG: SKU found: ' . $product_config['sku'] . ' -->';
         }
         
         // Mockup configuration for predictable URLs
