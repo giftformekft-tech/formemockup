@@ -3,16 +3,12 @@ if (!defined('ABSPATH')) exit;
 
 /**
  * Variáns ár felárakkal: típus alapár + szín felár
- * Forrás: mg_products opció
+ * Forrás: globális attribútum konfiguráció
  */
 
 if (!function_exists('mgsc_get_products')) {
     function mgsc_get_products(){
-        if (function_exists('mg_get_catalog_products')) {
-            $all = mg_get_catalog_products();
-        } else {
-            $all = get_option('mg_products', array());
-        }
+        $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
         $out = array();
         if (is_array($all)) {
             foreach ($all as $p) {
