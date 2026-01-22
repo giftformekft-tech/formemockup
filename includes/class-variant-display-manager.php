@@ -784,10 +784,11 @@ class MG_Variant_Display_Manager {
 
     public static function get_catalog_index() {
         $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
-        $index = array();
-        if (!is_array($all)) {
-            return $index;
+        $all = is_array($all) ? $all : array();
+        if (empty($all)) {
+            $all = self::normalize_products_from_option(get_option('mg_products', array()));
         }
+        $index = array();
 
         foreach ($all as $entry) {
             if (!is_array($entry) || empty($entry['key'])) {
@@ -876,6 +877,74 @@ class MG_Variant_Display_Manager {
         }
 
         return $index;
+    }
+
+    private static function normalize_products_from_option($products_raw) {
+        if (!is_array($products_raw)) {
+            return array();
+        }
+
+        $normalized = array();
+        foreach ($products_raw as $index => $product) {
+            if (!is_array($product)) {
+                continue;
+            }
+            $key = isset($product['key']) ? sanitize_title($product['key']) : '';
+            if ($key === '' && is_string($index)) {
+                $key = sanitize_title($index);
+            }
+            if ($key === '') {
+                continue;
+            }
+
+            $colors = array();
+            if (!empty($product['colors']) && is_array($product['colors'])) {
+                foreach ($product['colors'] as $color) {
+                    if (is_string($color)) {
+                        $color = array('slug' => $color, 'name' => $color);
+                    }
+                    if (!is_array($color)) {
+                        continue;
+                    }
+                    $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
+                    if ($slug === '' && isset($color['name'])) {
+                        $slug = sanitize_title($color['name']);
+                    }
+                    if ($slug === '') {
+                        continue;
+                    }
+                    $colors[] = array(
+                        'slug' => $slug,
+                        'name' => isset($color['name']) ? $color['name'] : $slug,
+                    );
+                }
+            }
+
+            $sizes = array();
+            if (!empty($product['sizes']) && is_array($product['sizes'])) {
+                foreach ($product['sizes'] as $size_value) {
+                    if (!is_string($size_value)) {
+                        continue;
+                    }
+                    $size_value = trim($size_value);
+                    if ($size_value === '' || in_array($size_value, $sizes, true)) {
+                        continue;
+                    }
+                    $sizes[] = $size_value;
+                }
+            }
+
+            $normalized[] = array(
+                'key'              => $key,
+                'label'            => isset($product['label']) ? wp_strip_all_tags($product['label']) : $key,
+                'colors'           => $colors,
+                'sizes'            => $sizes,
+                'size_color_matrix'=> isset($product['size_color_matrix']) && is_array($product['size_color_matrix']) ? $product['size_color_matrix'] : array(),
+                'type_description' => isset($product['type_description']) ? wp_kses_post($product['type_description']) : '',
+            );
+        }
+
+        return $normalized;
     }
 
     protected static function get_settings($catalog) {
