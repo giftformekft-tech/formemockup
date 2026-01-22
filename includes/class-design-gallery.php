@@ -299,45 +299,52 @@ class MG_Design_Gallery {
             return array();
         }
 
-        $entries = array();
-        
-        // REMOVED: Index lookup. Using variations directly.
-        $entries = self::collect_entries_from_variations($product);
-
-        if (empty($entries)) {
+        // Get product SKU for file path construction
+        $sku = $product->get_sku();
+        if (!$sku || $sku === '') {
             return array();
         }
 
+        // Get catalog to determine available types
         $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
-        $defaults = $product->get_default_attributes();
+        if (empty($catalog)) {
+            return array();
+        }
+
+        // Get product defaults for color selection priority
+        $defaults = method_exists($product, 'get_default_attributes') ? $product->get_default_attributes() : array();
         $default_type = sanitize_title($defaults['pa_termektipus'] ?? '');
         $default_color = sanitize_title($defaults['pa_szin'] ?? '');
 
+        // Prepare base URL for mockup files
+        $uploads = wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+        if ($base_url === '') {
+            return array();
+        }
+
         $items = array();
-        foreach ($entries as $type_slug => $by_color) {
-            if (!is_array($by_color) || empty($by_color)) {
+        foreach ($catalog as $type_slug => $type_meta) {
+            $type_slug = sanitize_title($type_slug);
+            if ($type_slug === '' || !is_array($type_meta)) {
                 continue;
             }
 
-            $type_meta = isset($catalog[$type_slug]) ? $catalog[$type_slug] : array();
-            $color_slug = self::resolve_color_slug_for_type($type_slug, $by_color, $default_type, $default_color, $type_meta);
-            if (!isset($by_color[$color_slug])) {
-                $color_slug = key($by_color);
-            }
-            if (!isset($by_color[$color_slug])) {
+            // Determine color to use for this type
+            $color_slug = self::resolve_color_slug_for_catalog_type($type_slug, $type_meta, $default_type, $default_color);
+            if ($color_slug === '') {
                 continue;
             }
 
-            $image = self::resolve_image_url($by_color[$color_slug], $product);
-            if ($image === '') {
-                continue;
-            }
+            // Construct SKU-based image URL
+            $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+            $image_url = $base_url . '/' . $sku . '/' . $filename;
 
             $type_label = self::resolve_type_label($type_slug, $type_meta);
             $alt = $type_label;
 
             $items[] = array(
-                'image' => $image,
+                'image' => $image_url,
                 'type_label' => $type_label,
                 'type_slug' => $type_slug,
                 'color_slug' => $color_slug,
@@ -445,6 +452,44 @@ class MG_Design_Gallery {
 
         $first = array_keys($by_color);
         return sanitize_title(reset($first));
+    }
+
+    /**
+     * Resolve the preferred color slug for a catalog type (SKU-based approach).
+     *
+     * @param string $type_slug
+     * @param array $type_meta
+     * @param string $default_type
+     * @param string $default_color
+     * @return string
+     */
+    protected static function resolve_color_slug_for_catalog_type($type_slug, $type_meta, $default_type, $default_color) {
+        $type_slug = sanitize_title($type_slug);
+
+        // If this is the default type, use default color if available in this type's colors
+        if ($default_type === $type_slug && $default_color !== '') {
+            if (isset($type_meta['colors'][$default_color])) {
+                return $default_color;
+            }
+        }
+
+        // Use primary color from type metadata if set
+        if (!empty($type_meta['primary_color'])) {
+            $primary_color = sanitize_title($type_meta['primary_color']);
+            if ($primary_color !== '' && isset($type_meta['colors'][$primary_color])) {
+                return $primary_color;
+            }
+        }
+
+        // Fall back to first color in the type's color list
+        if (!empty($type_meta['colors']) && is_array($type_meta['colors'])) {
+            $color_keys = array_keys($type_meta['colors']);
+            if (!empty($color_keys)) {
+                return sanitize_title(reset($color_keys));
+            }
+        }
+
+        return '';
     }
 
     /**
