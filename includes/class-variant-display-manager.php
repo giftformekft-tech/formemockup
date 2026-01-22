@@ -64,15 +64,6 @@ class MG_Variant_Display_Manager {
         );
 
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
-        
-        // DEBUG: Output to HTML comment
-        add_action('wp_footer', function() use ($config) {
-            echo "\n<!-- MG_DEBUG CONFIG -->\n";
-            echo "<!-- visuals.typeMockups: " . esc_html(print_r($config['visuals']['typeMockups'] ?? array(), true)) . " -->\n";
-            echo "<!-- visuals.debug: " . esc_html(print_r($config['visuals']['debug'] ?? array(), true)) . " -->\n";
-            echo "<!-- types: " . esc_html(print_r(array_keys($config['types'] ?? array()), true)) . " -->\n";
-            echo "<!-- /MG_DEBUG CONFIG -->\n\n";
-        }, 999);
     }
 
     protected static function hook_preload_assets() {
@@ -350,22 +341,10 @@ class MG_Variant_Display_Manager {
             'variationColors' => array(),
             'variationMockups' => array(),
             'variationPatterns' => array(),
-            'debug' => array(
-                'sku' => '',
-                'product_id' => $product->get_id(),
-                'from_variations' => array(),
-                'from_index' => array(),
-                'from_renders' => array(),
-            ),
         );
 
         $base_pattern = self::resolve_design_url($product->get_id());
         $default_type = isset($defaults['pa_termektipus']) ? sanitize_title($defaults['pa_termektipus']) : '';
-        
-        // DEBUG: Store SKU
-        if (method_exists($product, 'get_sku')) {
-            $visuals['debug']['sku'] = $product->get_sku();
-        }
 
         $available = $product->get_available_variations();
         if (is_array($available)) {
@@ -391,7 +370,6 @@ class MG_Variant_Display_Manager {
                         $visuals['variationMockups'][$variation_id] = $mockup;
                         if ($type_slug !== '' && empty($visuals['typeMockups'][$type_slug])) {
                             $visuals['typeMockups'][$type_slug] = $mockup;
-                            $visuals['debug']['from_variations'][$type_slug] = $mockup;
                         }
                     }
                 }
@@ -409,7 +387,6 @@ class MG_Variant_Display_Manager {
         if (!empty($types_payload)) {
             $index_mockups = self::get_type_mockups_from_index($product->get_id(), $types_payload);
             if (!empty($index_mockups)) {
-                $visuals['debug']['from_index'] = $index_mockups;
                 foreach ($index_mockups as $type_slug => $mockup_url) {
                     $existing = isset($visuals['typeMockups'][$type_slug]) ? $visuals['typeMockups'][$type_slug] : '';
                     if ($existing !== '' && self::is_valid_mockup_url($existing)) {
@@ -422,7 +399,6 @@ class MG_Variant_Display_Manager {
             }
             $render_fallbacks = self::get_type_mockups_from_renders($product, $types_payload);
             if (!empty($render_fallbacks)) {
-                $visuals['debug']['from_renders'] = $render_fallbacks;
                 foreach ($render_fallbacks as $type_slug => $mockup_url) {
                     // SKU-based mockups always override because they are specific to the product type
                     if (self::is_valid_mockup_url($mockup_url)) {
@@ -525,10 +501,8 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function get_type_mockups_from_renders($product, $types_payload) {
-        error_log('MG_DEBUG: get_type_mockups_from_renders START');
         $mockups = array();
         if (!is_object($product) || empty($types_payload)) {
-            error_log('MG_DEBUG: early return - no product or types_payload');
             return $mockups;
         }
 
@@ -542,9 +516,6 @@ class MG_Variant_Display_Manager {
             $sku = preg_replace('/[^a-zA-Z0-9\-_]/', '', $sku);
             $sku = strtoupper($sku);
         }
-        
-        error_log('MG_DEBUG: SKU = ' . $sku);
-        error_log('MG_DEBUG: types_payload = ' . print_r(array_keys($types_payload), true));
 
         if ($sku !== '') {
             foreach ($types_payload as $type_slug => $type_meta) {
@@ -555,13 +526,10 @@ class MG_Variant_Display_Manager {
                     $fallback_color = $color_keys ? reset($color_keys) : '';
                 }
                 if ($fallback_color === '') {
-                    error_log('MG_DEBUG: no fallback color for type ' . $type_slug);
                     continue;
                 }
 
-                error_log('MG_DEBUG: checking SKU for type=' . $type_slug . ' color=' . $fallback_color);
                 $sku_url = self::find_sku_render_url($sku, $type_slug, $fallback_color);
-                error_log('MG_DEBUG: sku_url result = ' . $sku_url);
                 if ($sku_url !== '') {
                     $mockups[$type_slug] = $sku_url;
                     continue; // Found SKU based, skip legacy
@@ -569,12 +537,9 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        error_log('MG_DEBUG: SKU mockups found = ' . print_r($mockups, true));
-
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
         if ($render_version === '' || $design_id <= 0) {
-            error_log('MG_DEBUG: return mockups (no render version or design_id)');
             return $mockups;
         }
         foreach ($types_payload as $type_slug => $type_meta) {
@@ -618,7 +583,6 @@ class MG_Variant_Display_Manager {
                 }
             }
         }
-        error_log('MG_DEBUG: FINAL mockups = ' . print_r($mockups, true));
         return $mockups;
     }
 
