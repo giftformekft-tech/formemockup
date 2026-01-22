@@ -595,7 +595,7 @@ class MG_Admin_Page {
             return self::$bulk_data;
         }
 
-        $products_raw = get_option('mg_products', array());
+        $products_raw = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
         $products_raw = is_array($products_raw) ? $products_raw : array();
 
         $products = array();
