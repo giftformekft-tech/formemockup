@@ -70,7 +70,7 @@ class MG_Virtual_Variant_Manager {
             'mg-virtual-variant-display',
             plugins_url('assets/js/virtual-variant-display.js', $base_file),
             array('jquery'),
-            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            file_exists($script_path) ? filemtime($script_path) : time(),
             true
         );
 

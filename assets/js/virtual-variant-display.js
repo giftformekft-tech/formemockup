@@ -150,6 +150,7 @@
     };
 
     VirtualVariantDisplay.prototype.init = function () {
+        console.log('MG Virtual Variant: Script Initialized v2'); // DEBUG
         if (!this.$wrapper.length || !this.$typeInput.length || !this.$colorInput.length || !this.$sizeInput.length) {
             return;
         }
@@ -1447,9 +1448,11 @@
 
         // Check if we have SKU and baseUrl in config
         if (!this.config || !this.config.product || !this.config.product.sku) {
+            console.warn('MG Virtual Variant: Missing SKU in config', this.config);
             return '';
         }
         if (!this.config.mockup || !this.config.mockup.baseUrl) {
+            console.warn('MG Virtual Variant: Missing baseUrl in config', this.config);
             return '';
         }
 
