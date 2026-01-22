@@ -403,7 +403,7 @@ class MG_Mockup_Maintenance {
     }
 
     private static function find_type_definition($type_slug) {
-        $catalog = mg_get_catalog_products();
+        $catalog = get_option('mg_products', []);
         if (!is_array($catalog)) {
             return null;
         }

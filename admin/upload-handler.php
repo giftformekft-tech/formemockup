@@ -91,7 +91,7 @@ add_action('admin_post_mg_upload_design_multi', function() {
         $default_from_file = pathinfo($design_path, PATHINFO_FILENAME);
         $parent_name = sanitize_text_field($typed_name !== '' ? $typed_name : $default_from_file);
 
-        $all = mg_get_catalog_products();
+        $all = get_option('mg_products', array());
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) throw new Exception('A kiválasztott terméktípusok nem találhatók.');
 

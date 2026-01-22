@@ -6,7 +6,7 @@ class MG_Generator {
 
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
-            $raw_products = mg_get_catalog_products();
+            $raw_products = get_option('mg_products', array());
             $indexed = array();
             if (is_array($raw_products)) {
                 foreach ($raw_products as $item) {
@@ -399,7 +399,6 @@ class MG_Generator {
             return new WP_Error('design_load_failed', $e->getMessage());
         }
 
-        $primary_view_key = $this->resolve_primary_view_key($views, $context);
         $out = [];
         try {
             foreach ($colors as $c) {
@@ -447,9 +446,6 @@ class MG_Generator {
                             $outfile = $deduped;
                         }
                     }
-                    if ($primary_view_key !== '' && $view_key === $primary_view_key) {
-                        $this->ensure_primary_render_alias($output_dir, $color_slug, $outfile);
-                    }
                     $out[$slug][] = $outfile;
                 }
             }
@@ -458,44 +454,6 @@ class MG_Generator {
             $design_base->destroy();
         }
         return $out;
-    }
-
-    private function resolve_primary_view_key(array $views, array $context) {
-        if (!empty($context['primary_view_key'])) {
-            $primary = sanitize_title($context['primary_view_key']);
-            if ($primary !== '') {
-                return $primary;
-            }
-        }
-        if (!empty($context['primary_view'])) {
-            $primary = sanitize_title($context['primary_view']);
-            if ($primary !== '') {
-                return $primary;
-            }
-        }
-        foreach ($views as $view) {
-            $key = isset($view['key']) ? sanitize_title($view['key']) : '';
-            if ($key === 'front') {
-                return $key;
-            }
-        }
-        $first = $views[0]['key'] ?? '';
-        $first = sanitize_title($first);
-        return $first !== '' ? $first : 'front';
-    }
-
-    private function ensure_primary_render_alias($output_dir, $color_slug, $source_path) {
-        if ($output_dir === '' || $color_slug === '' || $source_path === '') {
-            return;
-        }
-        $target = wp_normalize_path(trailingslashit($output_dir) . $color_slug . '.webp');
-        if (file_exists($target)) {
-            return;
-        }
-        if (!file_exists($source_path)) {
-            return;
-        }
-        @copy($source_path, $target);
     }
 
     private function resolve_output_directory($type_key, $design_path, array $context) {

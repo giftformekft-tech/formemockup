@@ -78,7 +78,7 @@ add_action('admin_post_mg_upload_design_bulk', function(){
         $files = $_FILES['design_files'];
         $count = is_array($files['name']) ? count($files['name']) : 0;
         if ($count < 1) throw new Exception('Üres fájllista.');
-        $all = mg_get_catalog_products();
+        $all = get_option('mg_products', array());
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
         if (empty($selected)) throw new Exception('A kiválasztott terméktípusok nem találhatók.');
         $gen_path = plugin_dir_path(__FILE__) . '../includes/class-generator.php';
