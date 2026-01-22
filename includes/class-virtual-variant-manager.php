@@ -953,19 +953,48 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
-        if (empty($cart_item['mg_preview_url'])) {
+        // Get product and validate
+        if (empty($cart_item['product_id'])) {
             return $thumbnail;
         }
-        $url = esc_url($cart_item['mg_preview_url']);
-        if ($url === '') {
+        
+        $product = wc_get_product($cart_item['product_id']);
+        if (!$product) {
             return $thumbnail;
         }
+
+        // Get SKU
+        $sku = $product->get_sku();
+        if (!$sku || $sku === '') {
+            return $thumbnail;
+        }
+
+        // Get selected type and color from cart item
+        $type_slug = sanitize_title($cart_item['mg_product_type'] ?? '');
+        $color_slug = sanitize_title($cart_item['mg_color'] ?? '');
+        
+        if ($type_slug === '' || $color_slug === '') {
+            return $thumbnail;
+        }
+
+        // Construct SKU-based image URL
+        $uploads = wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+        if ($base_url === '') {
+            return $thumbnail;
+        }
+
+        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        $url = $base_url . '/' . $sku . '/' . $filename;
+
+        // Get WooCommerce thumbnail size
         $size = wc_get_image_size('woocommerce_thumbnail');
         $width = isset($size['width']) ? intval($size['width']) : 300;
         $height = isset($size['height']) ? intval($size['height']) : 300;
+
         return sprintf(
             '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
-            $url,
+            esc_url($url),
             esc_attr__('Mockup előnézet', 'mgdtp'),
             $width,
             $height
