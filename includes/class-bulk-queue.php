@@ -501,6 +501,30 @@ class MG_Bulk_Queue {
                 }
                 
                 // PHASE 2: Generate mockups with product_id/SKU
+                
+                // DEBUG: Verify SKU before generation
+                $product_object = function_exists('wc_get_product') ? wc_get_product($result_product_id) : null;
+                $actual_sku = $product_object ? $product_object->get_sku() : '';
+                
+                if (!$actual_sku || strpos($actual_sku, 'FORME') !== 0) {
+                    error_log("[MG Bulk Queue] WARNING: Product $result_product_id has invalid SKU: " . var_export($actual_sku, true));
+                    error_log("[MG Bulk Queue] Expected FORME prefix SKU. Attempting to regenerate...");
+                    
+                    // Force regenerate SKU
+                    if (class_exists('MG_Product_Creator')) {
+                        delete_post_meta($result_product_id, '_sku');
+                        $new_sku = MG_Product_Creator::generate_product_sku($result_product_id, $parent_name);
+                        if ($new_sku && $product_object) {
+                            $product_object->set_sku($new_sku);
+                            $product_object->save();
+                            $actual_sku = $new_sku;
+                            error_log("[MG Bulk Queue] SKU regenerated successfully: $new_sku");
+                        }
+                    }
+                }
+                
+                error_log("[MG Bulk Queue] Phase 2 starting with product_id=$result_product_id, SKU=$actual_sku");
+                
                 $generator = new MG_Generator();
                 $images_by_type_color = array();
                 
