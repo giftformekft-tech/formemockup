@@ -517,6 +517,11 @@ class MG_Bulk_Queue {
                         if ($new_sku && $product_object) {
                             $product_object->set_sku($new_sku);
                             $product_object->save();
+                            
+                            // CLEAR CACHE TO ENSURE VISIBILITY
+                            clean_post_cache($result_product_id);
+                            $product_object = wc_get_product($result_product_id); // Reload
+                            
                             $actual_sku = $new_sku;
                             error_log("[MG Bulk Queue] SKU regenerated successfully: $new_sku");
                         }

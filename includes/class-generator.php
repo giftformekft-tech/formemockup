@@ -508,18 +508,17 @@ class MG_Generator {
         // NEW: SKU-based directory structure
         $sku = $this->get_product_sku_from_context($context);
         
-        // DEBUG LOGGING
-        error_log("[MG Generator] Resolving output dir. Context SKU: " . ($sku ? $sku : 'NONE'));
-        if (empty($sku) && !empty($context['product_sku'])) {
-             error_log("[MG Generator] SKU in context array but get_product_sku_from_context returned empty! Raw context SKU: " . $context['product_sku']);
-        }
+        // DEBUG FILE LOG
+        $debug_file = wp_upload_dir()['basedir'] . '/mg_debug_log.txt';
+        $log_msg = date('Y-m-d H:i:s') . " [MG Generator] Context SKU: " . ($sku ? $sku : 'NONE') . " | Context Raw: " . ($context['product_sku'] ?? 'N/A') . "\n";
+        file_put_contents($debug_file, $log_msg, FILE_APPEND);
         
         if ($sku) {
             // Simple structure: /uploads/mg_mockups/{SKU}/
             $output_dir = wp_normalize_path(trailingslashit($base_dir) . 'mg_mockups/' . $sku);
-            error_log("[MG Generator] Using SKU path: $output_dir");
+            file_put_contents($debug_file, " -> Using SKU path: $output_dir\n", FILE_APPEND);
         } else {
-            error_log("[MG Generator] Fallback to OLD path structure because SKU is missing.");
+            file_put_contents($debug_file, " -> Fallback to OLD path structure\n", FILE_APPEND);
             // Fallback to old complex structure
             $render_version = $this->resolve_render_version($context);
             $design_id = $this->resolve_design_id($design_path, $context);
