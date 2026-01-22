@@ -8,7 +8,11 @@ if (!defined('ABSPATH')) exit;
 
 if (!function_exists('mgsc_get_products')) {
     function mgsc_get_products(){
-        $all = get_option('mg_products', array());
+        if (function_exists('mg_get_catalog_products')) {
+            $all = mg_get_catalog_products();
+        } else {
+            $all = get_option('mg_products', array());
+        }
         $out = array();
         if (is_array($all)) {
             foreach ($all as $p) {
