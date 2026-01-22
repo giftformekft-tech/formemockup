@@ -1,4 +1,4 @@
-(function($){
+(function ($) {
     function VirtualVariantDisplay($form, config) {
         this.$form = $form;
         this.config = config || {};
@@ -68,14 +68,14 @@
         this.init();
     }
 
-    VirtualVariantDisplay.prototype.getText = function(key, fallback) {
+    VirtualVariantDisplay.prototype.getText = function (key, fallback) {
         if (this.config && this.config.text && typeof this.config.text[key] !== 'undefined') {
             return this.config.text[key];
         }
         return fallback;
     };
 
-    VirtualVariantDisplay.prototype.getPreviewCacheLimit = function() {
+    VirtualVariantDisplay.prototype.getPreviewCacheLimit = function () {
         var limit = 60;
         if (this.config && typeof this.config.preview_cache_limit !== 'undefined') {
             limit = parseInt(this.config.preview_cache_limit, 10);
@@ -86,14 +86,14 @@
         return Math.max(0, limit);
     };
 
-    VirtualVariantDisplay.prototype.shouldPreloadPreview = function() {
+    VirtualVariantDisplay.prototype.shouldPreloadPreview = function () {
         if (!this.config || typeof this.config.preview_preload === 'undefined') {
             return true;
         }
         return !!this.config.preview_preload;
     };
 
-    VirtualVariantDisplay.prototype.touchPreviewCacheKey = function(cacheKey) {
+    VirtualVariantDisplay.prototype.touchPreviewCacheKey = function (cacheKey) {
         if (!cacheKey || !this.previewCacheOrder.length) {
             return;
         }
@@ -105,7 +105,7 @@
         this.previewCacheOrder.push(cacheKey);
     };
 
-    VirtualVariantDisplay.prototype.storePreviewCache = function(cacheKey, url) {
+    VirtualVariantDisplay.prototype.storePreviewCache = function (cacheKey, url) {
         if (!cacheKey || !url) {
             return;
         }
@@ -127,7 +127,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.supportsCanvas = function() {
+    VirtualVariantDisplay.prototype.supportsCanvas = function () {
         if (typeof document === 'undefined') {
             return false;
         }
@@ -139,7 +139,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.getTypeLabel = function(typeSlug) {
+    VirtualVariantDisplay.prototype.getTypeLabel = function (typeSlug) {
         if (!typeSlug) {
             return '';
         }
@@ -149,7 +149,7 @@
         return typeSlug;
     };
 
-    VirtualVariantDisplay.prototype.init = function() {
+    VirtualVariantDisplay.prototype.init = function () {
         if (!this.$wrapper.length || !this.$typeInput.length || !this.$colorInput.length || !this.$sizeInput.length) {
             return;
         }
@@ -164,7 +164,7 @@
         this.markReady();
     };
 
-    VirtualVariantDisplay.prototype.markReady = function() {
+    VirtualVariantDisplay.prototype.markReady = function () {
         if (this.isReady) {
             return;
         }
@@ -191,7 +191,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.buildLayout = function() {
+    VirtualVariantDisplay.prototype.buildLayout = function () {
         var wrapper = $('<div class="mg-variant-display" />');
         this.$variantWrapper = wrapper;
 
@@ -242,7 +242,7 @@
         this.refreshPreviewState();
     };
 
-    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+    VirtualVariantDisplay.prototype.createPatternPreview = function () {
         if (this.preview.$button) {
             return null;
         }
@@ -277,38 +277,38 @@
         this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
-        $button.on('click', function(){
+        $button.on('click', function () {
             self.showPatternPreview();
         });
 
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hidePatternPreview();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hidePatternPreview();
             }
         });
 
-        $(document).on('keydown.mgVirtualPatternPreview', function(event){
+        $(document).on('keydown.mgVirtualPatternPreview', function (event) {
             if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
                 self.hidePatternPreview();
             }
         });
 
-        $content.on('contextmenu', function(event){
+        $content.on('contextmenu', function (event) {
             event.preventDefault();
         });
 
-        $content.on('dragstart selectstart', function(event){
+        $content.on('dragstart selectstart', function (event) {
             event.preventDefault();
         });
 
         return $buttonWrap;
     };
 
-    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+    VirtualVariantDisplay.prototype.createPatternPreview = function () {
         if (this.preview.$button) {
             return;
         }
@@ -343,31 +343,31 @@
         this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
-        $button.on('click', function(){
+        $button.on('click', function () {
             self.showPatternPreview();
         });
 
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hidePatternPreview();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hidePatternPreview();
             }
         });
 
-        $(document).on('keydown.mgPatternPreview', function(event){
+        $(document).on('keydown.mgPatternPreview', function (event) {
             if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
                 self.hidePatternPreview();
             }
         });
 
-        $content.on('contextmenu', function(event){
+        $content.on('contextmenu', function (event) {
             event.preventDefault();
         });
 
-        $content.on('dragstart selectstart', function(event){
+        $content.on('dragstart selectstart', function (event) {
             event.preventDefault();
         });
 
@@ -387,7 +387,7 @@
         this.refreshPreviewState();
     };
 
-    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+    VirtualVariantDisplay.prototype.createPatternPreview = function () {
         if (this.preview.$button) {
             return;
         }
@@ -422,112 +422,31 @@
         this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
-        $button.on('click', function(){
+        $button.on('click', function () {
             self.showPatternPreview();
         });
 
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hidePatternPreview();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hidePatternPreview();
             }
         });
 
-        $(document).on('keydown.mgPatternPreview', function(event){
+        $(document).on('keydown.mgPatternPreview', function (event) {
             if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
                 self.hidePatternPreview();
             }
         });
 
-        $content.on('contextmenu', function(event){
+        $content.on('contextmenu', function (event) {
             event.preventDefault();
         });
 
-        $content.on('dragstart selectstart', function(event){
-            event.preventDefault();
-        });
-
-        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
-        if ($typeSection && $typeSection.length) {
-            $typeSection.before($buttonWrap);
-        } else if (this.$variantWrapper && this.$variantWrapper.length) {
-            this.$variantWrapper.prepend($buttonWrap);
-        } else {
-            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
-            if (!$galleryAnchor.length) {
-                $galleryAnchor = this.$variantWrapper || this.$form;
-            }
-            if ($galleryAnchor && $galleryAnchor.length) {
-                $galleryAnchor.after($buttonWrap);
-            }
-        }
-
-        this.refreshPreviewState();
-    };
-
-    VirtualVariantDisplay.prototype.createPatternPreview = function() {
-        if (this.preview.$button) {
-            return;
-        }
-
-        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
-        this.preview.$button = $button;
-
-        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
-
-        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
-        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
-        var $content = $('<div class="mg-pattern-preview__content" />');
-        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
-        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
-        var $body = $('<div class="mg-pattern-preview__body" />');
-        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
-        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
-
-        $body.append($canvas).append($fallback).append($watermark);
-        $content.append($close).append($body);
-        $modal.append($backdrop).append($content);
-
-        $('body').append($modal);
-
-        this.preview.$modal = $modal;
-        this.preview.$backdrop = $backdrop;
-        this.preview.$content = $content;
-        this.preview.$watermark = $watermark;
-        this.preview.$close = $close;
-        this.preview.$canvas = $canvas;
-        this.preview.$fallback = $fallback;
-        this.preview.useCanvas = this.supportsCanvas();
-
-        var self = this;
-        $button.on('click', function(){
-            self.showPatternPreview();
-        });
-
-        $close.on('click', function(){
-            self.hidePatternPreview();
-        });
-
-        $modal.on('click', function(event){
-            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
-                self.hidePatternPreview();
-            }
-        });
-
-        $(document).on('keydown.mgPatternPreview', function(event){
-            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
-                self.hidePatternPreview();
-            }
-        });
-
-        $content.on('contextmenu', function(event){
-            event.preventDefault();
-        });
-
-        $content.on('dragstart selectstart', function(event){
+        $content.on('dragstart selectstart', function (event) {
             event.preventDefault();
         });
 
@@ -549,7 +468,7 @@
         this.refreshPreviewState();
     };
 
-    VirtualVariantDisplay.prototype.createPatternPreview = function() {
+    VirtualVariantDisplay.prototype.createPatternPreview = function () {
         if (this.preview.$button) {
             return;
         }
@@ -584,31 +503,31 @@
         this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
-        $button.on('click', function(){
+        $button.on('click', function () {
             self.showPatternPreview();
         });
 
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hidePatternPreview();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hidePatternPreview();
             }
         });
 
-        $(document).on('keydown.mgPatternPreview', function(event){
+        $(document).on('keydown.mgPatternPreview', function (event) {
             if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
                 self.hidePatternPreview();
             }
         });
 
-        $content.on('contextmenu', function(event){
+        $content.on('contextmenu', function (event) {
             event.preventDefault();
         });
 
-        $content.on('dragstart selectstart', function(event){
+        $content.on('dragstart selectstart', function (event) {
             event.preventDefault();
         });
 
@@ -630,7 +549,88 @@
         this.refreshPreviewState();
     };
 
-    VirtualVariantDisplay.prototype.createTypeModal = function($trigger) {
+    VirtualVariantDisplay.prototype.createPatternPreview = function () {
+        if (this.preview.$button) {
+            return;
+        }
+
+        var $button = $('<button type="button" class="mg-pattern-preview__button" />').text(this.getText('previewButton', 'Minta nagyban'));
+        this.preview.$button = $button;
+
+        var $buttonWrap = $('<div class="mg-pattern-preview__button-wrap" />').append($button);
+
+        var $modal = $('<div class="mg-pattern-preview" aria-hidden="true" role="dialog" />');
+        var $backdrop = $('<div class="mg-pattern-preview__backdrop" />');
+        var $content = $('<div class="mg-pattern-preview__content" />');
+        var $watermark = $('<div class="mg-pattern-preview__watermark" aria-hidden="true" />');
+        var $close = $('<button type="button" class="mg-pattern-preview__close" aria-label="' + this.getText('previewClose', 'Bezárás') + '">×</button>');
+        var $body = $('<div class="mg-pattern-preview__body" />');
+        var $canvas = $('<canvas class="mg-pattern-preview__canvas" aria-hidden="true"></canvas>');
+        var $fallback = $('<div class="mg-pattern-preview__fallback" />');
+
+        $body.append($canvas).append($fallback).append($watermark);
+        $content.append($close).append($body);
+        $modal.append($backdrop).append($content);
+
+        $('body').append($modal);
+
+        this.preview.$modal = $modal;
+        this.preview.$backdrop = $backdrop;
+        this.preview.$content = $content;
+        this.preview.$watermark = $watermark;
+        this.preview.$close = $close;
+        this.preview.$canvas = $canvas;
+        this.preview.$fallback = $fallback;
+        this.preview.useCanvas = this.supportsCanvas();
+
+        var self = this;
+        $button.on('click', function () {
+            self.showPatternPreview();
+        });
+
+        $close.on('click', function () {
+            self.hidePatternPreview();
+        });
+
+        $modal.on('click', function (event) {
+            if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $(document).on('keydown.mgPatternPreview', function (event) {
+            if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
+                self.hidePatternPreview();
+            }
+        });
+
+        $content.on('contextmenu', function (event) {
+            event.preventDefault();
+        });
+
+        $content.on('dragstart selectstart', function (event) {
+            event.preventDefault();
+        });
+
+        var $typeSection = this.$variantWrapper ? this.$variantWrapper.find('.mg-variant-section--type').first() : $();
+        if ($typeSection && $typeSection.length) {
+            $typeSection.before($buttonWrap);
+        } else if (this.$variantWrapper && this.$variantWrapper.length) {
+            this.$variantWrapper.prepend($buttonWrap);
+        } else {
+            var $galleryAnchor = $('.woocommerce-product-gallery, .woocommerce-product-gallery__wrapper, .product .images').first();
+            if (!$galleryAnchor.length) {
+                $galleryAnchor = this.$variantWrapper || this.$form;
+            }
+            if ($galleryAnchor && $galleryAnchor.length) {
+                $galleryAnchor.after($buttonWrap);
+            }
+        }
+
+        this.refreshPreviewState();
+    };
+
+    VirtualVariantDisplay.prototype.createTypeModal = function ($trigger) {
         var $modal = $('<div class="mg-variant-type-modal" aria-hidden="true" role="dialog" />');
         var $backdrop = $('<div class="mg-variant-type-modal__backdrop" />');
         var $panel = $('<div class="mg-variant-type-modal__panel" role="document" />');
@@ -652,40 +652,40 @@
         this.$typeModal = $modal;
         this.$typeTrigger = $trigger;
 
-        $trigger.on('click', function(e){
+        $trigger.on('click', function (e) {
             e.preventDefault();
             $modal.addClass('is-open').attr('aria-hidden', 'false');
             $trigger.attr('aria-expanded', 'true');
             $('body').addClass('mg-variant-modal-open');
             $close.trigger('focus');
         });
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hideTypeModal($modal, $trigger);
         });
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hideTypeModal($modal, $trigger);
             }
         });
-        $(document).on('keydown.mgVirtualTypeModal', function(event){
+        $(document).on('keydown.mgVirtualTypeModal', function (event) {
             if (event.key === 'Escape' && $modal.hasClass('is-open')) {
                 self.hideTypeModal($modal, $trigger);
             }
         });
     };
 
-    VirtualVariantDisplay.prototype.hideTypeModal = function($modal, $trigger) {
+    VirtualVariantDisplay.prototype.hideTypeModal = function ($modal, $trigger) {
         $modal.removeClass('is-open').attr('aria-hidden', 'true');
         $trigger.attr('aria-expanded', 'false');
         $('body').removeClass('mg-variant-modal-open');
         $trigger.trigger('focus');
     };
 
-    VirtualVariantDisplay.prototype.buildTypeOptions = function() {
+    VirtualVariantDisplay.prototype.buildTypeOptions = function () {
         var self = this;
         this.$typeOptions.empty();
         var typeOrder = (this.config.order && this.config.order.types && this.config.order.types.length) ? this.config.order.types : Object.keys(this.config.types || {});
-        $.each(typeOrder, function(_, typeSlug){
+        $.each(typeOrder, function (_, typeSlug) {
             var meta = self.config.types[typeSlug];
             if (!meta) {
                 return;
@@ -706,7 +706,7 @@
         });
     };
 
-    VirtualVariantDisplay.prototype.getTypeMockup = function(typeSlug) {
+    VirtualVariantDisplay.prototype.getTypeMockup = function (typeSlug) {
         if (!typeSlug || !this.config || !this.config.visuals) {
             return '';
         }
@@ -716,9 +716,9 @@
         return '';
     };
 
-    VirtualVariantDisplay.prototype.bindEvents = function() {
+    VirtualVariantDisplay.prototype.bindEvents = function () {
         var self = this;
-        this.$typeOptions.on('click', '.mg-variant-type-option', function(e){
+        this.$typeOptions.on('click', '.mg-variant-type-option', function (e) {
             e.preventDefault();
             var value = $(this).attr('data-value') || '';
             self.setType(value);
@@ -727,7 +727,7 @@
             }
         });
 
-        this.$colorOptions.on('click', '.mg-variant-option', function(e){
+        this.$colorOptions.on('click', '.mg-variant-option', function (e) {
             e.preventDefault();
             if (!self.state.type) {
                 return;
@@ -739,7 +739,7 @@
             self.setColor(value);
         });
 
-        this.$colorOptions.on('mouseenter focus', '.mg-variant-option', function(){
+        this.$colorOptions.on('mouseenter focus', '.mg-variant-option', function () {
             if (!self.state.type || $(this).hasClass('is-disabled')) {
                 return;
             }
@@ -747,11 +747,11 @@
             self.setColorLabelText(label);
         });
 
-        this.$colorOptions.on('mouseleave blur', '.mg-variant-option', function(){
+        this.$colorOptions.on('mouseleave blur', '.mg-variant-option', function () {
             self.refreshColorLabel();
         });
 
-        this.$sizeOptions.on('click', '.mg-variant-option', function(e){
+        this.$sizeOptions.on('click', '.mg-variant-option', function (e) {
             e.preventDefault();
             if (!self.state.type || !self.state.color) {
                 return;
@@ -763,7 +763,7 @@
             self.setSize(value);
         });
         if (this.sizeChart.$link) {
-            this.sizeChart.$link.on('click', function(e){
+            this.sizeChart.$link.on('click', function (e) {
                 e.preventDefault();
                 if ($(this).hasClass('is-disabled')) {
                     return;
@@ -773,7 +773,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.getTypeFromUrl = function() {
+    VirtualVariantDisplay.prototype.getTypeFromUrl = function () {
         if (typeof window === 'undefined' || !window.location) {
             return '';
         }
@@ -786,7 +786,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.updateUrlForType = function(typeSlug) {
+    VirtualVariantDisplay.prototype.updateUrlForType = function (typeSlug) {
         if (typeof window === 'undefined' || !window.history) {
             return;
         }
@@ -811,7 +811,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.captureTitle = function() {
+    VirtualVariantDisplay.prototype.captureTitle = function () {
         if (this.$title && this.$title.length) {
             return;
         }
@@ -830,7 +830,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.normalizeBaseTitle = function() {
+    VirtualVariantDisplay.prototype.normalizeBaseTitle = function () {
         if (!this.baseTitle || !this.config || !this.config.types) {
             return;
         }
@@ -839,10 +839,10 @@
             this.baseTitle = this.baseTitle.slice(0, -suffix.length).trim();
         }
         var self = this;
-        var labels = Object.keys(this.config.types).map(function(slug){
+        var labels = Object.keys(this.config.types).map(function (slug) {
             return self.getTypeLabel(slug).trim();
-        }).filter(function(label){ return label; });
-        labels.forEach(function(label){
+        }).filter(function (label) { return label; });
+        labels.forEach(function (label) {
             var dashed = ' - ' + label;
             var spaced = ' ' + label;
             if (self.baseTitle.slice(-dashed.length) === dashed) {
@@ -853,7 +853,7 @@
         });
     };
 
-    VirtualVariantDisplay.prototype.updateTitleForType = function() {
+    VirtualVariantDisplay.prototype.updateTitleForType = function () {
         if (!this.$title || !this.$title.length || !this.baseTitle) {
             return;
         }
@@ -865,7 +865,7 @@
         this.$title.text(nextTitle);
     };
 
-    VirtualVariantDisplay.prototype.syncDefaults = function() {
+    VirtualVariantDisplay.prototype.syncDefaults = function () {
         var defaults = this.config.default || {};
         var urlType = this.getTypeFromUrl();
         var initialType = urlType || defaults.type || '';
@@ -883,7 +883,7 @@
         this.refreshPreview();
     };
 
-    VirtualVariantDisplay.prototype.setType = function(value) {
+    VirtualVariantDisplay.prototype.setType = function (value) {
         value = value || '';
         if (this.state.type === value) {
             return;
@@ -895,7 +895,7 @@
         this.updateUrlForType(value);
         this.updateTitleForType();
         this.updateDescription();
-        this.$typeOptions.find('.mg-variant-type-option').each(function(){
+        this.$typeOptions.find('.mg-variant-type-option').each(function () {
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
             $btn.toggleClass('is-selected', isActive);
@@ -908,7 +908,7 @@
         this.updateSizeChartLink();
     };
 
-    VirtualVariantDisplay.prototype.captureDescriptionTargets = function() {
+    VirtualVariantDisplay.prototype.captureDescriptionTargets = function () {
         this.descriptionTargets = [];
         var selectors = [];
         if (this.config && $.isArray(this.config.descriptionTargets) && this.config.descriptionTargets.length) {
@@ -922,8 +922,8 @@
         }
 
         var self = this;
-        $.each(selectors, function(_, selector){
-            $(selector).each(function(){
+        $.each(selectors, function (_, selector) {
+            $(selector).each(function () {
                 var $el = $(this);
                 if (!$el.length) {
                     return;
@@ -946,7 +946,7 @@
         });
     };
 
-    VirtualVariantDisplay.prototype.createSizeChartModal = function() {
+    VirtualVariantDisplay.prototype.createSizeChartModal = function () {
         if (this.sizeChart.$modal) {
             return;
         }
@@ -990,32 +990,32 @@
         $body.append($modelsPanel);
 
         var self = this;
-        this.sizeChart.$close.on('click', function(){
+        this.sizeChart.$close.on('click', function () {
             self.hideSizeChart();
         });
 
-        this.sizeChart.$modelsButton.on('click', function(){
+        this.sizeChart.$modelsButton.on('click', function () {
             self.showSizeChartModels();
         });
 
-        this.sizeChart.$backButton.on('click', function(){
+        this.sizeChart.$backButton.on('click', function () {
             self.showSizeChart();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal)) {
                 self.hideSizeChart();
             }
         });
 
-        $(document).on('keydown.mgVirtualSizeChart', function(event){
+        $(document).on('keydown.mgVirtualSizeChart', function (event) {
             if (event.key === 'Escape' && self.sizeChart.$modal && self.sizeChart.$modal.hasClass('is-open')) {
                 self.hideSizeChart();
             }
         });
     };
 
-    VirtualVariantDisplay.prototype.updateSizeChartLink = function() {
+    VirtualVariantDisplay.prototype.updateSizeChartLink = function () {
         if (!this.sizeChart.$link) {
             return;
         }
@@ -1028,7 +1028,7 @@
         this.sizeChart.$link.attr('aria-expanded', this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open') ? 'true' : 'false');
     };
 
-    VirtualVariantDisplay.prototype.getSizeChartContent = function() {
+    VirtualVariantDisplay.prototype.getSizeChartContent = function () {
         if (!this.state.type) {
             return '';
         }
@@ -1039,7 +1039,7 @@
         return typeMeta.size_chart;
     };
 
-    VirtualVariantDisplay.prototype.getSizeChartModelsContent = function() {
+    VirtualVariantDisplay.prototype.getSizeChartModelsContent = function () {
         if (!this.state.type) {
             return '';
         }
@@ -1050,7 +1050,7 @@
         return typeMeta.size_chart_models;
     };
 
-    VirtualVariantDisplay.prototype.updateDescription = function() {
+    VirtualVariantDisplay.prototype.updateDescription = function () {
         if (!this.descriptionTargets.length) {
             return;
         }
@@ -1081,7 +1081,7 @@
         });
     };
 
-    VirtualVariantDisplay.prototype.showSizeChart = function() {
+    VirtualVariantDisplay.prototype.showSizeChart = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1098,7 +1098,7 @@
         this.updateSizeChartLink();
     };
 
-    VirtualVariantDisplay.prototype.showSizeChartModels = function() {
+    VirtualVariantDisplay.prototype.showSizeChartModels = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1116,7 +1116,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.hideSizeChart = function() {
+    VirtualVariantDisplay.prototype.hideSizeChart = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1135,7 +1135,7 @@
         this.updateSizeChartLink();
     };
 
-    VirtualVariantDisplay.prototype.updateSizeChartPanels = function() {
+    VirtualVariantDisplay.prototype.updateSizeChartPanels = function () {
         var chartContent = this.getSizeChartContent();
         var modelsContent = this.getSizeChartModelsContent();
         var hasModels = !!modelsContent;
@@ -1179,7 +1179,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.setColor = function(value) {
+    VirtualVariantDisplay.prototype.setColor = function (value) {
         value = value || '';
         if (!this.state.type) {
             value = '';
@@ -1190,7 +1190,7 @@
         }
         this.state.color = value;
         this.$colorInput.val(value).trigger('change');
-        this.$colorOptions.find('.mg-variant-option').each(function(){
+        this.$colorOptions.find('.mg-variant-option').each(function () {
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
             $btn.toggleClass('is-selected', isActive);
@@ -1205,7 +1205,7 @@
         this.updateSizeChartLink();
     };
 
-    VirtualVariantDisplay.prototype.setSize = function(value) {
+    VirtualVariantDisplay.prototype.setSize = function (value) {
         value = value || '';
         if (!this.state.type || !this.state.color) {
             value = '';
@@ -1215,7 +1215,7 @@
         }
         this.state.size = value;
         this.$sizeInput.val(value).trigger('change');
-        this.$sizeOptions.find('.mg-variant-option').each(function(){
+        this.$sizeOptions.find('.mg-variant-option').each(function () {
             var $btn = $(this);
             var isActive = ($btn.attr('data-value') || '') === value;
             $btn.toggleClass('is-selected', isActive);
@@ -1226,7 +1226,7 @@
         this.refreshAddToCartState();
     };
 
-    VirtualVariantDisplay.prototype.updatePrice = function() {
+    VirtualVariantDisplay.prototype.updatePrice = function () {
         if (!this.$price.length) {
             return;
         }
@@ -1245,14 +1245,14 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.getTypeBasePrice = function(typeMeta) {
+    VirtualVariantDisplay.prototype.getTypeBasePrice = function (typeMeta) {
         if (!typeMeta || typeof typeMeta.price !== 'number') {
             return 0;
         }
         return typeMeta.price;
     };
 
-    VirtualVariantDisplay.prototype.getColorSurcharge = function(typeMeta) {
+    VirtualVariantDisplay.prototype.getColorSurcharge = function (typeMeta) {
         if (!typeMeta || !typeMeta.colors || !this.state.color || !typeMeta.colors[this.state.color]) {
             return 0;
         }
@@ -1260,7 +1260,7 @@
         return (typeof surcharge === 'number') ? surcharge : 0;
     };
 
-    VirtualVariantDisplay.prototype.getSizeSurcharge = function(typeMeta) {
+    VirtualVariantDisplay.prototype.getSizeSurcharge = function (typeMeta) {
         if (!typeMeta || !typeMeta.size_surcharges || !this.state.size) {
             return 0;
         }
@@ -1268,7 +1268,7 @@
         return (typeof surcharge === 'number') ? surcharge : 0;
     };
 
-    VirtualVariantDisplay.prototype.formatPrice = function(amount) {
+    VirtualVariantDisplay.prototype.formatPrice = function (amount) {
         var format = this.config.priceFormat || {};
         var decimals = (typeof format.decimals === 'number') ? format.decimals : 2;
         var decimalSeparator = (typeof format.decimalSeparator === 'string') ? format.decimalSeparator : '.';
@@ -1285,7 +1285,7 @@
         return '<span class="woocommerce-Price-amount amount"><bdi>' + priceHtml + '</bdi></span>';
     };
 
-    VirtualVariantDisplay.prototype.setColorLabelText = function(label) {
+    VirtualVariantDisplay.prototype.setColorLabelText = function (label) {
         if (!this.$colorLabelValue.length) {
             return;
         }
@@ -1293,7 +1293,7 @@
         this.$colorLabelValue.text(text);
     };
 
-    VirtualVariantDisplay.prototype.refreshColorLabel = function() {
+    VirtualVariantDisplay.prototype.refreshColorLabel = function () {
         var label = '';
         if (this.state.type && this.state.color && this.config.types && this.config.types[this.state.type]) {
             var typeMeta = this.config.types[this.state.type];
@@ -1305,7 +1305,7 @@
         this.setColorLabelText(label);
     };
 
-    VirtualVariantDisplay.prototype.rebuildColorOptions = function() {
+    VirtualVariantDisplay.prototype.rebuildColorOptions = function () {
         this.$colorOptions.empty();
         if (!this.state.type || !this.config.types[this.state.type]) {
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
@@ -1321,7 +1321,7 @@
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noColors', 'Ehhez a terméktípushoz nincs elérhető szín.')));
             return;
         }
-        $.each(order, function(_, colorSlug){
+        $.each(order, function (_, colorSlug) {
             var meta = colors[colorSlug];
             if (!meta) {
                 return;
@@ -1355,7 +1355,7 @@
         this.refreshColorLabel();
     };
 
-    VirtualVariantDisplay.prototype.rebuildSizeOptions = function() {
+    VirtualVariantDisplay.prototype.rebuildSizeOptions = function () {
         this.$sizeOptions.empty();
         if (!this.state.type) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
@@ -1376,7 +1376,7 @@
             this.updateAvailabilityText();
             return;
         }
-        $.each(sizes, function(_, sizeValue){
+        $.each(sizes, function (_, sizeValue) {
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--size" aria-pressed="false" />');
             $btn.attr('data-value', sizeValue);
             $btn.append($('<span class="mg-variant-option__label" />').text(sizeValue));
@@ -1395,18 +1395,18 @@
         this.updateAvailabilityText();
     };
 
-    VirtualVariantDisplay.prototype.getAvailableSizes = function(type, color) {
+    VirtualVariantDisplay.prototype.getAvailableSizes = function (type, color) {
         if (!this.config.types[type] || !this.config.types[type].colors[color]) {
             return [];
         }
         return this.config.types[type].colors[color].sizes || [];
     };
 
-    VirtualVariantDisplay.prototype.getAvailability = function(type, color, size) {
+    VirtualVariantDisplay.prototype.getAvailability = function (type, color, size) {
         return true;
     };
 
-    VirtualVariantDisplay.prototype.updateAvailabilityText = function() {
+    VirtualVariantDisplay.prototype.updateAvailabilityText = function () {
         if (!this.$availabilityValue.length) {
             return;
         }
@@ -1429,7 +1429,7 @@
         this.$availability.removeClass('is-out-of-stock is-pending').addClass('is-in-stock');
     };
 
-    VirtualVariantDisplay.prototype.refreshAddToCartState = function() {
+    VirtualVariantDisplay.prototype.refreshAddToCartState = function () {
         if (!this.$addToCart.length) {
             return;
         }
@@ -1438,11 +1438,73 @@
         this.$addToCart.toggleClass('disabled', !ready);
     };
 
-    VirtualVariantDisplay.prototype.refreshPreview = function() {
+    /**
+     * Build mockup URL using predictable file structure
+     * Pattern: /mg_mockups/{SKU}/{SKU}_{TYPE}_{COLOR}_{VIEW}.webp
+     */
+    VirtualVariantDisplay.prototype.buildMockupUrl = function (type, color, view) {
+        view = view || 'front';
+
+        // Check if we have SKU and baseUrl in config
+        if (!this.config || !this.config.product || !this.config.product.sku) {
+            return '';
+        }
+        if (!this.config.mockup || !this.config.mockup.baseUrl) {
+            return '';
+        }
+
+        var sku = this.config.product.sku;
+        var baseUrl = this.config.mockup.baseUrl;
+
+        // Sanitize inputs
+        type = (type || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        color = (color || '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        view = (view || 'front').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+        if (!type || !color) {
+            return '';
+        }
+
+        // Build URL: {baseUrl}/{SKU}/{SKU}_{TYPE}_{COLOR}_{VIEW}.webp
+        var filename = [sku, type, color, view].join('_') + '.webp';
+        var url = baseUrl + '/' + sku + '/' + filename;
+
+        return url;
+    };
+
+    VirtualVariantDisplay.prototype.refreshPreview = function () {
         if (!this.state.type || !this.state.color) {
             this.preview.activeUrl = '';
             this.$previewInput.val('');
             this.refreshPreviewState();
+            return;
+        }
+
+        // NEW: Build URL instantly - NO AJAX!
+        var mockupUrl = this.buildMockupUrl(this.state.type, this.state.color, 'front');
+
+        if (!mockupUrl) {
+            // Fallback to AJAX if SKU not available
+            this.refreshPreviewAjax();
+            return;
+        }
+
+        // Instant URL swap
+        this.preview.activeUrl = mockupUrl;
+        this.$previewInput.val(mockupUrl);
+        this.swapGalleryImage(mockupUrl);
+        this.refreshPreviewState();
+
+        // Store in cache
+        var cacheKey = this.state.type + '|' + this.state.color;
+        this.storePreviewCache(cacheKey, mockupUrl);
+    };
+
+    /**
+     * Fallback AJAX method for old products without SKU
+     */
+    VirtualVariantDisplay.prototype.refreshPreviewAjax = function () {
+        if (!this.state.type || !this.state.color) {
             return;
         }
         var cacheKey = this.state.type + '|' + this.state.color;
@@ -1465,7 +1527,7 @@
             product_id: this.config.product ? this.config.product.id : 0,
             product_type: this.state.type,
             color: this.state.color
-        }).done(function(response){
+        }).done(function (response) {
             if (!response || !response.success || !response.data) {
                 return;
             }
@@ -1482,12 +1544,12 @@
             }
             self.swapGalleryImage(url);
             self.refreshPreviewState();
-        }).always(function(){
+        }).always(function () {
             self.preview.pending = false;
         });
     };
 
-    VirtualVariantDisplay.prototype.getPreviewColor = function() {
+    VirtualVariantDisplay.prototype.getPreviewColor = function () {
         if (!this.state.type || !this.state.color || !this.config.types || !this.config.types[this.state.type]) {
             return '';
         }
@@ -1498,14 +1560,14 @@
         return typeMeta.colors[this.state.color].swatch || '';
     };
 
-    VirtualVariantDisplay.prototype.getPreviewPattern = function() {
+    VirtualVariantDisplay.prototype.getPreviewPattern = function () {
         if (this.config && this.config.visuals && this.config.visuals.defaults && this.config.visuals.defaults.pattern) {
             return this.config.visuals.defaults.pattern;
         }
         return '';
     };
 
-    VirtualVariantDisplay.prototype.refreshPreviewState = function() {
+    VirtualVariantDisplay.prototype.refreshPreviewState = function () {
         if (!this.preview || !this.preview.$modal) {
             return;
         }
@@ -1558,7 +1620,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex, watermarkText) {
+    VirtualVariantDisplay.prototype.applyPreviewWatermark = function (hasPattern, colorHex, watermarkText) {
         if (!this.preview.$watermark) {
             return;
         }
@@ -1592,7 +1654,7 @@
             });
     };
 
-    VirtualVariantDisplay.prototype.queueCanvasRender = function(patternUrl, colorHex, watermarkText) {
+    VirtualVariantDisplay.prototype.queueCanvasRender = function (patternUrl, colorHex, watermarkText) {
         if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
             return;
         }
@@ -1610,13 +1672,13 @@
         this.preview.renderQueued = true;
         var self = this;
         var delay = 120;
-        this.preview.renderTimer = window.setTimeout(function(){
+        this.preview.renderTimer = window.setTimeout(function () {
             self.preview.renderQueued = false;
             self.renderCanvasPattern();
         }, delay);
     };
 
-    VirtualVariantDisplay.prototype.paintCanvasWatermark = function(ctx, width, height, text) {
+    VirtualVariantDisplay.prototype.paintCanvasWatermark = function (ctx, width, height, text) {
         if (!ctx || !text) {
             return;
         }
@@ -1640,7 +1702,7 @@
         ctx.restore();
     };
 
-    VirtualVariantDisplay.prototype.renderCanvasPattern = function() {
+    VirtualVariantDisplay.prototype.renderCanvasPattern = function () {
         if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
             return;
         }
@@ -1668,11 +1730,11 @@
         img.crossOrigin = 'anonymous';
         var self = this;
 
-        img.onload = function() {
+        img.onload = function () {
             var naturalWidth = img.naturalWidth || img.width || 1024;
             var naturalHeight = img.naturalHeight || img.height || 1024;
-        var maxWidth = 800;
-        var maxHeight = 800;
+            var maxWidth = 800;
+            var maxHeight = 800;
             var scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
             if (!isFinite(scale) || scale <= 0) {
                 scale = 1;
@@ -1693,7 +1755,7 @@
             self.paintCanvasWatermark(ctx, drawWidth, drawHeight, watermarkText);
         };
 
-        img.onerror = function() {
+        img.onerror = function () {
             self.preview.loadFailed = true;
             self.preview.failedPattern = patternUrl;
             self.refreshPreviewState();
@@ -1702,7 +1764,7 @@
         img.src = patternUrl;
     };
 
-    VirtualVariantDisplay.prototype.showPatternPreview = function() {
+    VirtualVariantDisplay.prototype.showPatternPreview = function () {
         if (!this.preview.$modal) {
             return;
         }
@@ -1713,7 +1775,7 @@
         this.refreshPreviewState();
     };
 
-    VirtualVariantDisplay.prototype.hidePatternPreview = function() {
+    VirtualVariantDisplay.prototype.hidePatternPreview = function () {
         if (!this.preview.$modal) {
             return;
         }
@@ -1728,7 +1790,7 @@
         }
     };
 
-    VirtualVariantDisplay.prototype.swapGalleryImage = function(url) {
+    VirtualVariantDisplay.prototype.swapGalleryImage = function (url) {
         if (!url) {
             return;
         }
@@ -1748,11 +1810,11 @@
         $img.attr('data-src', url);
     };
 
-    $(function(){
+    $(function () {
         if (!window.MG_VIRTUAL_VARIANTS || !MG_VIRTUAL_VARIANTS.types) {
             return;
         }
-        $('form.cart').each(function(){
+        $('form.cart').each(function () {
             var instance = new VirtualVariantDisplay($(this), MG_VIRTUAL_VARIANTS);
             window.MG_VIRTUAL_VARIANT_INSTANCES = window.MG_VIRTUAL_VARIANT_INSTANCES || [];
             window.MG_VIRTUAL_VARIANT_INSTANCES.push(instance);

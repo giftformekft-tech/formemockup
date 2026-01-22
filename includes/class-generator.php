@@ -352,6 +352,35 @@ class MG_Generator {
         }
     }
 
+    /**
+     * Get product SKU from context for predictable file naming
+     */
+    private function get_product_sku_from_context(array $context) {
+        // 1. Check if SKU is already in context
+        if (!empty($context['product_sku'])) {
+            return MG_Product_Creator::sanitize_sku($context['product_sku']);
+        }
+        
+        // 2. If product_id exists, get/generate SKU
+        $product_id = !empty($context['product_id']) ? absint($context['product_id']) : 0;
+        if ($product_id > 0) {
+            if (class_exists('MG_Product_Creator')) {
+                $sku = MG_Product_Creator::generate_product_sku($product_id, '');
+                if ($sku) {
+                    return $sku;
+                }
+            }
+            
+            // Fallback: check postmeta directly
+            $sku = get_post_meta($product_id, '_sku', true);
+            if ($sku && trim($sku) !== '') {
+                return MG_Product_Creator::sanitize_sku($sku);
+            }
+        }
+        
+        return '';
+    }
+
     public function generate_for_product($product_key, $design_path, $context = array()) {
         if (!$this->webp_supported()) {
             return new WP_Error('webp_unsupported', 'A szerveren nincs WEBP támogatás az Imagick-ben. Kérd meg a tárhelyszolgáltatót, vagy engedélyezd a WebP codert.');
@@ -413,8 +442,17 @@ class MG_Generator {
                     $templates_to_try = array_values(array_filter(array_unique($templates_to_try)));
                     $type_slug = sanitize_title($product['key']);
                     $color_slug = sanitize_title($slug);
-                    $view_key = isset($view['key']) ? sanitize_title($view['key']) : 'view';
-                    $filename = 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+                    $view_key = isset($view['key']) ? sanitize_title($view['key']) : 'front';
+                    
+                    // NEW: SKU-based file naming
+                    $sku = $this->get_product_sku_from_context($context);
+                    if ($sku) {
+                        // Predictable pattern: {SKU}_{TYPE}_{COLOR}_{VIEW}.webp
+                        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+                    } else {
+                        // Fallback to old pattern
+                        $filename = 'mockup_' . $type_slug . '_' . $color_slug . '_' . $view_key . '.webp';
+                    }
                     $outfile = wp_normalize_path(trailingslashit($output_dir) . $filename);
                     $generated = false;
                     $last_error = null;
@@ -463,17 +501,27 @@ class MG_Generator {
             return '';
         }
 
-        $render_version = $this->resolve_render_version($context);
-        $design_id = $this->resolve_design_id($design_path, $context);
-        $type_slug = sanitize_title($type_key);
-        $design_folder = $design_id > 0 ? 'd' . sprintf('%03d', $design_id) : '';
-        $render_bucket = $this->resolve_render_bucket($context);
+        // NEW: SKU-based directory structure
+        $sku = $this->get_product_sku_from_context($context);
+        
+        if ($sku) {
+            // Simple structure: /uploads/mg_mockups/{SKU}/
+            $output_dir = wp_normalize_path(trailingslashit($base_dir) . 'mg_mockups/' . $sku);
+        } else {
+            // Fallback to old complex structure
+            $render_version = $this->resolve_render_version($context);
+            $design_id = $this->resolve_design_id($design_path, $context);
+            $type_slug = sanitize_title($type_key);
+            $design_folder = $design_id > 0 ? 'd' . sprintf('%03d', $design_id) : '';
+            $render_bucket = $this->resolve_render_bucket($context);
 
-        if ($render_version === '' || $design_folder === '' || $type_slug === '') {
-            return '';
+            if ($render_version === '' || $design_folder === '' || $type_slug === '') {
+                return '';
+            }
+
+            $output_dir = wp_normalize_path(trailingslashit($base_dir) . $render_bucket . '/' . $render_version . '/' . $design_folder . '/' . $type_slug);
         }
-
-        $output_dir = wp_normalize_path(trailingslashit($base_dir) . $render_bucket . '/' . $render_version . '/' . $design_folder . '/' . $type_slug);
+        
         if (!is_dir($output_dir)) {
             wp_mkdir_p($output_dir);
         }

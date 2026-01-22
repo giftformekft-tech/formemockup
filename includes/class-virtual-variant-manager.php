@@ -119,6 +119,12 @@ class MG_Virtual_Variant_Manager {
             return self::$config_cache[$product_id];
         }
 
+        // Get or generate SKU for predictable file structure
+        $sku = $product->get_sku();
+        if (!$sku && class_exists('MG_Product_Creator')) {
+            $sku = MG_Product_Creator::generate_product_sku($product_id, $product->get_name());
+        }
+
         $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
         if (empty($catalog)) {
             self::$config_cache[$product_id] = array();
@@ -127,6 +133,24 @@ class MG_Virtual_Variant_Manager {
 
         $settings = self::get_settings($catalog);
         $products = function_exists('mgsc_get_products') ? mgsc_get_products() : array();
+        
+        // Product configuration
+        $product_config = array(
+            'id' => $product_id,
+            'name' => $product->get_name(),
+        );
+        
+        // Add SKU if available
+        if ($sku) {
+            $product_config['sku'] = $sku;
+        }
+        
+        // Mockup configuration for predictable URLs
+        $uploads = wp_upload_dir();
+        $mockup_config = array(
+            'baseUrl' => isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '',
+            'pattern' => '{sku}/{sku}_{type}_{color}_{view}.webp'
+        );
         
         // Product-specific type filtering removed - all products now show all available types
         // from the global catalog (global-attributes.php or mg_products option)
@@ -291,6 +315,8 @@ class MG_Virtual_Variant_Manager {
         $preview_preload = (bool) apply_filters('mg_virtual_variant_preview_preload', $preview_preload_default, $product, $types_payload, $total_colors);
 
         $config = array(
+            'product' => $product_config,
+            'mockup' => $mockup_config,
             'types' => $types_payload,
             'order' => array(
                 'types' => $type_order,

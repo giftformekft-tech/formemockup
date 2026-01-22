@@ -4,6 +4,79 @@ if (!defined('ABSPATH')) exit;
 
 class MG_Product_Creator {
     const BULK_SUFFIX = 'póló pulcsi';
+    const SKU_PREFIX = 'FORME';
+    const SKU_START = 10000;
+
+    /**
+     * Generate or retrieve product SKU
+     * Auto-generates sequential SKU if product doesn't have one
+     */
+    public static function generate_product_sku($product_id, $product_name = '') {
+        $product_id = absint($product_id);
+        if ($product_id <= 0) {
+            return '';
+        }
+
+        // Check existing SKU
+        $existing_sku = get_post_meta($product_id, '_sku', true);
+        if ($existing_sku && trim($existing_sku) !== '') {
+            return self::sanitize_sku($existing_sku);
+        }
+
+        // Generate new SKU
+        $new_sku = self::generate_next_sku();
+        
+        // Save to product
+        update_post_meta($product_id, '_sku', $new_sku);
+        
+        return $new_sku;
+    }
+
+    /**
+     * Generate next sequential SKU
+     */
+    protected static function generate_next_sku() {
+        $last_number = get_option('mg_last_sku_number', self::SKU_START - 1);
+        $max_attempts = 100;
+        $attempt = 0;
+
+        do {
+            $next_number = $last_number + 1 + $attempt;
+            $new_sku = self::SKU_PREFIX . str_pad($next_number, 5, '0', STR_PAD_LEFT);
+            $attempt++;
+        } while (self::sku_exists($new_sku) && $attempt < $max_attempts);
+
+        if ($attempt >= $max_attempts) {
+            // Fallback: use timestamp suffix
+            $new_sku = self::SKU_PREFIX . time();
+        }
+
+        // Store the successfully generated number
+        update_option('mg_last_sku_number', $next_number, false);
+
+        return $new_sku;
+    }
+
+    /**
+     * Check if SKU already exists in database
+     */
+    protected static function sku_exists($sku) {
+        global $wpdb;
+        $count = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key = '_sku' AND meta_value = %s",
+            $sku
+        ));
+        return $count > 0;
+    }
+
+    /**
+     * Sanitize SKU - only uppercase letters, numbers, hyphens, underscores
+     */
+    public static function sanitize_sku($sku) {
+        $sku = strtoupper(trim($sku));
+        $sku = preg_replace('/[^A-Z0-9\-_]/', '', $sku);
+        return $sku;
+    }
 
     public static function apply_bulk_suffix_slug($product_id, $base_name) {
         $product_id = intval($product_id);
@@ -525,6 +598,14 @@ $parent_sku_base = strtoupper(sanitize_title($parent_name));
             $product->set_regular_price((string) $min_price);
         }
         $parent_id=$product->save();
+        
+        // Generate SKU if not exists
+        $sku = self::generate_product_sku($parent_id, $parent_name);
+        if ($sku) {
+            $product->set_sku($sku);
+            $product->save();
+        }
+        
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         if (class_exists('MG_Mockup_Maintenance') && empty($generation_context['skip_register_maintenance'])) {
