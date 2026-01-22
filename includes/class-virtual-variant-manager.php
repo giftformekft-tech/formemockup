@@ -562,13 +562,26 @@ class MG_Virtual_Variant_Manager {
 
     protected static function get_type_mockups($product_id, $types_payload) {
         $mockups = array();
-        if (empty($types_payload) || !class_exists('MG_Mockup_Maintenance')) {
+        if (empty($types_payload)) {
             return $mockups;
         }
-        $index = MG_Mockup_Maintenance::get_index();
-        if (!is_array($index) || empty($index)) {
+        
+        $product = wc_get_product($product_id);
+        if (!$product) {
             return $mockups;
         }
+        
+        $sku = $product->get_sku();
+        if (!$sku) {
+            return $mockups;
+        }
+        
+        $uploads = wp_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+        if ($base_url === '') {
+            return $mockups;
+        }
+
         foreach ($types_payload as $type_slug => $type_meta) {
             $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
             $fallback_color = $color_order ? reset($color_order) : '';
@@ -577,18 +590,15 @@ class MG_Virtual_Variant_Manager {
                 $fallback_color = $color_keys ? reset($color_keys) : '';
             }
             $color_slug = $fallback_color;
-            if ($color_slug === '' || !is_array($type_meta['colors'])) {
+            if ($color_slug === '') {
                 continue;
             }
-            $key = absint($product_id) . '|' . sanitize_title($type_slug) . '|' . sanitize_title($color_slug);
-            if (!isset($index[$key]) || !is_array($index[$key])) {
-                continue;
-            }
-            $entry = $index[$key];
-            $url = self::resolve_preview_url_from_entry($entry);
-            if ($url !== '') {
-                $mockups[$type_slug] = $url;
-            }
+            
+            // Pattern: {baseUrl}/{SKU}/{SKU}_{TYPE}_{COLOR}_front.webp
+            $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+            $url = $base_url . '/' . $sku . '/' . $filename;
+            
+            $mockups[$type_slug] = $url;
         }
         return $mockups;
     }
@@ -1017,6 +1027,29 @@ class MG_Virtual_Variant_Manager {
         }
 
         $product = wc_get_product($product_id);
+        if (!$product) {
+            return new WP_Error('product_missing', __('A termék nem található.', 'mgdtp'));
+        }
+
+        // NEW: Pattern-based resolution
+        $sku = $product->get_sku();
+        if ($sku) {
+            $uploads = wp_upload_dir();
+            $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
+            $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+            
+            if ($base_dir !== '' && $base_url !== '') {
+                $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+                $file_path = $base_dir . '/' . $sku . '/' . $filename;
+                $file_url = $base_url . '/' . $sku . '/' . $filename;
+                
+                if (file_exists($file_path)) {
+                    return $file_url;
+                }
+            }
+        }
+
+        // Fallback to old system (just in case)
         $render_version = self::get_render_version($product);
         $design_id = self::get_design_id($product);
         $render_path = self::build_render_path($render_version, $design_id, $type_slug, $color_slug);
@@ -1025,16 +1058,6 @@ class MG_Virtual_Variant_Manager {
             return $render_url;
         }
 
-        if (class_exists('MG_Mockup_Maintenance')) {
-            $index = MG_Mockup_Maintenance::get_index();
-            $key = $product_id . '|' . $type_slug . '|' . $color_slug;
-            if (isset($index[$key])) {
-                $cached = self::resolve_preview_url_from_entry($index[$key]);
-                if ($cached !== '') {
-                    return $cached;
-                }
-            }
-        }
         return new WP_Error('preview_missing', __('Az előnézet nincs legenerálva ehhez a variációhoz.', 'mgdtp'));
     }
 
