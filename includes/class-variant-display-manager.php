@@ -532,13 +532,10 @@ class MG_Variant_Display_Manager {
                     continue;
                 }
 
-                $sku_path = self::build_sku_render_path($sku, $type_slug, $fallback_color);
-                if ($sku_path !== '' && file_exists($sku_path)) {
-                    $sku_url = self::build_sku_render_url($sku, $type_slug, $fallback_color);
-                    if ($sku_url !== '') {
-                        $mockups[$type_slug] = $sku_url;
-                        continue; // Found SKU based, skip legacy
-                    }
+                $sku_url = self::find_sku_render_url($sku, $type_slug, $fallback_color);
+                if ($sku_url !== '') {
+                    $mockups[$type_slug] = $sku_url;
+                    continue; // Found SKU based, skip legacy
                 }
             }
         }
@@ -701,28 +698,49 @@ class MG_Variant_Display_Manager {
         return trailingslashit($base_url) . 'mg_mockups';
     }
 
-    protected static function build_sku_render_path($sku, $type_slug, $color_slug) {
+    protected static function find_sku_render_url($sku, $type_slug, $color_slug) {
         $base_dir = self::get_sku_render_base_dir();
-        if ($base_dir === '' || $sku === '') {
-            return '';
-        }
-        $type_slug = sanitize_title($type_slug);
-        $color_slug = sanitize_title($color_slug);
-        // Filename: {SKU}_{TYPE}_{COLOR}_{VIEW}.webp - assuming 'front' view as default for type selector
-        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
-        return wp_normalize_path(trailingslashit($base_dir) . $sku . '/' . $filename);
-    }
-
-    protected static function build_sku_render_url($sku, $type_slug, $color_slug) {
         $base_url = self::get_sku_render_base_url();
-        if ($base_url === '' || $sku === '') {
+        
+        if ($base_dir === '' || $base_url === '' || $sku === '') {
             return '';
         }
+        
         $type_slug = sanitize_title($type_slug);
         $color_slug = sanitize_title($color_slug);
-        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        
+        $sku_dir = $base_dir . '/' . $sku;
+        if (!is_dir($sku_dir)) {
+            return '';
+        }
+
+        // Glob pattern: {SKU}_{TYPE}_{COLOR}_*.webp
+        $pattern = $sku . '_' . $type_slug . '_' . $color_slug . '_*.webp';
+        $candidates = glob($sku_dir . '/' . $pattern);
+        
+        if (empty($candidates)) {
+            return '';
+        }
+
+        // Default to first match
+        $match = $candidates[0];
+        
+        // Try to prefer 'front' if available
+        foreach ($candidates as $c) {
+            if (strpos($c, '_front.webp') !== false) {
+                $match = $c;
+                break;
+            }
+        }
+        
+        if (!file_exists($match)) {
+            return '';
+        }
+
+        $filename = basename($match);
         return trailingslashit($base_url) . $sku . '/' . $filename;
     }
+
 
     protected static function format_design_folder($design_id) {
         $design_id = absint($design_id);
