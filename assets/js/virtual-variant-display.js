@@ -1487,11 +1487,16 @@
         if (!renderVersion) {
             return '';
         }
+        var viewKey = String(this.config.primary_view || 'front').trim();
+        if (!viewKey) {
+            viewKey = 'front';
+        }
+        var filename = 'mockup_' + type + '_' + color + '_' + viewKey + '.webp';
         var segments = [
             encodeURIComponent(renderVersion),
             encodeURIComponent(designFolder),
             encodeURIComponent(type),
-            encodeURIComponent(color) + '.webp'
+            encodeURIComponent(filename)
         ];
         return baseUrl + '/' + segments.join('/');
     };
