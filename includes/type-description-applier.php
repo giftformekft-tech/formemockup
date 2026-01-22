@@ -4,7 +4,7 @@ if (!defined('ABSPATH')) exit;
 if (!function_exists('mgtd__get_type_desc')) {
     function mgtd__get_type_desc($type_key){
         $type_key = sanitize_title($type_key);
-        $all = mg_get_catalog_products();
+        $all = get_option('mg_products', array());
         if (!is_array($all)) return '';
         foreach ($all as $p){
             if (!is_array($p)) continue;

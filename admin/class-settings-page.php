@@ -114,53 +114,6 @@ class MG_Settings_Page {
             echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
         }
 
-        if (isset($_POST['mg_global_catalog_nonce']) && wp_verify_nonce($_POST['mg_global_catalog_nonce'], 'mg_global_catalog_save')) {
-            $enabled = !empty($_POST['mg_global_catalog_enabled']);
-            $price = intval($_POST['mg_global_price'] ?? 0);
-            $sizes_input = sanitize_text_field($_POST['mg_global_sizes'] ?? '');
-            $sizes = array_filter(array_map('trim', explode(',', $sizes_input)));
-            $colors_text = sanitize_textarea_field($_POST['mg_global_colors'] ?? '');
-            $color_lines = array_filter(array_map('trim', explode(PHP_EOL, $colors_text)));
-            $colors = array();
-            foreach ($color_lines as $line) {
-                if (strpos($line, ':') === false) {
-                    continue;
-                }
-                list($name_part, $slug_part) = array_map('trim', explode(':', $line, 2));
-                if ($name_part === '' || $slug_part === '') {
-                    continue;
-                }
-                $name_only = $name_part;
-                $hex_value = '';
-                if (strpos($name_part, '|') !== false) {
-                    list($name_only, $hex_value) = array_map('trim', explode('|', $name_part, 2));
-                    if ($name_only === '') {
-                        $name_only = $name_part;
-                    }
-                }
-                $entry = array(
-                    'name' => $name_only,
-                    'slug' => $slug_part,
-                );
-                if ($hex_value !== '') {
-                    $entry['hex'] = $hex_value;
-                }
-                $colors[] = $entry;
-            }
-            $primary_color = sanitize_title($_POST['mg_global_primary_color'] ?? '');
-            $primary_size = sanitize_text_field($_POST['mg_global_primary_size'] ?? '');
-            update_option('mg_global_catalog', array(
-                'enabled' => $enabled,
-                'price' => $price,
-                'sizes' => $sizes,
-                'colors' => $colors,
-                'primary_color' => $primary_color,
-                'primary_size' => $primary_size,
-                'size_color_matrix' => array(),
-            ));
-            echo '<div class="notice notice-success is-dismissible"><p>Globális katalógus beállítások elmentve.</p></div>';
-        }
-
         if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
             $products = get_option('mg_products', array());
             $key = sanitize_title($_POST['product_key'] ?? '');
@@ -195,36 +148,6 @@ class MG_Settings_Page {
         }
 
         $products = get_option('mg_products', array());
-        $global_catalog = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array(
-            'enabled' => false,
-            'price' => 0,
-            'sizes' => array(),
-            'colors' => array(),
-            'primary_color' => '',
-            'primary_size' => '',
-        );
-        $global_sizes_str = implode(', ', $global_catalog['sizes'] ?? array());
-        $global_colors_lines = array();
-        if (!empty($global_catalog['colors']) && is_array($global_catalog['colors'])) {
-            foreach ($global_catalog['colors'] as $color) {
-                if (!is_array($color) || empty($color['slug'])) {
-                    continue;
-                }
-                $name = isset($color['name']) ? $color['name'] : $color['slug'];
-                $hex = '';
-                if (!empty($color['hex'])) {
-                    $hex_candidate = sanitize_hex_color($color['hex']);
-                    if ($hex_candidate) {
-                        $hex = $hex_candidate;
-                    }
-                }
-                if ($hex !== '') {
-                    $name .= '|' . $hex;
-                }
-                $global_colors_lines[] = $name . ':' . $color['slug'];
-            }
-        }
-        $global_colors_text = implode("\n", $global_colors_lines);
         $resize = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos','method'=>'resize'));
         $r_enabled = !empty($resize['enabled']);
         $r_w = intval($resize['max_w'] ?? 0);
@@ -279,64 +202,6 @@ class MG_Settings_Page {
         ?>
         <div class="wrap">
             <h1>Mockup Generator – Beállítások (Termékek)</h1>
-
-            <h2>Globális termékkatalógus</h2>
-            <form method="post">
-                <?php wp_nonce_field('mg_global_catalog_save', 'mg_global_catalog_nonce'); ?>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">Globális katalogus engedélyezése</th>
-                        <td><label><input type="checkbox" name="mg_global_catalog_enabled" <?php checked(!empty($global_catalog['enabled'])); ?> /> Minden terméktípus ugyanazt a szín/méret/ár listát használja.</label></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Globális alapár (HUF)</th>
-                        <td><input type="number" name="mg_global_price" min="0" step="1" value="<?php echo esc_attr(intval($global_catalog['price'] ?? 0)); ?>" class="small-text" /></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Globális méretek</th>
-                        <td>
-                            <input type="text" name="mg_global_sizes" value="<?php echo esc_attr($global_sizes_str); ?>" class="regular-text" />
-                            <p class="description">Vesszővel elválasztva (pl. S, M, L, XL).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Globális színek</th>
-                        <td>
-                            <textarea name="mg_global_colors" rows="6" class="large-text"><?php echo esc_textarea($global_colors_text); ?></textarea>
-                            <p class="description">Sorok: Név|#hex:slug (pl. Fekete|#000000:fekete).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Alapértelmezett szín</th>
-                        <td>
-                            <select name="mg_global_primary_color">
-                                <option value="">—</option>
-                                <?php foreach (($global_catalog['colors'] ?? array()) as $color): ?>
-                                    <?php if (!is_array($color) || empty($color['slug'])) continue; ?>
-                                    <option value="<?php echo esc_attr($color['slug']); ?>" <?php selected($global_catalog['primary_color'] ?? '', $color['slug']); ?>>
-                                        <?php echo esc_html($color['name'] ?? $color['slug']); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Alapértelmezett méret</th>
-                        <td>
-                            <select name="mg_global_primary_size">
-                                <option value="">—</option>
-                                <?php foreach (($global_catalog['sizes'] ?? array()) as $size_option): ?>
-                                    <?php if (!is_string($size_option) || $size_option === '') continue; ?>
-                                    <option value="<?php echo esc_attr($size_option); ?>" <?php selected($global_catalog['primary_size'] ?? '', $size_option); ?>>
-                                        <?php echo esc_html($size_option); ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </td>
-                    </tr>
-                </table>
-                <?php submit_button('Globális katalógus mentése'); ?>
-            </form>
 
             <h2>Kimeneti maximum méret</h2>
             <form method="post">
