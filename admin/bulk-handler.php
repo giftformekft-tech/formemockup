@@ -85,7 +85,7 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     require_once plugin_dir_path(__FILE__) . '../includes/class-generator.php';
     require_once plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
 
-    $all = function_exists('mg_get_global_catalog') ? mg_get_global_catalog() : array();
+    $all = get_option('mg_products', array());
     $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
     if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
 

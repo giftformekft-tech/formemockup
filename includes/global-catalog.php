@@ -56,15 +56,12 @@ if (!class_exists('MG_Global_Attributes')) {
                 return $out;
             }
 
-            foreach ($products as $product_key => $product) {
+            foreach ($products as $product) {
                 if (!is_array($product)) {
                     continue;
                 }
 
                 $key = isset($product['key']) ? sanitize_title($product['key']) : '';
-                if ($key === '' && is_string($product_key)) {
-                    $key = sanitize_title($product_key);
-                }
                 if ($key === '') {
                     continue;
                 }
@@ -242,132 +239,47 @@ function mg_get_global_catalog() {
     return MG_Global_Attributes::get_catalog();
 }
 
-function mg_build_global_catalog_from_products($products_raw) {
-    $products_raw = is_array($products_raw) ? $products_raw : array();
-    $products = array();
-
-    foreach ($products_raw as $index => $product) {
-        if (!is_array($product)) {
-            continue;
-        }
-        $key = isset($product['key']) ? sanitize_title($product['key']) : '';
-        if ($key === '' && is_string($index)) {
-            $key = sanitize_title($index);
-        }
-        if ($key === '') {
-            continue;
-        }
-
-        $colors = array();
-        if (!empty($product['colors']) && is_array($product['colors'])) {
-            foreach ($product['colors'] as $color) {
-                if (is_string($color)) {
-                    $color = array('slug' => $color, 'name' => $color);
-                }
-                if (!is_array($color)) {
-                    continue;
-                }
-                $slug = isset($color['slug']) ? sanitize_title($color['slug']) : '';
-                if ($slug === '' && isset($color['name'])) {
-                    $slug = sanitize_title($color['name']);
-                }
-                if ($slug === '') {
-                    continue;
-                }
-                $colors[] = array(
-                    'slug' => $slug,
-                    'name' => isset($color['name']) ? sanitize_text_field($color['name']) : $slug,
-                );
-            }
-        }
-
-        $sizes = array();
-        if (!empty($product['sizes']) && is_array($product['sizes'])) {
-            foreach ($product['sizes'] as $size_value) {
-                if (!is_string($size_value)) {
-                    continue;
-                }
-                $size_value = trim($size_value);
-                if ($size_value === '' || in_array($size_value, $sizes, true)) {
-                    continue;
-                }
-                $sizes[] = $size_value;
-            }
-        }
-
-        $matrix = array();
-        if (!empty($product['size_color_matrix']) && is_array($product['size_color_matrix'])) {
-            foreach ($product['size_color_matrix'] as $size_label => $color_list) {
-                if (!is_string($size_label)) {
-                    continue;
-                }
-                $size_key = sanitize_text_field($size_label);
-                if ($size_key === '') {
-                    continue;
-                }
-                $matrix[$size_key] = array();
-                if (is_array($color_list)) {
-                    foreach ($color_list as $color_slug) {
-                        $color_slug = sanitize_title($color_slug);
-                        if ($color_slug === '') {
-                            continue;
-                        }
-                        if (!in_array($color_slug, $matrix[$size_key], true)) {
-                            $matrix[$size_key][] = $color_slug;
-                        }
-                    }
-                }
-            }
-        }
-
-        $products[] = array(
-            'key' => $key,
-            'label' => isset($product['label']) ? wp_strip_all_tags($product['label']) : $key,
-            'price' => isset($product['price']) ? intval($product['price']) : 0,
-            'sizes' => $sizes,
-            'colors' => $colors,
-            'primary_color' => isset($product['primary_color']) ? sanitize_title($product['primary_color']) : '',
-            'primary_size' => isset($product['primary_size']) ? sanitize_text_field($product['primary_size']) : '',
-            'size_color_matrix' => $matrix,
-            'size_surcharges' => array(),
-            'type_description' => isset($product['type_description']) ? wp_kses_post($product['type_description']) : '',
-            'enabled' => true,
-        );
-    }
-
-    return array(
-        'products' => $products,
-    );
-}
-
-function mg_update_global_catalog_from_products($products_raw) {
-    $path = dirname(__DIR__) . '/includes/config/global-attributes.php';
-    $data = mg_build_global_catalog_from_products($products_raw);
-    $export = var_export($data, true);
-    $contents = "<?php\n";
-    $contents .= "/**\n";
-    $contents .= " * Global attributes source of truth.\n";
-    $contents .= " *\n";
-    $contents .= " * IMPORTANT:\n";
-    $contents .= " * - Keep this data in sync with your configured product types, colors, and sizes.\n";
-    $contents .= " * - This file is the only source for global attributes (no DB storage).\n";
-    $contents .= " */\n\n";
-    $contents .= "return " . $export . ";\n";
-
-    $dir = dirname($path);
-    if (!is_dir($dir) || !is_writable($dir) || (file_exists($path) && !is_writable($path))) {
-        return new WP_Error('mg_global_catalog_not_writable', __('A global-attributes.php fájl nem írható. Állítsd be az írási jogosultságot.', 'mgstp'));
-    }
-
-    $result = file_put_contents($path, $contents);
-    if ($result === false) {
-        return new WP_Error('mg_global_catalog_write_failed', __('Nem sikerült menteni a global-attributes.php fájlt.', 'mgstp'));
-    }
-
-    return true;
-}
-
 function mg_global_catalog_enabled() {
     $catalog = mg_get_global_catalog();
     return !empty($catalog);
+}
+
+function mg_apply_global_catalog_to_product($product, $catalog = null) {
+    if (!is_array($product)) {
+        return $product;
+    }
+    if ($catalog === null) {
+        $catalog = mg_get_global_catalog();
+    }
+    $key = isset($product['key']) ? sanitize_title($product['key']) : '';
+    if ($key === '' || empty($catalog[$key]) || !is_array($catalog[$key])) {
+        return $product;
+    }
+
+    $global = $catalog[$key];
+    $product['price'] = $global['price'];
+    $product['sizes'] = $global['sizes'];
+    $product['colors'] = $global['colors'];
+    $product['primary_color'] = $global['primary_color'];
+    $product['primary_size'] = $global['primary_size'];
+    $product['size_color_matrix'] = $global['size_color_matrix'];
+    $product['size_surcharges'] = $global['size_surcharges'];
+    $product['type_description'] = $global['type_description'];
+
+    return $product;
+}
+
+function mg_get_catalog_products($products = null) {
+    $catalog = mg_get_global_catalog();
+    if (!empty($catalog)) {
+        return $catalog;
+    }
+
+    if ($products === null) {
+        $products = get_option('mg_products', array());
+    }
+    if (!is_array($products)) {
+        $products = array();
+    }
+    return $products;
 }
