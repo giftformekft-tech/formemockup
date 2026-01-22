@@ -1,0 +1,540 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class MG_Mockup_Maintenance_Page {
+    private static $notices = [];
+
+    public static function add_submenu_page() {
+        add_submenu_page(
+            'mockup-generator',
+            __('Mockup karbantartás', 'mgdtp'),
+            __('Mockup karbantartás', 'mgdtp'),
+            'edit_products',
+            'mockup-generator-maintenance',
+            [__CLASS__, 'render_page']
+        );
+    }
+
+    private static function add_notice($message, $type = 'updated') {
+        self::$notices[] = ['message' => $message, 'type' => $type];
+    }
+
+    private static function render_notices() {
+        foreach (self::$notices as $notice) {
+            printf(
+                '<div class="notice notice-%1$s"><p>%2$s</p></div>',
+                esc_attr($notice['type']),
+                wp_kses_post($notice['message'])
+            );
+        }
+        self::$notices = [];
+    }
+
+    private static function handle_actions() {
+        if (empty($_POST['mg_mockup_action'])) {
+            return;
+        }
+        if (!current_user_can('edit_products')) {
+            self::add_notice(__('Nincs jogosultság a művelethez.', 'mgdtp'), 'error');
+            return;
+        }
+        if (empty($_POST['mg_mockup_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mg_mockup_nonce'])), 'mg_mockup_maintenance')) {
+            self::add_notice(__('Érvénytelen kérés (nonce).', 'mgdtp'), 'error');
+            return;
+        }
+        $action = sanitize_text_field(wp_unslash($_POST['mg_mockup_action']));
+        $selected = isset($_POST['mockup_keys']) ? array_map('sanitize_text_field', wp_unslash((array) $_POST['mockup_keys'])) : [];
+        if (!empty($_POST['mg_single_key'])) {
+            $selected[] = sanitize_text_field(wp_unslash($_POST['mg_single_key']));
+        }
+        $selected = array_values(array_unique(array_filter($selected)));
+        switch ($action) {
+            case 'bulk_regenerate':
+                if (empty($selected)) {
+                    self::add_notice(__('Nem jelöltél ki mockupot.', 'mgdtp'), 'warning');
+                    break;
+                }
+                foreach ($selected as $key) {
+                    $parts = explode('|', $key);
+                    if (count($parts) !== 3) {
+                        continue;
+                    }
+                    list($product_id, $type_slug, $color_slug) = $parts;
+                    MG_Mockup_Maintenance::queue_for_regeneration($product_id, $type_slug, $color_slug, __('Admin újragenerálás kérve.', 'mgdtp'));
+                }
+                self::add_notice(__('A kijelölt mockupok felkerültek a sorba.', 'mgdtp'));
+                break;
+            case 'process_queue_now':
+                MG_Mockup_Maintenance::process_queue();
+                self::add_notice(__('A háttérsor feldolgozását lefuttattuk.', 'mgdtp'));
+                break;
+            case 'clear_log':
+                update_option(MG_Mockup_Maintenance::OPTION_ACTIVITY_LOG, [], false);
+                self::add_notice(__('A napló ürítve lett.', 'mgdtp'));
+                break;
+            case 'save_batch_size':
+                $raw_value = isset($_POST['mg_batch_size']) ? sanitize_text_field(wp_unslash($_POST['mg_batch_size'])) : 0;
+                $new_value = MG_Mockup_Maintenance::set_batch_size($raw_value);
+                /* translators: %d: number of mockups processed per cron run */
+                self::add_notice(sprintf(__('A cron mostantól egyszerre %d mockupot dolgoz fel.', 'mgdtp'), $new_value));
+                break;
+            case 'save_interval':
+                $raw_value = isset($_POST['mg_interval_minutes']) ? sanitize_text_field(wp_unslash($_POST['mg_interval_minutes'])) : 0;
+                $new_value = MG_Mockup_Maintenance::set_interval_minutes($raw_value);
+                /* translators: %d: interval minutes */
+                self::add_notice(sprintf(__('A cron mostantól %d percenként fut.', 'mgdtp'), $new_value));
+                break;
+            case 'toggle_regeneration':
+                $enabled = !empty($_POST['mg_regen_enabled']);
+                $enabled = MG_Mockup_Maintenance::set_regeneration_enabled($enabled);
+                if ($enabled) {
+                    self::add_notice(__('A regenerálás engedélyezve.', 'mgdtp'));
+                } else {
+                    self::add_notice(__('A regenerálás leállítva.', 'mgdtp'), 'warning');
+                }
+                break;
+            case 'manual_variant_sync':
+                if (!class_exists('MG_Variant_Maintenance')) {
+                    self::add_notice(__('Hiányzik a variáns karbantartó modul.', 'mgdtp'), 'error');
+                    break;
+                }
+                $queued = MG_Variant_Maintenance::queue_full_sync();
+                if ($queued === 0) {
+                    self::add_notice(__('Nincs frissítendő variáns.', 'mgdtp'), 'warning');
+                    break;
+                }
+                MG_Variant_Maintenance::process_queue();
+                self::add_notice(__('A variáns frissítés elindult.', 'mgdtp'));
+                break;
+            case 'cleanup_missing_products':
+                if (!class_exists('MG_Mockup_Maintenance')) {
+                    self::add_notice(__('Hiányzik a Mockup karbantartó modul.', 'mgdtp'), 'error');
+                    break;
+                }
+                $result = MG_Mockup_Maintenance::cleanup_missing_products();
+                if (empty($result['removed']) && empty($result['queue_removed'])) {
+                    self::add_notice(__('Nem találtunk törölt termékhez tartozó bejegyzést.', 'mgdtp'), 'warning');
+                    break;
+                }
+                /* translators: %1$d: removed index entries, %2$d: removed queue items */
+                self::add_notice(sprintf(__('Törölt termékek tisztítása kész: %1$d bejegyzés törölve, %2$d sorban álló feladat eltávolítva.', 'mgdtp'), (int) ($result['removed'] ?? 0), (int) ($result['queue_removed'] ?? 0)));
+                break;
+        }
+    }
+
+    private static function status_label($status) {
+        $map = [
+            'ok'       => __('rendben', 'mgdtp'),
+            'pending'  => __('frissítendő', 'mgdtp'),
+            'error'    => __('hibás', 'mgdtp'),
+            'missing'  => __('hiányzik', 'mgdtp'),
+        ];
+        return $map[$status] ?? $status;
+    }
+
+    private static function status_class($status) {
+        $map = [
+            'ok'       => 'status-ok',
+            'pending'  => 'status-pending',
+            'error'    => 'status-error',
+            'missing'  => 'status-missing',
+        ];
+        return $map[$status] ?? 'status-unknown';
+    }
+
+    private static function collect_products($entries) {
+        $products = [];
+        foreach ($entries as $entry) {
+            $pid = isset($entry['product_id']) ? (int) $entry['product_id'] : 0;
+            if ($pid <= 0 || isset($products[$pid])) {
+                continue;
+            }
+            $name = $pid;
+            if (function_exists('wc_get_product')) {
+                $product = wc_get_product($pid);
+                if ($product) {
+                    $name = $product->get_name();
+                }
+            }
+            $products[$pid] = $name;
+        }
+        asort($products);
+        return $products;
+    }
+
+    private static function render_filters($active_filters, $entries) {
+        $statuses = ['' => __('Összes állapot', 'mgdtp'), 'pending' => __('Frissítendő', 'mgdtp'), 'error' => __('Hibás', 'mgdtp'), 'missing' => __('Hiányzik', 'mgdtp'), 'ok' => __('Rendben', 'mgdtp')];
+        $products = self::collect_products($entries);
+        $types = ['' => __('Összes variáns', 'mgdtp')];
+        foreach ($entries as $entry) {
+            if (!empty($entry['type_slug'])) {
+                $types[$entry['type_slug']] = $entry['source']['type_label'] ?? $entry['type_slug'];
+            }
+        }
+        asort($types);
+        ?>
+        <form method="get" class="mg-filters">
+            <input type="hidden" name="page" value="mockup-generator-maintenance" />
+            <label>
+                <span><?php esc_html_e('Állapot', 'mgdtp'); ?></span>
+                <select name="mg_status">
+                    <?php foreach ($statuses as $value => $label) : ?>
+                        <option value="<?php echo esc_attr($value); ?>" <?php selected($active_filters['status'], $value); ?>><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                <span><?php esc_html_e('Termék', 'mgdtp'); ?></span>
+                <select name="mg_product">
+                    <option value=""><?php esc_html_e('Összes termék', 'mgdtp'); ?></option>
+                    <?php foreach ($products as $pid => $label) : ?>
+                        <option value="<?php echo esc_attr($pid); ?>" <?php selected($active_filters['product_id'], $pid); ?>><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                <span><?php esc_html_e('Variáns', 'mgdtp'); ?></span>
+                <select name="mg_type">
+                    <?php foreach ($types as $value => $label) : ?>
+                        <option value="<?php echo esc_attr($value); ?>" <?php selected($active_filters['type_slug'], $value); ?>><?php echo esc_html($label); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                <span><?php esc_html_e('Szín', 'mgdtp'); ?></span>
+                <input type="text" name="mg_color" value="<?php echo esc_attr($active_filters['color_slug']); ?>" placeholder="pl. fekete" />
+            </label>
+            <button type="submit" class="button button-primary"><?php esc_html_e('Szűrés', 'mgdtp'); ?></button>
+        </form>
+        <?php
+    }
+
+    private static function render_summary($entries, $queue) {
+        $counts = ['ok' => 0, 'pending' => 0, 'error' => 0, 'missing' => 0];
+        foreach ($entries as $entry) {
+            $status = $entry['status'] ?? 'ok';
+            if (isset($counts[$status])) {
+                $counts[$status]++;
+            }
+        }
+        $total = max(1, array_sum($counts));
+        $pending = isset($counts['pending']) ? (int) $counts['pending'] : 0;
+        $percent = min(100, max(0, round((($total - $pending) / $total) * 100)));
+        $variant_progress = class_exists('MG_Variant_Maintenance') ? MG_Variant_Maintenance::get_progress() : [];
+        $variant_percent = isset($variant_progress['percent']) ? (int) $variant_progress['percent'] : 0;
+        $variant_current = isset($variant_progress['current']) ? (int) $variant_progress['current'] : 0;
+        $variant_total = isset($variant_progress['total']) ? (int) $variant_progress['total'] : 0;
+        $variant_status = $variant_progress['status'] ?? 'idle';
+        $variant_label = $variant_status === 'running' ? __('Variáns frissítés folyamatban', 'mgdtp') : __('Variáns frissítés', 'mgdtp');
+        $variant_progress_text = $variant_total > 0 ? sprintf('%d / %d', $variant_current, $variant_total) : __('nincs adat', 'mgdtp');
+        ?>
+        <div class="mg-maintenance-summary">
+            <div class="summary-item">
+                <strong><?php echo esc_html($counts['pending']); ?></strong>
+                <span><?php esc_html_e('Frissítendő mockup', 'mgdtp'); ?></span>
+            </div>
+            <div class="summary-item">
+                <strong><?php echo esc_html(count($queue)); ?></strong>
+                <span><?php esc_html_e('Sorban álló feladat', 'mgdtp'); ?></span>
+            </div>
+            <div class="summary-progress">
+                <span><?php esc_html_e('Előrehaladás', 'mgdtp'); ?></span>
+                <div class="progress-bar"><span style="width: <?php echo esc_attr($percent); ?>%"></span></div>
+            </div>
+            <div
+                class="summary-progress summary-progress--variants"
+                data-variant-progress
+                data-label-running="<?php echo esc_attr__('Variáns frissítés folyamatban', 'mgdtp'); ?>"
+                data-label-idle="<?php echo esc_attr__('Variáns frissítés', 'mgdtp'); ?>"
+            >
+                <span data-variant-progress-status><?php echo esc_html($variant_label); ?></span>
+                <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr($variant_percent); ?>">
+                    <span style="width: <?php echo esc_attr($variant_percent); ?>%"></span>
+                </div>
+                <div class="variant-progress__meta" data-variant-progress-value><?php echo esc_html($variant_progress_text); ?></div>
+            </div>
+        </div>
+        <?php
+    }
+
+    private static function render_table($entries) {
+        $grouped = [];
+        $group_order = [];
+        foreach ($entries as $entry) {
+            $product_id = (int) ($entry['product_id'] ?? 0);
+            $product_label = $product_id;
+            if ($product_id && function_exists('wc_get_product')) {
+                $product_obj = wc_get_product($product_id);
+                if ($product_obj) {
+                    $product_label = $product_obj->get_name();
+                }
+            }
+            $group_label = $product_label !== '' ? $product_label : __('Ismeretlen', 'mgdtp');
+            $group_key = $product_id . '|' . sanitize_title((string) $group_label);
+            if (!isset($grouped[$group_key])) {
+                $grouped[$group_key] = [
+                    'product_id' => $product_id,
+                    'label' => $group_label,
+                    'entries' => [],
+                ];
+                $group_order[] = $group_key;
+            }
+            $entry['__product_label'] = $group_label;
+            $grouped[$group_key]['entries'][] = $entry;
+        }
+        ?>
+        <form method="post" class="mg-maintenance-table">
+            <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+            <input type="hidden" name="mg_mockup_action" value="bulk_regenerate" />
+            <table class="widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th class="check-column"><input type="checkbox" class="mg-select-all" /></th>
+                        <th><?php esc_html_e('Termék', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Variáns', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Szín', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Állapot', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Utolsó frissítés', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Megjegyzés', 'mgdtp'); ?></th>
+                        <th><?php esc_html_e('Műveletek', 'mgdtp'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($entries)) : ?>
+                        <tr>
+                            <td colspan="8" class="no-items"><?php esc_html_e('Nincs találat a megadott szűrőkkel.', 'mgdtp'); ?></td>
+                        </tr>
+                    <?php else : ?>
+                        <?php foreach ($group_order as $group_key) :
+                            $group = $grouped[$group_key];
+                            $group_label = $group['label'];
+                            $group_count = count($group['entries']);
+                            $group_id = 'mg-group-' . md5($group_key);
+                            $product_id = (int) ($group['product_id'] ?? 0);
+                            ?>
+                            <tr class="mg-group-row" data-group-row="<?php echo esc_attr($group_id); ?>">
+                                <th colspan="8">
+                                    <button type="button" class="mg-group-toggle" data-group="<?php echo esc_attr($group_id); ?>" aria-expanded="false">
+                                        <span class="mg-group-title">
+                                            <?php
+                                            echo esc_html(
+                                                sprintf(
+                                                    /* translators: %1$s: product label, %2$d: entry count. */
+                                                    __('Termék: %1$s (%2$d)', 'mgdtp'),
+                                                    $group_label,
+                                                    $group_count
+                                                )
+                                            );
+                                            ?>
+                                        </span>
+                                    </button>
+                                    <?php if ($product_id) : ?>
+                                        <a class="mg-group-edit" href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">
+                                            <?php esc_html_e('Megnyitás', 'mgdtp'); ?>
+                                        </a>
+                                    <?php endif; ?>
+                                </th>
+                            </tr>
+                            <?php foreach ($group['entries'] as $entry) :
+                                $key = $entry['key'];
+                                $product_id = (int) ($entry['product_id'] ?? 0);
+                                $product_label = $entry['__product_label'] ?? $product_id;
+                                $updated_at = !empty($entry['updated_at']) ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $entry['updated_at']) : __('nincs adat', 'mgdtp');
+                                $status = $entry['status'] ?? 'ok';
+                                $pending_reason = $entry['pending_reason'] ?? '';
+                                $message = $entry['last_message'] ?? '';
+                                ?>
+                                <tr class="mg-group-entry is-collapsed" data-group="<?php echo esc_attr($group_id); ?>">
+                                    <th scope="row" class="check-column"><input type="checkbox" name="mockup_keys[]" value="<?php echo esc_attr($key); ?>" /></th>
+                                    <td>
+                                        <?php if ($product_id) : ?>
+                                            <a href="<?php echo esc_url(get_edit_post_link($product_id)); ?>" target="_blank" rel="noopener noreferrer">#<?php echo esc_html($product_id); ?></a>
+                                            <div class="meta-label"><?php echo esc_html($product_label); ?></div>
+                                        <?php else : ?>
+                                            <?php echo esc_html($product_label); ?>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td><?php echo esc_html($entry['source']['type_label'] ?? $entry['type_slug']); ?></td>
+                                    <td><?php echo esc_html($entry['source']['color_label'] ?? $entry['color_slug']); ?></td>
+                                    <td><span class="status-pill <?php echo esc_attr(self::status_class($status)); ?>"><?php echo esc_html(self::status_label($status)); ?></span></td>
+                                    <td><?php echo esc_html($updated_at); ?></td>
+                                    <td>
+                                        <?php if ($status === 'pending' && $pending_reason) : ?>
+                                            <div><?php echo esc_html($pending_reason); ?></div>
+                                        <?php endif; ?>
+                                        <?php if ($message) : ?>
+                                            <div class="last-message"><?php echo esc_html($message); ?></div>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <button type="submit" name="mg_single_key" value="<?php echo esc_attr($key); ?>" class="button-link mg-row-action" onclick="this.form.mg_mockup_action.value='bulk_regenerate';"><?php esc_html_e('Újragenerálás', 'mgdtp'); ?></button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            <div class="tablenav bottom">
+                <div class="alignleft actions bulkactions">
+                    <input type="hidden" name="mg_mockup_action" value="bulk_regenerate" />
+                    <button type="submit" class="button action"><?php esc_html_e('Újragenerálás kijelöltekkel', 'mgdtp'); ?></button>
+                </div>
+            </div>
+        </form>
+        <?php
+    }
+
+    private static function render_queue_controls() {
+        $batch_size = MG_Mockup_Maintenance::get_batch_size();
+        $min_batch = MG_Mockup_Maintenance::MIN_BATCH;
+        $max_batch = MG_Mockup_Maintenance::MAX_BATCH;
+        $interval_minutes = MG_Mockup_Maintenance::get_interval_minutes();
+        $min_interval = MG_Mockup_Maintenance::MIN_INTERVAL;
+        $max_interval = MG_Mockup_Maintenance::MAX_INTERVAL;
+        $regen_enabled = MG_Mockup_Maintenance::is_regeneration_enabled();
+        ?>
+        <div class="mg-queue-controls">
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="toggle_regeneration" />
+                <label>
+                    <input type="hidden" name="mg_regen_enabled" value="0" />
+                    <input type="checkbox" name="mg_regen_enabled" value="1" <?php checked($regen_enabled, true); ?> />
+                    <span><?php esc_html_e('Regenerálás engedélyezve', 'mgdtp'); ?></span>
+                </label>
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Mentés', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="process_queue_now" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Sor feldolgozása most', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="manual_variant_sync" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Variánsok frissítése most', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-run-queue">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="cleanup_missing_products" />
+                <button type="submit" class="button button-secondary"><?php esc_html_e('Törölt termékek tisztítása', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-batch-size-form">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="save_interval" />
+                <label for="mg_interval_minutes">
+                    <span><?php esc_html_e('Cron futási időköz', 'mgdtp'); ?></span>
+                    <div class="mg-range-wrapper">
+                        <input
+                            type="range"
+                            id="mg_interval_minutes"
+                            name="mg_interval_minutes"
+                            class="mg-batch-size-slider"
+                            min="<?php echo esc_attr($min_interval); ?>"
+                            max="<?php echo esc_attr($max_interval); ?>"
+                            step="1"
+                            value="<?php echo esc_attr($interval_minutes); ?>"
+                        />
+                        <output for="mg_interval_minutes" id="mg_interval_minutes_value" class="mg-batch-size-value"><?php echo esc_html($interval_minutes); ?></output>
+                        <span class="mg-range-suffix"><?php esc_html_e('perc', 'mgdtp'); ?></span>
+                    </div>
+                </label>
+                <p class="description"><?php esc_html_e('A háttérfolyamat ilyen gyakran fut le, és ennyi percenként dolgozza a sorban álló mockupokat.', 'mgdtp'); ?></p>
+                <button type="submit" class="button button-primary"><?php esc_html_e('Időköz mentése', 'mgdtp'); ?></button>
+            </form>
+            <form method="post" class="mg-batch-size-form">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="save_batch_size" />
+                <label for="mg_batch_size">
+                    <span><?php esc_html_e('Feldolgozási csomagméret', 'mgdtp'); ?></span>
+                    <div class="mg-range-wrapper">
+                        <input
+                            type="range"
+                            id="mg_batch_size"
+                            name="mg_batch_size"
+                            class="mg-batch-size-slider"
+                            min="<?php echo esc_attr($min_batch); ?>"
+                            max="<?php echo esc_attr($max_batch); ?>"
+                            step="1"
+                            value="<?php echo esc_attr($batch_size); ?>"
+                        />
+                        <output for="mg_batch_size" id="mg_batch_size_value" class="mg-batch-size-value"><?php echo esc_html($batch_size); ?></output>
+                        <span class="mg-range-suffix"><?php esc_html_e('db', 'mgdtp'); ?></span>
+                    </div>
+                </label>
+                <p class="description"><?php esc_html_e('Egyszerre ennyi mockup kerül feldolgozásra a cron futásakor.', 'mgdtp'); ?></p>
+                <button type="submit" class="button button-primary"><?php esc_html_e('Csomagméret mentése', 'mgdtp'); ?></button>
+            </form>
+        </div>
+        <?php
+    }
+
+    private static function render_activity_log() {
+        $log = MG_Mockup_Maintenance::get_activity_log();
+        ?>
+        <div class="mg-activity-log">
+            <h2><?php esc_html_e('Legutóbbi események', 'mgdtp'); ?></h2>
+            <form method="post" class="mg-log-clear">
+                <?php wp_nonce_field('mg_mockup_maintenance', 'mg_mockup_nonce'); ?>
+                <input type="hidden" name="mg_mockup_action" value="clear_log" />
+                <button type="submit" class="button button-link-delete"><?php esc_html_e('Napló törlése', 'mgdtp'); ?></button>
+            </form>
+            <ul>
+                <?php if (empty($log)) : ?>
+                    <li><?php esc_html_e('Még nincs naplóbejegyzés.', 'mgdtp'); ?></li>
+                <?php else : ?>
+                    <?php foreach (array_slice($log, 0, 20) as $row) :
+                        $time = !empty($row['time']) ? date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $row['time']) : '';
+                        $status = !empty($row['status']) ? self::status_label($row['status']) : '';
+                        $message = !empty($row['message']) ? $row['message'] : '';
+                        ?>
+                        <li>
+                            <strong><?php echo esc_html($time); ?></strong>
+                            <span class="status-pill <?php echo esc_attr(self::status_class($row['status'] ?? '')); ?>"><?php echo esc_html($status); ?></span>
+                            <span class="log-message"><?php echo esc_html($message); ?></span>
+                        </li>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </ul>
+        </div>
+        <?php
+    }
+
+    public static function render_page() {
+        if (!class_exists('MG_Mockup_Maintenance')) {
+            echo '<div class="notice notice-error"><p>' . esc_html__('Hiányzik a Mockup karbantartó modul.', 'mgdtp') . '</p></div>';
+            return;
+        }
+        self::handle_actions();
+        $filters = [
+            'status' => isset($_GET['mg_status']) ? sanitize_text_field(wp_unslash($_GET['mg_status'])) : '',
+            'product_id' => isset($_GET['mg_product']) ? absint($_GET['mg_product']) : 0,
+            'type_slug' => isset($_GET['mg_type']) ? sanitize_text_field(wp_unslash($_GET['mg_type'])) : '',
+            'color_slug' => isset($_GET['mg_color']) ? sanitize_title(wp_unslash($_GET['mg_color'])) : '',
+        ];
+        $entries = MG_Mockup_Maintenance::get_status_entries($filters);
+        $queue = MG_Mockup_Maintenance::get_queue();
+        ?>
+        <div class="wrap mg-mockup-maintenance">
+            <h1><?php esc_html_e('Mockup karbantartás', 'mgdtp'); ?></h1>
+            <div class="notice notice-info">
+                <p><strong><?php esc_html_e('Regenerálás működése (részletes leírás)', 'mgdtp'); ?></strong></p>
+                <ul>
+                    <li><?php esc_html_e('Az Újragenerálás a kijelölt mockupokat sorba teszi, majd a háttérfolyamat batch-ekben dolgozza fel.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A „Frissítendő” állapot jelzi, hogy a mockup hiányzik vagy hibás, ezeket érdemes sorba helyezni.', 'mgdtp'); ?></li>
+                    <li><?php esc_html_e('A variáns frissítés külön queue-ban fut, és a mockup indexet is karbantartja.', 'mgdtp'); ?></li>
+                </ul>
+            </div>
+            <?php self::render_notices(); ?>
+            <?php self::render_filters($filters, $entries); ?>
+            <?php self::render_summary($entries, $queue); ?>
+            <?php self::render_queue_controls(); ?>
+            <?php self::render_table($entries); ?>
+            <?php self::render_activity_log(); ?>
+        </div>
+        <?php
+    }
+}
