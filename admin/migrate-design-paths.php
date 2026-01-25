@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
 
 class MG_Design_Path_Migration {
     
-    public static function run_migration() {
+    public static function run_migration($force_overwrite = false) {
         global $wpdb;
         
         $results = array(
@@ -30,11 +30,13 @@ class MG_Design_Path_Migration {
         $results['total_products'] = count($product_ids);
         
         foreach ($product_ids as $product_id) {
-            // Skip if already has design path
-            $existing_path = get_post_meta($product_id, '_mg_last_design_path', true);
-            if ($existing_path && file_exists($existing_path)) {
-                $results['skipped']++;
-                continue;
+            // Skip if already has design path (unless force overwrite)
+            if (!$force_overwrite) {
+                $existing_path = get_post_meta($product_id, '_mg_last_design_path', true);
+                if ($existing_path && file_exists($existing_path)) {
+                    $results['skipped']++;
+                    continue;
+                }
             }
             
             $design_info = self::find_design_for_product($product_id);
@@ -244,11 +246,17 @@ add_action('admin_menu', function() {
             echo '<h1>Design Path Migration</h1>';
             
             if (isset($_POST['run_migration']) && wp_verify_nonce($_POST['_wpnonce'], 'mg_migration')) {
-                echo '<div class="notice notice-info"><p>Running migration... This may take a while.</p></div>';
+                $force_overwrite = isset($_POST['force_overwrite']) && $_POST['force_overwrite'] === '1';
+                
+                echo '<div class="notice notice-info"><p>Running migration... This may take a while.</p>';
+                if ($force_overwrite) {
+                    echo '<p><strong>Force Overwrite Mode:</strong> Updating ALL products, even those with existing paths.</p>';
+                }
+                echo '</div>';
                 
                 set_time_limit(300); // 5 minutes
                 
-                $results = MG_Design_Path_Migration::run_migration();
+                $results = MG_Design_Path_Migration::run_migration($force_overwrite);
                 
                 echo '<div class="notice notice-success"><p><strong>Migration Complete!</strong></p>';
                 echo '<ul>';
@@ -260,15 +268,27 @@ add_action('admin_menu', function() {
             
             echo '<p>This will scan all products and try to find their design files based on:</p>';
             echo '<ul>';
-            echo '<li>Featured image attachment</li>';
+            echo '<li>Featured image attachment (if not a mockup)</li>';
             echo '<li>Media library search by product name</li>';
-            echo '<li>File name matching (SKU or product name)</li>';
+            echo '<li>File name matching (SKU or product name tokens)</li>';
             echo '</ul>';
-            echo '<p><strong>Note:</strong> Products that already have a design path will be skipped.</p>';
+            
+            echo '<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 20px 0;">';
+            echo '<p><strong>⚠️ Important:</strong></p>';
+            echo '<ul style="margin: 5px 0 0 20px;">';
+            echo '<li>By default, products with existing design paths are skipped</li>';
+            echo '<li>Use "Force Overwrite" to re-scan ALL products (useful if first run found wrong files)</li>';
+            echo '<li>The script prioritizes non-mockup files (excludes _front, _back, _side, mg_mockups folder)</li>';
+            echo '</ul>';
+            echo '</div>';
             
             echo '<form method="post">';
             wp_nonce_field('mg_migration');
             echo '<input type="hidden" name="run_migration" value="1" />';
+            echo '<p><label>';
+            echo '<input type="checkbox" name="force_overwrite" value="1" />';
+            echo ' <strong>Force Overwrite</strong> - Update ALL products, even if they already have a design path';
+            echo '</label></p>';
             echo '<button type="submit" class="button button-primary button-large">Run Migration</button>';
             echo '</form>';
             
