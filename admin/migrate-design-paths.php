@@ -181,8 +181,61 @@ class MG_Design_Path_Migration {
         $title_no_accents = remove_accents($title_lower);
         $title_normalized = preg_replace('/[\s\-_]+/', '-', $title_no_accents);
         $title_normalized = trim($title_normalized, '-');
-        $title_tokens = explode('-', $title_normalized);
-        $title_tokens = array_filter($title_tokens, function($t) { return strlen($t) >= 2; });
+        
+        // Count words in original title (split by spaces/dashes)
+        $word_count = count(array_filter(explode('-', $title_normalized), function($t) { 
+            return strlen(trim($t)) >= 2; 
+        }));
+        
+        // CRITICAL: Only remove category keywords if product has 2+ words
+        // This prevents single-word products from being completely stripped
+        $title_tokens_raw = explode('-', $title_normalized);
+        $title_tokens = array();
+        
+        if ($word_count >= 2) {
+            // Get all WooCommerce product category names dynamically
+            $category_keywords = array();
+            $categories = get_terms(array(
+                'taxonomy' => 'product_cat',
+                'hide_empty' => false,
+            ));
+            
+            if (!is_wp_error($categories) && !empty($categories)) {
+                foreach ($categories as $cat) {
+                    $cat_slug = remove_accents(strtolower($cat->slug));
+                    $cat_name = remove_accents(strtolower($cat->name));
+                    $category_keywords[] = $cat_slug;
+                    $category_keywords[] = $cat_name;
+                }
+            }
+            
+            // Add common suffixes that don't appear in filenames
+            $category_keywords = array_merge($category_keywords, array(
+                'akcio',
+                'akcios',
+                'uj',
+                'ujdonsag'
+            ));
+            
+            $category_keywords = array_unique($category_keywords);
+            
+            // Remove category keywords from title
+            foreach ($title_tokens_raw as $token) {
+                $token_clean = trim($token);
+                // Only keep tokens that are NOT category keywords and are long enough
+                if (strlen($token_clean) >= 2 && !in_array($token_clean, $category_keywords)) {
+                    $title_tokens[] = $token_clean;
+                }
+            }
+        } else {
+            // If only 1 word, keep everything (don't filter)
+            $title_tokens = array_filter($title_tokens_raw, function($t) { 
+                return strlen(trim($t)) >= 2; 
+            });
+        }
+        
+        // Rebuild normalized title WITHOUT category words (if filtered)
+        $title_normalized_clean = implode('-', $title_tokens);
 
         // --- NORMALIZE SLUG ---
         $slug_lower = strtolower($product_slug);
@@ -228,9 +281,10 @@ class MG_Design_Path_Migration {
             
             // B. TITLE MATCHING
             // 1. Check if FULL filename appears in product name (+5 points)
-            if (strpos($title_normalized, $filename_normalized) !== false) {
+            // Use cleaned title without category words
+            if (strpos($title_normalized_clean, $filename_normalized) !== false) {
                 // Bonus if it's at the start
-                if (strpos($title_normalized, $filename_normalized) === 0) {
+                if (strpos($title_normalized_clean, $filename_normalized) === 0) {
                     $score += 8;
                 } else {
                     $score += 5;
@@ -256,14 +310,14 @@ class MG_Design_Path_Migration {
             }
             
             // Log details for debugging
-            if ($log && (strpos($title_normalized, 'utolso') !== false || 
-                         strpos($title_normalized, 'senki') !== false ||
-                         strpos($title_normalized, 'tanitok') !== false ||
-                         strpos($title_normalized, 'futar') !== false ||
-                         strpos($title_normalized, 'dominans') !== false ||
-                         strpos($title_normalized, 'legjobb') !== false)) {
-                 fwrite($log, "SCORING: File '$filename' vs Title '$product_title' | Slug '$product_slug'\n");
-                 fwrite($log, "  Score: $score (Slug Match: " . ($filename_normalized === $slug_normalized ? 'EXACT' : 'NO') . ")\n");
+            if ($log && (strpos($title_normalized_clean, 'utolso') !== false || 
+                         strpos($title_normalized_clean, 'senki') !== false ||
+                         strpos($title_normalized_clean, 'tanitok') !== false ||
+                         strpos($title_normalized_clean, 'futar') !== false ||
+                         strpos($title_normalized_clean, 'dominans') !== false ||
+                         strpos($title_normalized_clean, 'legjobb') !== false)) {
+                 fwrite($log, "SCORING: File '$filename' vs Title '$product_title' (cleaned: '$title_normalized_clean')\n");
+                 fwrite($log, "  Score: $score (Matched: $matched_tokens tokens)\n");
             }
             
             // Keep track of BEST matched file
