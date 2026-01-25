@@ -56,15 +56,19 @@ class MG_Design_Path_Migration {
     }
     
     protected static function find_design_for_product($product_id) {
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return null;
+        }
+        
         // Strategy 1: Check featured image attachment
         $featured_id = get_post_thumbnail_id($product_id);
         if ($featured_id) {
             $path = get_attached_file($featured_id);
             if ($path && file_exists($path)) {
-                // Check if this is a design file (PNG, JPG, WebP in uploads root or subdirs)
                 $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
                 if (in_array($ext, array('png', 'jpg', 'jpeg', 'webp'))) {
-                    // Exclude mockup renders (they're in mg_mockups or mockup-renders)
+                    // Exclude mockup renders
                     if (strpos($path, 'mg_mockups') === false && strpos($path, 'mockup-renders') === false) {
                         return array(
                             'path' => wp_normalize_path($path),
@@ -76,72 +80,110 @@ class MG_Design_Path_Migration {
         }
         
         // Strategy 2: Search media library by product name
-        $product = wc_get_product($product_id);
-        if (!$product) {
-            return null;
-        }
-        
         $product_name = $product->get_name();
-        if (!$product_name) {
-            return null;
-        }
+        $sku = $product->get_sku();
         
-        // Search for attachments with similar title
-        $args = array(
-            'post_type' => 'attachment',
-            'post_status' => 'inherit',
-            'posts_per_page' => 5,
-            's' => $product_name,
-            'post_mime_type' => array('image/png', 'image/jpeg', 'image/jpg', 'image/webp'),
-        );
-        
-        $attachments = get_posts($args);
-        
-        foreach ($attachments as $attachment) {
-            $path = get_attached_file($attachment->ID);
-            if ($path && file_exists($path)) {
-                // Exclude mockup renders
-                if (strpos($path, 'mg_mockups') === false && strpos($path, 'mockup-renders') === false) {
-                    return array(
-                        'path' => wp_normalize_path($path),
-                        'attachment_id' => $attachment->ID,
-                    );
+        if ($product_name) {
+            $args = array(
+                'post_type' => 'attachment',
+                'post_status' => 'inherit',
+                'posts_per_page' => 10,
+                's' => $product_name,
+                'post_mime_type' => array('image/png', 'image/jpeg', 'image/jpg', 'image/webp'),
+            );
+            
+            $attachments = get_posts($args);
+            
+            foreach ($attachments as $attachment) {
+                $path = get_attached_file($attachment->ID);
+                if ($path && file_exists($path)) {
+                    if (strpos($path, 'mg_mockups') === false && strpos($path, 'mockup-renders') === false) {
+                        return array(
+                            'path' => wp_normalize_path($path),
+                            'attachment_id' => $attachment->ID,
+                        );
+                    }
                 }
             }
         }
         
-        // Strategy 3: Look in uploads directory for files matching product name or SKU
-        $sku = $product->get_sku();
+        // Strategy 3: SCAN ENTIRE UPLOADS DIRECTORY for physical files
+        // This finds design files uploaded by the plugin but not registered as attachments
+        $uploads_dir = wp_upload_dir();
+        $base_dir = wp_normalize_path($uploads_dir['basedir']);
+        
+        if (!$base_dir || !is_dir($base_dir)) {
+            return null;
+        }
+        
+        // Build search patterns based on product data
+        $search_terms = array();
+        
+        if ($product_name) {
+            $search_terms[] = strtolower(sanitize_file_name($product_name));
+        }
         if ($sku) {
-            $uploads_dir = wp_upload_dir();
-            $base_dir = $uploads_dir['basedir'];
+            $search_terms[] = strtolower($sku);
+            $search_terms[] = strtolower(str_replace('-', '_', $sku));
+            $search_terms[] = strtolower(str_replace('_', '-', $sku));
+        }
+        
+        // Remove duplicates
+        $search_terms = array_unique(array_filter($search_terms));
+        
+        if (empty($search_terms)) {
+            return null;
+        }
+        
+        // Scan year directories (2020-2026)
+        $current_year = date('Y');
+        for ($year = 2020; $year <= $current_year; $year++) {
+            $year_dir = $base_dir . '/' . $year;
+            if (!is_dir($year_dir)) {
+                continue;
+            }
             
-            // Common patterns
-            $patterns = array(
-                $sku . '.png',
-                $sku . '.jpg',
-                $sku . '.jpeg',
-                $sku . '.webp',
-                sanitize_file_name($product_name) . '.png',
-                sanitize_file_name($product_name) . '.jpg',
-                sanitize_file_name($product_name) . '.jpeg',
-                sanitize_file_name($product_name) . '.webp',
-            );
-            
-            foreach ($patterns as $pattern) {
-                // Search in year/month subdirectories
-                $years = glob($base_dir . '/20*', GLOB_ONLYDIR);
-                foreach ($years as $year_dir) {
-                    $months = glob($year_dir . '/*', GLOB_ONLYDIR);
-                    foreach ($months as $month_dir) {
-                        $file_path = $month_dir . '/' . $pattern;
-                        if (file_exists($file_path)) {
-                            // Try to find attachment ID
-                            $attachment_id = self::find_attachment_by_path($file_path);
-                            return array(
-                                'path' => wp_normalize_path($file_path),
-                                'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-                            );
+            // Scan month directories (01-12)
+            for ($month = 1; $month <= 12; $month++) {
+                $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
+                $month_dir = $year_dir . '/' . $month_str;
+                
+                if (!is_dir($month_dir)) {
+                    continue;
+                }
+                
+                // Scan all image files in this month
+                $extensions = array('png', 'jpg', 'jpeg', 'webp');
+                foreach ($extensions as $ext) {
+                    $files = glob($month_dir . '/*.' . $ext);
+                    if (!$files) {
+                        continue;
+                    }
+                    
+                    foreach ($files as $file_path) {
+                        $file_path = wp_normalize_path($file_path);
+                        $filename = basename($file_path);
+                        $filename_lower = strtolower($filename);
+                        
+                        // Skip mockup files
+                        if (strpos($file_path, 'mg_mockups') !== false || 
+                            strpos($file_path, 'mockup-renders') !== false ||
+                            strpos($filename_lower, '_front.') !== false ||
+                            strpos($filename_lower, '_back.') !== false ||
+                            strpos($filename_lower, '_side.') !== false) {
+                            continue;
+                        }
+                        
+                        // Check if filename matches any search term
+                        foreach ($search_terms as $term) {
+                            if (strpos($filename_lower, $term) !== false) {
+                                // Found a match!
+                                $attachment_id = self::find_attachment_by_path($file_path);
+                                return array(
+                                    'path' => $file_path,
+                                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                                );
+                            }
                         }
                     }
                 }
