@@ -166,11 +166,13 @@ class MG_Design_Path_Migration {
             }
             
             // Normalize product name for comparison
+            // Remove accents: ÚJSÁGÍROK → UJSAGIROK
             $product_name_lower = strtolower($product_name);
-            $product_name_normalized = sanitize_file_name($product_name_lower);
+            $product_name_no_accents = remove_accents($product_name_lower);
+            $product_name_normalized = sanitize_file_name($product_name_no_accents);
             
             // STRICT RULE: Product name must START with the filename
-            // Example: "fonok.png" matches "fonok 1 Páros" but NOT "a fönök 1 Páros"
+            // Example: "minden-ember-lehetnek-ujsagirok.png" matches "MINDEN EMBER - Lehetnek ÚJSÁGÍROK Vicces"
             
             // Check if normalized product name starts with filename
             if (strpos($product_name_normalized, $filename_no_ext) === 0) {
