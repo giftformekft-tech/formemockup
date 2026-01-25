@@ -621,6 +621,20 @@ class MG_Product_Creator {
             $product->save();
         }
         
+        // Save design file reference for download functionality
+        if (!empty($generation_context['design_path'])) {
+            $design_path = wp_normalize_path($generation_context['design_path']);
+            if ($design_path !== '' && file_exists($design_path)) {
+                update_post_meta($parent_id, '_mg_last_design_path', $design_path);
+                
+                // Also try to get attachment ID if exists
+                $attachment_id = $this->find_existing_attachment_id($design_path);
+                if ($attachment_id > 0) {
+                    update_post_meta($parent_id, '_mg_last_design_attachment', $attachment_id);
+                }
+            }
+        }
+        
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         // REMOVED: MG_Mockup_Maintenance::register_generation(...)
@@ -652,7 +666,46 @@ class MG_Product_Creator {
         if ($min_price > 0 && !$product->get_regular_price()) {
             $product->set_regular_price((string) $min_price);
         }
+    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array(), $generation_context = array()) {
+        $defaults = is_array($defaults) ? $defaults : array();
+        $generation_context = is_array($generation_context) ? $generation_context : array();
+        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
+        $product = wc_get_product($parent_id);
+        if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
+        if ($product->is_type('variable')) { return new WP_Error('parent_variable','A kiválasztott termék variálható; a virtuális modell egyszerű terméket vár.'); }
+        $type_terms=array(); $color_terms=array();
+        $price_map=array(); $color_surcharge_map=array(); $sku_prefix_map=array();
+        foreach ($selected_products as $p) {
+            $type_terms[] = array('slug'=>$p['key'], 'name'=>$p['label']);
+            foreach ($p['colors'] as $c) $color_terms[$c['slug']]=$c['name'];
+            $price_map[$p['key']] = intval($p['price'] ?? 0);
+            $color_surcharge_map[$p['key']] = is_array($p['color_surcharges'] ?? null) ? $p['color_surcharges'] : array();
+            $sku_prefix_map[$p['key']] = strtoupper($p['sku_prefix'] ?? $p['key']);
+        }
+        $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
+        $color_pairs=array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
+        if ($fallback_parent_name && !$product->get_name()) $product->set_name($fallback_parent_name);
+        $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
+        $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
+        if ($min_price > 0 && !$product->get_regular_price()) {
+            $product->set_regular_price((string) $min_price);
+        }
         $product->save();
+        
+        // Save design file reference for download functionality
+        if (!empty($generation_context['design_path'])) {
+            $design_path = wp_normalize_path($generation_context['design_path']);
+            if ($design_path !== '' && file_exists($design_path)) {
+                update_post_meta($parent_id, '_mg_last_design_path', $design_path);
+                
+                // Also try to get attachment ID if exists
+                $attachment_id = $this->find_existing_attachment_id($design_path);
+                if ($attachment_id > 0) {
+                    update_post_meta($parent_id, '_mg_last_design_attachment', $attachment_id);
+                }
+            }
+        }
+        
         // assign categories merge
         $this->assign_categories($product->get_id(), $cats);
 

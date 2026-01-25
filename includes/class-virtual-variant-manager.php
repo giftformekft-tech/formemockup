@@ -892,7 +892,11 @@ class MG_Virtual_Variant_Manager {
         // Try to use design_id if available, otherwise fall back to product_id
         $source_id = $design_id > 0 ? $design_id : $product_id;
         
+        // DEBUG: Log what we're checking
+        error_log('MG Design Reference Debug - Product ID: ' . $product_id . ', Design ID: ' . $design_id . ', Source ID: ' . $source_id);
+        
         if ($source_id <= 0) {
+            error_log('MG Design Reference: Source ID is 0, returning empty');
             return array();
         }
 
@@ -902,8 +906,12 @@ class MG_Virtual_Variant_Manager {
         
         $design_attachment_id = absint(get_post_meta($source_id, '_mg_last_design_attachment', true));
         
+        // DEBUG: Log what we found
+        error_log('MG Design Reference: Path = ' . ($design_path ? $design_path : 'EMPTY') . ', Attachment ID = ' . $design_attachment_id);
+        
         // If no path or attachment, return empty
         if ($design_path === '' && $design_attachment_id <= 0) {
+            error_log('MG Design Reference: No design path or attachment found, returning empty');
             return array();
         }
 
@@ -935,7 +943,7 @@ class MG_Virtual_Variant_Manager {
             }
         }
 
-        return array(
+        $reference = array(
             'ordered_product_id'   => $product_id,
             'source_product_id'    => $source_id,
             'design_path'          => $design_path,
@@ -944,6 +952,10 @@ class MG_Virtual_Variant_Manager {
             'design_attachment_id' => $design_attachment_id,
             'captured_at'          => function_exists('current_time') ? current_time('mysql') : gmdate('Y-m-d H:i:s'),
         );
+        
+        error_log('MG Design Reference: Successfully captured, filename = ' . $filename);
+        
+        return $reference;
     }
 
     public static function apply_cart_pricing($cart) {
