@@ -169,17 +169,34 @@ class MG_Design_Path_Migration {
             $product_name_lower = strtolower($product_name);
             $product_name_normalized = sanitize_file_name($product_name_lower);
             
-            // Check if filename appears in product name as a complete word
-            $pattern = '/(?:^|[\s\-_])' . preg_quote($filename_no_ext, '/') . '(?:[\s\-_]|$)/';
+            // STRICT RULE: Product name must START with the filename
+            // Example: "fonok.png" matches "fonok 1 Páros" but NOT "a fönök 1 Páros"
             
-            if (preg_match($pattern, $product_name_normalized) || 
-                preg_match($pattern, $product_name_lower)) {
-                // Filename matches product name!
-                $attachment_id = self::find_attachment_by_path($file_path);
-                return array(
-                    'path' => $file_path,
-                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-                );
+            // Check if normalized product name starts with filename
+            if (strpos($product_name_normalized, $filename_no_ext) === 0) {
+                // Must be followed by separator, space, or end of string
+                $next_char_pos = strlen($filename_no_ext);
+                if ($next_char_pos === strlen($product_name_normalized) ||
+                    in_array($product_name_normalized[$next_char_pos], array('-', '_', ' '))) {
+                    $attachment_id = self::find_attachment_by_path($file_path);
+                    return array(
+                        'path' => $file_path,
+                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                    );
+                }
+            }
+            
+            // Also check original product name (with accents)
+            if (strpos($product_name_lower, $filename_no_ext) === 0) {
+                $next_char_pos = strlen($filename_no_ext);
+                if ($next_char_pos === strlen($product_name_lower) ||
+                    in_array($product_name_lower[$next_char_pos], array('-', '_', ' '))) {
+                    $attachment_id = self::find_attachment_by_path($file_path);
+                    return array(
+                        'path' => $file_path,
+                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                    );
+                }
             }
             
             // Also try exact match with SKU
