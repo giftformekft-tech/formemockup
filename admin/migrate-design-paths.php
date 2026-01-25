@@ -10,24 +10,36 @@ if (!defined('ABSPATH')) {
 
 class MG_Design_Path_Migration {
     
-    public static function run_migration($force_overwrite = false) {
+    public static function run_migration($force_overwrite = false, $batch_size = 100, $offset = 0) {
         global $wpdb;
         
         $results = array(
             'total_products' => 0,
+            'processed' => 0,
             'updated' => 0,
             'skipped' => 0,
-            'errors' => array(),
+            'has_more' => false,
+            'next_offset' => 0,
         );
         
-        // Get all simple products
-        $product_ids = $wpdb->get_col("
-            SELECT ID FROM {$wpdb->posts} 
+        // Get total count
+        $total = $wpdb->get_var("
+            SELECT COUNT(ID) FROM {$wpdb->posts} 
             WHERE post_type = 'product' 
             AND post_status IN ('publish', 'draft', 'private')
         ");
         
-        $results['total_products'] = count($product_ids);
+        // Get batch of products
+        $product_ids = $wpdb->get_col($wpdb->prepare("
+            SELECT ID FROM {$wpdb->posts} 
+            WHERE post_type = 'product' 
+            AND post_status IN ('publish', 'draft', 'private')
+            ORDER BY ID ASC
+            LIMIT %d OFFSET %d
+        ", $batch_size, $offset));
+        
+        $results['total_products'] = intval($total);
+        $results['processed'] = count($product_ids);
         
         foreach ($product_ids as $product_id) {
             // Skip if already has design path (unless force overwrite)
@@ -53,6 +65,11 @@ class MG_Design_Path_Migration {
                 $results['skipped']++;
             }
         }
+        
+        // Check if there are more products
+        $next_offset = $offset + $batch_size;
+        $results['has_more'] = $next_offset < $total;
+        $results['next_offset'] = $next_offset;
         
         return $results;
     }
@@ -189,10 +206,40 @@ class MG_Design_Path_Migration {
                             continue;
                         }
                         
-                        // Check if filename matches any search term
-                        foreach ($search_terms as $term) {
-                            if (strpos($filename_lower, $term) !== false) {
-                                // Found a match!
+                        // REVERSED LOGIC: Check if the FILENAME appears in the PRODUCT NAME
+                        // This is more reliable than checking if product name parts are in filename
+                        
+                        // Get filename without extension
+                        $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
+                        
+                        // Skip very short filenames (less than 4 chars)
+                        if (strlen($filename_no_ext) < 4) {
+                            continue;
+                        }
+                        
+                        // Normalize product name for comparison
+                        $product_name_lower = strtolower($product_name);
+                        $product_name_normalized = sanitize_file_name($product_name_lower);
+                        
+                        // Check if filename (without extension) appears in product name
+                        // as a complete word (not substring)
+                        $pattern = '/(?:^|[\s\-_])' . preg_quote($filename_no_ext, '/') . '(?:[\s\-_]|$)/';
+                        
+                        if (preg_match($pattern, $product_name_normalized) || 
+                            preg_match($pattern, $product_name_lower)) {
+                            // Filename matches product name!
+                            $attachment_id = self::find_attachment_by_path($file_path);
+                            return array(
+                                'path' => $file_path,
+                                'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                            );
+                        }
+                        
+                        // Also try exact match with SKU if available
+                        if ($sku) {
+                            $sku_lower = strtolower($sku);
+                            if ($filename_no_ext === $sku_lower || 
+                                strpos($filename_no_ext, $sku_lower) === 0) {
                                 $attachment_id = self::find_attachment_by_path($file_path);
                                 return array(
                                     'path' => $file_path,
@@ -245,27 +292,6 @@ add_action('admin_menu', function() {
             echo '<div class="wrap">';
             echo '<h1>Design Path Migration</h1>';
             
-            if (isset($_POST['run_migration']) && wp_verify_nonce($_POST['_wpnonce'], 'mg_migration')) {
-                $force_overwrite = isset($_POST['force_overwrite']) && $_POST['force_overwrite'] === '1';
-                
-                echo '<div class="notice notice-info"><p>Running migration... This may take a while.</p>';
-                if ($force_overwrite) {
-                    echo '<p><strong>Force Overwrite Mode:</strong> Updating ALL products, even those with existing paths.</p>';
-                }
-                echo '</div>';
-                
-                set_time_limit(300); // 5 minutes
-                
-                $results = MG_Design_Path_Migration::run_migration($force_overwrite);
-                
-                echo '<div class="notice notice-success"><p><strong>Migration Complete!</strong></p>';
-                echo '<ul>';
-                echo '<li>Total Products: ' . $results['total_products'] . '</li>';
-                echo '<li>Updated: ' . $results['updated'] . '</li>';
-                echo '<li>Skipped (already had path or not found): ' . $results['skipped'] . '</li>';
-                echo '</ul></div>';
-            }
-            
             echo '<p>This will scan all products and try to find their design files based on:</p>';
             echo '<ul>';
             echo '<li>Featured image attachment (if not a mockup)</li>';
@@ -276,23 +302,127 @@ add_action('admin_menu', function() {
             echo '<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 20px 0;">';
             echo '<p><strong>⚠️ Important:</strong></p>';
             echo '<ul style="margin: 5px 0 0 20px;">';
+            echo '<li>Processes products in batches of 100 to prevent timeout</li>';
             echo '<li>By default, products with existing design paths are skipped</li>';
-            echo '<li>Use "Force Overwrite" to re-scan ALL products (useful if first run found wrong files)</li>';
-            echo '<li>The script prioritizes non-mockup files (excludes _front, _back, _side, mg_mockups folder)</li>';
+            echo '<li>Use "Force Overwrite" to re-scan ALL products</li>';
+            echo '<li>The script prioritizes non-mockup files</li>';
             echo '</ul>';
             echo '</div>';
             
-            echo '<form method="post">';
-            wp_nonce_field('mg_migration');
-            echo '<input type="hidden" name="run_migration" value="1" />';
+            echo '<div id="migration-controls">';
             echo '<p><label>';
-            echo '<input type="checkbox" name="force_overwrite" value="1" />';
+            echo '<input type="checkbox" id="force-overwrite" />';
             echo ' <strong>Force Overwrite</strong> - Update ALL products, even if they already have a design path';
             echo '</label></p>';
-            echo '<button type="submit" class="button button-primary button-large">Run Migration</button>';
-            echo '</form>';
+            echo '<button id="start-migration" class="button button-primary button-large">Start Migration</button>';
+            echo '</div>';
+            
+            echo '<div id="migration-progress" style="display:none; margin-top: 20px;">';
+            echo '<div style="background: #fff; border: 1px solid #ccc; padding: 15px;">';
+            echo '<h3>Migration Progress</h3>';
+            echo '<div class="progress-bar" style="background: #f0f0f0; height: 30px; border-radius: 3px; overflow: hidden; margin: 10px 0;">';
+            echo '<div id="progress-fill" style="background: #2271b1; height: 100%; width: 0%; transition: width 0.3s;"></div>';
+            echo '</div>';
+            echo '<p id="progress-text">Initializing...</p>';
+            echo '<div id="progress-stats" style="margin-top: 15px; font-family: monospace; background: #f9f9f9; padding: 10px; border-radius: 3px;"></div>';
+            echo '</div>';
+            echo '</div>';
+            
+            echo '<script>
+            jQuery(document).ready(function($) {
+                let totalUpdated = 0;
+                let totalSkipped = 0;
+                let totalProcessed = 0;
+                
+                $("#start-migration").click(function() {
+                    const forceOverwrite = $("#force-overwrite").is(":checked");
+                    totalUpdated = 0;
+                    totalSkipped = 0;
+                    totalProcessed = 0;
+                    
+                    $("#migration-controls").hide();
+                    $("#migration-progress").show();
+                    
+                    runBatch(0, forceOverwrite);
+                });
+                
+                function runBatch(offset, forceOverwrite) {
+                    $.ajax({
+                        url: ajaxurl,
+                        method: "POST",
+                        data: {
+                            action: "mg_migrate_batch",
+                            offset: offset,
+                            force_overwrite: forceOverwrite ? 1 : 0,
+                            nonce: "' . wp_create_nonce('mg_migrate_batch') . '"
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                const data = response.data;
+                                totalUpdated += data.updated;
+                                totalSkipped += data.skipped;
+                                totalProcessed += data.processed;
+                                
+                                const progress = (totalProcessed / data.total_products) * 100;
+                                $("#progress-fill").css("width", progress + "%");
+                                $("#progress-text").text("Processing: " + totalProcessed + " / " + data.total_products + " products");
+                                
+                                $("#progress-stats").html(
+                                    "<strong>Statistics:</strong><br>" +
+                                    "Total Products: " + data.total_products + "<br>" +
+                                    "Processed: " + totalProcessed + "<br>" +
+                                    "Updated: " + totalUpdated + "<br>" +
+                                    "Skipped: " + totalSkipped
+                                );
+                                
+                                if (data.has_more) {
+                                    runBatch(data.next_offset, forceOverwrite);
+                                } else {
+                                    $("#progress-text").html("<strong style=\"color: green;\">✓ Migration Complete!</strong>");
+                                    setTimeout(function() {
+                                        $("#migration-controls").show();
+                                        $("#migration-progress").hide();
+                                    }, 3000);
+                                }
+                            } else {
+                                alert("Error: " + (response.data || "Unknown error"));
+                                $("#migration-controls").show();
+                                $("#migration-progress").hide();
+                            }
+                        },
+                        error: function() {
+                            alert("AJAX error occurred");
+                            $("#migration-controls").show();
+                            $("#migration-progress").hide();
+                        }
+                    });
+                }
+            });
+            </script>';
             
             echo '</div>';
         }
     );
 }, 100);
+
+// AJAX handler for batch processing
+add_action('wp_ajax_mg_migrate_batch', function() {
+    if (!check_ajax_referer('mg_migrate_batch', 'nonce', false)) {
+        wp_send_json_error('Invalid nonce');
+        return;
+    }
+    
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error('Unauthorized');
+        return;
+    }
+    
+    $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+    $force_overwrite = isset($_POST['force_overwrite']) && $_POST['force_overwrite'] == '1';
+    
+    set_time_limit(60); // 1 minute per batch
+    
+    $results = MG_Design_Path_Migration::run_migration($force_overwrite, 100, $offset);
+    
+    wp_send_json_success($results);
+});
