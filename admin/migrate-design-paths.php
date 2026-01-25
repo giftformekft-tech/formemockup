@@ -167,16 +167,16 @@ class MG_Design_Path_Migration {
             return null;
         }
         
-        // Scan year directories (2020-2026)
+        // Scan year directories (start from most recent)
         $current_year = date('Y');
-        for ($year = 2020; $year <= $current_year; $year++) {
+        for ($year = $current_year; $year >= 2020; $year--) {
             $year_dir = $base_dir . '/' . $year;
             if (!is_dir($year_dir)) {
                 continue;
             }
             
-            // Scan month directories (01-12)
-            for ($month = 1; $month <= 12; $month++) {
+            // Scan month directories (start from most recent)
+            for ($month = 12; $month >= 1; $month--) {
                 $month_str = str_pad($month, 2, '0', STR_PAD_LEFT);
                 $month_dir = $year_dir . '/' . $month_str;
                 
@@ -187,8 +187,8 @@ class MG_Design_Path_Migration {
                 // Scan all image files in this month
                 $extensions = array('png', 'jpg', 'jpeg', 'webp');
                 foreach ($extensions as $ext) {
-                    $files = glob($month_dir . '/*.' . $ext);
-                    if (!$files) {
+                    $files = @glob($month_dir . '/*.' . $ext);
+                    if (!$files || !is_array($files)) {
                         continue;
                     }
                     
@@ -205,9 +205,6 @@ class MG_Design_Path_Migration {
                             strpos($filename_lower, '_side.') !== false) {
                             continue;
                         }
-                        
-                        // REVERSED LOGIC: Check if the FILENAME appears in the PRODUCT NAME
-                        // This is more reliable than checking if product name parts are in filename
                         
                         // Get filename without extension
                         $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
