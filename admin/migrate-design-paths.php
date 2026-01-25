@@ -270,26 +270,9 @@ class MG_Design_Path_Migration {
                 continue;
             }
             
-            // --- SIMPLE MATCHING LOGIC (NO SCORING) ---
+            // --- SIMPLE MATCHING LOGIC (NO SCORING, NO SKU) ---
             
-            // 1. SKU Match (Highest Priority - Immediate Return)
-            if ($sku) {
-                $sku_lower = strtolower($sku);
-                $sku_normalized = remove_accents($sku_lower);
-                if ($filename_normalized === $sku_normalized) {
-                    if ($log) {
-                        fwrite($log, "MATCH: SKU exact match '$filename' for product '$product_title'\n");
-                        fclose($log);
-                    }
-                    $attachment_id = self::find_attachment_by_path($file_path);
-                    return array(
-                        'path' => $file_path,
-                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-                    );
-                }
-            }
-            
-            // 2. EXACT Match (Slug or Cleaned Title)
+            // 1. EXACT Match (Slug or Cleaned Title)
             if ($filename_normalized === $slug_normalized || $filename_normalized === $title_normalized_clean) {
                 if ($log) {
                     fwrite($log, "MATCH: Exact match '$filename' for product '$product_title'\n");
@@ -302,11 +285,12 @@ class MG_Design_Path_Migration {
                 );
             }
             
-            // 3. PREFIX Match (Filename starts cleaned title or slug)
-            if (strpos($title_normalized_clean, $filename_normalized) === 0 ||
-                strpos($slug_normalized, $filename_normalized) === 0) {
+            // 2. PREFIX Match (Filename STARTS WITH cleaned title or slug)
+            // FIXED: Check if FILENAME starts with PRODUCT NAME (not the other way around!)
+            if (strpos($filename_normalized, $title_normalized_clean) === 0 ||
+                strpos($filename_normalized, $slug_normalized) === 0) {
                 if ($log) {
-                    fwrite($log, "MATCH: Prefix match '$filename' for product '$product_title'\n");
+                    fwrite($log, "MATCH: Prefix match '$filename' starts with product '$product_title'\n");
                     fclose($log);
                 }
                 $attachment_id = self::find_attachment_by_path($file_path);
