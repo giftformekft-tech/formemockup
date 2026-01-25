@@ -120,7 +120,18 @@ class MG_Design_Path_Migration {
         $search_terms = array();
         
         if ($product_name) {
+            // Add full product name (sanitized)
             $search_terms[] = strtolower(sanitize_file_name($product_name));
+            
+            // Also add individual words from product name (first word is likely the design name)
+            // Example: "alma gyümölcs piros" -> search for "alma"
+            $words = preg_split('/[\s\-_]+/', $product_name, -1, PREG_SPLIT_NO_EMPTY);
+            foreach ($words as $word) {
+                $word = trim($word);
+                if (strlen($word) >= 3) { // Skip very short words
+                    $search_terms[] = strtolower(sanitize_file_name($word));
+                }
+            }
         }
         if ($sku) {
             $search_terms[] = strtolower($sku);
@@ -128,8 +139,10 @@ class MG_Design_Path_Migration {
             $search_terms[] = strtolower(str_replace('_', '-', $sku));
         }
         
-        // Remove duplicates
-        $search_terms = array_unique(array_filter($search_terms));
+        // Remove duplicates and very short terms
+        $search_terms = array_filter(array_unique($search_terms), function($term) {
+            return strlen($term) >= 3;
+        });
         
         if (empty($search_terms)) {
             return null;
