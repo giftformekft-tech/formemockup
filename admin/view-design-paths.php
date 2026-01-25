@@ -26,24 +26,46 @@ function mg_render_design_paths_page() {
     
     global $wpdb;
     
-    // Get all products with design paths
+    // Filter option
+    $filter = isset($_GET['filter']) ? sanitize_text_field($_GET['filter']) : 'all';
+    
+    // Get all products with or without design paths
+    $where = "WHERE p.post_type = 'product' AND p.post_status IN ('publish', 'draft', 'private')";
+    
+    if ($filter === 'with_path') {
+        $where .= " AND pm.meta_value IS NOT NULL AND pm.meta_value != ''";
+    } elseif ($filter === 'without_path') {
+        $where .= " AND (pm.meta_value IS NULL OR pm.meta_value = '')";
+    }
+    
     $results = $wpdb->get_results("
         SELECT p.ID, p.post_title, pm.meta_value as design_path
         FROM {$wpdb->posts} p
-        INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
-        WHERE p.post_type = 'product'
-        AND p.post_status IN ('publish', 'draft', 'private')
-        AND pm.meta_key = '_mg_last_design_path'
+        LEFT JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id AND pm.meta_key = '_mg_last_design_path'
+        {$where}
         ORDER BY p.post_title ASC
     ");
     
     echo '<div class="wrap">';
     echo '<h1>Design Path Assignments</h1>';
     
+    // Filter tabs
+    $all_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status IN ('publish', 'draft', 'private')");
+    $with_path_count = $wpdb->get_var("SELECT COUNT(DISTINCT p.ID) FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id WHERE p.post_type = 'product' AND p.post_status IN ('publish', 'draft', 'private') AND pm.meta_key = '_mg_last_design_path' AND pm.meta_value != ''");
+    $without_path_count = $all_count - $with_path_count;
+    
+    echo '<ul class="subsubsub">';
+    echo '<li><a href="?page=mg-view-design-paths&filter=all" class="' . ($filter === 'all' ? 'current' : '') . '">All (' . $all_count . ')</a> | </li>';
+    echo '<li><a href="?page=mg-view-design-paths&filter=with_path" class="' . ($filter === 'with_path' ? 'current' : '') . '">With Path (' . $with_path_count . ')</a> | </li>';
+    echo '<li><a href="?page=mg-view-design-paths&filter=without_path" class="' . ($filter === 'without_path' ? 'current' : '') . '">Missing Path (' . $without_path_count . ')</a></li>';
+    echo '</ul>';
+    
+    echo '<div style="clear:both; margin-bottom: 10px;"></div>';
+    
     if (empty($results)) {
-        echo '<div class="notice notice-warning"><p>No products have design paths assigned yet. Run the migration first.</p></div>';
+        echo '<div class="notice notice-warning"><p>No products found with this filter.</p></div>';
     } else {
-        echo '<p>Found <strong>' . count($results) . '</strong> products with design paths.</p>';
+        echo '<p>Showing <strong>' . count($results) . '</strong> products.</p>';
         
         echo '<table class="wp-list-table widefat fixed striped">';
         echo '<thead>';
@@ -61,16 +83,29 @@ function mg_render_design_paths_page() {
         foreach ($results as $row) {
             $product = wc_get_product($row->ID);
             $sku = $product ? $product->get_sku() : 'N/A';
-            $file_exists = file_exists($row->design_path);
-            $exists_class = $file_exists ? 'yes' : 'no';
-            $exists_text = $file_exists ? '✓ Yes' : '✗ No';
             
-            echo '<tr>';
+            // Check if design path is set
+            $has_path = !empty($row->design_path);
+            
+            if ($has_path) {
+                $file_exists = file_exists($row->design_path);
+                $exists_class = $file_exists ? 'yes' : 'no';
+                $exists_text = $file_exists ? '✓ Yes' : '✗ No';
+                $path_display = '<code style="font-size: 11px;">' . esc_html($row->design_path) . '</code>';
+            } else {
+                $exists_class = '';
+                $exists_text = '-';
+                $path_display = '<em style="color: #999;">No design path set</em>';
+            }
+            
+            $row_class = !$has_path ? 'style="background-color: #fff3cd;"' : '';
+            
+            echo '<tr ' . $row_class . '>';
             echo '<td>' . esc_html($row->ID) . '</td>';
             echo '<td><strong>' . esc_html($row->post_title) . '</strong></td>';
             echo '<td><code>' . esc_html($sku) . '</code></td>';
-            echo '<td><code style="font-size: 11px;">' . esc_html($row->design_path) . '</code></td>';
-            echo '<td><span class="dashicons dashicons-' . $exists_class . '"></span> ' . $exists_text . '</td>';
+            echo '<td>' . $path_display . '</td>';
+            echo '<td>' . ($exists_class ? '<span class="dashicons dashicons-' . $exists_class . '"></span> ' : '') . $exists_text . '</td>';
             echo '<td>';
             echo '<a href="' . get_edit_post_link($row->ID) . '" class="button button-small">Edit</a>';
             echo '</td>';

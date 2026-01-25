@@ -54,6 +54,7 @@ class MG_Design_Path_Migration {
             $design_info = self::find_design_for_product($product_id);
             
             if ($design_info) {
+                // Found a design file - update meta
                 if (!empty($design_info['path'])) {
                     update_post_meta($product_id, '_mg_last_design_path', $design_info['path']);
                 }
@@ -62,7 +63,21 @@ class MG_Design_Path_Migration {
                 }
                 $results['updated']++;
             } else {
-                $results['skipped']++;
+                // No design file found
+                if ($force_overwrite) {
+                    // In force overwrite mode, clear invalid paths
+                    $existing_path = get_post_meta($product_id, '_mg_last_design_path', true);
+                    if ($existing_path) {
+                        // Delete the invalid path
+                        delete_post_meta($product_id, '_mg_last_design_path');
+                        delete_post_meta($product_id, '_mg_last_design_attachment');
+                        $results['updated']++; // Count as updated (cleared)
+                    } else {
+                        $results['skipped']++;
+                    }
+                } else {
+                    $results['skipped']++;
+                }
             }
         }
         
