@@ -158,12 +158,12 @@ class MG_Design_Path_Migration {
             return null;
         }
         
-        // IMPORTANT: Sort files by basename length (longest first)
-        // This ensures more specific filenames match before generic ones
+        // IMPORTANT: Sort files by basename length (LONGEST first)
+        // This ensures more SPECIFIC filenames match before generic ones
         usort($files, function($a, $b) {
             $len_a = strlen(basename($a));
             $len_b = strlen(basename($b));
-            return $len_b - $len_a; // Descending order
+            return $len_b - $len_a; // Descending order (longest first)
         });
         
         // Open log file
@@ -285,12 +285,12 @@ class MG_Design_Path_Migration {
                 );
             }
             
-            // 2. PREFIX Match (Filename STARTS WITH cleaned title or slug)
-            // FIXED: Check if FILENAME starts with PRODUCT NAME (not the other way around!)
-            if (strpos($filename_normalized, $title_normalized_clean) === 0 ||
-                strpos($filename_normalized, $slug_normalized) === 0) {
+            // 2. PREFIX Match (Product name STARTS WITH filename)
+            // Check if PRODUCT NAME starts with FILENAME (more specific filenames matched first due to sorting)
+            if (strpos($title_normalized_clean, $filename_normalized) === 0 ||
+                strpos($slug_normalized, $filename_normalized) === 0) {
                 if ($log) {
-                    fwrite($log, "MATCH: Prefix match '$filename' starts with product '$product_title'\n");
+                    fwrite($log, "MATCH: Product '$product_title' starts with filename '$filename'\n");
                     fclose($log);
                 }
                 $attachment_id = self::find_attachment_by_path($file_path);
