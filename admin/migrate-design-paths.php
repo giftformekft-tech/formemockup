@@ -170,6 +170,21 @@ class MG_Design_Path_Migration {
         $log_file = $uploads_dir['basedir'] . '/migration_debug.txt';
         $log = @fopen($log_file, 'a');
         
+        $best_match = null;
+        $best_score = 0;
+        
+        // Normalize product name ONCE
+        $product_name_lower = strtolower($product_name);
+        $product_name_no_accents = remove_accents($product_name_lower);
+        // Normalize separators: replace spaces, underscores with dashes
+        $product_name_normalized = preg_replace('/[\s_]+/', '-', $product_name_no_accents);
+        $product_name_normalized = trim($product_name_normalized, '-');
+        
+        // Tokenize product name
+        $product_tokens = explode('-', $product_name_normalized);
+        $product_tokens = array_filter($product_tokens, function($t) { return strlen($t) >= 2; });
+        
+        // Iterate ALL files to find the BEST match by score
         foreach ($files as $file_path) {
             $file_path = wp_normalize_path($file_path);
             $filename = basename($file_path);
@@ -197,53 +212,55 @@ class MG_Design_Path_Migration {
                 continue;
             }
             
-            // Normalize product name the SAME WAY
-            $product_name_lower = strtolower($product_name);
-            $product_name_no_accents = remove_accents($product_name_lower);
-            $product_name_normalized = preg_replace('/[\s\-_]+/', '-', $product_name_no_accents);
-            $product_name_normalized = trim($product_name_normalized, '-');
+            // --- SCORING ALGORITHM ---
+            $score = 0;
             
-            // Log the comparison for problematic products (e.g., 'utolso', 'senki')
-            if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
-                         strpos($product_name_normalized, 'senki') !== false || 
-                         strpos($product_name_normalized, 'dominans') !== false)) {
-                 fwrite($log, "COMPARE:\n");
-                 fwrite($log, "Product: '$product_name' -> Normalized: '$product_name_normalized'\n");
-                 fwrite($log, "File:    '$filename' -> Normalized: '$filename_normalized'\n");
+            // 1. Check if FULL filename appears in product name (+5 points)
+            if (strpos($product_name_normalized, $filename_normalized) !== false) {
+                $score += 5;
             }
             
-            // STRICT RULE: Product name must START with the filename
-            // Example: "dominans-macska-pilota-retro" matches "dominans-macska-pilota-retro-cica"
+            // 2. Token Matching (+2 points per matching word)
+            $file_tokens = explode('-', $filename_normalized);
+            $file_tokens = array_filter($file_tokens, function($t) { return strlen($t) >= 2; });
             
-            // Check if normalized product name starts with normalized filename
-            if (strpos($product_name_normalized, $filename_normalized) === 0) {
-                // Must be followed by separator or end of string
-                $next_char_pos = strlen($filename_normalized);
-                if ($next_char_pos === strlen($product_name_normalized) ||
-                    in_array($product_name_normalized[$next_char_pos], array('-', '_'))) {
-                    
-                    if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
-                                 strpos($product_name_normalized, 'senki') !== false)) {
-                        fwrite($log, "MATCH FOUND! '$filename' matches '$product_name'\n");
-                    }
-                    
-                    $attachment_id = self::find_attachment_by_path($file_path);
-                    if ($log) fclose($log);
-                    return array(
-                        'path' => $file_path,
-                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-                    );
+            $matched_tokens = 0;
+            foreach ($file_tokens as $ft) {
+                if (in_array($ft, $product_tokens)) {
+                    $score += 2;
+                    $matched_tokens++;
                 }
             }
             
-            // Also try exact match with SKU
+            // 3. Penalty for "too many extra words" in PRODUCT (-3 points)
+            // If product has many more tokens than matched tokens
+            $extra_words = count($product_tokens) - $matched_tokens;
+            if ($extra_words > 5) {
+                $score -= 3;
+            }
+            
+            // Log details for debugging
+            if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
+                         strpos($product_name_normalized, 'senki') !== false)) {
+                 fwrite($log, "SCORING: File '$filename' vs Product '$product_name'\n");
+                 fwrite($log, "  Score: $score (Matched: $matched_tokens)\n");
+            }
+            
+            // Threshold: Must have at least some match
+            if ($score > 5 && $score > $best_score) {
+                $best_score = $score;
+                $best_match = $file_path;
+            }
+            
+            // SKU Match Override (Highest Priority)
             if ($sku) {
                 $sku_lower = strtolower($sku);
                 $sku_normalized = remove_accents($sku_lower);
                 if ($filename_normalized === $sku_normalized || 
                     strpos($filename_normalized, $sku_normalized) === 0) {
-                    $attachment_id = self::find_attachment_by_path($file_path);
+                    // Immediate return for direct SKU match
                     if ($log) fclose($log);
+                    $attachment_id = self::find_attachment_by_path($file_path);
                     return array(
                         'path' => $file_path,
                         'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
@@ -253,6 +270,15 @@ class MG_Design_Path_Migration {
         }
         
         if ($log) fclose($log);
+        
+        // Return the best match found (if score is sufficient)
+        if ($best_match) {
+            $attachment_id = self::find_attachment_by_path($best_match);
+            return array(
+                'path' => $best_match,
+                'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+            );
+        }
         
         return null;
     }
