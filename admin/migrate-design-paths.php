@@ -170,21 +170,26 @@ class MG_Design_Path_Migration {
         $log_file = $uploads_dir['basedir'] . '/migration_debug.txt';
         $log = @fopen($log_file, 'a');
         
+        $product_title = $product->post_title;
+        $product_slug = $product->post_name; // Get slug
+        
         $best_match = null;
         $best_score = 0;
         
-        // Normalize product name ONCE
-        $product_name_lower = strtolower($product_name);
-        $product_name_no_accents = remove_accents($product_name_lower);
-        // Normalize separators: replace spaces, underscores AND DASHES with single dash
-        $product_name_normalized = preg_replace('/[\s\-_]+/', '-', $product_name_no_accents);
-        $product_name_normalized = trim($product_name_normalized, '-');
+        // --- NORMALIZE TITLE ---
+        $title_lower = strtolower($product_title);
+        $title_no_accents = remove_accents($title_lower);
+        $title_normalized = preg_replace('/[\s\-_]+/', '-', $title_no_accents);
+        $title_normalized = trim($title_normalized, '-');
+        $title_tokens = explode('-', $title_normalized);
+        $title_tokens = array_filter($title_tokens, function($t) { return strlen($t) >= 2; });
+
+        // --- NORMALIZE SLUG ---
+        $slug_lower = strtolower($product_slug);
+        $slug_normalized = preg_replace('/[\s\-_]+/', '-', $slug_lower);
+        $slug_normalized = trim($slug_normalized, '-');
         
-        // Tokenize product name
-        $product_tokens = explode('-', $product_name_normalized);
-        $product_tokens = array_filter($product_tokens, function($t) { return strlen($t) >= 2; });
-        
-        // Iterate ALL files to find the BEST match by score
+        // Iterate ALL files
         foreach ($files as $file_path) {
             $file_path = wp_normalize_path($file_path);
             $filename = basename($file_path);
@@ -215,8 +220,20 @@ class MG_Design_Path_Migration {
             // --- SCORING ALGORITHM ---
             $score = 0;
             
+            // A. SLUG MATCHING (Highest Weight)
+            if ($filename_normalized === $slug_normalized) {
+                $score += 20; // Exact slug match!
+            } elseif (strpos($slug_normalized, $filename_normalized) === 0) {
+                // Filename is start of slug (e.g. 'futar-sziv-lelek' in 'futar-sziv-lelek-foglalkozasok')
+                $score += 12;
+            } elseif (strpos($slug_normalized, $filename_normalized) !== false) {
+                // Filename contained in slug
+                $score += 8;
+            }
+            
+            // B. TITLE MATCHING
             // 1. Check if FULL filename appears in product name (+5 points)
-            if (strpos($product_name_normalized, $filename_normalized) !== false) {
+            if (strpos($title_normalized, $filename_normalized) !== false) {
                 $score += 5;
             }
             
@@ -226,29 +243,27 @@ class MG_Design_Path_Migration {
             
             $matched_tokens = 0;
             foreach ($file_tokens as $ft) {
-                if (in_array($ft, $product_tokens)) {
+                if (in_array($ft, $title_tokens)) {
                     $score += 2;
                     $matched_tokens++;
                 }
             }
             
             // 3. Penalty for "too many extra words" in PRODUCT (-3 points)
-            // If product has many more tokens than matched tokens
-            $extra_words = count($product_tokens) - $matched_tokens;
+            $extra_words = count($title_tokens) - $matched_tokens;
             if ($extra_words > 5) {
                 $score -= 3;
             }
             
             // Log details for debugging
-            if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
-                         strpos($product_name_normalized, 'senki') !== false ||
-                         strpos($product_name_normalized, 'tanitok') !== false ||
-                         strpos($product_name_normalized, 'futar') !== false ||
-                         strpos($product_name_normalized, 'dominans') !== false ||
-                         strpos($product_name_normalized, 'legjobb') !== false)) {
-                 fwrite($log, "SCORING: File '$filename' vs Product '$product_name'\n");
-                 fwrite($log, "  Norm P: '$product_name_normalized' | Norm F: '$filename_normalized'\n");
-                 fwrite($log, "  Score: $score (Matched: $matched_tokens)\n");
+            if ($log && (strpos($title_normalized, 'utolso') !== false || 
+                         strpos($title_normalized, 'senki') !== false ||
+                         strpos($title_normalized, 'tanitok') !== false ||
+                         strpos($title_normalized, 'futar') !== false ||
+                         strpos($title_normalized, 'dominans') !== false ||
+                         strpos($title_normalized, 'legjobb') !== false)) {
+                 fwrite($log, "SCORING: File '$filename' vs Title '$product_title' | Slug '$product_slug'\n");
+                 fwrite($log, "  Score: $score (Slug Match: " . (strpos($slug_normalized, $filename_normalized) !== false ? 'YES' : 'NO') . ")\n");
             }
             
             // Keep track of BEST matched file
@@ -257,7 +272,7 @@ class MG_Design_Path_Migration {
                 $best_match = $file_path;
             }
             
-            // SKU Match Override (Highest Priority - Immediate Return)
+            // SKU Match Override (Highest Priority)
             if ($sku) {
                 $sku_lower = strtolower($sku);
                 $sku_normalized = remove_accents($sku_lower);
