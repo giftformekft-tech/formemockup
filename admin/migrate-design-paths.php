@@ -242,7 +242,7 @@ class MG_Design_Path_Migration {
         $slug_normalized = preg_replace('/[\s\-_]+/', '-', $slug_lower);
         $slug_normalized = trim($slug_normalized, '-');
         
-        // Iterate ALL files
+        // Iterate ALL files - SIMPLE MATCHING (no scoring)
         foreach ($files as $file_path) {
             $file_path = wp_normalize_path($file_path);
             $filename = basename($file_path);
@@ -270,70 +270,17 @@ class MG_Design_Path_Migration {
                 continue;
             }
             
-            // --- SCORING ALGORITHM ---
-            $score = 0;
+            // --- SIMPLE MATCHING LOGIC (NO SCORING) ---
             
-            // A. SLUG MATCHING (Strict Only)
-            // Only exact matches get a bonus here to avoid false positives
-            if ($filename_normalized === $slug_normalized) {
-                $score += 20; // Exact slug match!
-            }
-            
-            // B. TITLE MATCHING
-            // 1. Check if FULL filename appears in product name (+5 points)
-            // Use cleaned title without category words
-            if (strpos($title_normalized_clean, $filename_normalized) !== false) {
-                // Bonus if it's at the start
-                if (strpos($title_normalized_clean, $filename_normalized) === 0) {
-                    $score += 8;
-                } else {
-                    $score += 5;
-                }
-            }
-            
-            // 2. Token Matching (+2 points per matching word)
-            $file_tokens = explode('-', $filename_normalized);
-            $file_tokens = array_filter($file_tokens, function($t) { return strlen($t) >= 2; });
-            
-            $matched_tokens = 0;
-            foreach ($file_tokens as $ft) {
-                if (in_array($ft, $title_tokens)) {
-                    $score += 2;
-                    $matched_tokens++;
-                }
-            }
-            
-            // 3. Penalty for "too many extra words" in PRODUCT (-3 points)
-            $extra_words = count($title_tokens) - $matched_tokens;
-            if ($extra_words > 5) {
-                $score -= 3;
-            }
-            
-            // Log details for debugging
-            if ($log && (strpos($title_normalized_clean, 'utolso') !== false || 
-                         strpos($title_normalized_clean, 'senki') !== false ||
-                         strpos($title_normalized_clean, 'tanitok') !== false ||
-                         strpos($title_normalized_clean, 'futar') !== false ||
-                         strpos($title_normalized_clean, 'dominans') !== false ||
-                         strpos($title_normalized_clean, 'legjobb') !== false)) {
-                 fwrite($log, "SCORING: File '$filename' vs Title '$product_title' (cleaned: '$title_normalized_clean')\n");
-                 fwrite($log, "  Score: $score (Matched: $matched_tokens tokens)\n");
-            }
-            
-            // Keep track of BEST matched file
-            if ($score > 5 && $score > $best_score) {
-                $best_score = $score;
-                $best_match = $file_path;
-            }
-            
-            // SKU Match Override (Highest Priority)
+            // 1. SKU Match (Highest Priority - Immediate Return)
             if ($sku) {
                 $sku_lower = strtolower($sku);
                 $sku_normalized = remove_accents($sku_lower);
-                if ($filename_normalized === $sku_normalized || 
-                    strpos($filename_normalized, $sku_normalized) === 0) {
-                    // Immediate return for direct SKU match
-                    if ($log) fclose($log);
+                if ($filename_normalized === $sku_normalized) {
+                    if ($log) {
+                        fwrite($log, "MATCH: SKU exact match '$filename' for product '$product_title'\n");
+                        fclose($log);
+                    }
                     $attachment_id = self::find_attachment_by_path($file_path);
                     return array(
                         'path' => $file_path,
@@ -341,18 +288,36 @@ class MG_Design_Path_Migration {
                     );
                 }
             }
+            
+            // 2. EXACT Match (Slug or Cleaned Title)
+            if ($filename_normalized === $slug_normalized || $filename_normalized === $title_normalized_clean) {
+                if ($log) {
+                    fwrite($log, "MATCH: Exact match '$filename' for product '$product_title'\n");
+                    fclose($log);
+                }
+                $attachment_id = self::find_attachment_by_path($file_path);
+                return array(
+                    'path' => $file_path,
+                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                );
+            }
+            
+            // 3. PREFIX Match (Filename starts cleaned title or slug)
+            if (strpos($title_normalized_clean, $filename_normalized) === 0 ||
+                strpos($slug_normalized, $filename_normalized) === 0) {
+                if ($log) {
+                    fwrite($log, "MATCH: Prefix match '$filename' for product '$product_title'\n");
+                    fclose($log);
+                }
+                $attachment_id = self::find_attachment_by_path($file_path);
+                return array(
+                    'path' => $file_path,
+                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                );
+            }
         }
         
         if ($log) fclose($log);
-        
-        // Return the best match found (if score is sufficient)
-        if ($best_match) {
-            $attachment_id = self::find_attachment_by_path($best_match);
-            return array(
-                'path' => $best_match,
-                'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-            );
-        }
         
         return null;
     }
