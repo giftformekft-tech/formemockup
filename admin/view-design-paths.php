@@ -152,6 +152,7 @@ function mg_render_design_paths_page() {
             
             echo '<td>';
             echo '<button type="submit" class="button button-primary button-small">Save</button>';
+            echo ' <a href="' . add_query_arg('inspect_id', $row->ID) . '" class="button button-small" style="margin-left:5px;">🔍 Info</a>';
             echo '</td>';
             
             echo '</form>'; // Close form
@@ -181,5 +182,39 @@ function mg_render_design_paths_page() {
     echo '</ul>';
     echo '</div>';
     
+    // Debug Inspector Handler
+    if (isset($_GET['inspect_id'])) {
+        $inspect_id = intval($_GET['inspect_id']);
+        $meta = get_post_meta($inspect_id);
+        echo '<div style="background: #fff; padding: 20px; border: 2px solid #0073aa; margin: 20px 0;">';
+        echo '<h3>🔍 Debug Meta: Product ID ' . $inspect_id . '</h3>';
+        echo '<p>Searching for anything that looks like a file path or design reference...</p>';
+        echo '<table class="widefat striped">';
+        echo '<thead><tr><th>Meta Key</th><th>Value</th></tr></thead><tbody>';
+        
+        foreach ($meta as $key => $values) {
+            foreach ($values as $val) {
+                // Highlight potential design paths
+                $style = '';
+                if (strpos($val, '.png') !== false || strpos($val, 'uploads') !== false || strpos($key, 'file') !== false || strpos($key, 'path') !== false || strpos($key, 'design') !== false) {
+                    $style = 'background-color: #dff0d8; font-weight: bold;';
+                }
+                
+                // Truncate long arrays/objects
+                if (is_serialized($val)) {
+                    $val = '[Serialized Data]';
+                }
+                
+                echo '<tr style="' . $style . '">';
+                echo '<td>' . esc_html($key) . '</td>';
+                echo '<td style="word-break: break-all;">' . esc_html(substr($val, 0, 300)) . '</td>';
+                echo '</tr>';
+            }
+        }
+        echo '</tbody></table>';
+        echo '<p><a href="' . remove_query_arg('inspect_id') . '" class="button">Close Inspector</a></p>';
+        echo '</div>';
+    }
+
     echo '</div>';
 }
