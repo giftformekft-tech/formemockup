@@ -642,30 +642,7 @@ class MG_Product_Creator {
         return $parent_id;
     }
 
-    public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array(), $generation_context = array()) {
-        $defaults = is_array($defaults) ? $defaults : array();
-        $generation_context = is_array($generation_context) ? $generation_context : array();
-        $resolved_defaults = $this->resolve_default_combo($selected_products, $defaults['type'] ?? '', $defaults['color'] ?? '', $defaults['size'] ?? '');
-        $product = wc_get_product($parent_id);
-        if (!$product || !$product->get_id()) return new WP_Error('parent_missing','A kiválasztott szülő termék nem található.');
-        if ($product->is_type('variable')) { return new WP_Error('parent_variable','A kiválasztott termék variálható; a virtuális modell egyszerű terméket vár.'); }
-        $type_terms=array(); $color_terms=array();
-        $price_map=array(); $color_surcharge_map=array(); $sku_prefix_map=array();
-        foreach ($selected_products as $p) {
-            $type_terms[] = array('slug'=>$p['key'], 'name'=>$p['label']);
-            foreach ($p['colors'] as $c) $color_terms[$c['slug']]=$c['name'];
-            $price_map[$p['key']] = intval($p['price'] ?? 0);
-            $color_surcharge_map[$p['key']] = is_array($p['color_surcharges'] ?? null) ? $p['color_surcharges'] : array();
-            $sku_prefix_map[$p['key']] = strtoupper($p['sku_prefix'] ?? $p['key']);
-        }
-        $type_terms = array_values(array_unique($type_terms, SORT_REGULAR));
-        $color_pairs=array(); foreach ($color_terms as $slug=>$name) $color_pairs[] = array('slug'=>$slug,'name'=>$name);
-        if ($fallback_parent_name && !$product->get_name()) $product->set_name($fallback_parent_name);
-        $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
-        $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
-        if ($min_price > 0 && !$product->get_regular_price()) {
-            $product->set_regular_price((string) $min_price);
-        }
+
     public function add_type_to_existing_parent($parent_id, $selected_products, $images_by_type_color, $fallback_parent_name='', $cats = array(), $defaults = array(), $generation_context = array()) {
         $defaults = is_array($defaults) ? $defaults : array();
         $generation_context = is_array($generation_context) ? $generation_context : array();
