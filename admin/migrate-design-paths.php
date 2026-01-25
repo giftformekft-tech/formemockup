@@ -241,7 +241,9 @@ class MG_Design_Path_Migration {
             
             // Log details for debugging
             if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
-                         strpos($product_name_normalized, 'senki') !== false)) {
+                         strpos($product_name_normalized, 'senki') !== false || 
+                         strpos($product_name_normalized, 'dominans') !== false ||
+                         strpos($product_name_normalized, 'tanitok') !== false)) {
                  fwrite($log, "SCORING: File '$filename' vs Product '$product_name'\n");
                  fwrite($log, "  Score: $score (Matched: $matched_tokens)\n");
             }
