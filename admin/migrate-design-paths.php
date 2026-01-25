@@ -177,44 +177,29 @@ class MG_Design_Path_Migration {
             $filename_lower = strtolower($filename);
             $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
             
-            // Normalize filename: remove accents, then sanitize (same as product name)
+            // Normalize filename: remove accents, convert all separators to dashes
             $filename_no_accents = remove_accents($filename_no_ext);
-            $filename_normalized = sanitize_file_name($filename_no_accents);
+            $filename_normalized = preg_replace('/[\s\-_]+/', '-', $filename_no_accents);
             
             // Skip very short filenames (less than 4 chars)
             if (strlen($filename_normalized) < 4) {
                 continue;
             }
             
-            // Normalize product name for comparison (same process as filename)
-            // Remove accents: ÚJSÁGÍROK → UJSAGIROK, then sanitize
+            // Normalize product name the SAME WAY
             $product_name_lower = strtolower($product_name);
             $product_name_no_accents = remove_accents($product_name_lower);
-            $product_name_normalized = sanitize_file_name($product_name_no_accents);
+            $product_name_normalized = preg_replace('/[\s\-_]+/', '-', $product_name_no_accents);
             
             // STRICT RULE: Product name must START with the filename
-            // Example: "dominans-macska-pilota-retro.png" matches "DOMINÁNS Macska Pilóta Retro Cica"
+            // Example: "dominans-macska-pilota-retro" matches "dominans-macska-pilota-retro-cica"
             
             // Check if normalized product name starts with normalized filename
             if (strpos($product_name_normalized, $filename_normalized) === 0) {
-                // Must be followed by separator, space, or end of string
+                // Must be followed by separator or end of string
                 $next_char_pos = strlen($filename_normalized);
                 if ($next_char_pos === strlen($product_name_normalized) ||
-                    in_array($product_name_normalized[$next_char_pos], array('-', '_', ' '))) {
-                    $attachment_id = self::find_attachment_by_path($file_path);
-                    return array(
-                        'path' => $file_path,
-                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
-                    );
-                }
-            }
-            
-            // Also check original product name (with accents)
-            $product_name_no_accents_lower = remove_accents($product_name_lower);
-            if (strpos($product_name_no_accents_lower, $filename_normalized) === 0) {
-                $next_char_pos = strlen($filename_normalized);
-                if ($next_char_pos === strlen($product_name_no_accents_lower) ||
-                    in_array($product_name_no_accents_lower[$next_char_pos], array('-', '_', ' '))) {
+                    in_array($product_name_normalized[$next_char_pos], array('-', '_'))) {
                     $attachment_id = self::find_attachment_by_path($file_path);
                     return array(
                         'path' => $file_path,
