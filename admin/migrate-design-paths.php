@@ -220,21 +220,21 @@ class MG_Design_Path_Migration {
             // --- SCORING ALGORITHM ---
             $score = 0;
             
-            // A. SLUG MATCHING (Highest Weight)
+            // A. SLUG MATCHING (Strict Only)
+            // Only exact matches get a bonus here to avoid false positives
             if ($filename_normalized === $slug_normalized) {
                 $score += 20; // Exact slug match!
-            } elseif (strpos($slug_normalized, $filename_normalized) === 0) {
-                // Filename is start of slug (e.g. 'futar-sziv-lelek' in 'futar-sziv-lelek-foglalkozasok')
-                $score += 12;
-            } elseif (strpos($slug_normalized, $filename_normalized) !== false) {
-                // Filename contained in slug
-                $score += 8;
             }
             
             // B. TITLE MATCHING
             // 1. Check if FULL filename appears in product name (+5 points)
             if (strpos($title_normalized, $filename_normalized) !== false) {
-                $score += 5;
+                // Bonus if it's at the start
+                if (strpos($title_normalized, $filename_normalized) === 0) {
+                    $score += 8;
+                } else {
+                    $score += 5;
+                }
             }
             
             // 2. Token Matching (+2 points per matching word)
@@ -263,7 +263,7 @@ class MG_Design_Path_Migration {
                          strpos($title_normalized, 'dominans') !== false ||
                          strpos($title_normalized, 'legjobb') !== false)) {
                  fwrite($log, "SCORING: File '$filename' vs Title '$product_title' | Slug '$product_slug'\n");
-                 fwrite($log, "  Score: $score (Slug Match: " . (strpos($slug_normalized, $filename_normalized) !== false ? 'YES' : 'NO') . ")\n");
+                 fwrite($log, "  Score: $score (Slug Match: " . ($filename_normalized === $slug_normalized ? 'EXACT' : 'NO') . ")\n");
             }
             
             // Keep track of BEST matched file
