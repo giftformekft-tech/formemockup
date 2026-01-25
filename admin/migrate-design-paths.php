@@ -145,7 +145,7 @@ class MG_Design_Path_Migration {
         $uploads_dir = wp_upload_dir();
         $base_dir = wp_normalize_path($uploads_dir['basedir']);
         
-        // Hardcoded to 2026/01 where all design files are located
+        // Hardcoded to 2026/01 as confirmed by user
         $design_folder = $base_dir . '/2026/01';
         
         if (!is_dir($design_folder)) {
@@ -160,12 +160,15 @@ class MG_Design_Path_Migration {
         
         // IMPORTANT: Sort files by basename length (longest first)
         // This ensures more specific filenames match before generic ones
-        // Example: "csak-egy-utolso-kor.png" is checked before "csak-egy-utolso.png"
         usort($files, function($a, $b) {
             $len_a = strlen(basename($a));
             $len_b = strlen(basename($b));
             return $len_b - $len_a; // Descending order
         });
+        
+        // Open log file
+        $log_file = $uploads_dir['basedir'] . '/migration_debug.txt';
+        $log = @fopen($log_file, 'a');
         
         foreach ($files as $file_path) {
             $file_path = wp_normalize_path($file_path);
@@ -182,13 +185,12 @@ class MG_Design_Path_Migration {
             }
             
             // Get filename without extension
-            $filename = basename($file_path);
-            $filename_lower = strtolower($filename);
             $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
             
             // Normalize filename: remove accents, convert all separators to dashes
             $filename_no_accents = remove_accents($filename_no_ext);
             $filename_normalized = preg_replace('/[\s\-_]+/', '-', $filename_no_accents);
+            $filename_normalized = trim($filename_normalized, '-');
             
             // Skip very short filenames (less than 4 chars)
             if (strlen($filename_normalized) < 4) {
@@ -199,6 +201,16 @@ class MG_Design_Path_Migration {
             $product_name_lower = strtolower($product_name);
             $product_name_no_accents = remove_accents($product_name_lower);
             $product_name_normalized = preg_replace('/[\s\-_]+/', '-', $product_name_no_accents);
+            $product_name_normalized = trim($product_name_normalized, '-');
+            
+            // Log the comparison for problematic products (e.g., 'utolso', 'senki')
+            if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
+                         strpos($product_name_normalized, 'senki') !== false || 
+                         strpos($product_name_normalized, 'dominans') !== false)) {
+                 fwrite($log, "COMPARE:\n");
+                 fwrite($log, "Product: '$product_name' -> Normalized: '$product_name_normalized'\n");
+                 fwrite($log, "File:    '$filename' -> Normalized: '$filename_normalized'\n");
+            }
             
             // STRICT RULE: Product name must START with the filename
             // Example: "dominans-macska-pilota-retro" matches "dominans-macska-pilota-retro-cica"
@@ -209,7 +221,14 @@ class MG_Design_Path_Migration {
                 $next_char_pos = strlen($filename_normalized);
                 if ($next_char_pos === strlen($product_name_normalized) ||
                     in_array($product_name_normalized[$next_char_pos], array('-', '_'))) {
+                    
+                    if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
+                                 strpos($product_name_normalized, 'senki') !== false)) {
+                        fwrite($log, "MATCH FOUND! '$filename' matches '$product_name'\n");
+                    }
+                    
                     $attachment_id = self::find_attachment_by_path($file_path);
+                    if ($log) fclose($log);
                     return array(
                         'path' => $file_path,
                         'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
@@ -224,6 +243,7 @@ class MG_Design_Path_Migration {
                 if ($filename_normalized === $sku_normalized || 
                     strpos($filename_normalized, $sku_normalized) === 0) {
                     $attachment_id = self::find_attachment_by_path($file_path);
+                    if ($log) fclose($log);
                     return array(
                         'path' => $file_path,
                         'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
@@ -231,6 +251,8 @@ class MG_Design_Path_Migration {
                 }
             }
         }
+        
+        if ($log) fclose($log);
         
         return null;
     }
