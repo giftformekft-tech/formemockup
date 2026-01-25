@@ -177,16 +177,17 @@ class MG_Design_Path_Migration {
             $filename_lower = strtolower($filename);
             $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
             
-            // Remove accents from filename too (e.g., "Pilóta" → "pilota")
-            $filename_normalized = remove_accents($filename_no_ext);
+            // Normalize filename: remove accents, then sanitize (same as product name)
+            $filename_no_accents = remove_accents($filename_no_ext);
+            $filename_normalized = sanitize_file_name($filename_no_accents);
             
             // Skip very short filenames (less than 4 chars)
             if (strlen($filename_normalized) < 4) {
                 continue;
             }
             
-            // Normalize product name for comparison
-            // Remove accents: ÚJSÁGÍROK → UJSAGIROK
+            // Normalize product name for comparison (same process as filename)
+            // Remove accents: ÚJSÁGÍROK → UJSAGIROK, then sanitize
             $product_name_lower = strtolower($product_name);
             $product_name_no_accents = remove_accents($product_name_lower);
             $product_name_normalized = sanitize_file_name($product_name_no_accents);
