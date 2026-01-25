@@ -286,11 +286,26 @@ class MG_Design_Path_Migration {
             }
             
             // 2. PREFIX Match (Product name STARTS WITH filename)
-            // Check if PRODUCT NAME starts with FILENAME (more specific filenames matched first due to sorting)
+            // For shorter filenames like "FUTAR.png" matching "FUTAR SZIV LELEK"
             if (strpos($title_normalized_clean, $filename_normalized) === 0 ||
                 strpos($slug_normalized, $filename_normalized) === 0) {
                 if ($log) {
                     fwrite($log, "MATCH: Product '$product_title' starts with filename '$filename'\n");
+                    fclose($log);
+                }
+                $attachment_id = self::find_attachment_by_path($file_path);
+                return array(
+                    'path' => $file_path,
+                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                );
+            }
+            
+            // 3. CONTAINS Match (Filename STARTS WITH product name)
+            // For longer filenames like "FUTAR-SZIV-LELEK-KOR.png" matching "FUTAR SZIV LELEK"
+            if (strpos($filename_normalized, $title_normalized_clean) === 0 ||
+                strpos($filename_normalized, $slug_normalized) === 0) {
+                if ($log) {
+                    fwrite($log, "MATCH: Filename '$filename' starts with product '$product_title'\n");
                     fclose($log);
                 }
                 $attachment_id = self::find_attachment_by_path($file_path);
