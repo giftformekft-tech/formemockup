@@ -158,6 +158,15 @@ class MG_Design_Path_Migration {
             return null;
         }
         
+        // IMPORTANT: Sort files by basename length (longest first)
+        // This ensures more specific filenames match before generic ones
+        // Example: "csak-egy-utolso-kor.png" is checked before "csak-egy-utolso.png"
+        usort($files, function($a, $b) {
+            $len_a = strlen(basename($a));
+            $len_b = strlen(basename($b));
+            return $len_b - $len_a; // Descending order
+        });
+        
         foreach ($files as $file_path) {
             $file_path = wp_normalize_path($file_path);
             $filename = basename($file_path);
