@@ -219,14 +219,18 @@ class MG_Design_Path_Migration {
             
             $category_keywords = array_unique($category_keywords);
             
-            // Remove category keywords from title
-            foreach ($title_tokens_raw as $token) {
-                $token_clean = trim($token);
-                // Only keep tokens that are NOT category keywords and are long enough
-                if (strlen($token_clean) >= 2 && !in_array($token_clean, $category_keywords)) {
-                    $title_tokens[] = $token_clean;
-                }
+        // Remove category keywords ONLY FROM THE END (Suffix Stripping)
+        // This prevents removing "Gamer" from "Gamer T-Shirt" but removes it from "Cool T-Shirt Gamer"
+        
+        while (!empty($title_tokens) && count($title_tokens) > 1) { // Keep at least 1 word
+            $last_token = end($title_tokens);
+            if (in_array($last_token, $category_keywords)) {
+                array_pop($title_tokens);
+            } else {
+                break; // Stop if the last word is not a keyword
             }
+        }
+
         } else {
             // If only 1 word, keep everything (don't filter)
             $title_tokens = array_filter($title_tokens_raw, function($t) { 
