@@ -176,8 +176,8 @@ class MG_Design_Path_Migration {
         // Normalize product name ONCE
         $product_name_lower = strtolower($product_name);
         $product_name_no_accents = remove_accents($product_name_lower);
-        // Normalize separators: replace spaces, underscores with dashes
-        $product_name_normalized = preg_replace('/[\s_]+/', '-', $product_name_no_accents);
+        // Normalize separators: replace spaces, underscores AND DASHES with single dash
+        $product_name_normalized = preg_replace('/[\s\-_]+/', '-', $product_name_no_accents);
         $product_name_normalized = trim($product_name_normalized, '-');
         
         // Tokenize product name
@@ -241,20 +241,23 @@ class MG_Design_Path_Migration {
             
             // Log details for debugging
             if ($log && (strpos($product_name_normalized, 'utolso') !== false || 
-                         strpos($product_name_normalized, 'senki') !== false || 
+                         strpos($product_name_normalized, 'senki') !== false ||
+                         strpos($product_name_normalized, 'tanitok') !== false ||
+                         strpos($product_name_normalized, 'futar') !== false ||
                          strpos($product_name_normalized, 'dominans') !== false ||
-                         strpos($product_name_normalized, 'tanitok') !== false)) {
+                         strpos($product_name_normalized, 'legjobb') !== false)) {
                  fwrite($log, "SCORING: File '$filename' vs Product '$product_name'\n");
+                 fwrite($log, "  Norm P: '$product_name_normalized' | Norm F: '$filename_normalized'\n");
                  fwrite($log, "  Score: $score (Matched: $matched_tokens)\n");
             }
             
-            // Threshold: Must have at least some match
+            // Keep track of BEST matched file
             if ($score > 5 && $score > $best_score) {
                 $best_score = $score;
                 $best_match = $file_path;
             }
             
-            // SKU Match Override (Highest Priority)
+            // SKU Match Override (Highest Priority - Immediate Return)
             if ($sku) {
                 $sku_lower = strtolower($sku);
                 $sku_normalized = remove_accents($sku_lower);
