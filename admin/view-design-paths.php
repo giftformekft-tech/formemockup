@@ -26,6 +26,40 @@ function mg_render_design_paths_page() {
     
     global $wpdb;
     
+    // Handle form submission
+    if (isset($_POST['mg_update_path']) && isset($_POST['product_id']) && check_admin_referer('mg_update_path_' . $_POST['product_id'])) {
+        $product_id = intval($_POST['product_id']);
+        $new_path = sanitize_text_field(wp_unslash($_POST['design_path']));
+        
+        if ($product_id > 0) {
+            update_post_meta($product_id, '_mg_last_design_path', $new_path);
+            
+            // Try to find attachment ID for the new path
+            $attachment_id = 0;
+            if (!empty($new_path)) {
+                $uploads = wp_upload_dir();
+                $base_dir = wp_normalize_path($uploads['basedir']);
+                $normalized_path = wp_normalize_path($new_path);
+                
+                if (strpos($normalized_path, $base_dir) === 0) {
+                    $relative = ltrim(substr($normalized_path, strlen($base_dir)), '/');
+                    $attachment_id = $wpdb->get_var($wpdb->prepare(
+                        "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wp_attached_file' AND meta_value = %s LIMIT 1",
+                        $relative
+                    ));
+                }
+            }
+            
+            if ($attachment_id) {
+                update_post_meta($product_id, '_mg_last_design_attachment', $attachment_id);
+            } else {
+                delete_post_meta($product_id, '_mg_last_design_attachment');
+            }
+            
+            echo '<div class="notice notice-success is-dismissible"><p>Design path updated.</p></div>';
+        }
+    }
+    
     // Filter option
     $filter = isset($_GET['filter']) ? sanitize_text_field($_GET['filter']) : 'all';
     
@@ -71,10 +105,10 @@ function mg_render_design_paths_page() {
         echo '<thead>';
         echo '<tr>';
         echo '<th style="width: 60px;">ID</th>';
-        echo '<th style="width: 30%;">Product Name</th>';
-        echo '<th style="width: 15%;">SKU</th>';
-        echo '<th>Design File Path</th>';
-        echo '<th style="width: 100px;">File Exists?</th>';
+        echo '<th style="width: 25%;">Product Name</th>';
+        echo '<th style="width: 10%;">SKU</th>';
+        echo '<th style="width: 45%;">Design File Path</th>';
+        echo '<th style="width: 80px;">Status</th>';
         echo '<th style="width: 80px;">Actions</th>';
         echo '</tr>';
         echo '</thead>';
@@ -90,25 +124,37 @@ function mg_render_design_paths_page() {
             if ($has_path) {
                 $file_exists = file_exists($row->design_path);
                 $exists_class = $file_exists ? 'yes' : 'no';
-                $exists_text = $file_exists ? '✓ Yes' : '✗ No';
-                $path_display = '<code style="font-size: 11px;">' . esc_html($row->design_path) . '</code>';
+                $exists_text = $file_exists ? 'Found' : 'Missing';
             } else {
                 $exists_class = '';
                 $exists_text = '-';
-                $path_display = '<em style="color: #999;">No design path set</em>';
             }
             
             $row_class = !$has_path ? 'style="background-color: #fff3cd;"' : '';
             
             echo '<tr ' . $row_class . '>';
+            // Form wrapper
+            echo '<form method="post" action="">';
+            wp_nonce_field('mg_update_path_' . $row->ID);
+            echo '<input type="hidden" name="product_id" value="' . esc_attr($row->ID) . '">';
+            echo '<input type="hidden" name="mg_update_path" value="1">';
+            
             echo '<td>' . esc_html($row->ID) . '</td>';
-            echo '<td><strong>' . esc_html($row->post_title) . '</strong></td>';
+            echo '<td><a href="' . get_edit_post_link($row->ID) . '" target="_blank"><strong>' . esc_html($row->post_title) . '</strong></a></td>';
             echo '<td><code>' . esc_html($sku) . '</code></td>';
-            echo '<td>' . $path_display . '</td>';
-            echo '<td>' . ($exists_class ? '<span class="dashicons dashicons-' . $exists_class . '"></span> ' : '') . $exists_text . '</td>';
+            
+            // Inline Edit Field
             echo '<td>';
-            echo '<a href="' . get_edit_post_link($row->ID) . '" class="button button-small">Edit</a>';
+            echo '<input type="text" name="design_path" value="' . esc_attr($row->design_path) . '" style="width: 100%; font-size: 11px; font-family: monospace;">';
             echo '</td>';
+            
+            echo '<td>' . ($exists_class ? '<span class="dashicons dashicons-' . $exists_class . '"></span> ' : '') . $exists_text . '</td>';
+            
+            echo '<td>';
+            echo '<button type="submit" class="button button-primary button-small">Save</button>';
+            echo '</td>';
+            
+            echo '</form>'; // Close form
             echo '</tr>';
         }
         
