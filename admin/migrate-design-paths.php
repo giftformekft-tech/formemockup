@@ -173,10 +173,15 @@ class MG_Design_Path_Migration {
             }
             
             // Get filename without extension
+            $filename = basename($file_path);
+            $filename_lower = strtolower($filename);
             $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
             
+            // Remove accents from filename too (e.g., "Pilóta" → "pilota")
+            $filename_normalized = remove_accents($filename_no_ext);
+            
             // Skip very short filenames (less than 4 chars)
-            if (strlen($filename_no_ext) < 4) {
+            if (strlen($filename_normalized) < 4) {
                 continue;
             }
             
@@ -187,12 +192,12 @@ class MG_Design_Path_Migration {
             $product_name_normalized = sanitize_file_name($product_name_no_accents);
             
             // STRICT RULE: Product name must START with the filename
-            // Example: "minden-ember-lehetnek-ujsagirok.png" matches "MINDEN EMBER - Lehetnek ÚJSÁGÍROK Vicces"
+            // Example: "dominans-macska-pilota-retro.png" matches "DOMINÁNS Macska Pilóta Retro Cica"
             
-            // Check if normalized product name starts with filename
-            if (strpos($product_name_normalized, $filename_no_ext) === 0) {
+            // Check if normalized product name starts with normalized filename
+            if (strpos($product_name_normalized, $filename_normalized) === 0) {
                 // Must be followed by separator, space, or end of string
-                $next_char_pos = strlen($filename_no_ext);
+                $next_char_pos = strlen($filename_normalized);
                 if ($next_char_pos === strlen($product_name_normalized) ||
                     in_array($product_name_normalized[$next_char_pos], array('-', '_', ' '))) {
                     $attachment_id = self::find_attachment_by_path($file_path);
@@ -204,10 +209,11 @@ class MG_Design_Path_Migration {
             }
             
             // Also check original product name (with accents)
-            if (strpos($product_name_lower, $filename_no_ext) === 0) {
-                $next_char_pos = strlen($filename_no_ext);
-                if ($next_char_pos === strlen($product_name_lower) ||
-                    in_array($product_name_lower[$next_char_pos], array('-', '_', ' '))) {
+            $product_name_no_accents_lower = remove_accents($product_name_lower);
+            if (strpos($product_name_no_accents_lower, $filename_normalized) === 0) {
+                $next_char_pos = strlen($filename_normalized);
+                if ($next_char_pos === strlen($product_name_no_accents_lower) ||
+                    in_array($product_name_no_accents_lower[$next_char_pos], array('-', '_', ' '))) {
                     $attachment_id = self::find_attachment_by_path($file_path);
                     return array(
                         'path' => $file_path,
@@ -219,8 +225,9 @@ class MG_Design_Path_Migration {
             // Also try exact match with SKU
             if ($sku) {
                 $sku_lower = strtolower($sku);
-                if ($filename_no_ext === $sku_lower || 
-                    strpos($filename_no_ext, $sku_lower) === 0) {
+                $sku_normalized = remove_accents($sku_lower);
+                if ($filename_normalized === $sku_normalized || 
+                    strpos($filename_normalized, $sku_normalized) === 0) {
                     $attachment_id = self::find_attachment_by_path($file_path);
                     return array(
                         'path' => $file_path,
