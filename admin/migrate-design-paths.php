@@ -126,10 +126,75 @@ class MG_Design_Path_Migration {
             }
         }
         
-        // Strategy 3: DISABLED - File system scan is too slow and causes timeouts
-        // If you need to match products to orphaned files, you'll need to:
-        // 1. First import design files via the normal upload process
-        // 2. Or manually set _mg_last_design_path meta for specific products
+        // Strategy 3: Scan uploads/2026/01 folder (where all design PNGs are)
+        $uploads_dir = wp_upload_dir();
+        $base_dir = wp_normalize_path($uploads_dir['basedir']);
+        
+        // Hardcoded to 2026/01 where all design files are located
+        $design_folder = $base_dir . '/2026/01';
+        
+        if (!is_dir($design_folder)) {
+            return null;
+        }
+        
+        // Scan all PNG files in this folder
+        $files = @glob($design_folder . '/*.png');
+        if (!$files || !is_array($files)) {
+            return null;
+        }
+        
+        foreach ($files as $file_path) {
+            $file_path = wp_normalize_path($file_path);
+            $filename = basename($file_path);
+            $filename_lower = strtolower($filename);
+            
+            // Skip mockup files
+            if (strpos($file_path, 'mg_mockups') !== false || 
+                strpos($file_path, 'mockup-renders') !== false ||
+                strpos($filename_lower, '_front.') !== false ||
+                strpos($filename_lower, '_back.') !== false ||
+                strpos($filename_lower, '_side.') !== false) {
+                continue;
+            }
+            
+            // Get filename without extension
+            $filename_no_ext = pathinfo($filename_lower, PATHINFO_FILENAME);
+            
+            // Skip very short filenames (less than 4 chars)
+            if (strlen($filename_no_ext) < 4) {
+                continue;
+            }
+            
+            // Normalize product name for comparison
+            $product_name_lower = strtolower($product_name);
+            $product_name_normalized = sanitize_file_name($product_name_lower);
+            
+            // Check if filename appears in product name as a complete word
+            $pattern = '/(?:^|[\s\-_])' . preg_quote($filename_no_ext, '/') . '(?:[\s\-_]|$)/';
+            
+            if (preg_match($pattern, $product_name_normalized) || 
+                preg_match($pattern, $product_name_lower)) {
+                // Filename matches product name!
+                $attachment_id = self::find_attachment_by_path($file_path);
+                return array(
+                    'path' => $file_path,
+                    'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                );
+            }
+            
+            // Also try exact match with SKU
+            if ($sku) {
+                $sku_lower = strtolower($sku);
+                if ($filename_no_ext === $sku_lower || 
+                    strpos($filename_no_ext, $sku_lower) === 0) {
+                    $attachment_id = self::find_attachment_by_path($file_path);
+                    return array(
+                        'path' => $file_path,
+                        'attachment_id' => $attachment_id > 0 ? $attachment_id : 0,
+                    );
+                }
+            }
+        }
         
         return null;
     }
