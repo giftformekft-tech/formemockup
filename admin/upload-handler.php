@@ -165,5 +165,10 @@ add_action('admin_post_mg_upload_design_multi', function() {
     } catch (Throwable $e) {
         $msg = rawurlencode($e->getMessage());
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&status=error&mg_error='.$msg)); exit;
+    } finally {
+        // Cleanup temp files after manual upload/generation
+        if (class_exists('MG_Generator') && method_exists('MG_Generator', 'cleanup_imagick_temp_files')) {
+            MG_Generator::cleanup_imagick_temp_files();
+        }
     }
 });
