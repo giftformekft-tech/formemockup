@@ -82,6 +82,37 @@ function mg_render_maintenance_page() {
             <div id="mg-analysis-log" style="margin-top: 10px; max-height: 150px; overflow-y: auto; background: #f0f0f1; padding: 10px; display: none;"></div>
         </div>
 
+        <!-- CLEANUP TOOLS -->
+        <div class="card" style="max-width: 800px; margin-top: 20px;">
+            <h2>🧹 Database & System Cleanup</h2>
+            <p>Tools to fix database inconsistencies and recover system space.</p>
+            
+            <table class="widefat striped">
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>Fix Broken Media (Ghosts)</strong><br>
+                            <small>Deletes Media Library entries where the file is missing from disk.</small>
+                        </td>
+                        <td>
+                            <button id="mg-fix-media-btn" class="button button-secondary">Scan & Fix</button>
+                            <span id="mg-fix-media-status" style="margin-left: 10px; color: #666;"></span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <strong>Clean Temp Files</strong><br>
+                            <small>Deletes old ImageMagick temporary files (magick-*) from system temp.</small>
+                        </td>
+                        <td>
+                            <button id="mg-clean-temp-btn" class="button button-secondary">Clean Temp</button>
+                            <span id="mg-clean-temp-status" style="margin-left: 10px; color: #666;"></span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- DANGER ZONE -->
         <div class="card" style="max-width: 800px; margin-top: 20px; border-left: 4px solid #d63638;">
             <h2 style="color: #d63638;">⚠️ DANGER ZONE: Delete All Products</h2>
@@ -213,6 +244,91 @@ function mg_render_maintenance_page() {
                 error: function() {
                     btn.prop('disabled', false).text('Delete All');
                     alert('Server error.');
+                }
+            });
+        });
+
+        // --- CLEANUP TOOLS ---
+        
+        // Fix Broken Media
+        $('#mg-fix-media-btn').on('click', function() {
+            if (!confirm('This will scan your Media Library and delete entries where the file is missing. Continue?')) return;
+            
+            var btn = $(this);
+            var status = $('#mg-fix-media-status');
+            var offset = 0;
+            var totalDeleted = 0;
+            var totalChecked = 0;
+            
+            btn.prop('disabled', true);
+            status.text('Scanning...');
+            
+            function processBatch() {
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'mg_fix_broken_media',
+                        nonce: '<?php echo wp_create_nonce("mg_maintenance"); ?>',
+                        offset: offset
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            totalDeleted += res.data.deleted;
+                            totalChecked += res.data.checked;
+                            offset = res.data.next_offset;
+                            
+                            status.text('Checked: ' + totalChecked + ' | Deleted: ' + totalDeleted);
+                            
+                            if (!res.data.done) {
+                                processBatch();
+                            } else {
+                                btn.prop('disabled', false);
+                                status.text('Done! Deleted ' + totalDeleted + ' broken entries.');
+                                alert('Cleanup complete. Deleted ' + totalDeleted + ' broken media entries.');
+                            }
+                        } else {
+                            btn.prop('disabled', false);
+                            status.text('Error: ' + res.data);
+                        }
+                    },
+                    error: function() {
+                        btn.prop('disabled', false);
+                        status.text('Server error.');
+                    }
+                });
+            }
+            
+            processBatch();
+        });
+        
+        // Clean Temp Files
+        $('#mg-clean-temp-btn').on('click', function() {
+            var btn = $(this);
+            var status = $('#mg-clean-temp-status');
+            
+            btn.prop('disabled', true);
+            status.text('Cleaning...');
+            
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'mg_clean_temp_files',
+                    nonce: '<?php echo wp_create_nonce("mg_maintenance"); ?>'
+                },
+                success: function(res) {
+                    btn.prop('disabled', false);
+                    if (res.success) {
+                        status.text('Deleted ' + res.data.deleted + ' files (' + res.data.freed_formatted + ')');
+                        alert('Cleanup complete!\nDeleted files: ' + res.data.deleted + '\nFreed space: ' + res.data.freed_formatted);
+                    } else {
+                        status.text('Error: ' + res.data);
+                    }
+                },
+                error: function() {
+                    btn.prop('disabled', false);
+                    status.text('Server error.');
                 }
             });
         });
@@ -452,5 +568,145 @@ add_action('wp_ajax_mg_delete_products_batch', function() {
     wp_send_json_success(array(
         'count' => $deleted_count,
         'remaining' => $remaining
+    ));
+});
+
+// AJAX: Fix Broken Media (Ghost Attachments)
+add_action('wp_ajax_mg_fix_broken_media', function() {
+    check_ajax_referer('mg_maintenance', 'nonce');
+    if (!current_user_can('manage_woocommerce')) wp_send_json_error('Unauthorized');
+
+    $batch_size = 50; // Process 50 attachments at a time
+    $offset = isset($_POST['offset']) ? intval($_POST['offset']) : 0;
+    
+    $query_args = array(
+        'post_type'      => 'attachment',
+        'post_status'    => 'inherit',
+        'posts_per_page' => $batch_size,
+        'offset'         => $offset,
+        'fields'         => 'ids',
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+    );
+    
+    $attachments = get_posts($query_args);
+    $total_attachments = wp_count_posts('attachment')->inherit;
+    
+    $deleted_count = 0;
+    $checked_count = count($attachments);
+    
+    if ($checked_count === 0) {
+        wp_send_json_success(array('done' => true, 'deleted' => 0, 'checked' => 0));
+    }
+
+    foreach ($attachments as $att_id) {
+        $path = get_attached_file($att_id);
+        // If path is empty or file does not exist
+        if (!$path || !file_exists($path)) {
+            wp_delete_attachment($att_id, true);
+            $deleted_count++;
+        }
+    }
+
+    $new_offset = $offset + $checked_count - $deleted_count; // Adjust offset because deletion shifts indices? 
+    // Actually, if we delete, the next page logic gets tricky with offsets. 
+    // Safer approach for batch deletion: Don't use offset, use 'post__not_in' or just re-query?
+    // But 'offset' is standard. If we delete items 0-10, items 11-20 become 0-10.
+    // So if we deleted X items, we should NOT increase offset by checked_count, but by (checked_count - deleted_count).
+    // HOWEVER, WP_Query with offset is slow for large datasets.
+    // Let's stick to simple offset logic but be aware of the shift.
+    // If we process from ID ASC, we can just use 'post__not_in' with processed IDs? No, too big.
+    // Simple fix: If we found broken ones, we deleted them. The next batch at 'offset' will be the next set of valid ones (mostly).
+    // Actually, if we delete row 0, row 1 becomes row 0. So if we increment offset by batch_size, we skip items.
+    // CORRECT LOGIC: If we delete N items, the next query at same offset will return new items.
+    // But we iterate through all.
+    // Let's just return the counts and let client handle "next batch".
+    // Client sends 'offset'.
+    // If we deleted everything in this batch, next call should use SAME offset?
+    // No, that's infinite loop risk if we fail to delete.
+    // Let's assume we just increment offset by ($checked_count - $deleted_count).
+    
+    // Better yet: Don't use offset. Use 'paged' and don't delete immediately? No, we want to delete.
+    // Best approach for deletion loop: Always query with offset 0, but filter? No.
+    // Let's use the standard "processed count" to update UI, but for the query, we need to be careful.
+    // If we delete, the total count decreases.
+    // Let's just return 'deleted' count. The client will just keep calling until 'done'.
+    // But how to iterate?
+    // We can pass 'last_id' instead of offset for performance and stability.
+    
+    // RE-IMPLEMENTATION WITH LAST_ID
+    // Client sends 'last_id' (default 0). We query IDs > last_id.
+    // This is stable even with deletions.
+    
+    $last_id = isset($_POST['last_id']) ? intval($_POST['last_id']) : 0;
+    
+    $query_args = array(
+        'post_type'      => 'attachment',
+        'post_status'    => 'inherit',
+        'posts_per_page' => $batch_size,
+        'fields'         => 'ids',
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+        // 'post__not_in' => ... // No, use date or ID range
+    );
+    
+    // We can't easily do "ID > last_id" with get_posts standard args without a filter or meta query (which is slow).
+    // But we can use 'offset' if we accept we might skip some if concurrent edits happen?
+    // Let's go back to OFFSET but handle the shift.
+    // Actually, if we delete item at index 0, the item at index 1 moves to 0.
+    // So if we processed 50 items and deleted 10, we effectively advanced by 40 items in the "original" list.
+    // So next offset should be current_offset + (50 - 10) = current_offset + 40.
+    
+    $next_offset = $offset + ($checked_count - $deleted_count);
+    
+    wp_send_json_success(array(
+        'done' => ($checked_count < $batch_size),
+        'deleted' => $deleted_count,
+        'checked' => $checked_count,
+        'next_offset' => $next_offset,
+        'total_estimate' => $total_attachments
+    ));
+});
+
+// AJAX: Clean Temp Files
+add_action('wp_ajax_mg_clean_temp_files', function() {
+    check_ajax_referer('mg_maintenance', 'nonce');
+    if (!current_user_can('manage_woocommerce')) wp_send_json_error('Unauthorized');
+
+    $temp_dir = sys_get_temp_dir();
+    if (!$temp_dir || !is_dir($temp_dir)) {
+        wp_send_json_error('Temp directory not found: ' . $temp_dir);
+    }
+
+    // Look for ImageMagick temp files (usually magick-*)
+    $patterns = array('magick-*', 'magick-*.*'); // Sometimes they have extensions
+    $deleted_count = 0;
+    $freed_bytes = 0;
+    $errors = array();
+
+    foreach ($patterns as $pattern) {
+        $files = glob($temp_dir . DIRECTORY_SEPARATOR . $pattern);
+        if ($files) {
+            foreach ($files as $file) {
+                if (is_file($file)) {
+                    // Safety: Check if file is older than 1 hour (3600s) to avoid deleting in-use files
+                    if (time() - filemtime($file) > 3600) {
+                        $size = filesize($file);
+                        if (@unlink($file)) {
+                            $deleted_count++;
+                            $freed_bytes += $size;
+                        } else {
+                            // $errors[] = "Failed to delete " . basename($file);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    wp_send_json_success(array(
+        'deleted' => $deleted_count,
+        'freed_formatted' => size_format($freed_bytes, 2),
+        'temp_dir' => $temp_dir
     ));
 });
