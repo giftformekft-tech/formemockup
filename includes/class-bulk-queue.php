@@ -300,6 +300,10 @@ class MG_Bulk_Queue {
             }
         } finally {
             self::unregister_worker($worker_id);
+            // CLEANUP TEMP FILES after batch
+            if (class_exists('MG_Generator') && method_exists('MG_Generator', 'cleanup_imagick_temp_files')) {
+                MG_Generator::cleanup_imagick_temp_files();
+            }
         }
         if (self::has_pending_jobs()) {
             self::dispatch_workers(null, true);
@@ -329,6 +333,10 @@ class MG_Bulk_Queue {
         } finally {
             self::unregister_worker($worker_id);
             delete_transient(self::CRON_LOCK);
+            // CLEANUP TEMP FILES after batch
+            if (class_exists('MG_Generator') && method_exists('MG_Generator', 'cleanup_imagick_temp_files')) {
+                MG_Generator::cleanup_imagick_temp_files();
+            }
         }
         if (self::has_pending_jobs()) {
             self::maybe_schedule_processor();

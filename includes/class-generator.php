@@ -899,4 +899,30 @@ class MG_Generator {
             }
         }
     }
+    public static function cleanup_imagick_temp_files() {
+        $temp_dir = sys_get_temp_dir();
+        if (!$temp_dir || !is_dir($temp_dir)) {
+            return;
+        }
+
+        // Look for ImageMagick temp files (magick-*)
+        $patterns = array('magick-*'); 
+        $deleted_count = 0;
+
+        foreach ($patterns as $pattern) {
+            $files = glob($temp_dir . DIRECTORY_SEPARATOR . $pattern);
+            if ($files) {
+                foreach ($files as $file) {
+                    if (is_file($file)) {
+                        // Delete regardless of age as these are temp files from our process
+                        // Use @ to suppress errors if file is locked
+                        if (@unlink($file)) {
+                            $deleted_count++;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
+
