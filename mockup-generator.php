@@ -32,8 +32,8 @@ add_action('plugins_loaded', function(){
         'admin/class-surcharge-options-page.php',
         'admin/class-migration-page.php',
         'admin/migrate-design-paths.php',
-        'admin/view-design-paths.php',
-        'admin/export-design-paths-csv.php', // CSV & Manual Tools
+
+
         'admin/class-maintenance-tools.php', // Bulk Delete Tools
         'includes/class-generator.php',
         'includes/class-product-creator.php',
