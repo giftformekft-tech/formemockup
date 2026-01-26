@@ -690,7 +690,8 @@ add_action('wp_ajax_mg_clean_temp_files', function() {
             foreach ($files as $file) {
                 if (is_file($file)) {
                     // Safety: Check if file is older than 1 hour (3600s) to avoid deleting in-use files
-                    if (time() - filemtime($file) > 3600) {
+                    // UPDATE: User requested to delete ALL files regardless of age
+                    // if (time() - filemtime($file) > 3600) {
                         $size = filesize($file);
                         if (@unlink($file)) {
                             $deleted_count++;
@@ -698,7 +699,7 @@ add_action('wp_ajax_mg_clean_temp_files', function() {
                         } else {
                             // $errors[] = "Failed to delete " . basename($file);
                         }
-                    }
+                    // }
                 }
             }
         }
