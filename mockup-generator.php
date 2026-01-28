@@ -48,6 +48,7 @@ add_action('plugins_loaded', function(){
         'includes/variant-surcharge-applier.php',
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
+        'admin/class-temu-export-page.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -143,6 +144,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Migration_Admin_Page')) {
         MG_Migration_Admin_Page::init_auto_migration();
+    }
+    if (class_exists('MG_Temu_Export_Page')) {
+        MG_Temu_Export_Page::init();
     }
 }, 20);
 

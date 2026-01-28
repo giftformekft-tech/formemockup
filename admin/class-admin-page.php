@@ -115,6 +115,10 @@ class MG_Admin_Page {
                 'label' => __('Bulk feltöltés', 'mockup-generator'),
                 'type'  => 'bulk',
             ),
+            'temu_export' => array(
+                'label' => __('Temu Export', 'mockup-generator'),
+                'type'  => 'temu_export',
+            ),
             'variants' => array(
                 'label'     => __('Variánsok', 'mockup-generator'),
                 'type'      => 'legacy',
@@ -319,6 +323,11 @@ class MG_Admin_Page {
                 break;
             case 'custom':
                 self::render_mockups_panel();
+                break;
+            case 'temu_export':
+                if (class_exists('MG_Temu_Export_Page')) {
+                    MG_Temu_Export_Page::render_page();
+                }
                 break;
             case 'bulk':
                 self::render_bulk_panel();
