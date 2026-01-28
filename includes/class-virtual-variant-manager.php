@@ -118,7 +118,7 @@ class MG_Virtual_Variant_Manager {
         echo '<input type="hidden" name="mg_render_version" value="' . esc_attr($render_version) . '" />';
     }
 
-    protected static function get_frontend_config($product) {
+    public static function get_frontend_config($product) {
         $product_id = $product ? $product->get_id() : 0;
         if (!$product_id) {
             return array();
