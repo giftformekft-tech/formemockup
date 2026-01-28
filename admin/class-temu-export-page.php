@@ -359,7 +359,7 @@ class MG_Temu_Export_Page {
                     });
                 });
                 
-                $('#mg-temu-export-summary').text(`Összesen ${count} variáció kerül exportálásra (${variantsCache.length} termékből).`);
+                $('#mg-temu-export-summary').html(`Összesen ${count} variáció kerül exportálásra (${variantsCache.length} termékből). <small style='color:#888'>(v1.2)</small>`);
             }
 
             $(document).on('change', '.mg-filter-type, .mg-filter-color, .mg-filter-size', updateSummary);
@@ -580,6 +580,9 @@ class MG_Temu_Export_Page {
             $size = $item['size'];
             
             $base_sku = $config['product']['sku'] ?? $product->get_sku();
+            // Fallback for SKU
+            if (empty($base_sku)) $base_sku = 'SKU_' . $pid;
+            
             $sku_generated = $base_sku;
 
             // Labels
@@ -591,6 +594,7 @@ class MG_Temu_Export_Page {
             // Note: Use Base SKU for directory structure as per convention observed
             $uploads = wp_upload_dir();
             $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+            
             $filename = $base_sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
             $img_url = $base_url . '/' . $base_sku . '/' . $filename;
             
@@ -610,7 +614,8 @@ class MG_Temu_Export_Page {
 
         // Export
         $upload_dir = wp_upload_dir();
-        $filename = 'temu-export-' . date('Y-m-d-H-i-s') . '.csv';
+        // Versioned filename to ensure freshness
+        $filename = 'temu-export-v2-' . date('Y-m-d-H-i-s') . '.csv';
         $filepath = $upload_dir['path'] . '/' . $filename;
         $fileurl = $upload_dir['url'] . '/' . $filename;
         
