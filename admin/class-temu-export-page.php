@@ -245,74 +245,153 @@ class MG_Temu_Export_Page {
                  });
             }
 
+            let variantsCache = []; // Store full data
+
             function renderVariantList(data) {
-                let html = '';
                 if (!data || data.length === 0) {
                      $('#mg-temu-variant-list').html('<p>Nem található konfigurált terméktípus ezekhez a termékekhez.</p>');
                      return;
                 }
                 
-                // Group by product
-                data.forEach(item => { // item = { product_id, product_name, sku_base, variants: [...] }
-                    let variantsHtml = '';
-                    
-                    if (item.variants.length === 0) {
-                         variantsHtml = '<p style="padding:10px; color:#777;">Ehhez a termékhez nincs renderelő konfiguráció (Virtual Variant Manager).</p>';
-                    } else {
-                        // Variants here are effectively Type+Color combos since Size is sub-attribute but we list them all?
-                        // Actually, let's list distinct Variant Rows.
-                        // { key: 'TYPE|COLOR|SIZE', label: 'T-Shirt - Red - L', sku_suffix: '...' }
-                        
-                        item.variants.forEach(v => {
-                             // v = { type, color, size, label, sku_generated }
-                             const uniqueKey = `${v.type}|${v.color}|${v.size}`;
-                             
-                             variantsHtml += `
-                                <div class="mg-temu-variant-row">
-                                    <label>
-                                        <input type="checkbox" class="mg-temu-var-cb" 
-                                               data-pid="${item.product_id}" 
-                                               data-type="${v.type}" 
-                                               data-color="${v.color}" 
-                                               data-size="${v.size}"
-                                               checked>
-                                        <span class="mg-chip">${v.type_label}</span>
-                                        <span class="mg-chip" style="background:#eef;color:#338;">${v.color_label}</span>
-                                        <span class="mg-chip" style="background:#efe;color:#050;">${v.size}</span>
-                                        <span style="color:#666;font-size:12px;">SKU: ${v.sku}</span>
-                                    </label>
-                                </div>
-                            `;
-                        });
-                    }
+                variantsCache = data;
 
-                    html += `
-                        <div class="mg-temu-variant-group">
-                            <div class="mg-temu-variant-header">
-                                <span>${item.product_name} <small>(${item.sku_base})</small></span>
-                                <div>
-                                    <button type="button" class="button button-small mg-temu-toggle-vars" onclick="jQuery('#vars-${item.product_id}').toggle()">Mutat/Rejt</button>
-                                </div>
-                            </div>
-                            <div class="mg-temu-variant-body" id="vars-${item.product_id}">
-                                ${variantsHtml}
+                // 1. Aggregate Unique Attributes
+                const types = {};
+                const colors = {};
+                const sizes = {};
+                
+                let totalProducts = data.length;
+
+                data.forEach(item => {
+                    item.variants.forEach(v => {
+                        // Type
+                        if (!types[v.type]) types[v.type] = { label: v.type_label, count: 0 };
+                        types[v.type].count++;
+                        
+                        // Color
+                        if (!colors[v.color]) colors[v.color] = { label: v.color_label, count: 0 };
+                        colors[v.color].count++;
+                        
+                        // Size
+                        if (!sizes[v.size]) sizes[v.size] = { label: v.size, count: 0 };
+                        sizes[v.size].count++;
+                    });
+                });
+
+                // 2. Render UI Columns
+                let html = `
+                    <div class="mg-temu-filters-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                        
+                        <!-- Types -->
+                        <div class="mg-temu-filter-col">
+                            <h3>Terméktípusok</h3>
+                            <div class="mg-temu-filter-list">
+                                <label style="display:block;margin-bottom:8px;font-weight:bold;">
+                                    <input type="checkbox" id="mg-filter-all-types" checked> Összes kijelölése
+                                </label>
+                                <hr style="margin:5px 0 10px;">
+                                ${Object.keys(types).map(k => `
+                                    <label style="display:block;margin-bottom:5px;">
+                                        <input type="checkbox" class="mg-filter-type" value="${k}" checked> 
+                                        ${types[k].label} <span style="color:#888;font-size:11px;">(${types[k].count})</span>
+                                    </label>
+                                `).join('')}
                             </div>
                         </div>
-                    `;
-                });
+
+                        <!-- Colors -->
+                        <div class="mg-temu-filter-col">
+                            <h3>Színek</h3>
+                            <div class="mg-temu-filter-list">
+                                <label style="display:block;margin-bottom:8px;font-weight:bold;">
+                                    <input type="checkbox" id="mg-filter-all-colors" checked> Összes kijelölése
+                                </label>
+                                <hr style="margin:5px 0 10px;">
+                                ${Object.keys(colors).map(k => `
+                                    <label style="display:block;margin-bottom:5px;">
+                                        <input type="checkbox" class="mg-filter-color" value="${k}" checked> 
+                                        ${colors[k].label} <span style="color:#888;font-size:11px;">(${colors[k].count})</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                        <!-- Sizes -->
+                        <div class="mg-temu-filter-col">
+                            <h3>Méretek</h3>
+                            <div class="mg-temu-filter-list">
+                                <label style="display:block;margin-bottom:8px;font-weight:bold;">
+                                    <input type="checkbox" id="mg-filter-all-sizes" checked> Összes kijelölése
+                                </label>
+                                <hr style="margin:5px 0 10px;">
+                                ${Object.keys(sizes).map(k => `
+                                    <label style="display:block;margin-bottom:5px;">
+                                        <input type="checkbox" class="mg-filter-size" value="${k}" checked> 
+                                        ${sizes[k].label} <span style="color:#888;font-size:11px;">(${sizes[k].count})</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div style="margin-top:20px; padding:15px; background:#f9f9f9; border-top:1px solid #ddd; text-align:right;">
+                        <span id="mg-temu-export-summary" style="font-weight:bold; margin-right:15px;">Kalkuláció...</span>
+                    </div>
+                `;
+                
                 $('#mg-temu-variant-list').html(html);
+                updateSummary();
             }
+
+            // --- Filter Logic ---
+            function updateSummary() {
+                const selTypes = $('.mg-filter-type:checked').map((i, el) => el.value).get();
+                const selColors = $('.mg-filter-color:checked').map((i, el) => el.value).get();
+                const selSizes = $('.mg-filter-size:checked').map((i, el) => el.value).get();
+
+                let count = 0;
+                variantsCache.forEach(item => {
+                    item.variants.forEach(v => {
+                        if (selTypes.includes(v.type) && selColors.includes(v.color) && selSizes.includes(v.size)) {
+                            count++;
+                        }
+                    });
+                });
+                
+                $('#mg-temu-export-summary').text(`Összesen ${count} variáció kerül exportálásra (${variantsCache.length} termékből).`);
+            }
+
+            $(document).on('change', '.mg-filter-type, .mg-filter-color, .mg-filter-size', updateSummary);
+            
+            $(document).on('change', '#mg-filter-all-types', function() {
+                $('.mg-filter-type').prop('checked', $(this).is(':checked')).trigger('change');
+            });
+            $(document).on('change', '#mg-filter-all-colors', function() {
+                $('.mg-filter-color').prop('checked', $(this).is(':checked')).trigger('change');
+            });
+            $(document).on('change', '#mg-filter-all-sizes', function() {
+                $('.mg-filter-size').prop('checked', $(this).is(':checked')).trigger('change');
+            });
 
             // --- Export ---
 
             $('#mg-temu-generate').on('click', function() {
+                const selTypes = $('.mg-filter-type:checked').map((i, el) => el.value).get();
+                const selColors = $('.mg-filter-color:checked').map((i, el) => el.value).get();
+                const selSizes = $('.mg-filter-size:checked').map((i, el) => el.value).get();
+
                 const selection = [];
-                $('.mg-temu-var-cb:checked').each(function() {
-                    selection.push({
-                        pid: $(this).data('pid'),
-                        type: $(this).data('type'),
-                        color: $(this).data('color'),
-                        size: $(this).data('size')
+                variantsCache.forEach(item => {
+                    item.variants.forEach(v => {
+                        if (selTypes.includes(v.type) && selColors.includes(v.color) && selSizes.includes(v.size)) {
+                            selection.push({
+                                pid: item.product_id,
+                                type: v.type,
+                                color: v.color,
+                                size: v.size
+                            });
+                        }
                     });
                 });
 
