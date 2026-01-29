@@ -591,7 +591,7 @@ class MG_Custom_Fields_Page {
             $is_assigned = in_array($product->ID, $assigned_product_ids, true);
             $status = get_post_status_object($product->post_status);
             $status_label = $status ? $status->label : $product->post_status;
-            $thumbnail = get_the_post_thumbnail($product->ID, array(40, 40), array('class' => 'mgcf-product-thumb'));
+            $thumbnail = get_the_post_thumbnail($product->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
             if (empty($thumbnail)) {
                 $thumbnail = '<span class="mgcf-no-image">—</span>';
             }
