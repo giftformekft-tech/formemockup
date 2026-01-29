@@ -96,6 +96,53 @@ class MG_Custom_Fields_Manager {
     }
 
     /**
+     * Retrieve custom products with pagination.
+     *
+     * @param int $page Current page number (1-indexed).
+     * @param int $per_page Number of items per page.
+     * @return array ['products' => WP_Post[], 'total' => int, 'pages' => int]
+     */
+    public static function get_custom_products_paginated($page = 1, $per_page = 25) {
+        $page = max(1, intval($page));
+        $per_page = in_array($per_page, array(25, 50, 100), true) ? $per_page : 25;
+
+        $count_args = array(
+            'post_type'      => 'product',
+            'posts_per_page' => -1,
+            'post_status'    => array('publish', 'pending', 'draft', 'future', 'private'),
+            'meta_key'       => self::META_KEY,
+            'meta_value'     => 'yes',
+            'fields'         => 'ids',
+        );
+        $all_ids = get_posts($count_args);
+        $total = is_array($all_ids) ? count($all_ids) : 0;
+        $pages = $total > 0 ? ceil($total / $per_page) : 1;
+
+        $args = array(
+            'post_type'      => 'product',
+            'posts_per_page' => $per_page,
+            'paged'          => $page,
+            'post_status'    => array('publish', 'pending', 'draft', 'future', 'private'),
+            'meta_key'       => self::META_KEY,
+            'meta_value'     => 'yes',
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+        );
+        $products = get_posts($args);
+        if (!is_array($products)) {
+            $products = array();
+        }
+
+        return array(
+            'products' => $products,
+            'total'    => $total,
+            'pages'    => $pages,
+            'page'     => $page,
+            'per_page' => $per_page,
+        );
+    }
+
+    /**
      * Load the full option payload.
      */
     protected static function get_all_settings() {
@@ -250,6 +297,145 @@ class MG_Custom_Fields_Manager {
             unset($presets[$preset_id]);
             self::save_all_presets($presets);
         }
+    }
+
+    /**
+     * Get product IDs assigned to a preset.
+     *
+     * @param string $preset_id The preset ID.
+     * @return array Array of product IDs.
+     */
+    public static function get_products_for_preset($preset_id) {
+        $preset = self::get_preset($preset_id);
+        if (!$preset) {
+            return array();
+        }
+        $product_ids = isset($preset['product_ids']) && is_array($preset['product_ids']) ? $preset['product_ids'] : array();
+        // Filter to only include products that still exist and are custom
+        $valid_ids = array();
+        foreach ($product_ids as $pid) {
+            $pid = intval($pid);
+            if ($pid > 0 && self::is_custom_product($pid) && get_post_status($pid)) {
+                $valid_ids[] = $pid;
+            }
+        }
+        return $valid_ids;
+    }
+
+    /**
+     * Assign products to a preset and apply preset fields to them.
+     *
+     * @param string $preset_id The preset ID.
+     * @param array $product_ids Array of product IDs to assign.
+     * @return bool True on success.
+     */
+    public static function assign_products_to_preset($preset_id, $product_ids) {
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '') {
+            return false;
+        }
+        $presets = self::get_all_presets();
+        if (!isset($presets[$preset_id])) {
+            return false;
+        }
+
+        // Sanitize product IDs
+        $clean_ids = array();
+        if (is_array($product_ids)) {
+            foreach ($product_ids as $pid) {
+                $pid = intval($pid);
+                if ($pid > 0) {
+                    $clean_ids[] = $pid;
+                }
+            }
+        }
+        $clean_ids = array_unique($clean_ids);
+
+        // Update preset with product IDs
+        $presets[$preset_id]['product_ids'] = $clean_ids;
+        $presets[$preset_id]['updated'] = current_time('mysql');
+        self::save_all_presets($presets);
+
+        // Apply preset fields to each assigned product
+        $fields = isset($presets[$preset_id]['fields']) ? $presets[$preset_id]['fields'] : array();
+        foreach ($clean_ids as $pid) {
+            if (!empty($fields)) {
+                self::save_fields_for_product($pid, $fields);
+            }
+            self::set_custom_product($pid, true);
+        }
+
+        return true;
+    }
+
+    /**
+     * Update preset settings (name and/or fields).
+     *
+     * @param string $preset_id The preset ID.
+     * @param array $data ['name' => string, 'fields' => array] - optional keys.
+     * @return bool True on success.
+     */
+    public static function update_preset($preset_id, $data) {
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '') {
+            return false;
+        }
+        $presets = self::get_all_presets();
+        if (!isset($presets[$preset_id])) {
+            return false;
+        }
+
+        if (isset($data['name'])) {
+            $name = is_string($data['name']) ? trim(wp_strip_all_tags($data['name'])) : '';
+            if ($name !== '') {
+                $presets[$preset_id]['name'] = $name;
+            }
+        }
+
+        if (isset($data['fields']) && is_array($data['fields'])) {
+            $clean_fields = array();
+            foreach ($data['fields'] as $field) {
+                $clean_fields[] = self::sanitize_field($field);
+            }
+            $presets[$preset_id]['fields'] = $clean_fields;
+        }
+
+        $presets[$preset_id]['updated'] = current_time('mysql');
+        self::save_all_presets($presets);
+        return true;
+    }
+
+    /**
+     * Create a new empty preset with just a name.
+     *
+     * @param string $name The preset name.
+     * @return string|false The preset ID on success, false on failure.
+     */
+    public static function create_preset($name) {
+        $name = is_string($name) ? trim(wp_strip_all_tags($name)) : '';
+        if ($name === '') {
+            return false;
+        }
+
+        $presets = self::get_all_presets();
+        
+        // Check if name already exists
+        foreach ($presets as $preset) {
+            if (isset($preset['name']) && strcasecmp($preset['name'], $name) === 0) {
+                return false; // Name already exists
+            }
+        }
+
+        $preset_id = 'mgcf_preset_' . uniqid();
+        $presets[$preset_id] = array(
+            'id'          => $preset_id,
+            'name'        => $name,
+            'fields'      => array(),
+            'product_ids' => array(),
+            'updated'     => current_time('mysql'),
+        );
+        self::save_all_presets($presets);
+        return $preset_id;
     }
 
     public static function apply_preset_to_product($product_id, $preset_id) {
