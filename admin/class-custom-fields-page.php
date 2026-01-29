@@ -582,6 +582,7 @@ class MG_Custom_Fields_Page {
         echo '<table class="widefat striped mgcf-table">';
         echo '<thead><tr>';
         echo '<th class="mgcf-table__check"><input type="checkbox" id="mgcf-select-all" /></th>';
+        echo '<th class="mgcf-table__image">' . esc_html__('Kép', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Termék', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mgcf') . '</th>';
         echo '</tr></thead>';
@@ -590,9 +591,14 @@ class MG_Custom_Fields_Page {
             $is_assigned = in_array($product->ID, $assigned_product_ids, true);
             $status = get_post_status_object($product->post_status);
             $status_label = $status ? $status->label : $product->post_status;
+            $thumbnail = get_the_post_thumbnail($product->ID, array(40, 40), array('class' => 'mgcf-product-thumb'));
+            if (empty($thumbnail)) {
+                $thumbnail = '<span class="mgcf-no-image">—</span>';
+            }
 
             echo '<tr>';
             echo '<td class="mgcf-table__check"><input type="checkbox" name="product_ids[]" value="' . esc_attr($product->ID) . '"' . checked($is_assigned, true, false) . ' /></td>';
+            echo '<td class="mgcf-table__image">' . $thumbnail . '</td>';
             echo '<td>' . esc_html(get_the_title($product)) . '</td>';
             echo '<td>' . esc_html($status_label) . '</td>';
             echo '</tr>';
