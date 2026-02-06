@@ -24,6 +24,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
+        add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
     }
@@ -1132,6 +1133,30 @@ class MG_Virtual_Variant_Manager {
         $hidden[] = 'color';
         $hidden[] = 'size';
         return array_unique($hidden);
+    }
+
+    public static function filter_order_item_meta_display($formatted_meta, $item) {
+        if (is_admin() && !wp_doing_ajax()) {
+            return $formatted_meta;
+        }
+
+        if (function_exists('is_order_received_page') && !is_order_received_page()) {
+            return $formatted_meta;
+        }
+
+        $allowed_labels = array(
+            __('Terméktípus', 'mgdtp'),
+            __('Szín', 'mgdtp'),
+            __('Méret', 'mgdtp'),
+        );
+
+        foreach ($formatted_meta as $meta_id => $meta) {
+            if (empty($meta->display_key) || !in_array($meta->display_key, $allowed_labels, true)) {
+                unset($formatted_meta[$meta_id]);
+            }
+        }
+
+        return $formatted_meta;
     }
 
     public static function ajax_preview() {
