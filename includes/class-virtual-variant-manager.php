@@ -22,6 +22,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_blocks_cart_item_image', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
         add_filter('woocommerce_blocks_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
         add_filter('woocommerce_store_api_cart_item_images', array(__CLASS__, 'filter_store_api_cart_item_images'), 10, 2);
+        add_filter('woocommerce_store_api_cart_item', array(__CLASS__, 'filter_store_api_cart_item'), 10, 2);
         add_filter('woocommerce_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
@@ -1058,6 +1059,27 @@ class MG_Virtual_Variant_Manager {
         return $images;
     }
 
+    public static function filter_store_api_cart_item($cart_item_data, $cart_item) {
+        $preview_url = self::get_cart_item_preview_url($cart_item);
+        if ($preview_url === '') {
+            return $cart_item_data;
+        }
+
+        $images = array();
+        if (!empty($cart_item_data['images']) && is_array($cart_item_data['images'])) {
+            $images = $cart_item_data['images'];
+        }
+
+        if (!empty($images)) {
+            $images[0] = self::map_preview_image_array($images[0], $preview_url, $cart_item);
+        } else {
+            $images[] = self::build_store_api_image($preview_url, $cart_item);
+        }
+
+        $cart_item_data['images'] = $images;
+        return $cart_item_data;
+    }
+
     private static function get_cart_item_preview_url($cart_item) {
         if (!empty($cart_item['mg_preview_url'])) {
             $preview_url = esc_url($cart_item['mg_preview_url']);
@@ -1122,8 +1144,27 @@ class MG_Virtual_Variant_Manager {
         $image['srcset'] = '';
         $image['sizes'] = '';
         $image['alt'] = $alt;
+        if (empty($image['name'])) {
+            $image['name'] = $alt;
+        }
+        if (!isset($image['id'])) {
+            $image['id'] = 0;
+        }
 
         return $image;
+    }
+
+    private static function build_store_api_image($preview_url, $cart_item) {
+        $alt = self::get_cart_item_image_alt($cart_item);
+        return array(
+            'id' => 0,
+            'src' => esc_url($preview_url),
+            'thumbnail' => esc_url($preview_url),
+            'srcset' => '',
+            'sizes' => '',
+            'name' => $alt,
+            'alt' => $alt,
+        );
     }
 
     private static function get_cart_item_image_alt($cart_item) {
