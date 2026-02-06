@@ -21,6 +21,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
         add_filter('woocommerce_blocks_cart_item_image', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
         add_filter('woocommerce_blocks_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 10, 3);
+        add_filter('woocommerce_store_api_cart_item_images', array(__CLASS__, 'filter_store_api_cart_item_images'), 10, 2);
         add_filter('woocommerce_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
@@ -1035,66 +1036,104 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
-        // PRIORITY 1: Use mg_preview_url if available (generated during add to cart)
+        $preview_url = self::get_cart_item_preview_url($cart_item);
+        if ($preview_url === '') {
+            return $thumbnail;
+        }
+
+        if (is_array($thumbnail)) {
+            return self::map_preview_image_array($thumbnail, $preview_url, $cart_item);
+        }
+
+        return self::render_preview_image_html($preview_url, $cart_item);
+    }
+
+    public static function filter_store_api_cart_item_images($images, $cart_item) {
+        $preview_url = self::get_cart_item_preview_url($cart_item);
+        if ($preview_url === '' || empty($images) || !is_array($images)) {
+            return $images;
+        }
+
+        $images[0] = self::map_preview_image_array($images[0], $preview_url, $cart_item);
+        return $images;
+    }
+
+    private static function get_cart_item_preview_url($cart_item) {
         if (!empty($cart_item['mg_preview_url'])) {
             $preview_url = esc_url($cart_item['mg_preview_url']);
             if ($preview_url !== '') {
-                $size = wc_get_image_size('woocommerce_thumbnail');
-                $width = isset($size['width']) ? intval($size['width']) : 300;
-                $height = isset($size['height']) ? intval($size['height']) : 300;
-                
-                return sprintf(
-                    '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
-                    $preview_url,
-                    esc_attr__('Mockup előnézet', 'mgdtp'),
-                    $width,
-                    $height
-                );
+                return $preview_url;
             }
         }
-        
-        // PRIORITY 2: Construct SKU-based mockup URL if type/color available
+
         if (empty($cart_item['product_id'])) {
-            return $thumbnail;
+            return '';
         }
-        
+
         $product = wc_get_product($cart_item['product_id']);
         if (!$product) {
-            return $thumbnail;
+            return '';
         }
 
         $sku = $product->get_sku();
         if (!$sku || $sku === '') {
-            return $thumbnail;
+            return '';
         }
 
         $type_slug = sanitize_title($cart_item['mg_product_type'] ?? '');
         $color_slug = sanitize_title($cart_item['mg_color'] ?? '');
-        
         if ($type_slug === '' || $color_slug === '') {
-            return $thumbnail;
+            return '';
         }
 
         $uploads = wp_upload_dir();
         $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
         if ($base_url === '') {
-            return $thumbnail;
+            return '';
         }
 
         $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
-        $url = $base_url . '/' . $sku . '/' . $filename;
+        return $base_url . '/' . $sku . '/' . $filename;
+    }
 
+    private static function render_preview_image_html($preview_url, $cart_item) {
         $size = wc_get_image_size('woocommerce_thumbnail');
         $width = isset($size['width']) ? intval($size['width']) : 300;
         $height = isset($size['height']) ? intval($size['height']) : 300;
+        $alt = self::get_cart_item_image_alt($cart_item);
 
         return sprintf(
             '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
-            esc_url($url),
-            esc_attr__('Mockup előnézet', 'mgdtp'),
+            esc_url($preview_url),
+            esc_attr($alt),
             $width,
             $height
         );
+    }
+
+    private static function map_preview_image_array($image, $preview_url, $cart_item) {
+        if (!is_array($image)) {
+            $image = array();
+        }
+
+        $alt = self::get_cart_item_image_alt($cart_item);
+        $image['src'] = esc_url($preview_url);
+        $image['thumbnail'] = esc_url($preview_url);
+        $image['srcset'] = '';
+        $image['sizes'] = '';
+        $image['alt'] = $alt;
+
+        return $image;
+    }
+
+    private static function get_cart_item_image_alt($cart_item) {
+        if (!empty($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+            return $cart_item['data']->get_name();
+        }
+        if (!empty($cart_item['product_name'])) {
+            return $cart_item['product_name'];
+        }
+        return __('Mockup előnézet', 'mgdtp');
     }
 
     public static function filter_order_thumbnail($thumbnail, $item, $order = null) {
