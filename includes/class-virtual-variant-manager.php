@@ -30,6 +30,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
+        add_action('wp_footer', array(__CLASS__, 'inject_cart_thumbnail_fix_script'), 999);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
     }
@@ -1041,11 +1042,15 @@ class MG_Virtual_Variant_Manager {
         $preview_url = self::get_cart_item_preview_url($cart_item);
         
         // Debug logging
-        error_log('MG Cart Thumbnail Debug - Preview URL: ' . $preview_url);
-        error_log('MG Cart Thumbnail Debug - Cart Item Keys: ' . print_r(array_keys($cart_item), true));
+        error_log('MG Cart Thumbnail Debug - Preview URL: "' . $preview_url . '"');
+        error_log('MG Cart Thumbnail Debug - Preview URL length: ' . strlen($preview_url));
+        error_log('MG Cart Thumbnail Debug - Preview URL is empty: ' . ($preview_url === '' ? 'YES' : 'NO'));
+        error_log('MG Cart Thumbnail Debug - Product ID: ' . ($cart_item['product_id'] ?? 'MISSING'));
         error_log('MG Cart Thumbnail Debug - Type: ' . ($cart_item['mg_product_type'] ?? 'MISSING'));
         error_log('MG Cart Thumbnail Debug - Color: ' . ($cart_item['mg_color'] ?? 'MISSING'));
+        error_log('MG Cart Thumbnail Debug - Stored preview URL in cart: ' . ($cart_item['mg_preview_url'] ?? 'MISSING'));
         error_log('MG Cart Thumbnail Debug - Thumbnail is array: ' . (is_array($thumbnail) ? 'YES' : 'NO'));
+        error_log('MG Cart Thumbnail Debug - Original thumbnail: ' . (is_string($thumbnail) ? substr($thumbnail, 0, 200) : 'NOT STRING'));
         
         if ($preview_url === '') {
             error_log('MG Cart Thumbnail Debug - Preview URL is empty, returning original thumbnail');
@@ -1053,12 +1058,14 @@ class MG_Virtual_Variant_Manager {
         }
 
         if (is_array($thumbnail)) {
-            error_log('MG Cart Thumbnail Debug - Returning mapped array');
+            error_log('MG Cart Thumbnail Debug - Returning mapped array with URL: ' . $preview_url);
             return self::map_preview_image_array($thumbnail, $preview_url, $cart_item);
         }
 
-        error_log('MG Cart Thumbnail Debug - Returning HTML');
-        return self::render_preview_image_html($preview_url, $cart_item);
+        error_log('MG Cart Thumbnail Debug - Returning HTML with URL: ' . $preview_url);
+        $custom_html = self::render_preview_image_html($preview_url, $cart_item);
+        error_log('MG Cart Thumbnail Debug - Generated HTML: ' . substr($custom_html, 0, 200));
+        return $custom_html;
     }
 
     public static function filter_product_image_on_cart($image, $product, $size, $attr, $placeholder) {
@@ -1071,8 +1078,8 @@ class MG_Virtual_Variant_Manager {
             return $image;
         }
 
-        // Debug: Log that we're intercepting
-        error_log('MG Product Image Filter: Intercepting get_image() call on cart/checkout for product ' . $product->get_id());
+        $product_id = $product->get_id();
+        error_log('MG Product Image Filter: Intercepting get_image() for product ID: ' . $product_id);
 
         // Get cart items and find the one matching this product
         if (!function_exists('WC') || !WC()->cart) {
@@ -1081,23 +1088,30 @@ class MG_Virtual_Variant_Manager {
         }
 
         $cart_items = WC()->cart->get_cart();
+        $cart_product_ids = array();
+        
         foreach ($cart_items as $cart_item_key => $cart_item) {
-            if (isset($cart_item['product_id']) && $cart_item['product_id'] == $product->get_id()) {
-                // Found matching cart item
-                error_log('MG Product Image Filter: Found matching cart item for product ' . $product->get_id());
+            $cart_product_ids[] = $cart_item['product_id'] ?? 'NO_ID';
+            
+            if (isset($cart_item['product_id']) && $cart_item['product_id'] == $product_id) {
+                error_log('MG Product Image Filter: MATCH! Found cart item for product ' . $product_id);
                 
                 $preview_url = self::get_cart_item_preview_url($cart_item);
+                error_log('MG Product Image Filter: Preview URL from cart item: "' . $preview_url . '"');
+                
                 if ($preview_url !== '') {
-                    error_log('MG Product Image Filter: Using custom preview URL: ' . $preview_url);
-                    return self::render_preview_image_html($preview_url, $cart_item);
+                    error_log('MG Product Image Filter: Returning custom HTML for product ' . $product_id);
+                    $custom_html = self::render_preview_image_html($preview_url, $cart_item);
+                    error_log('MG Product Image Filter: Generated HTML: ' . substr($custom_html, 0, 150));
+                    return $custom_html;
                 } else {
-                    error_log('MG Product Image Filter: Preview URL is empty');
+                    error_log('MG Product Image Filter: Preview URL is empty for product ' . $product_id);
                 }
                 break;
             }
         }
 
-        error_log('MG Product Image Filter: No matching cart item or preview URL, returning original image');
+        error_log('MG Product Image Filter: No match found. Looking for ID ' . $product_id . ', cart has: ' . implode(', ', $cart_product_ids));
         return $image;
     }
 
@@ -1242,6 +1256,96 @@ class MG_Virtual_Variant_Manager {
             return $cart_item['product_name'];
         }
         return __('Mockup előnézet', 'mgdtp');
+    }
+
+    public static function inject_cart_thumbnail_fix_script() {
+        if (!function_exists('is_cart') || !function_exists('is_checkout')) {
+            return;
+        }
+        
+        if (!is_cart() && !is_checkout()) {
+            return;
+        }
+
+        if (!function_exists('WC') || !WC()->cart) {
+            return;
+        }
+
+        $cart_items = WC()->cart->get_cart();
+        $thumbnail_data = array();
+
+        foreach ($cart_items as $cart_item_key => $cart_item) {
+            if (empty($cart_item['product_id'])) {
+                continue;
+            }
+
+            $preview_url = self::get_cart_item_preview_url($cart_item);
+            if ($preview_url !== '') {
+                $thumbnail_data[$cart_item['product_id']] = $preview_url;
+            }
+        }
+
+        if (empty($thumbnail_data)) {
+            return;
+        }
+
+        ?>
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            console.log('MG: Fixing cart thumbnails with client-side script');
+            var thumbnailData = <?php echo wp_json_encode($thumbnail_data); ?>;
+            
+            // Replace thumbnails on page load
+            function replaceCartThumbnails() {
+                $('.woocommerce-cart-form__cart-item, .cart_item, .woocommerce-checkout-review-order-table .product-name').each(function() {
+                    var $row = $(this);
+                    var $link = $row.find('a').first();
+                    var href = $link.attr('href');
+                    
+                    if (!href) return;
+                    
+                    // Extract product ID from URL
+                    var match = href.match(/[?&]add-to-cart=(\d+)/);
+                    if (!match) {
+                        match = href.match(/\/product\/[^\/]+\/\?*.*p=(\d+)/);
+                    }
+                    if (!match) {
+                        // Try to extract from post ID in URL
+                        var parts = href.split('/');
+                        for (var i = 0; i < parts.length; i++) {
+                            if (/^\d+$/.test(parts[i])) {
+                                match = [null, parts[i]];
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (match && match[1] && thumbnailData[match[1]]) {
+                        var productId = match[1];
+                        var newUrl = thumbnailData[productId];
+                        var $img = $row.find('img.attachment-woocommerce_thumbnail, img.wp-post-image').first();
+                        
+                        if ($img.length && $img.attr('src') !== newUrl) {
+                            console.log('MG: Replacing thumbnail for product ' + productId + ' with: ' + newUrl);
+                            $img.attr('src', newUrl);
+                            $img.attr('srcset', '');
+                            $img.addClass('mg-variant-thumbnail');
+                        }
+                    }
+                });
+            }
+            
+            // Run immediately
+            replaceCartThumbnails();
+            
+            // Run again after a short delay (in case of async loading)
+            setTimeout(replaceCartThumbnails, 500);
+            
+            // Run on cart updates
+            $(document.body).on('updated_cart_totals updated_checkout', replaceCartThumbnails);
+        });
+        </script>
+        <?php
     }
 
     public static function filter_order_thumbnail($thumbnail, $item, $order = null) {
