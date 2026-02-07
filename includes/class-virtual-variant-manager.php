@@ -1342,28 +1342,41 @@ class MG_Virtual_Variant_Manager {
                     var $img = $(this);
                     var currentSrc = $img.attr('src');
                     
-                    // Extract variant identifier from current image URL (SKU_type_color)
-                    var variantMatch = currentSrc.match(/(FORME\d+)_([^_]+)_([^_]+)_front/);
-                    if (!variantMatch) return;
+                    // Extract SKU and type from current image URL
+                    var match = currentSrc.match(/(FORME\d+)_([^_]+)_([^_]+)_front/);
+                    if (!match) return;
                     
-                    var variantId = variantMatch[1] + '_' + variantMatch[2] + '_' + variantMatch[3];
-                    console.log('MG: Found image with variant ID:', variantId);
+                    var currentSku = match[1];
+                    var currentType = match[2];
+                    var currentColor = match[3];
                     
-                    // Check if we have a custom URL for this variant
-                    if (variantToUrl[variantId]) {
-                        var newUrl = variantToUrl[variantId];
+                    console.log('MG: Found image - SKU:', currentSku, 'Type:', currentType, 'Color:', currentColor);
+                    
+                    // Find matching variant in cart (same SKU + type, color might differ)
+                    for (var variantId in variantToUrl) {
+                        var parts = variantId.split('_');
+                        if (parts.length !== 3) continue;
                         
-                        if (currentSrc !== newUrl) {
-                            console.log('MG: REPLACING - Old:', currentSrc);
-                            console.log('MG: REPLACING - New:', newUrl);
-                            $img.attr('src', newUrl);
-                            $img.attr('srcset', '');
-                            replaced++;
-                        } else {
-                            console.log('MG: Image already correct for variant:', variantId);
+                        var cartSku = parts[0];
+                        var cartType = parts[1];
+                        var cartColor = parts[2];
+                        
+                        // Match by SKU and type (color can be different - that's what we're replacing!)
+                        if (cartSku === currentSku && cartType === currentType) {
+                            var newUrl = variantToUrl[variantId];
+                            
+                            if (currentSrc !== newUrl) {
+                                console.log('MG: REPLACING - Current color:', currentColor, '→ Cart color:', cartColor);
+                                console.log('MG: Old URL:', currentSrc);
+                                console.log('MG: New URL:', newUrl);
+                                $img.attr('src', newUrl);
+                                $img.attr('srcset', '');
+                                replaced++;
+                            } else {
+                                console.log('MG: Image already correct');
+                            }
+                            break; // Found the match, stop looking
                         }
-                    } else {
-                        console.log('MG: No custom URL for variant:', variantId);
                     }
                 });
                 
