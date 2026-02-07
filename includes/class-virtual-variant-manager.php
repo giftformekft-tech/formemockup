@@ -1297,7 +1297,7 @@ class MG_Virtual_Variant_Manager {
         }
 
         $cart_items = WC()->cart->get_cart();
-        $sku_to_url = array();
+        $variant_to_url = array();
 
         foreach ($cart_items as $cart_item_key => $cart_item) {
             if (empty($cart_item['product_id'])) {
@@ -1310,24 +1310,28 @@ class MG_Virtual_Variant_Manager {
             }
 
             $sku = $product->get_sku();
+            $type = isset($cart_item['mg_product_type']) ? sanitize_title($cart_item['mg_product_type']) : '';
+            $color = isset($cart_item['mg_color']) ? sanitize_title($cart_item['mg_color']) : '';
             $preview_url = self::get_cart_item_preview_url($cart_item);
             
-            if ($preview_url !== '' && $sku) {
-                $sku_to_url[$sku] = $preview_url;
+            if ($preview_url !== '' && $sku && $type && $color) {
+                // Create unique variant identifier: SKU_type_color
+                $variant_id = $sku . '_' . $type . '_' . $color;
+                $variant_to_url[$variant_id] = $preview_url;
             }
         }
 
-        if (empty($sku_to_url)) {
+        if (empty($variant_to_url)) {
             return;
         }
 
         ?>
         <script type="text/javascript">
         (function($) {
-            var skuToUrl = <?php echo wp_json_encode($sku_to_url); ?>;
+            var variantToUrl = <?php echo wp_json_encode($variant_to_url); ?>;
             
             console.log('MG: Cart thumbnail fixer loaded');
-            console.log('MG: SKU to URL mapping:', skuToUrl);
+            console.log('MG: Variant to URL mapping:', variantToUrl);
             
             function fixCartThumbnails() {
                 console.log('MG: Running fixCartThumbnails...');
@@ -1338,16 +1342,16 @@ class MG_Virtual_Variant_Manager {
                     var $img = $(this);
                     var currentSrc = $img.attr('src');
                     
-                    // Extract SKU from current image URL
-                    var skuMatch = currentSrc.match(/(FORME\d+)/);
-                    if (!skuMatch) return;
+                    // Extract variant identifier from current image URL (SKU_type_color)
+                    var variantMatch = currentSrc.match(/(FORME\d+)_([^_]+)_([^_]+)_front/);
+                    if (!variantMatch) return;
                     
-                    var sku = skuMatch[1];
-                    console.log('MG: Found image with SKU:', sku);
+                    var variantId = variantMatch[1] + '_' + variantMatch[2] + '_' + variantMatch[3];
+                    console.log('MG: Found image with variant ID:', variantId);
                     
-                    // Check if we have a custom URL for this SKU
-                    if (skuToUrl[sku]) {
-                        var newUrl = skuToUrl[sku];
+                    // Check if we have a custom URL for this variant
+                    if (variantToUrl[variantId]) {
+                        var newUrl = variantToUrl[variantId];
                         
                         if (currentSrc !== newUrl) {
                             console.log('MG: REPLACING - Old:', currentSrc);
@@ -1356,8 +1360,10 @@ class MG_Virtual_Variant_Manager {
                             $img.attr('srcset', '');
                             replaced++;
                         } else {
-                            console.log('MG: Image already correct for SKU:', sku);
+                            console.log('MG: Image already correct for variant:', variantId);
                         }
+                    } else {
+                        console.log('MG: No custom URL for variant:', variantId);
                     }
                 });
                 
