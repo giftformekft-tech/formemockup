@@ -1309,41 +1309,68 @@ class MG_Virtual_Variant_Manager {
             console.log('MG: Fixing cart thumbnails with client-side script');
             var thumbnailData = <?php echo wp_json_encode($thumbnail_data); ?>;
             
+            console.log('MG: Thumbnail data:', thumbnailData);
+            
             // Replace thumbnails on page load
             function replaceCartThumbnails() {
-                $('.woocommerce-cart-form__cart-item, .cart_item, .woocommerce-checkout-review-order-table .product-name').each(function() {
+                // Handle both classic cart and WooCommerce Blocks cart
+                var selectors = [
+                    '.woocommerce-cart-form__cart-item',
+                    '.cart_item',
+                    '.wc-block-cart-items__row',
+                    '.woocommerce-checkout-review-order-table tr'
+                ];
+                
+                $(selectors.join(', ')).each(function() {
                     var $row = $(this);
-                    var $link = $row.find('a').first();
-                    var href = $link.attr('href');
+                    var $img = $row.find('img').first();
                     
+                    if (!$img.length) return;
+                    
+                    // Try to find product link
+                    var $link = $row.find('a[href*="/termek/"], a[href*="/product/"]').first();
+                    if (!$link.length) {
+                        $link = $row.find('a').first();
+                    }
+                    
+                    if (!$link.length) return;
+                    
+                    var href = $link.attr('href');
                     if (!href) return;
                     
-                    // Extract product ID from URL
-                    var match = href.match(/[?&]add-to-cart=(\d+)/);
-                    if (!match) {
-                        match = href.match(/\/product\/[^\/]+\/\?*.*p=(\d+)/);
-                    }
-                    if (!match) {
-                        // Try to extract from post ID in URL
-                        var parts = href.split('/');
-                        for (var i = 0; i < parts.length; i++) {
-                            if (/^\d+$/.test(parts[i])) {
-                                match = [null, parts[i]];
-                                break;
-                            }
-                        }
-                    }
+                    // Extract product slug from URL
+                    var slugMatch = href.match(/\/termek\/([^\/]+)/) || href.match(/\/product\/([^\/]+)/);
                     
-                    if (match && match[1] && thumbnailData[match[1]]) {
-                        var productId = match[1];
-                        var newUrl = thumbnailData[productId];
-                        var $img = $row.find('img.attachment-woocommerce_thumbnail, img.wp-post-image').first();
+                    if (slugMatch) {
+                        var slug = slugMatch[1].replace(/\/$/, '');
+                        console.log('MG: Found product slug:', slug);
                         
-                        if ($img.length && $img.attr('src') !== newUrl) {
-                            console.log('MG: Replacing thumbnail for product ' + productId + ' with: ' + newUrl);
-                            $img.attr('src', newUrl);
-                            $img.attr('srcset', '');
-                            $img.addClass('mg-variant-thumbnail');
+                        // Find matching product ID by checking each thumbnail URL
+                        for (var productId in thumbnailData) {
+                            var url = thumbnailData[productId];
+                            // Check if any thumbnail URL exists for this product
+                            if (url) {
+                                // Try to match by checking if current src contains common elements
+                                var currentSrc = $img.attr('src');
+                                if (currentSrc) {
+                                    // Extract SKU from current image
+                                    var skuMatch = currentSrc.match(/FORME\d+/);
+                                    var newSkuMatch = url.match(/FORME\d+/);
+                                    
+                                    if (skuMatch && newSkuMatch && skuMatch[0] === newSkuMatch[0]) {
+                                        // Same product, replace image
+                                        if (currentSrc !== url) {
+                                            console.log('MG: Replacing thumbnail for slug ' + slug + ' (ID: ' + productId + ')');
+                                            console.log('MG: Old URL:', currentSrc);
+                                            console.log('MG: New URL:', url);
+                                            $img.attr('src', url);
+                                            $img.attr('srcset', '');
+                                            $img.addClass('mg-variant-thumbnail');
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 });
@@ -1354,9 +1381,10 @@ class MG_Virtual_Variant_Manager {
             
             // Run again after a short delay (in case of async loading)
             setTimeout(replaceCartThumbnails, 500);
+            setTimeout(replaceCartThumbnails, 1500);
             
             // Run on cart updates
-            $(document.body).on('updated_cart_totals updated_checkout', replaceCartThumbnails);
+            $(document.body).on('updated_cart_totals updated_checkout updated_wc_div', replaceCartThumbnails);
         });
         </script>
         <?php
