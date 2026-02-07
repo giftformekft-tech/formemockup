@@ -1297,7 +1297,7 @@ class MG_Virtual_Variant_Manager {
         }
 
         $cart_items = WC()->cart->get_cart();
-        $variant_to_url = array();
+        $variant_mapping = array(); // Array of objects with SKU, type, color, and URL
 
         foreach ($cart_items as $cart_item_key => $cart_item) {
             if (empty($cart_item['product_id'])) {
@@ -1315,68 +1315,59 @@ class MG_Virtual_Variant_Manager {
             $preview_url = self::get_cart_item_preview_url($cart_item);
             
             if ($preview_url !== '' && $sku && $type && $color) {
-                // Create unique variant identifier: SKU_type_color
-                $variant_id = $sku . '_' . $type . '_' . $color;
-                $variant_to_url[$variant_id] = $preview_url;
+                $variant_mapping[] = array(
+                    'sku' => $sku,
+                    'type' => $type,
+                    'color' => $color,
+                    'url' => $preview_url
+                );
             }
         }
 
-        if (empty($variant_to_url)) {
+        if (empty($variant_mapping)) {
             return;
         }
 
         ?>
         <script type="text/javascript">
         (function($) {
-            var variantToUrl = <?php echo wp_json_encode($variant_to_url); ?>;
+            var variantMapping = <?php echo wp_json_encode($variant_mapping); ?>;
             
             console.log('MG: Cart thumbnail fixer loaded');
-            console.log('MG: Variant to URL mapping:', variantToUrl);
+            console.log('MG: Variant mapping:', variantMapping);
             
             function fixCartThumbnails() {
                 console.log('MG: Running fixCartThumbnails...');
                 var replaced = 0;
                 
-                // Find all images in cart
-                $('img[src*="/mg_mockups/"]').each(function() {
+                // Find all images in cart (in DOM order)
+                var $images = $('img[src*="/mg_mockups/"]');
+                console.log('MG: Found ' + $images.length + ' mockup images');
+                console.log('MG: Have ' + variantMapping.length + ' cart items');
+                
+                // Match by index (DOM order matches cart order)
+                $images.each(function(index) {
+                    if (index >= variantMapping.length) {
+                        console.log('MG: Image index ' + index + ' exceeds cart items, skipping');
+                        return;
+                    }
+                    
                     var $img = $(this);
                     var currentSrc = $img.attr('src');
+                    var cartItem = variantMapping[index];
+                    var newUrl = cartItem.url;
                     
-                    // Extract SKU and type from current image URL
-                    var match = currentSrc.match(/(FORME\d+)_([^_]+)_([^_]+)_front/);
-                    if (!match) return;
+                    console.log('MG: Image #' + index + ' - Cart item:', cartItem.sku, cartItem.type, cartItem.color);
+                    console.log('MG: Current URL:', currentSrc);
+                    console.log('MG: Target URL:', newUrl);
                     
-                    var currentSku = match[1];
-                    var currentType = match[2];
-                    var currentColor = match[3];
-                    
-                    console.log('MG: Found image - SKU:', currentSku, 'Type:', currentType, 'Color:', currentColor);
-                    
-                    // Find matching variant in cart (same SKU + type, color might differ)
-                    for (var variantId in variantToUrl) {
-                        var parts = variantId.split('_');
-                        if (parts.length !== 3) continue;
-                        
-                        var cartSku = parts[0];
-                        var cartType = parts[1];
-                        var cartColor = parts[2];
-                        
-                        // Match by SKU and type (color can be different - that's what we're replacing!)
-                        if (cartSku === currentSku && cartType === currentType) {
-                            var newUrl = variantToUrl[variantId];
-                            
-                            if (currentSrc !== newUrl) {
-                                console.log('MG: REPLACING - Current color:', currentColor, '→ Cart color:', cartColor);
-                                console.log('MG: Old URL:', currentSrc);
-                                console.log('MG: New URL:', newUrl);
-                                $img.attr('src', newUrl);
-                                $img.attr('srcset', '');
-                                replaced++;
-                            } else {
-                                console.log('MG: Image already correct');
-                            }
-                            break; // Found the match, stop looking
-                        }
+                    if (currentSrc !== newUrl) {
+                        console.log('MG: REPLACING image #' + index);
+                        $img.attr('src', newUrl);
+                        $img.attr('srcset', '');
+                        replaced++;
+                    } else {
+                        console.log('MG: Image #' + index + ' already correct');
                     }
                 });
                 
