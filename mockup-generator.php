@@ -49,6 +49,7 @@ add_action('plugins_loaded', function(){
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
         'admin/class-temu-export-page.php',
+        'includes/class-google-merchant-feed.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -147,6 +148,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Temu_Export_Page')) {
         MG_Temu_Export_Page::init();
+    }
+    if (class_exists('MG_Google_Merchant_Feed')) {
+        MG_Google_Merchant_Feed::init();
     }
 }, 20);
 
