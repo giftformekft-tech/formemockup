@@ -29,6 +29,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
+        add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
     }
@@ -1038,15 +1039,66 @@ class MG_Virtual_Variant_Manager {
 
     public static function filter_cart_thumbnail($thumbnail, $cart_item, $cart_item_key) {
         $preview_url = self::get_cart_item_preview_url($cart_item);
+        
+        // Debug logging
+        error_log('MG Cart Thumbnail Debug - Preview URL: ' . $preview_url);
+        error_log('MG Cart Thumbnail Debug - Cart Item Keys: ' . print_r(array_keys($cart_item), true));
+        error_log('MG Cart Thumbnail Debug - Type: ' . ($cart_item['mg_product_type'] ?? 'MISSING'));
+        error_log('MG Cart Thumbnail Debug - Color: ' . ($cart_item['mg_color'] ?? 'MISSING'));
+        error_log('MG Cart Thumbnail Debug - Thumbnail is array: ' . (is_array($thumbnail) ? 'YES' : 'NO'));
+        
         if ($preview_url === '') {
+            error_log('MG Cart Thumbnail Debug - Preview URL is empty, returning original thumbnail');
             return $thumbnail;
         }
 
         if (is_array($thumbnail)) {
+            error_log('MG Cart Thumbnail Debug - Returning mapped array');
             return self::map_preview_image_array($thumbnail, $preview_url, $cart_item);
         }
 
+        error_log('MG Cart Thumbnail Debug - Returning HTML');
         return self::render_preview_image_html($preview_url, $cart_item);
+    }
+
+    public static function filter_product_image_on_cart($image, $product, $size, $attr, $placeholder) {
+        // Only run on cart and checkout pages
+        if (!function_exists('is_cart') || !function_exists('is_checkout')) {
+            return $image;
+        }
+        
+        if (!is_cart() && !is_checkout()) {
+            return $image;
+        }
+
+        // Debug: Log that we're intercepting
+        error_log('MG Product Image Filter: Intercepting get_image() call on cart/checkout for product ' . $product->get_id());
+
+        // Get cart items and find the one matching this product
+        if (!function_exists('WC') || !WC()->cart) {
+            error_log('MG Product Image Filter: WC() or cart not available');
+            return $image;
+        }
+
+        $cart_items = WC()->cart->get_cart();
+        foreach ($cart_items as $cart_item_key => $cart_item) {
+            if (isset($cart_item['product_id']) && $cart_item['product_id'] == $product->get_id()) {
+                // Found matching cart item
+                error_log('MG Product Image Filter: Found matching cart item for product ' . $product->get_id());
+                
+                $preview_url = self::get_cart_item_preview_url($cart_item);
+                if ($preview_url !== '') {
+                    error_log('MG Product Image Filter: Using custom preview URL: ' . $preview_url);
+                    return self::render_preview_image_html($preview_url, $cart_item);
+                } else {
+                    error_log('MG Product Image Filter: Preview URL is empty');
+                }
+                break;
+            }
+        }
+
+        error_log('MG Product Image Filter: No matching cart item or preview URL, returning original image');
+        return $image;
     }
 
     public static function filter_store_api_cart_item_images($images, $cart_item) {
@@ -1081,41 +1133,56 @@ class MG_Virtual_Variant_Manager {
     }
 
     private static function get_cart_item_preview_url($cart_item) {
+        error_log('MG Get Preview URL: Starting...');
+        
         if (!empty($cart_item['mg_preview_url'])) {
             $preview_url = esc_url($cart_item['mg_preview_url']);
             if ($preview_url !== '') {
+                error_log('MG Get Preview URL: Found stored preview URL: ' . $preview_url);
                 return $preview_url;
             }
         }
 
         if (empty($cart_item['product_id'])) {
+            error_log('MG Get Preview URL: No product_id in cart item');
             return '';
         }
 
         $product = wc_get_product($cart_item['product_id']);
         if (!$product) {
+            error_log('MG Get Preview URL: Product not found for ID: ' . $cart_item['product_id']);
             return '';
         }
 
         $sku = $product->get_sku();
         if (!$sku || $sku === '') {
+            error_log('MG Get Preview URL: No SKU for product ' . $cart_item['product_id']);
             return '';
         }
 
         $type_slug = sanitize_title($cart_item['mg_product_type'] ?? '');
         $color_slug = sanitize_title($cart_item['mg_color'] ?? '');
+        
+        error_log('MG Get Preview URL: SKU=' . $sku . ', Type=' . $type_slug . ', Color=' . $color_slug);
+        
         if ($type_slug === '' || $color_slug === '') {
+            error_log('MG Get Preview URL: Missing type or color');
             return '';
         }
 
         $uploads = wp_upload_dir();
         $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
         if ($base_url === '') {
+            error_log('MG Get Preview URL: No base URL');
             return '';
         }
 
         $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
-        return $base_url . '/' . $sku . '/' . $filename;
+        $final_url = $base_url . '/' . $sku . '/' . $filename;
+        
+        error_log('MG Get Preview URL: Constructed URL: ' . $final_url);
+        
+        return $final_url;
     }
 
     private static function render_preview_image_html($preview_url, $cart_item) {
