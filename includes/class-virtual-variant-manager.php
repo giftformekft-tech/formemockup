@@ -1116,12 +1116,23 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function filter_store_api_cart_item_images($images, $cart_item) {
+        error_log('MG Store API Images Filter: Called');
+        error_log('MG Store API Images Filter: Images is array: ' . (is_array($images) ? 'YES' : 'NO'));
+        if (is_array($images)) {
+            error_log('MG Store API Images Filter: Images count: ' . count($images));
+        }
+        
         $preview_url = self::get_cart_item_preview_url($cart_item);
+        error_log('MG Store API Images Filter: Preview URL: ' . $preview_url);
+        
         if ($preview_url === '' || empty($images) || !is_array($images)) {
+            error_log('MG Store API Images Filter: Returning original (empty preview or invalid images)');
             return $images;
         }
 
+        error_log('MG Store API Images Filter: Mapping image array');
         $images[0] = self::map_preview_image_array($images[0], $preview_url, $cart_item);
+        error_log('MG Store API Images Filter: Mapped image src: ' . ($images[0]['src'] ?? 'NO_SRC'));
         return $images;
     }
 
@@ -1313,6 +1324,8 @@ class MG_Virtual_Variant_Manager {
             
             // Replace thumbnails on page load
             function replaceCartThumbnails() {
+                console.log('MG: Running replaceCartThumbnails...');
+                
                 // Handle both classic cart and WooCommerce Blocks cart
                 var selectors = [
                     '.woocommerce-cart-form__cart-item',
@@ -1321,7 +1334,11 @@ class MG_Virtual_Variant_Manager {
                     '.woocommerce-checkout-review-order-table tr'
                 ];
                 
-                $(selectors.join(', ')).each(function() {
+                var $items = $(selectors.join(', '));
+                console.log('MG: Found ' + $items.length + ' cart items');
+                
+                $items.each(function(index) {
+                    console.log('MG: Processing item #' + index);
                     var $row = $(this);
                     var $img = $row.find('img').first();
                     
