@@ -1297,129 +1297,119 @@ class MG_Virtual_Variant_Manager {
         }
 
         $cart_items = WC()->cart->get_cart();
-        $thumbnail_data = array();
+        $sku_to_url = array();
 
         foreach ($cart_items as $cart_item_key => $cart_item) {
             if (empty($cart_item['product_id'])) {
                 continue;
             }
 
+            $product = wc_get_product($cart_item['product_id']);
+            if (!$product) {
+                continue;
+            }
+
+            $sku = $product->get_sku();
             $preview_url = self::get_cart_item_preview_url($cart_item);
-            if ($preview_url !== '') {
-                $thumbnail_data[$cart_item['product_id']] = $preview_url;
+            
+            if ($preview_url !== '' && $sku) {
+                $sku_to_url[$sku] = $preview_url;
             }
         }
 
-        if (empty($thumbnail_data)) {
+        if (empty($sku_to_url)) {
             return;
         }
 
         ?>
         <script type="text/javascript">
-        jQuery(document).ready(function($) {
-            console.log('MG: Fixing cart thumbnails with client-side script');
-            var thumbnailData = <?php echo wp_json_encode($thumbnail_data); ?>;
+        (function($) {
+            var skuToUrl = <?php echo wp_json_encode($sku_to_url); ?>;
             
-            console.log('MG: Thumbnail data:', thumbnailData);
+            console.log('MG: Cart thumbnail fixer loaded');
+            console.log('MG: SKU to URL mapping:', skuToUrl);
             
-            // Replace thumbnails on page load
-            function replaceCartThumbnails() {
-                console.log('MG: Running replaceCartThumbnails...');
+            function fixCartThumbnails() {
+                console.log('MG: Running fixCartThumbnails...');
+                var replaced = 0;
                 
-                // Handle both classic cart and WooCommerce Blocks cart
-                var selectors = [
-                    '.woocommerce-cart-form__cart-item',
-                    '.cart_item',
-                    '.wc-block-cart-items__row',
-                    '.woocommerce-checkout-review-order-table tr'
-                ];
-                
-                var $items = $(selectors.join(', '));
-                console.log('MG: Found ' + $items.length + ' cart items');
-                
-                $items.each(function(index) {
-                    console.log('MG: Processing item #' + index);
-                    var $row = $(this);
-                    var $img = $row.find('img').first();
+                // Find all images in cart
+                $('img[src*="/mg_mockups/"]').each(function() {
+                    var $img = $(this);
+                    var currentSrc = $img.attr('src');
                     
-                    console.log('MG: Item #' + index + ' - Found img:', $img.length > 0);
+                    // Extract SKU from current image URL
+                    var skuMatch = currentSrc.match(/(FORME\d+)/);
+                    if (!skuMatch) return;
                     
-                    if (!$img.length) return;
+                    var sku = skuMatch[1];
+                    console.log('MG: Found image with SKU:', sku);
                     
-                    // Try to find product link
-                    var $link = $row.find('a[href*="/termek/"], a[href*="/product/"]').first();
-                    if (!$link.length) {
-                        $link = $row.find('a').first();
-                    }
-                    
-                    console.log('MG: Item #' + index + ' - Found link:', $link.length > 0);
-                    
-                    if (!$link.length) return;
-                    
-                    var href = $link.attr('href');
-                    console.log('MG: Item #' + index + ' - Link href:', href);
-                    
-                    if (!href) return;
-                    
-                    // Extract product slug from URL
-                    var slugMatch = href.match(/\/termek\/([^\/]+)/) || href.match(/\/product\/([^\/]+)/);
-                    
-                    console.log('MG: Item #' + index + ' - Slug match:', slugMatch);
-                    
-                    if (slugMatch) {
-                        var slug = slugMatch[1].replace(/\/$/, '');
-                        console.log('MG: Found product slug:', slug);
+                    // Check if we have a custom URL for this SKU
+                    if (skuToUrl[sku]) {
+                        var newUrl = skuToUrl[sku];
                         
-                        var currentSrc = $img.attr('src');
-                        console.log('MG: Current img src:', currentSrc);
-                        
-                        // Find matching product ID by checking each thumbnail URL
-                        for (var productId in thumbnailData) {
-                            var url = thumbnailData[productId];
-                            console.log('MG: Checking product ID ' + productId + ' with URL:', url);
-                            
-                            // Check if any thumbnail URL exists for this product
-                            if (url) {
-                                // Try to match by checking if current src contains common elements
-                                if (currentSrc) {
-                                    // Extract SKU from current image
-                                    var skuMatch = currentSrc.match(/FORME\d+/);
-                                    var newSkuMatch = url.match(/FORME\d+/);
-                                    
-                                    console.log('MG: Current SKU:', skuMatch ? skuMatch[0] : 'none');
-                                    console.log('MG: New SKU:', newSkuMatch ? newSkuMatch[0] : 'none');
-                                    
-                                    if (skuMatch && newSkuMatch && skuMatch[0] === newSkuMatch[0]) {
-                                        // Same product, replace image
-                                        if (currentSrc !== url) {
-                                            console.log('MG: Replacing thumbnail for slug ' + slug + ' (ID: ' + productId + ')');
-                                            console.log('MG: Old URL:', currentSrc);
-                                            console.log('MG: New URL:', url);
-                                            $img.attr('src', url);
-                                            $img.attr('srcset', '');
-                                            $img.addClass('mg-variant-thumbnail');
-                                        } else {
-                                            console.log('MG: Image already correct for product ' + productId);
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
+                        if (currentSrc !== newUrl) {
+                            console.log('MG: REPLACING - Old:', currentSrc);
+                            console.log('MG: REPLACING - New:', newUrl);
+                            $img.attr('src', newUrl);
+                            $img.attr('srcset', '');
+                            replaced++;
+                        } else {
+                            console.log('MG: Image already correct for SKU:', sku);
                         }
                     }
                 });
+                
+                console.log('MG: Replaced ' + replaced + ' thumbnails');
             }
             
-            // Run immediately
-            replaceCartThumbnails();
+            // Run on page load
+            $(document).ready(function() {
+                console.log('MG: Document ready, fixing thumbnails...');
+                fixCartThumbnails();
+                
+                // Run again after delays (React may re-render)
+                setTimeout(fixCartThumbnails, 500);
+                setTimeout(fixCartThumbnails, 1000);
+                setTimeout(fixCartThumbnails, 2000);
+            });
             
-            // Run again after a short delay (in case of async loading)
-            setTimeout(replaceCartThumbnails, 500);
-            setTimeout(replaceCartThumbnails, 1500);
+            // Watch for DOM changes (React re-renders)
+            if (window.MutationObserver) {
+                var observer = new MutationObserver(function(mutations) {
+                    var shouldFix = false;
+                    mutations.forEach(function(mutation) {
+                        if (mutation.addedNodes.length > 0) {
+                            mutation.addedNodes.forEach(function(node) {
+                                if (node.nodeName === 'IMG' || (node.querySelector && node.querySelector('img'))) {
+                                    shouldFix = true;
+                                }
+                            });
+                        }
+                    });
+                    
+                    if (shouldFix) {
+                        console.log('MG: DOM changed, re-fixing thumbnails...');
+                        setTimeout(fixCartThumbnails, 100);
+                    }
+                });
+                
+                observer.observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+                
+                console.log('MG: MutationObserver active');
+            }
             
-            // Run on cart updates
-            $(document.body).on('updated_cart_totals updated_checkout updated_wc_div', replaceCartThumbnails);
-        });
+            // Also fix on WooCommerce events
+            $(document.body).on('updated_cart_totals updated_checkout updated_wc_div wc_fragments_loaded wc_fragments_refreshed', function() {
+                console.log('MG: WooCommerce event triggered, fixing thumbnails...');
+                setTimeout(fixCartThumbnails, 100);
+            });
+            
+        })(jQuery);
         </script>
         <?php
     }
