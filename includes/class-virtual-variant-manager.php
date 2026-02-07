@@ -1201,8 +1201,22 @@ class MG_Virtual_Variant_Manager {
 
     private static function render_preview_image_html($preview_url, $cart_item) {
         $size = wc_get_image_size('woocommerce_thumbnail');
-        $width = isset($size['width']) ? intval($size['width']) : 300;
-        $height = isset($size['height']) ? intval($size['height']) : 300;
+        $width = isset($size['width']) ? intval($size['width']) : 0;
+        $height = isset($size['height']) ? intval($size['height']) : 0;
+        
+        // Debug logging
+        error_log('MG Render HTML: Size from WC: width=' . $width . ', height=' . $height);
+        
+        // Ensure we have valid dimensions
+        if ($width <= 0) {
+            $width = 100; // Fallback to 100px
+        }
+        if ($height <= 0) {
+            $height = 100; // Fallback to 100px  
+        }
+        
+        error_log('MG Render HTML: Final size: width=' . $width . ', height=' . $height);
+        
         $alt = self::get_cart_item_image_alt($cart_item);
 
         return sprintf(
