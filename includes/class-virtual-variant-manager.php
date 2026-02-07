@@ -1342,6 +1342,8 @@ class MG_Virtual_Variant_Manager {
                     var $row = $(this);
                     var $img = $row.find('img').first();
                     
+                    console.log('MG: Item #' + index + ' - Found img:', $img.length > 0);
+                    
                     if (!$img.length) return;
                     
                     // Try to find product link
@@ -1350,29 +1352,42 @@ class MG_Virtual_Variant_Manager {
                         $link = $row.find('a').first();
                     }
                     
+                    console.log('MG: Item #' + index + ' - Found link:', $link.length > 0);
+                    
                     if (!$link.length) return;
                     
                     var href = $link.attr('href');
+                    console.log('MG: Item #' + index + ' - Link href:', href);
+                    
                     if (!href) return;
                     
                     // Extract product slug from URL
                     var slugMatch = href.match(/\/termek\/([^\/]+)/) || href.match(/\/product\/([^\/]+)/);
                     
+                    console.log('MG: Item #' + index + ' - Slug match:', slugMatch);
+                    
                     if (slugMatch) {
                         var slug = slugMatch[1].replace(/\/$/, '');
                         console.log('MG: Found product slug:', slug);
                         
+                        var currentSrc = $img.attr('src');
+                        console.log('MG: Current img src:', currentSrc);
+                        
                         // Find matching product ID by checking each thumbnail URL
                         for (var productId in thumbnailData) {
                             var url = thumbnailData[productId];
+                            console.log('MG: Checking product ID ' + productId + ' with URL:', url);
+                            
                             // Check if any thumbnail URL exists for this product
                             if (url) {
                                 // Try to match by checking if current src contains common elements
-                                var currentSrc = $img.attr('src');
                                 if (currentSrc) {
                                     // Extract SKU from current image
                                     var skuMatch = currentSrc.match(/FORME\d+/);
                                     var newSkuMatch = url.match(/FORME\d+/);
+                                    
+                                    console.log('MG: Current SKU:', skuMatch ? skuMatch[0] : 'none');
+                                    console.log('MG: New SKU:', newSkuMatch ? newSkuMatch[0] : 'none');
                                     
                                     if (skuMatch && newSkuMatch && skuMatch[0] === newSkuMatch[0]) {
                                         // Same product, replace image
@@ -1383,6 +1398,8 @@ class MG_Virtual_Variant_Manager {
                                             $img.attr('src', url);
                                             $img.attr('srcset', '');
                                             $img.addClass('mg-variant-thumbnail');
+                                        } else {
+                                            console.log('MG: Image already correct for product ' + productId);
                                         }
                                         break;
                                     }
