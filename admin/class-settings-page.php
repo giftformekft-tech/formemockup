@@ -488,21 +488,21 @@ class MG_Settings_Page {
 
             <h2>Google Merchant Feed</h2>
             <?php
-            $last_update = get_option('mg_google_feed_last_update', 0);
-            $feed_url = class_exists('MG_Google_Merchant_Feed') ? MG_Google_Merchant_Feed::get_feed_url() : '';
+            $google_last_update = get_option('mg_google_feed_last_update', 0);
+            $google_feed_url = class_exists('MG_Google_Merchant_Feed') ? MG_Google_Merchant_Feed::get_feed_url() : '';
             ?>
             <table class="form-table">
                 <tr>
                     <th scope="row">Feed URL</th>
                     <td>
-                        <code><a href="<?php echo esc_url($feed_url); ?>" target="_blank"><?php echo esc_html($feed_url); ?></a></code>
+                        <code><a href="<?php echo esc_url($google_feed_url); ?>" target="_blank"><?php echo esc_html($google_feed_url); ?></a></code>
                         <p class="description">Másold be ezt a linket a Google Merchant Centerbe.</p>
                     </td>
                 </tr>
                 <tr>
                     <th scope="row">Utolsó frissítés</th>
                     <td>
-                        <?php echo $last_update ? date_i18n('Y-m-d H:i:s', $last_update) : 'Még nem volt frissítve'; ?>
+                        <?php echo $google_last_update ? date_i18n('Y-m-d H:i:s', $google_last_update) : 'Még nem volt frissítve'; ?>
                     </td>
                 </tr>
                 <tr>
@@ -514,6 +514,40 @@ class MG_Settings_Page {
                             <?php submit_button('Feed újragenerálása most', 'secondary', 'submit', false); ?>
                         </form>
                         <p class="description">A feed 24 óránként automatikusan frissül, ha megnyitják az URL-t, de itt manuálisan is kikényszerítheted a frissítést.</p>
+                    </td>
+                </tr>
+            </table>
+
+            <hr/>
+
+            <h2>Facebook Catalog Feed</h2>
+            <?php
+            $fb_last_update = get_option('mg_facebook_feed_last_update', 0);
+            $fb_feed_url = class_exists('MG_Facebook_Catalog_Feed') ? MG_Facebook_Catalog_Feed::get_feed_url() : '';
+            ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Feed URL</th>
+                    <td>
+                        <code><a href="<?php echo esc_url($fb_feed_url); ?>" target="_blank"><?php echo esc_html($fb_feed_url); ?></a></code>
+                        <p class="description">Másold be ezt a linket a Facebook Commerce Managerbe (Catalog > Data Sources > Data Feed).</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Utolsó frissítés</th>
+                    <td>
+                        <?php echo $fb_last_update ? date_i18n('Y-m-d H:i:s', $fb_last_update) : 'Még nem volt frissítve'; ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Művelet</th>
+                    <td>
+                        <form method="post" action="<?php echo admin_url('admin-post.php'); ?>">
+                            <input type="hidden" name="action" value="mg_regenerate_facebook_feed">
+                            <?php wp_nonce_field('mg_regenerate_facebook_feed'); ?>
+                            <?php submit_button('Facebook Feed újragenerálása most', 'secondary', 'submit', false); ?>
+                        </form>
+                        <p class="description">A feed 24 óránként automatikusan frissül, ha megnyitják az URL-t.</p>
                     </td>
                 </tr>
             </table>

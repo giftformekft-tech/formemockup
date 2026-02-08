@@ -50,6 +50,7 @@ add_action('plugins_loaded', function(){
         'includes/class-design-gallery.php',
         'admin/class-temu-export-page.php',
         'includes/class-google-merchant-feed.php',
+        'includes/class-facebook-catalog-feed.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -151,6 +152,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Google_Merchant_Feed')) {
         MG_Google_Merchant_Feed::init();
+    }
+    if (class_exists('MG_Facebook_Catalog_Feed')) {
+        MG_Facebook_Catalog_Feed::init();
     }
 }, 20);
 
