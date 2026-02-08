@@ -7,8 +7,15 @@ class MG_Facebook_Catalog_Feed {
 
     public static function init() {
         add_action('init', array(__CLASS__, 'check_feed_request'));
+        add_action('init', array(__CLASS__, 'schedule_daily_event'));
         add_action('admin_post_mg_regenerate_facebook_feed', array(__CLASS__, 'handle_manual_regeneration'));
         add_action('mg_cron_regenerate_facebook_feed', array(__CLASS__, 'generate_feed_to_file'));
+    }
+
+    public static function schedule_daily_event() {
+        if (!wp_next_scheduled('mg_cron_regenerate_facebook_feed')) {
+            wp_schedule_event(time(), 'daily', 'mg_cron_regenerate_facebook_feed');
+        }
     }
 
     public static function get_feed_file_path() {
@@ -21,36 +28,21 @@ class MG_Facebook_Catalog_Feed {
     }
 
     public static function get_feed_url() {
-        return home_url('/?mg_feed=facebook');
+        $upload_dir = wp_upload_dir();
+        $file_url = trailingslashit($upload_dir['baseurl']) . 'mg_feeds/facebook_catalog.xml';
+        
+        // Ensure file exists to avoid 404
+        if (!file_exists(self::get_feed_file_path())) {
+            self::generate_feed_to_file();
+        }
+        
+        return $file_url;
     }
 
     public static function check_feed_request() {
         if (isset($_GET['mg_feed']) && $_GET['mg_feed'] === 'facebook') {
-            $path = self::get_feed_file_path();
-            
-            // 1. If file exists
-            if (file_exists($path)) {
-                $file_time = filemtime($path);
-                
-                // If STALE (older than 24h)
-                if (time() - $file_time > 24 * HOUR_IN_SECONDS && !isset($_GET['force'])) {
-                    // Check if regeneration is already scheduled/running
-                    if (!get_transient('mg_facebook_feed_regenerating')) {
-                        // Schedule async regeneration
-                        wp_schedule_single_event(time(), 'mg_cron_regenerate_facebook_feed');
-                        // Set a short lock (e.g., 10 mins) to prevent spamming cron
-                        set_transient('mg_facebook_feed_regenerating', 'true', 10 * MINUTE_IN_SECONDS);
-                    }
-                }
-                
-                // Always serve the file (fresh or stale)
-                self::serve_file($path);
-                exit;
-            }
-            
-            // 2. If file does NOT exist (first run ever) -> Generate Synchronously
-            self::generate_feed_to_file();
-            self::serve_file($path);
+            // Redirect to static file
+            wp_redirect(self::get_feed_url(), 301);
             exit;
         }
     }
