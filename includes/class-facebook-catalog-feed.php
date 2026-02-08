@@ -245,10 +245,43 @@ class MG_Facebook_Catalog_Feed {
             $output .= '<g:availability>' . $g_availability . '</g:availability>' . PHP_EOL;
             $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
             $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
+            $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
             $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL;
             
             // Custom Label 0 for Type slug (useful for filtering campaigns)
             $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+
+            // Categories
+            $terms = get_the_terms($product_id, 'product_cat');
+            if ($terms && !is_wp_error($terms)) {
+                $main_cat = '';
+                $sub_cat = '';
+                
+                $term = reset($terms);
+                
+                // Try to find a child term first
+                foreach ($terms as $t) {
+                    if ($t->parent != 0) {
+                        $term = $t;
+                        break;
+                    }
+                }
+
+                if ($term->parent != 0) {
+                    $parent = get_term($term->parent, 'product_cat');
+                    $main_cat = $parent->name;
+                    $sub_cat = $term->name;
+                } else {
+                    $main_cat = $term->name;
+                }
+
+                if ($main_cat) {
+                    $output .= '<g:custom_label_1>' . self::xml_sanitize($main_cat) . '</g:custom_label_1>' . PHP_EOL;
+                }
+                if ($sub_cat) {
+                    $output .= '<g:custom_label_2>' . self::xml_sanitize($sub_cat) . '</g:custom_label_2>' . PHP_EOL;
+                }
+            }
 
             $output .= '</item>' . PHP_EOL;
         }
