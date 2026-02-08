@@ -7,23 +7,96 @@ class MG_Google_Merchant_Feed {
 
     public static function init() {
         add_action('init', array(__CLASS__, 'check_feed_request'));
+        add_action('admin_post_mg_regenerate_feed', array(__CLASS__, 'handle_manual_regeneration'));
+        add_action('mg_cron_regenerate_feed', array(__CLASS__, 'generate_feed_to_file'));
+    }
+
+    public static function get_feed_file_path() {
+        $upload_dir = wp_upload_dir();
+        $path = trailingslashit($upload_dir['basedir']) . 'mg_feeds';
+        if (!file_exists($path)) {
+            wp_mkdir_p($path);
+        }
+        return $path . '/google_merchant.xml';
+    }
+
+    public static function get_feed_url() {
+        return home_url('/?mg_feed=google');
     }
 
     public static function check_feed_request() {
         if (isset($_GET['mg_feed']) && $_GET['mg_feed'] === 'google') {
-            self::generate_feed();
+            $path = self::get_feed_file_path();
+            
+            // 1. If file exists
+            if (file_exists($path)) {
+                $file_time = filemtime($path);
+                
+                // If STALE (older than 24h)
+                if (time() - $file_time > 24 * HOUR_IN_SECONDS && !isset($_GET['force'])) {
+                    // Check if regeneration is already scheduled/running
+                    if (!get_transient('mg_feed_regenerating')) {
+                        // Schedule async regeneration
+                        wp_schedule_single_event(time(), 'mg_cron_regenerate_feed');
+                        // Set a short lock (e.g., 10 mins) to prevent spamming cron
+                        set_transient('mg_feed_regenerating', 'true', 10 * MINUTE_IN_SECONDS);
+                    }
+                }
+                
+                // Always serve the file (fresh or stale)
+                self::serve_file($path);
+                exit;
+            }
+            
+            // 2. If file does NOT exist (first run ever) -> Generate Synchronously
+            self::generate_feed_to_file();
+            self::serve_file($path);
             exit;
         }
     }
 
-    public static function generate_feed() {
+    public static function handle_manual_regeneration() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_regenerate_feed');
+        
+        // Manual generation is synchronous to give feedback
+        self::generate_feed_to_file();
+        
+        wp_redirect(admin_url('admin.php?page=mockup-generator-settings&feed_updated=1'));
+        exit;
+    }
+
+    private static function serve_file($path) {
+        if (!file_exists($path)) {
+            wp_die('Feed file not found.');
+        }
         header('Content-Type: application/xml; charset=UTF-8');
-        echo '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL;
-        echo '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">' . PHP_EOL;
-        echo '<channel>' . PHP_EOL;
-        echo '<title>' . get_bloginfo('name') . ' - Google Merchant Feed</title>' . PHP_EOL;
-        echo '<link>' . home_url() . '</link>' . PHP_EOL;
-        echo '<description>WooCommerce Product Feed for Google Merchant Center</description>' . PHP_EOL;
+        header('Content-Length: ' . filesize($path));
+        readfile($path);
+    }
+
+    public static function generate_feed_to_file() {
+        // Increase limits for large feed
+        @set_time_limit(1200); // 20 minutes
+        @ini_set('memory_limit', '1024M'); // 1GB
+
+        $path = self::get_feed_file_path();
+        $temp_path = $path . '.tmp';
+        
+        $handle = fopen($temp_path, 'w');
+        if (!$handle) {
+            delete_transient('mg_feed_regenerating'); // Clear lock on failure
+            return false;
+        }
+
+        fwrite($handle, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL);
+        fwrite($handle, '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">' . PHP_EOL);
+        fwrite($handle, '<channel>' . PHP_EOL);
+        fwrite($handle, '<title>' . get_bloginfo('name') . ' - Google Merchant Feed</title>' . PHP_EOL);
+        fwrite($handle, '<link>' . home_url() . '</link>' . PHP_EOL);
+        fwrite($handle, '<description>WooCommerce Product Feed for Google Merchant Center</description>' . PHP_EOL);
 
         $args = array(
             'post_type' => 'product',
@@ -42,22 +115,33 @@ class MG_Google_Merchant_Feed {
         $product_ids = get_posts($args);
 
         foreach ($product_ids as $product_id) {
-            self::process_product($product_id);
+            $xml_chunk = self::get_product_xml($product_id);
+            if ($xml_chunk) {
+                fwrite($handle, $xml_chunk);
+            }
         }
 
-        echo '</channel>' . PHP_EOL;
-        echo '</rss>';
+        fwrite($handle, '</channel>' . PHP_EOL);
+        fwrite($handle, '</rss>');
+        fclose($handle);
+
+        // Atomically replace the file
+        rename($temp_path, $path);
+        
+        update_option('mg_google_feed_last_update', time());
+        delete_transient('mg_feed_regenerating'); // Clear lock on success
+        return true;
     }
 
-    private static function process_product($product_id) {
+    private static function get_product_xml($product_id) {
         $product = wc_get_product($product_id);
         if (!$product) {
-            return;
+            return '';
         }
 
         // Use the existing Virtual Variant Manager to get configuration
         if (!class_exists('MG_Virtual_Variant_Manager')) {
-            return;
+            return '';
         }
 
         $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
@@ -66,7 +150,7 @@ class MG_Google_Merchant_Feed {
         // For now, let's assume we only want virtual variants if they exist.
         if (empty($config) || empty($config['types'])) {
             // Optional: fallback to simple export if needed
-            return;
+            return '';
         }
 
         $base_sku = $product->get_sku();
@@ -79,6 +163,7 @@ class MG_Google_Merchant_Feed {
 
         // Get custom URL mappings if any
         $custom_urls = isset($config['typeUrls']) ? $config['typeUrls'] : array();
+        $output = '';
 
         foreach ($config['types'] as $type_slug => $type_data) {
             $type_label = isset($type_data['label']) ? $type_data['label'] : $type_slug;
@@ -133,23 +218,24 @@ class MG_Google_Merchant_Feed {
             }
 
             // XML Output
-            echo '<item>' . PHP_EOL;
-            echo '<g:id>' . self::xml_sanitize($g_id) . '</g:id>' . PHP_EOL;
-            echo '<g:title>' . self::xml_sanitize($g_title) . '</g:title>' . PHP_EOL;
-            echo '<g:description>' . self::xml_sanitize(strip_tags($g_description)) . '</g:description>' . PHP_EOL;
-            echo '<g:link>' . self::xml_sanitize($g_link) . '</g:link>' . PHP_EOL;
-            echo '<g:image_link>' . self::xml_sanitize($g_image_link) . '</g:image_link>' . PHP_EOL;
-            echo '<g:condition>new</g:condition>' . PHP_EOL;
-            echo '<g:availability>' . $g_availability . '</g:availability>' . PHP_EOL;
-            echo '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
-            echo '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
-            echo '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL; // To group variants together
+            $output .= '<item>' . PHP_EOL;
+            $output .= '<g:id>' . self::xml_sanitize($g_id) . '</g:id>' . PHP_EOL;
+            $output .= '<g:title>' . self::xml_sanitize($g_title) . '</g:title>' . PHP_EOL;
+            $output .= '<g:description>' . self::xml_sanitize(strip_tags($g_description)) . '</g:description>' . PHP_EOL;
+            $output .= '<g:link>' . self::xml_sanitize($g_link) . '</g:link>' . PHP_EOL;
+            $output .= '<g:image_link>' . self::xml_sanitize($g_image_link) . '</g:image_link>' . PHP_EOL;
+            $output .= '<g:condition>new</g:condition>' . PHP_EOL;
+            $output .= '<g:availability>' . $g_availability . '</g:availability>' . PHP_EOL;
+            $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
+            $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
+            $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL; // To group variants together
             
             // Custom Label 0 for Type slug (useful for filtering campaigns)
-            echo '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+            $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
 
-            echo '</item>' . PHP_EOL;
+            $output .= '</item>' . PHP_EOL;
         }
+        return $output;
     }
 
     private static function xml_sanitize($text) {
