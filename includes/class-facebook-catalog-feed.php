@@ -6,10 +6,23 @@ if (!defined('ABSPATH')) {
 class MG_Facebook_Catalog_Feed {
 
     public static function init() {
+        add_action('init', array(__CLASS__, 'add_rewrite_rules'));
         add_action('init', array(__CLASS__, 'check_feed_request'));
         add_action('init', array(__CLASS__, 'schedule_daily_event'));
         add_action('admin_post_mg_regenerate_facebook_feed', array(__CLASS__, 'handle_manual_regeneration'));
         add_action('mg_cron_regenerate_facebook_feed', array(__CLASS__, 'generate_feed_to_file'));
+        
+        // Auto-flush rules if needed (e.g. after update)
+        if (!get_option('mg_facebook_rewrite_flushed')) {
+            add_action('init', function() {
+                flush_rewrite_rules();
+                update_option('mg_facebook_rewrite_flushed', 1);
+            }, 999);
+        }
+    }
+
+    public static function add_rewrite_rules() {
+        add_rewrite_rule('^mg-feed/facebook\.xml$', 'index.php?mg_feed=facebook', 'top');
     }
 
     public static function schedule_daily_event() {
@@ -28,21 +41,33 @@ class MG_Facebook_Catalog_Feed {
     }
 
     public static function get_feed_url() {
-        $upload_dir = wp_upload_dir();
-        $file_url = trailingslashit($upload_dir['baseurl']) . 'mg_feeds/facebook_catalog.xml';
-        
-        // Ensure file exists to avoid 404
-        if (!file_exists(self::get_feed_file_path())) {
-            self::generate_feed_to_file();
-        }
-        
-        return $file_url;
+        // Return pretty URL
+        return home_url('/mg-feed/facebook.xml');
     }
 
     public static function check_feed_request() {
         if (isset($_GET['mg_feed']) && $_GET['mg_feed'] === 'facebook') {
-            // Redirect to static file
-            wp_redirect(self::get_feed_url(), 301);
+            $path = self::get_feed_file_path();
+            
+            // 1. If file exists
+            if (file_exists($path)) {
+                $file_time = filemtime($path);
+                
+                // If STALE (older than 24h)
+                if (time() - $file_time > 24 * HOUR_IN_SECONDS && !isset($_GET['force'])) {
+                     if (!get_transient('mg_facebook_feed_regenerating')) {
+                        wp_schedule_single_event(time(), 'mg_cron_regenerate_facebook_feed');
+                        set_transient('mg_facebook_feed_regenerating', 'true', 10 * MINUTE_IN_SECONDS);
+                    }
+                }
+                
+                self::serve_file($path);
+                exit;
+            }
+            
+            // 2. If file does NOT exist -> Generate Synchronously
+            self::generate_feed_to_file();
+            self::serve_file($path);
             exit;
         }
     }
