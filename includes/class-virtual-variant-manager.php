@@ -1472,15 +1472,18 @@ class MG_Virtual_Variant_Manager {
         if ($url === '') {
             return $thumbnail;
         }
-        $size = wc_get_image_size('woocommerce_thumbnail');
-        $width = isset($size['width']) ? intval($size['width']) : 300;
-        $height = isset($size['height']) ? intval($size['height']) : 300;
+        // Use fixed size for email compatibility - inline styles override template CSS
+        $width = 100;
+        $height = 100;
         return sprintf(
-            '<img src="%s" alt="%s" width="%d" height="%d" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
+            '<img src="%s" alt="%s" width="%d" height="%d" style="width:%dpx !important; height:%dpx !important; max-width:%dpx !important; display:block !important;" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" />',
             $url,
             esc_attr__('Mockup előnézet', 'mgdtp'),
             $width,
-            $height
+            $height,
+            $width,
+            $height,
+            $width
         );
     }
 
