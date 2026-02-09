@@ -27,6 +27,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
+        add_filter('woocommerce_email_order_item_thumbnail', array(__CLASS__, 'filter_email_order_item_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
@@ -1450,26 +1451,19 @@ class MG_Virtual_Variant_Manager {
 
     public static function hide_order_item_meta($hidden) {
         $hidden = is_array($hidden) ? $hidden : array();
-        $hidden[] = 'mg_product_type';
-        $hidden[] = 'mg_color';
-        $hidden[] = 'mg_size';
-        $hidden[] = 'mg_design_id';
-        $hidden[] = 'mg_preview_url';
-        $hidden[] = 'mg_render_version';
-        $hidden[] = 'preview_image_url';
-        $hidden[] = 'render_version';
-        $hidden[] = 'product_type';
-        $hidden[] = 'color';
-        $hidden[] = 'size';
-        return array_unique($hidden);
+        $technical_keys = array(
+            'mg_product_type', 'mg_color', 'mg_size', 'mg_design_id', 
+            'mg_preview_url', 'mg_render_version', 'preview_image_url', 
+            'render_version', 'product_type', 'color', 'size',
+            '_mg_product_type', '_mg_color', '_mg_size', '_mg_design_id',
+            '_mg_preview_url', '_mg_render_version'
+        );
+        return array_unique(array_merge($hidden, $technical_keys));
     }
 
     public static function filter_order_item_meta_display($formatted_meta, $item) {
+        // Always show everything in Admin edit screens (unless AJAX) to allow debugging
         if (is_admin() && !wp_doing_ajax()) {
-            return $formatted_meta;
-        }
-
-        if (function_exists('is_order_received_page') && !is_order_received_page()) {
             return $formatted_meta;
         }
 
@@ -1480,12 +1474,36 @@ class MG_Virtual_Variant_Manager {
         );
 
         foreach ($formatted_meta as $meta_id => $meta) {
-            if (empty($meta->display_key) || !in_array($meta->display_key, $allowed_labels, true)) {
-                unset($formatted_meta[$meta_id]);
+            // If the label is NOT in our allowed list, scrub it.
+            // But wait, what if there are other plugins? 
+            // Better strategy: Remove KNOWN technical keys by key name first.
+            
+            $key = $meta->key;
+            $tech_prefixes = array('mg_', '_mg_', 'preview_', 'render_');
+            $tech_exact = array('product_type', 'color', 'size');
+            
+            $is_technical = false;
+            foreach ($tech_prefixes as $prefix) {
+                if (strpos($key, $prefix) === 0) {
+                    $is_technical = true;
+                    break;
+                }
+            }
+            if (in_array($key, $tech_exact, true)) {
+                $is_technical = true;
+            }
+
+            if ($is_technical) {
+                 unset($formatted_meta[$meta_id]);
             }
         }
 
         return $formatted_meta;
+    }
+
+    // Add explicit email thumbnail support
+    public static function filter_email_order_item_thumbnail($thumbnail, $item, $order) {
+        return self::filter_order_thumbnail($thumbnail, $item, $order);
     }
 
     public static function ajax_preview() {
