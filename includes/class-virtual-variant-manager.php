@@ -32,6 +32,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
         add_filter('woocommerce_get_order_item_totals', array(__CLASS__, 'clean_payment_method_label'), 999, 3);
         add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
+        add_filter('woocommerce_order_item_name', array(__CLASS__, 'add_thumbnail_to_order_item_name'), 10, 2);
         add_action('wp_footer', array(__CLASS__, 'inject_cart_thumbnail_fix_script'), 999);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
@@ -1505,6 +1506,39 @@ class MG_Virtual_Variant_Manager {
         $args['show_image'] = true;
         $args['image_size'] = array(100, 100); 
         return $args;
+    }
+
+    /**
+     * Add thumbnail before product name on order-received/thank-you page
+     */
+    public static function add_thumbnail_to_order_item_name($name, $item) {
+        // Only on frontend, not in admin or emails
+        if (is_admin() || did_action('woocommerce_email_header')) {
+            return $name;
+        }
+        
+        // Only for order items
+        if (!is_a($item, 'WC_Order_Item_Product')) {
+            return $name;
+        }
+        
+        $preview_url = $item->get_meta('mg_preview_url');
+        if (!$preview_url) {
+            return $name;
+        }
+        
+        $url = esc_url($preview_url);
+        if ($url === '') {
+            return $name;
+        }
+        
+        $thumbnail = sprintf(
+            '<img src="%s" alt="%s" style="width:60px; height:60px; margin-right:10px; vertical-align:middle; border-radius:4px;" />',
+            $url,
+            esc_attr__('Mockup előnézet', 'mgdtp')
+        );
+        
+        return $thumbnail . $name;
     }
 
     public static function clean_payment_method_label($total_rows, $order, $tax_display) {
