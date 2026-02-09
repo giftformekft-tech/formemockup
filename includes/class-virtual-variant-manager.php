@@ -880,6 +880,14 @@ class MG_Virtual_Variant_Manager {
                         }
                     }
                 }
+                
+                // FALLBACK: If mockup file doesn't exist, use product featured image
+                if ($preview_url === '') {
+                    $image_id = $product->get_image_id();
+                    if ($image_id) {
+                        $preview_url = wp_get_attachment_url($image_id);
+                    }
+                }
             }
         }
 
@@ -1481,7 +1489,9 @@ class MG_Virtual_Variant_Manager {
         $hidden = is_array($hidden) ? $hidden : array();
         $technical_keys = array(
             'mg_product_type', 'mg_color', 'mg_size', 'mg_design_id', 
-            'mg_preview_url', 'mg_render_version', 'preview_image_url', 
+            // TEMPORARILY VISIBLE FOR DEBUGGING:
+            // 'mg_preview_url', 
+            'mg_render_version', 'preview_image_url', 
             'render_version', 'product_type', 'color', 'size',
             '_mg_product_type', '_mg_color', '_mg_size', '_mg_design_id',
             '_mg_preview_url', '_mg_render_version'
