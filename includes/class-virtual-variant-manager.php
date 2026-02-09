@@ -30,8 +30,8 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_email_order_item_thumbnail', array(__CLASS__, 'filter_email_order_item_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
-        add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'));
-        add_filter('woocommerce_get_order_item_totals', array(__CLASS__, 'clean_payment_method_label'), 10, 3);
+        add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
+        add_filter('woocommerce_get_order_item_totals', array(__CLASS__, 'clean_payment_method_label'), 999, 3);
         add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
         add_action('wp_footer', array(__CLASS__, 'inject_cart_thumbnail_fix_script'), 999);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
@@ -1465,17 +1465,16 @@ class MG_Virtual_Variant_Manager {
 
     public static function force_email_images($args) {
         $args['show_image'] = true;
-        // Optional: set image size if needed, default is 32x32 usually
         $args['image_size'] = array(100, 100); 
         return $args;
     }
 
     public static function clean_payment_method_label($total_rows, $order, $tax_display) {
         if (isset($total_rows['payment_method'])) {
-            // Remove everything after the payment method title (often added by COD plugins)
-            // Or specifically target text starting with + or (
-            // Simple approach: Set it to the clean title from order
-            $total_rows['payment_method']['value'] = $order->get_payment_method_title();
+            $value = $total_rows['payment_method']['value'];
+            // Remove text starting with + or ( (e.g. "+ 290 Ft", "(fee)")
+            $clean_value = preg_replace('/(\s*[\+\(].*)$/', '', $value);
+            $total_rows['payment_method']['value'] = trim($clean_value);
         }
         return $total_rows;
     }
