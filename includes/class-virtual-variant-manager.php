@@ -857,6 +857,32 @@ class MG_Virtual_Variant_Manager {
         $preview_url = isset($values['mg_preview_url']) ? esc_url_raw($values['mg_preview_url']) : '';
         $render_version = isset($values['mg_render_version']) ? sanitize_text_field($values['mg_render_version']) : '';
 
+        // CRITICAL FIX: If no preview URL was passed, generate it from SKU + type + color
+        if ($preview_url === '') {
+            $product_id = $item->get_product_id();
+            $product = wc_get_product($product_id);
+            if ($product) {
+                $sku = $product->get_sku();
+                if ($sku) {
+                    $uploads = wp_upload_dir();
+                    $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
+                    $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+                    
+                    if ($base_dir !== '' && $base_url !== '') {
+                        $type_sanitized = sanitize_title($type_slug);
+                        $color_sanitized = sanitize_title($color_slug);
+                        $filename = $sku . '_' . $type_sanitized . '_' . $color_sanitized . '_front.webp';
+                        $file_path = $base_dir . '/' . $sku . '/' . $filename;
+                        $file_url = $base_url . '/' . $sku . '/' . $filename;
+                        
+                        if (file_exists($file_path)) {
+                            $preview_url = $file_url;
+                        }
+                    }
+                }
+            }
+        }
+
         $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
         $type_label = $type_slug;
         $color_label = $color_slug;
