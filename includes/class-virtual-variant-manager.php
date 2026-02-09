@@ -1485,20 +1485,12 @@ class MG_Virtual_Variant_Manager {
             return $formatted_meta;
         }
 
-        $allowed_labels = array(
-            __('Terméktípus', 'mgdtp'),
-            __('Szín', 'mgdtp'),
-            __('Méret', 'mgdtp'),
-        );
-
         foreach ($formatted_meta as $meta_id => $meta) {
-            // If the label is NOT in our allowed list, scrub it.
-            // But wait, what if there are other plugins? 
-            // Better strategy: Remove KNOWN technical keys by key name first.
-            
             $key = $meta->key;
+            // Technical prefixes to hide
             $tech_prefixes = array('mg_', '_mg_', 'preview_', 'render_');
-            $tech_exact = array('product_type', 'color', 'size');
+            // Exact keys to hide (raw variant data)
+            $tech_exact = array('product_type', 'color', 'size', 'design_id', 'render_version');
             
             $is_technical = false;
             foreach ($tech_prefixes as $prefix) {
@@ -1507,7 +1499,7 @@ class MG_Virtual_Variant_Manager {
                     break;
                 }
             }
-            if (in_array($key, $tech_exact, true)) {
+            if (!$is_technical && in_array($key, $tech_exact, true)) {
                 $is_technical = true;
             }
 
