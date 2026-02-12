@@ -509,8 +509,16 @@
       $nameInput.data('mgAutoName', true);
       $nameInput.on('input', function () { $(this).data('mgAutoName', false); });
       updateRowAutoName($tr);
-      $tr.append('<td class="mg-parent"><input type="hidden" class="mg-parent-id" value="0"><input type="text" class="mg-parent-search" placeholder="Keresés név alapján..."><div class="mg-parent-results"></div></td>');
-      $tr.append('<td class="mg-custom"><label><input type="checkbox" class="mg-custom-flag"> Egyedi</label></td>');
+      // Custom field cell with preset dropdown
+      var $customCell = $('<td class="mg-custom"></td>');
+      var $customLabel = $('<label><input type="checkbox" class="mg-custom-flag"> Egyedi</label>');
+      var $presetSelect = $('<select class="mg-preset-select" style="display:none; margin-top: 5px;"></select>');
+      $presetSelect.append('<option value="">— Válassz preset-et —</option>');
+      (MG_BULK_ADV.custom_field_presets || []).forEach(function (p) {
+        $presetSelect.append('<option value="' + p.id + '">' + p.name + '</option>');
+      });
+      $customCell.append($customLabel).append($presetSelect);
+      $tr.append($customCell);
       // NEW: tags cell before state
       $tr.append('<td class="mg-tags"><input type="text" class="mg-tags-input" placeholder="pl. horgaszat, ponty, kapucnis"></td>');
       $tr.append('<td class="mg-state">Várakozik</td>');
@@ -540,7 +548,6 @@
       };
       reader.readAsText(jsonFile);
     });
-    bindParentSearch();
     mgDedupeTagInputs();
   }
 
@@ -578,6 +585,16 @@
 
   $('#mg-bulk-files-adv').on('change', function () { renderRows(this.files); });
   $(document).on('change', '#mg-default-type', function () { updateAllAutoNames(); });
+  // Toggle preset dropdown when custom checkbox changes
+  $(document).on('change', '.mg-custom-flag', function () {
+    var $row = $(this).closest('.mg-item-row');
+    var $presetSelect = $row.find('.mg-preset-select');
+    if ($(this).is(':checked')) {
+      $presetSelect.show();
+    } else {
+      $presetSelect.hide().val('');
+    }
+  });
 
   function copyMainFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
@@ -644,9 +661,19 @@
   function copyCustomFlagFromFirst() {
     var $rows = $('#mg-bulk-rows .mg-item-row');
     if ($rows.length <= 1) { return; }
-    var checked = $rows.first().find('.mg-custom-flag').is(':checked');
+    var $firstRow = $rows.first();
+    var checked = $firstRow.find('.mg-custom-flag').is(':checked');
+    var presetVal = $firstRow.find('.mg-preset-select').val() || '';
     $rows.slice(1).each(function () {
-      $(this).find('.mg-custom-flag').prop('checked', checked);
+      var $row = $(this);
+      $row.find('.mg-custom-flag').prop('checked', checked);
+      var $presetSelect = $row.find('.mg-preset-select');
+      $presetSelect.val(presetVal);
+      if (checked) {
+        $presetSelect.show();
+      } else {
+        $presetSelect.hide();
+      }
     });
   }
 

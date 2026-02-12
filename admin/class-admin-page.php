@@ -506,13 +506,12 @@ class MG_Admin_Page {
         echo '<th>' . esc_html__('Főkategória', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Alkategóriák', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Terméknév', 'mockup-generator') . '</th>';
-        echo '<th>' . esc_html__('Meglévő termék keresése', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Egyedi termék', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Tag-ek', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mockup-generator') . '</th>';
         echo '</tr></thead>';
         echo '<tbody id="mg-bulk-rows">';
-        echo '<tr class="no-items"><td colspan="10">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
+        echo '<tr class="no-items"><td colspan="9">' . esc_html__('Válassz fájlokat a fenti feltöltővel.', 'mockup-generator') . '</td></tr>';
         echo '</tbody>';
         echo '</table>';
         echo '</div>';
@@ -803,6 +802,19 @@ class MG_Admin_Page {
             $queue_interval_max = MG_Bulk_Queue::MAX_INTERVAL;
         }
 
+        $custom_field_presets = array();
+        if (class_exists('MG_Custom_Fields_Manager')) {
+            $presets = MG_Custom_Fields_Manager::get_presets();
+            foreach ($presets as $preset_id => $preset) {
+                if (isset($preset['name'])) {
+                    $custom_field_presets[] = array(
+                        'id'   => $preset_id,
+                        'name' => $preset['name'],
+                    );
+                }
+            }
+        }
+
         self::$bulk_data = array(
             'products'       => $products,
             'default_type'   => $default_type,
@@ -810,6 +822,7 @@ class MG_Admin_Page {
             'default_size'   => $default_size,
             'mains'          => $mains,
             'subs'           => $subs,
+            'custom_field_presets' => $custom_field_presets,
             'worker_options' => $worker_options,
             'worker_count'   => $worker_count,
             'queue_batch_size' => $queue_batch_size,
@@ -862,6 +875,7 @@ class MG_Admin_Page {
             'products'              => $bulk_data['products'],
             'mains'                 => $bulk_data['mains'],
             'subs'                  => $bulk_data['subs'],
+            'custom_field_presets'  => $bulk_data['custom_field_presets'],
             'default_type'          => $bulk_data['default_type'],
             'default_color'         => $bulk_data['default_color'],
             'default_size'          => $bulk_data['default_size'],
