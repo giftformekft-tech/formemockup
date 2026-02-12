@@ -29,16 +29,8 @@
     var autoEnabled = $name.data('mgAutoName') !== false;
     if (!autoEnabled) { return; }
     var baseName = $row.data('mgBaseName') || '';
-    var mainLabel = '';
-    var $mainSel = $row.find('select.mg-main');
-    if ($mainSel.length) {
-      var selectedText = $mainSel.find('option:selected').text() || '';
-      var selectedVal = $mainSel.val() || '';
-      if (selectedVal && selectedVal !== '0') {
-        mainLabel = selectedText;
-      }
-    }
-    $name.val(buildAutoName(baseName, mainLabel));
+    // Don't add main category name automatically
+    $name.val(baseName);
   }
   function buildMainSelect() {
     var html = '<select class="mg-main">';
