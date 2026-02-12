@@ -153,6 +153,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
+        $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
         if (taxonomy_exists('product_cat')) {
             if ($main_cat > 0) {
                 $main_term = get_term($main_cat, 'product_cat');
@@ -245,6 +246,9 @@ add_action('wp_ajax_mg_bulk_process', function(){
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
             if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
             MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
+            if ($is_custom_product && $preset_id !== '') {
+                MG_Custom_Fields_Manager::apply_preset_to_product($parent_id, $preset_id);
+            }
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
             // Pass the pre-created ID to the creator
@@ -254,6 +258,9 @@ add_action('wp_ajax_mg_bulk_process', function(){
             if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
             MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
             MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
+            if ($is_custom_product && $preset_id !== '') {
+                MG_Custom_Fields_Manager::apply_preset_to_product($pid, $preset_id);
+            }
             wp_send_json_success(array('product_id'=>$pid));
         }
     } catch (Throwable $e) {
@@ -296,6 +303,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
+        $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
         if (taxonomy_exists('product_cat')) {
             if ($main_cat > 0) {
                 $main_term = get_term($main_cat, 'product_cat');
@@ -342,6 +350,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             'defaults' => $defaults,
             'tags' => $tags,
             'custom_product' => $is_custom_product ? 1 : 0,
+            'preset_id' => $preset_id,
             'trigger' => 'bulk_queue',
         );
 

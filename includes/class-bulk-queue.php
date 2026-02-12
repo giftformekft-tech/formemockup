@@ -590,6 +590,9 @@ class MG_Bulk_Queue {
             }
             if ($result_product_id > 0 && !empty($payload['custom_product'])) {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, true);
+                if (!empty($payload['preset_id'])) {
+                    MG_Custom_Fields_Manager::apply_preset_to_product($result_product_id, sanitize_key($payload['preset_id']));
+                }
             } elseif ($result_product_id > 0) {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, false);
             }
@@ -783,6 +786,7 @@ class MG_Bulk_Queue {
         );
         $clean['trigger'] = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
         $clean['custom_product'] = !empty($payload['custom_product']) ? 1 : 0;
+        $clean['preset_id'] = isset($payload['preset_id']) ? sanitize_key($payload['preset_id']) : '';
         $tags = isset($payload['tags']) ? (array)$payload['tags'] : array();
         $tags = array_map('sanitize_text_field', array_filter(array_map('trim', $tags)));
         $clean['tags'] = array_values(array_filter(array_unique($tags)));
