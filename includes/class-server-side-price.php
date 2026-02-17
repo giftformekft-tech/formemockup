@@ -12,9 +12,43 @@ if (!defined('ABSPATH')) {
 class MG_Server_Side_Price {
 
     public static function init() {
-        // Override product price based on URL parameter
-        add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_product_price'), 10, 2);
-        add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_product_price'), 10, 2);
+        // Check if URL parameter exists early
+        if (isset($_GET['mg_type'])) {
+            // Run VERY early to prevent caching
+            add_action('template_redirect', array(__CLASS__, 'clear_product_cache'), 1);
+            
+            // Disable product meta cache for this request
+            add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_product_price'), 5, 2);
+            add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_product_price'), 5, 2);
+            
+            // Also disable caching
+            add_filter('woocommerce_cache_helper_get_transient_version', '__return_empty_string');
+        } else {
+            // Normal priority when no parameter
+            add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_product_price'), 10, 2);
+            add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_product_price'), 10, 2);
+        }
+    }
+    
+    /**
+     * Clear product cache early
+     */
+    public static function clear_product_cache() {
+        if (!is_product()) {
+            return;
+        }
+        
+        global $post;
+        if (!$post) {
+            return;
+        }
+        
+        // Clear WooCommerce product cache
+        wp_cache_delete('product-' . $post->ID, 'products');
+        wp_cache_delete($post->ID, 'product_meta');
+        
+        // Clear transients
+        delete_transient('wc_product_' . $post->ID);
     }
 
     /**
