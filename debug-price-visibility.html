@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Price Visibility</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 2px solid #333; }
+        .info { color: blue; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Price Visibility Debug</h1>
+    
+    <div class="debug-section">
+        <h2>Instrukciók:</h2>
+        <ol>
+            <li>Nyisd meg az érintett termékoldalt</li>
+            <li>Nyisd meg a DevTools-t (F12)</li>
+            <li>Menj a <strong>Console</strong> tabra</li>
+            <li>Másold be ezt a kódot és nyomd meg Enter-t:</li>
+        </ol>
+        
+        <pre style="background: #f0f0f0; padding: 10px;">
+// Ellenőrizd az HTML osztályokat
+console.log('HTML classes:', document.documentElement.className);
+
+// Ellenőrizd hogy létezik-e a .price elem
+const priceEl = document.querySelector('.summary > p.price');
+console.log('Price element:', priceEl);
+
+// Ha létezik, ellenőrizd a stílusait
+if (priceEl) {
+    const styles = window.getComputedStyle(priceEl);
+    console.log('Price opacity:', styles.opacity);
+    console.log('Price visibility:', styles.visibility);
+    console.log('Price display:', styles.display);
+}
+
+// Ellenőrizd hogy a MG_VARIANT_DISPLAY betöltődött-e
+console.log('MG_VARIANT_DISPLAY:', typeof MG_VARIANT_DISPLAY);
+
+// Kényszerítsük láthatóvá (teszt)
+if (priceEl) {
+    priceEl.style.opacity = '1';
+    priceEl.style.visibility = 'visible';
+    priceEl.style.display = 'block';
+    console.log('✅ Kényszerített láthatóság alkalmazva');
+}
+        </pre>
+        
+        <h3>Küldd el nekem a console kimenetét!</h3>
+    </div>
+    
+    <div class="debug-section">
+        <h2>Gyors megoldás (ideiglenes):</h2>
+        <p>Ha a fenti kód után MEGJELENIK az ár, akkor a probléma a CSS specificitás. Ebben az esetben egyszerűen töröljük az ár elrejtését TELJESEN.</p>
+    </div>
+</body>
+</html>
