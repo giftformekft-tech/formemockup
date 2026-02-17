@@ -6,155 +6,153 @@ if (!defined('ABSPATH')) {
 /**
  * Class MG_Server_Side_Price
  * 
- * Modifies WooCommerce product price/title server-side.
- * Runs at template_redirect (before wp_head) so gtag gets correct price.
+ * Simple, safe approach: outputs inline CSS to hide price/title on initial load,
+ * then inline JS to replace them with correct variant values BEFORE page paints.
+ * Does NOT modify any WooCommerce internals - zero crash risk.
  */
 class MG_Server_Side_Price {
-
-    private static $variant_price = null;
-    private static $type_label = null;
-    private static $loaded = false;
 
     public static function init() {
         if (!isset($_GET['mg_type'])) {
             return;
         }
 
-        // template_redirect = before wp_head, all WC functions available
-        add_action('template_redirect', array(__CLASS__, 'setup_overrides'), 5);
+        // Output fix in wp_head (runs before body renders)
+        add_action('wp_head', array(__CLASS__, 'output_inline_fix'), 1);
+        
+        // Override document <title> only
+        add_filter('document_title_parts', array(__CLASS__, 'override_doc_title'), 999);
+        add_filter('wpseo_title', array(__CLASS__, 'override_seo_title'), 999);
+        add_filter('rank_math/frontend/title', array(__CLASS__, 'override_seo_title'), 999);
     }
 
-    public static function setup_overrides() {
-        try {
-            if (!is_product()) {
-                return;
-            }
-
-            self::load_config();
-
-            if (self::$variant_price === null && self::$type_label === null) {
-                return;
-            }
-
-            // Get or create product object
-            global $product, $post;
-            if (!$product && $post) {
-                $product = wc_get_product($post->ID);
-            }
-            if (!$product) {
-                return;
-            }
-
-            // Directly modify product object
-            if (self::$variant_price !== null) {
-                $product->set_price(self::$variant_price);
-                $product->set_regular_price(self::$variant_price);
-            }
-            if (self::$type_label) {
-                $raw_name = get_post_field('post_title', $product->get_id());
-                $product->set_name($raw_name . ' - ' . self::$type_label);
-            }
-
-            // Backup filters (return pre-computed values only, zero DB calls)
-            if (self::$variant_price !== null) {
-                add_filter('woocommerce_product_get_price', array(__CLASS__, 'return_price'), 1, 2);
-                add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'return_price'), 1, 2);
-                add_filter('woocommerce_get_price_html', array(__CLASS__, 'return_price_html'), 1, 2);
-            }
-            if (self::$type_label) {
-                add_filter('the_title', array(__CLASS__, 'return_title'), 1, 2);
-                add_filter('document_title_parts', array(__CLASS__, 'return_doc_title'), 999);
-                add_filter('wpseo_title', array(__CLASS__, 'return_seo_title'), 999);
-                add_filter('rank_math/frontend/title', array(__CLASS__, 'return_seo_title'), 999);
-            }
-
-        } catch (Exception $e) {
-            // Silently fail - don't crash the site
-            error_log('MG Server Side Price Error: ' . $e->getMessage());
+    /**
+     * Get variant data for the current product
+     */
+    private static function get_variant_data() {
+        if (!is_product()) {
+            return null;
         }
-    }
-
-    private static function load_config() {
-        if (self::$loaded) {
-            return;
-        }
-        self::$loaded = true;
-
+        
         global $post;
-        if (!$post) {
-            return;
-        }
-        if (!class_exists('MG_Virtual_Variant_Manager')) {
-            return;
-        }
-        if (!function_exists('wc_get_product')) {
-            return;
+        if (!$post || !class_exists('MG_Virtual_Variant_Manager') || !function_exists('wc_get_product')) {
+            return null;
         }
 
         $requested_type = sanitize_text_field($_GET['mg_type']);
         $product = wc_get_product($post->ID);
         if (!$product) {
-            return;
+            return null;
         }
 
         $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
         if (empty($config) || empty($config['types']) || !isset($config['types'][$requested_type])) {
-            return;
+            return null;
         }
 
         $type_data = $config['types'][$requested_type];
+        $variant_price = isset($type_data['price']) && $type_data['price'] > 0 ? (float) $type_data['price'] : null;
+        $type_label = isset($type_data['label']) ? $type_data['label'] : $requested_type;
 
-        if (isset($type_data['price']) && $type_data['price'] > 0) {
-            self::$variant_price = (float) $type_data['price'];
-        }
-
-        self::$type_label = isset($type_data['label']) ? $type_data['label'] : $requested_type;
+        return array(
+            'price' => $variant_price,
+            'label' => $type_label,
+            'base_name' => $product->get_name(),
+            'currency' => get_woocommerce_currency_symbol(),
+        );
     }
 
-    // --- Simple return filters (safe, no DB) ---
+    /**
+     * Output inline CSS + JS in wp_head to fix price/title before page paints
+     */
+    public static function output_inline_fix() {
+        $data = self::get_variant_data();
+        if (!$data) {
+            return;
+        }
 
-    public static function return_price($price, $product) {
-        return self::$variant_price !== null ? self::$variant_price : $price;
+        $variant_name = $data['base_name'] . ' - ' . $data['label'];
+        $formatted_price = $data['price'] ? number_format($data['price'], 0, '', ' ') : null;
+        ?>
+        <style id="mg-price-fix">
+            /* Hide price and title until JS replaces them */
+            .summary .product_title,
+            .summary > p.price,
+            .entry-summary .product_title,
+            .entry-summary > p.price {
+                visibility: hidden;
+            }
+        </style>
+        <script id="mg-price-fix-js">
+        (function() {
+            // Run as soon as DOM is ready (before full page load)
+            function fixPriceAndTitle() {
+                <?php if ($formatted_price) : ?>
+                // Fix all price elements
+                var priceEls = document.querySelectorAll('.summary > p.price .woocommerce-Price-amount bdi, .entry-summary > p.price .woocommerce-Price-amount bdi');
+                for (var i = 0; i < priceEls.length; i++) {
+                    priceEls[i].innerHTML = '<?php echo esc_js($formatted_price); ?>&nbsp;<span class="woocommerce-Price-currencySymbol"><?php echo esc_js($data['currency']); ?></span>';
+                }
+                <?php endif; ?>
+
+                // Fix title
+                var titleEls = document.querySelectorAll('.summary .product_title, .entry-summary .product_title');
+                for (var i = 0; i < titleEls.length; i++) {
+                    titleEls[i].textContent = <?php echo wp_json_encode($variant_name); ?>;
+                }
+
+                // Show everything
+                var style = document.getElementById('mg-price-fix');
+                if (style) style.remove();
+            }
+
+            // Run at DOMContentLoaded OR after a tiny delay if DOM is already ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fixPriceAndTitle);
+            } else {
+                fixPriceAndTitle();
+            }
+
+            // Also run with MutationObserver for immediate detection
+            var observer = new MutationObserver(function(mutations) {
+                var title = document.querySelector('.summary .product_title, .entry-summary .product_title');
+                if (title) {
+                    observer.disconnect();
+                    fixPriceAndTitle();
+                }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+        </script>
+        <?php
     }
 
-    public static function return_price_html($html, $product) {
-        if (self::$variant_price === null) {
-            return $html;
-        }
-        $symbol = get_woocommerce_currency_symbol();
-        $formatted = number_format(self::$variant_price, 0, '', ' ');
-        return '<span class="woocommerce-Price-amount amount"><bdi>' . $formatted . '&nbsp;<span class="woocommerce-Price-currencySymbol">' . $symbol . '</span></bdi></span>';
-    }
-
-    public static function return_title($title, $id = null) {
-        if (!self::$type_label) {
-            return $title;
-        }
-        if (!is_product() || !in_the_loop() || !is_main_query()) {
-            return $title;
-        }
-        if (strpos($title, ' - ' . self::$type_label) === false) {
-            return $title . ' - ' . self::$type_label;
-        }
-        return $title;
-    }
-
-    public static function return_doc_title($parts) {
-        if (!self::$type_label || !is_product()) {
+    /**
+     * Override document <title> tag (safe, no WooCommerce internals)
+     */
+    public static function override_doc_title($parts) {
+        if (!is_product() || !isset($_GET['mg_type'])) {
             return $parts;
         }
-        if (isset($parts['title']) && strpos($parts['title'], ' - ' . self::$type_label) === false) {
-            $parts['title'] .= ' - ' . self::$type_label;
+        $data = self::get_variant_data();
+        if ($data && isset($parts['title'])) {
+            if (strpos($parts['title'], ' - ' . $data['label']) === false) {
+                $parts['title'] .= ' - ' . $data['label'];
+            }
         }
         return $parts;
     }
 
-    public static function return_seo_title($title) {
-        if (!self::$type_label || !is_product()) {
+    /**
+     * Override SEO title (safe)
+     */
+    public static function override_seo_title($title) {
+        if (!is_product() || !isset($_GET['mg_type'])) {
             return $title;
         }
-        if (strpos($title, self::$type_label) === false) {
-            $title .= ' - ' . self::$type_label;
+        $data = self::get_variant_data();
+        if ($data && strpos($title, $data['label']) === false) {
+            $title .= ' - ' . $data['label'];
         }
         return $title;
     }
