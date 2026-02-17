@@ -102,6 +102,14 @@ class MG_Variant_Display_Manager {
             html.mg-variant-preload form.variations_form .variations {
                 display: none !important;
             }
+
+            /* Hide base product price during variant load to prevent price flash */
+            html.mg-variant-preload .product .price:not(.single_variation .price),
+            html.mg-variant-preload .product .woocommerce-Price-amount:not(.single_variation .woocommerce-Price-amount),
+            html.mg-variant-preload .product p.price:not(.single_variation p.price) {
+                opacity: 0 !important;
+                visibility: hidden !important;
+            }
         </style>
         <script id="mg-variant-preload-script">
             (function () {
@@ -146,6 +154,14 @@ class MG_Variant_Display_Manager {
                 html form.variations_form .single_variation,
                 html form.variations_form .woocommerce-variation-add-to-cart {
                     display: block !important;
+                }
+
+                /* Restore price visibility for no-JS users */
+                html .product .price,
+                html .product .woocommerce-Price-amount,
+                html .product p.price {
+                    opacity: 1 !important;
+                    visibility: visible !important;
                 }
             </style>
         </noscript>
