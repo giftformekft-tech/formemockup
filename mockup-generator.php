@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 1.2.159
+Version: 1.2.160
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -53,6 +53,7 @@ add_action('plugins_loaded', function(){
         'includes/class-facebook-catalog-feed.php',
         'includes/class-product-structured-data.php',
         'includes/class-analytics-price-fix.php',
+        'includes/class-server-side-price.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -163,6 +164,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Analytics_Price_Fix')) {
         MG_Analytics_Price_Fix::init();
+    }
+    if (class_exists('MG_Server_Side_Price')) {
+        MG_Server_Side_Price::init();
     }
 }, 20);
 
