@@ -54,6 +54,7 @@ add_action('plugins_loaded', function(){
         'includes/class-product-structured-data.php',
         'includes/class-analytics-price-fix.php',
         'includes/class-server-side-price.php',
+        'includes/class-price-override.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -167,6 +168,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Server_Side_Price')) {
         MG_Server_Side_Price::init();
+    }
+    if (class_exists('MG_Price_Override')) {
+        MG_Price_Override::init();
     }
 }, 20);
 
