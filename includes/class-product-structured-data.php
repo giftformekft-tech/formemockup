@@ -40,9 +40,36 @@ class MG_Product_Structured_Data {
             return;
         }
 
-        // Generate JSON-LD for each variant type
-        foreach ($config['types'] as $type_slug => $type_data) {
-            $structured_data = self::build_product_schema($product, $type_slug, $type_data, $config);
+        // Check if a specific type is requested via URL parameter
+        $requested_type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '';
+        
+        // If specific type requested, output ONLY that type's schema
+        if ($requested_type && isset($config['types'][$requested_type])) {
+            $type_data = $config['types'][$requested_type];
+            $structured_data = self::build_product_schema($product, $requested_type, $type_data, $config);
+            if ($structured_data) {
+                echo '<script type="application/ld+json">';
+                echo wp_json_encode($structured_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+                echo '</script>' . PHP_EOL;
+            }
+            return;
+        }
+        
+        // If NO type specified, output default type OR first type
+        $default_type = isset($config['default']['type']) ? $config['default']['type'] : '';
+        if ($default_type && isset($config['types'][$default_type])) {
+            $type_data = $config['types'][$default_type];
+            $structured_data = self::build_product_schema($product, $default_type, $type_data, $config);
+            if ($structured_data) {
+                echo '<script type="application/ld+json">';
+                echo wp_json_encode($structured_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+                echo '</script>' . PHP_EOL;
+            }
+        } else {
+            // Fallback: first available type
+            $first_type_slug = key($config['types']);
+            $first_type_data = $config['types'][$first_type_slug];
+            $structured_data = self::build_product_schema($product, $first_type_slug, $first_type_data, $config);
             if ($structured_data) {
                 echo '<script type="application/ld+json">';
                 echo wp_json_encode($structured_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
