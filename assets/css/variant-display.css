@@ -11,6 +11,15 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     display: none;
 }
 
+/* Hide base product price until variant system is ready to prevent price flash */
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .product p.price,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .price,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .woocommerce-Price-amount,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .woocommerce-Price-currencySymbol {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+
 .mg-variant-hidden {
     display: none !important;
 }
