@@ -14,6 +14,26 @@ class MG_Product_Structured_Data {
     public static function init() {
         // Output JSON-LD on product pages
         add_action('wp_head', array(__CLASS__, 'output_json_ld'), 5);
+        
+        // Disable WooCommerce default structured data (prevents duplicate schemas)
+        add_filter('woocommerce_structured_data_product', '__return_false', 999);
+        add_action('wp', array(__CLASS__, 'remove_woocommerce_structured_data'), 99);
+    }
+    
+    /**
+     * Remove WooCommerce default structured data output
+     */
+    public static function remove_woocommerce_structured_data() {
+        // Remove WooCommerce StructuredData class hooks
+        if (class_exists('WC_Structured_Data')) {
+            $structured_data = WC()->structured_data;
+            if ($structured_data) {
+                remove_action('woocommerce_before_main_content', array($structured_data, 'generate_website_data'), 30);
+                remove_action('woocommerce_before_single_product', array($structured_data, 'generate_product_data'), 60);
+                remove_action('woocommerce_shop_loop', array($structured_data, 'generate_product_data'), 10);
+                remove_action('wp_footer', array($structured_data, 'output_structured_data'), 10);
+            }
+        }
     }
 
     /**
