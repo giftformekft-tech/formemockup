@@ -103,22 +103,7 @@ class MG_Variant_Display_Manager {
                 display: none !important;
             }
 
-            /* Hide ONLY base product price in summary area to prevent price flash */
-            html.mg-variant-preload .summary > p.price,
-            html.mg-variant-preload .entry-summary > p.price,
-            html.mg-variant-preload .product-summary > p.price,
-            html.mg-variant-preload .woocommerce-product-details__short-description + p.price {
-                opacity: 0 !important;
-                visibility: hidden !important;
-            }
-
-            /* FORCE show prices when variant system is ready */
-            html.mg-variant-ready p.price,
-            html.mg-variant-ready .woocommerce-Price-amount,
-            html.mg-variant-ready .woocommerce-Price-currencySymbol {
-                opacity: 1 !important;
-                visibility: visible !important;
-            }
+            /* Price hiding removed to prevent permanent price hiding when JS fails to initialize */
         </style>
         <script id="mg-variant-preload-script">
             (function () {

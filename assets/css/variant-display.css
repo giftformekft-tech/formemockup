@@ -11,14 +11,8 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     display: none;
 }
 
-/* Hide ONLY the base product price in summary (not variation prices) to prevent price flash */
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .summary>p.price,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .entry-summary>p.price,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .product-summary>p.price,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .woocommerce-product-details__short-description+p.price {
-    opacity: 0 !important;
-    visibility: hidden !important;
-}
+/* Price hiding removed - causes issues when JavaScript doesn't initialize properly */
+/* Users will see price immediately rather than never at all */
 
 /* FORCE show ALL prices when variant system is ready */
 html.mg-variant-ready p.price,
