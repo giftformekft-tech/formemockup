@@ -11,11 +11,11 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) form.variations_form .vari
     display: none;
 }
 
-/* Hide base product price until variant system is ready to prevent price flash */
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .product p.price,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .price,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .woocommerce-Price-amount,
-html:not(.mg-variant-ready):not(.mg-variant-fallback) .product .woocommerce-Price-currencySymbol {
+/* Hide ONLY the base product price in summary (not variation prices) to prevent price flash */
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .summary>p.price,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .entry-summary>p.price,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .product-summary>p.price,
+html:not(.mg-variant-ready):not(.mg-variant-fallback) .woocommerce-product-details__short-description+p.price {
     opacity: 0 !important;
     visibility: hidden !important;
 }
