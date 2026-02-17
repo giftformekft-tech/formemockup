@@ -6,8 +6,8 @@ if (!defined('ABSPATH')) {
 /**
  * Class MG_Price_Override
  * 
- * Intercepts product price on the frontend if 'mg_type' URL parameter is present.
- * This ensures Google Merchant Center bots see the correct price for the specific virtual variant.
+ * Intercepts product price and name on the frontend if 'mg_type' URL parameter is present.
+ * This ensures Google Merchant Center bots see the correct price and title for the specific virtual variant.
  */
 class MG_Price_Override {
 
@@ -24,6 +24,9 @@ class MG_Price_Override {
         add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
         add_filter('woocommerce_product_variation_get_price', array(__CLASS__, 'override_price'), 99, 2);
         add_filter('woocommerce_product_variation_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
+
+        // Hook into name filter for Google Feed / Structured Data
+        add_filter('woocommerce_product_get_name', array(__CLASS__, 'override_name'), 99, 2);
     }
 
     /**
@@ -50,6 +53,32 @@ class MG_Price_Override {
     }
 
     /**
+     * Override the product name based on URL parameters
+     * Appends the variant type label to the product name.
+     * 
+     * @param string $name The current product name
+     * @param WC_Product $product The product object
+     * @return string Modified name
+     */
+    public static function override_name($name, $product) {
+        if (is_admin() || !isset($_GET['mg_type'])) {
+            return $name;
+        }
+
+        $type_key = sanitize_text_field($_GET['mg_type']);
+        $label = self::get_type_label($type_key);
+
+        if ($label) {
+            // Avoid duplicate appending if theme or other plugins already added it
+            if (strpos($name, $label) === false) {
+                return $name . ' - ' . $label;
+            }
+        }
+
+        return $name;
+    }
+
+    /**
      * Calculate price based strictly on URL parameters (mg_type, mg_color, mg_size)
      * using the global catalog / helper functions.
      * 
@@ -58,10 +87,6 @@ class MG_Price_Override {
     private static function calculate_price_from_url() {
         // Dependencies
         if (!function_exists('mgsc_compute_variant_price') || !function_exists('mgsc_get_size_surcharge')) {
-            // If helper functions from includes/variant-surcharge-applier.php are not loaded, 
-            // we cannot calculate. We could include the file here, but it's better to rely on global load.
-            // Let's assume they are loaded since we are in WP init flow usually.
-            // If strictly needed, we can manually include the file:
             $surcharge_file = dirname(__DIR__) . '/includes/variant-surcharge-applier.php';
             if (file_exists($surcharge_file)) {
                 require_once $surcharge_file;
@@ -76,11 +101,6 @@ class MG_Price_Override {
         $size_slug = isset($_GET['mg_size']) ? sanitize_text_field($_GET['mg_size']) : '';
 
         // 2. Compute Base + Color Surcharge
-        // mgsc_compute_variant_price($type_key, $color_slug) returns float price (Base + Color)
-        // If color is empty, it returns Base price (assuming no color surcharge for empty color or iterates defaults? 
-        // Let's check mgsc_compute_variant_price implementation:
-        // if color is found, looks for surcharge. if color not found (empty loop), adds 0.
-        // So just type is enough for base price.
         $price = mgsc_compute_variant_price($type_key, $color_slug);
 
         if ($price === null) {
@@ -95,7 +115,28 @@ class MG_Price_Override {
 
         return $price;
     }
+
+    /**
+     * Get the label for a given type key from the global catalog
+     * 
+     * @param string $type_key
+     * @return string|null
+     */
+    private static function get_type_label($type_key) {
+        if (!function_exists('mg_get_global_catalog')) {
+             $catalog_file = dirname(__DIR__) . '/includes/global-catalog.php';
+             if (file_exists($catalog_file)) {
+                 require_once $catalog_file;
+             } else {
+                 return null;
+             }
+        }
+
+        $catalog = mg_get_global_catalog();
+        if (isset($catalog[$type_key]) && isset($catalog[$type_key]['label'])) {
+            return $catalog[$type_key]['label'];
+        }
+        
+        return null; // Fallback: could return ucfirst($type_key) if desired, but better strict
+    }
 }
-
-// Initialize immediately
-
