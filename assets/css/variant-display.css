@@ -20,6 +20,15 @@ html:not(.mg-variant-ready):not(.mg-variant-fallback) .woocommerce-product-detai
     visibility: hidden !important;
 }
 
+/* FORCE show ALL prices when variant system is ready */
+html.mg-variant-ready p.price,
+html.mg-variant-ready .price,
+html.mg-variant-ready .woocommerce-Price-amount,
+html.mg-variant-ready .woocommerce-Price-currencySymbol {
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
 .mg-variant-hidden {
     display: none !important;
 }
