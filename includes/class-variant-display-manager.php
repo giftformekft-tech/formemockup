@@ -104,11 +104,20 @@ class MG_Variant_Display_Manager {
             }
 
             /* Hide base product price during variant load to prevent price flash */
-            html.mg-variant-preload .product .price:not(.single_variation .price),
-            html.mg-variant-preload .product .woocommerce-Price-amount:not(.single_variation .woocommerce-Price-amount),
-            html.mg-variant-preload .product p.price:not(.single_variation p.price) {
+            html.mg-variant-preload .product p.price,
+            html.mg-variant-preload .product .price,
+            html.mg-variant-preload .product .woocommerce-Price-amount,
+            html.mg-variant-preload .product .woocommerce-Price-currencySymbol {
                 opacity: 0 !important;
                 visibility: hidden !important;
+            }
+            
+            /* BUT allow single_variation prices to show */
+            html.mg-variant-preload .single_variation .price,
+            html.mg-variant-preload .single_variation .woocommerce-Price-amount,
+            html.mg-variant-preload .single_variation .woocommerce-Price-currencySymbol {
+                opacity: 1 !important;
+                visibility: visible !important;
             }
         </style>
         <script id="mg-variant-preload-script">
