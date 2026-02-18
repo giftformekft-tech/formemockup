@@ -147,24 +147,29 @@ class MG_Analytics_Price_Fix {
                 return sum + (item.price * item.quantity);
             }, 0);
 
-            // Re-send page_view or specific event to override bad data?
-            // Usually GTAG on cart page sends 'view_cart' or 'begin_checkout'
-            
-            // We'll send a 'view_cart' event with CORRECT data to ensure the latest signal is accurate.
-            window.gtag('event', 'view_cart', {
-                send_to: 'GLA',
-                ecomm_pagetype: 'cart',
-                value: totalValue,
-                items: cartItems.map(function(item) {
-                    return {
-                        id: item.id,
-                        price: item.price,
-                        name: item.name,
-                        quantity: item.quantity,
-                        google_business_vertical: 'retail'
-                    };
-                })
-            });
+            // Wait a moment to ensure other plugins have fired their (potentially wrong) events
+            setTimeout(function() {
+                // clear previous ecommerce object to prevent merging
+                if (typeof window.dataLayer !== 'undefined') {
+                    window.dataLayer.push({ ecommerce: null });
+                }
+
+                // We'll send a 'view_cart' event with CORRECT data to ensure the latest signal is accurate.
+                window.gtag('event', 'view_cart', {
+                    send_to: 'GLA',
+                    ecomm_pagetype: 'cart',
+                    value: totalValue,
+                    items: cartItems.map(function(item) {
+                        return {
+                            id: item.id,
+                            price: item.price,
+                            name: item.name,
+                            quantity: item.quantity,
+                            google_business_vertical: 'retail'
+                        };
+                    })
+                });
+            }, 500); // 500ms delay to override others
             
             // Also hacky fix for 'page_view' if it was already sent with bad data? 
             // We can't undo a sent event, but sending a specialized ecommerce event is the standard way to track funnels.
