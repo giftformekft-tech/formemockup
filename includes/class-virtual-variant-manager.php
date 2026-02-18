@@ -17,7 +17,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_get_cart_item_from_session', array(__CLASS__, 'restore_cart_item'), 10, 2);
         add_filter('woocommerce_get_item_data', array(__CLASS__, 'render_cart_item_data'), 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', array(__CLASS__, 'add_order_item_meta'), 10, 4);
-        add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_pricing'), 5, 1);
+        add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_pricing'), 20, 1);
         add_filter('woocommerce_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 999, 3);
         add_filter('woocommerce_blocks_cart_item_image', array(__CLASS__, 'filter_cart_thumbnail'), 999, 3);
         add_filter('woocommerce_blocks_cart_item_thumbnail', array(__CLASS__, 'filter_cart_thumbnail'), 999, 3);

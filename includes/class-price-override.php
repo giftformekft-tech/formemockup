@@ -23,10 +23,6 @@ class MG_Price_Override {
         add_filter('woocommerce_product_variation_get_price', array(__CLASS__, 'override_price'), 99, 2);
         add_filter('woocommerce_product_variation_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
 
-        // Fix for external plugins (e.g. Google Listings & Ads) fetching fresh product objects
-        add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
-        add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
-
         // Hook into name filter for Google Feed / Structured Data
         add_filter('woocommerce_product_get_name', array(__CLASS__, 'override_name'), 99, 2);
     }
@@ -142,53 +138,4 @@ class MG_Price_Override {
         return null; // Fallback: could return ucfirst($type_key) if desired, but better strict
     }
 
-    /**
-     * Override price if this product is currently in the cart with a modified price.
-     * This helps external plugins (like Google Listings & Ads) that fetch a fresh product object
-     * instead of using the cart item data directly.
-     */
-    public static function override_cart_item_price($price, $product) {
-        if (is_admin() || !function_exists('is_cart') || !function_exists('is_checkout')) {
-            return $price;
-        }
-
-        // Only run on cart or checkout pages to avoid overhead
-        if (!is_cart() && !is_checkout()) {
-            return $price;
-        }
-
-        if (!isset(WC()->cart)) {
-            return $price;
-        }
-
-        // Check if this product ID is in the cart and has a price override
-        // Note: This is imperfect if multiple items have same ID but different options.
-        // But for GTAG purposes, usually it iterates the cart items specifically.
-        // However, if it calls wc_get_product($id), it has no context of WHICH cart item it is.
-        // So we can only return *one* price.
-        
-        // Strategy: If there's only one item with this ID in cart, return its price.
-        // If multiple, this is ambiguous, but likely the first one is better than base price.
-        
-        $product_id = $product->get_id();
-        foreach (WC()->cart->get_cart() as $cart_item) {
-            if ($cart_item['product_id'] == $product_id || $cart_item['variation_id'] == $product_id) {
-                if (isset($cart_item['mg_custom_fields_base_price']) && is_numeric($cart_item['mg_custom_fields_base_price'])) {
-                    // Start with the calculated price from Virtual Variant Manager or similar
-                    // Wait, mg_custom_fields_base_price was the *display* override we removed.
-                    // But typically our logic sets the PRICE on the object. 
-                    // Let's check if the cart item has a price set that differs from product base.
-                    
-                    if (isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
-                         $cart_price = $cart_item['data']->get_price();
-                         if ($cart_price !== $price) {
-                             return $cart_price;
-                         }
-                    }
-                }
-            }
-        }
-        
-        return $price;
-    }
 }
