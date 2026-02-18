@@ -28,6 +28,7 @@ class MG_Settings_Page {
                 <a href="<?php echo admin_url('admin.php?page=mockup-generator-settings&tab=images'); ?>" class="nav-tab <?php echo $active_tab === 'images' ? 'nav-tab-active' : ''; ?>">🖼️ Képoptimalizálás</a>
                 <a href="<?php echo admin_url('admin.php?page=mockup-generator-settings&tab=frontend'); ?>" class="nav-tab <?php echo $active_tab === 'frontend' ? 'nav-tab-active' : ''; ?>">🧩 Termékoldali elemek</a>
                 <a href="<?php echo admin_url('admin.php?page=mockup-generator-settings&tab=feeds'); ?>" class="nav-tab <?php echo $active_tab === 'feeds' ? 'nav-tab-active' : ''; ?>">📢 Export & Feedek</a>
+                <a href="<?php echo admin_url('admin.php?page=mockup-generator-settings&tab=emails'); ?>" class="nav-tab <?php echo $active_tab === 'emails' ? 'nav-tab-active' : ''; ?>">📧 E-mailek</a>
             </nav>
 
             <div class="tab-content" style="margin-top: 20px;">
@@ -44,6 +45,9 @@ class MG_Settings_Page {
                         break;
                     case 'feeds':
                         self::render_feeds_tab();
+                        break;
+                    case 'emails':
+                        self::render_emails_tab();
                         break;
                     default:
                         self::render_products_tab();
@@ -210,6 +214,19 @@ class MG_Settings_Page {
                     'manual_list' => sanitize_textarea_field($input['manual_list'] ?? ''),
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
+            }
+            }
+        }
+
+        // Emails Tab Saves
+        if ($tab === 'emails') {
+            if (isset($_POST['mg_emails_nonce']) && wp_verify_nonce($_POST['mg_emails_nonce'], 'mg_save_emails')) {
+                $terms_url = isset($_POST['mg_terms_pdf_url']) ? esc_url_raw($_POST['mg_terms_pdf_url']) : '';
+                $withdrawal_url = isset($_POST['mg_withdrawal_pdf_url']) ? esc_url_raw($_POST['mg_withdrawal_pdf_url']) : '';
+
+                update_option('mg_terms_pdf_url', $terms_url);
+                update_option('mg_withdrawal_pdf_url', $withdrawal_url);
+                echo '<div class="notice notice-success is-dismissible"><p>E-mail beállítások elmentve.</p></div>';
             }
         }
     }
@@ -772,5 +789,33 @@ class MG_Settings_Page {
         </table>
         <?php
         return (string) ob_get_clean();
+    }
+    public static function render_emails_tab() {
+        $terms_url = get_option('mg_terms_pdf_url', '');
+        $withdrawal_url = get_option('mg_withdrawal_pdf_url', '');
+        ?>
+        <h2>E-mail Lábléc Kiegészítések</h2>
+        <p>A "Megrendelés Fizetés folyamatban" (On-hold) levél láblécében megjelenő PDF dokumentumok linkjei.</p>
+        <form method="post">
+            <?php wp_nonce_field('mg_save_emails', 'mg_emails_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">ÁSZF PDF URL</th>
+                    <td>
+                        <input type="url" name="mg_terms_pdf_url" value="<?php echo esc_attr($terms_url); ?>" class="large-text" placeholder="https://..." />
+                        <p class="description">Link az Általános Szerződési Feltételek PDF-re.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Elállási Nyilatkozat PDF URL</th>
+                    <td>
+                        <input type="url" name="mg_withdrawal_pdf_url" value="<?php echo esc_attr($withdrawal_url); ?>" class="large-text" placeholder="https://..." />
+                        <p class="description">Link a letölthető elállási nyilatkozat PDF-re.</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('E-mail beállítások mentése'); ?>
+        </form>
+        <?php
     }
 }
