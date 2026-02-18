@@ -6,43 +6,45 @@ if (!defined('ABSPATH')) {
 /**
  * Class MG_Price_Override
  * 
- * Intercepts product price and name on the frontend if 'mg_type' URL parameter is present.
- * This ensures Google Merchant Center bots see the correct price and title for the specific virtual variant.
+ * Intercepts product price and name on the frontend.
+ * 1. If 'mg_type' URL parameter is present (product page), overrides price for Google bots.
+ * 2. On cart/checkout pages, ensures external plugins (like GLA) see the correct cart item price.
  */
 class MG_Price_Override {
 
+    /** Recursion guard for cart price override */
+    private static $in_cart_override = false;
+
     public static function init() {
-        // Only run on frontend and if mg_type is present
+        // Only run on frontend
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
         }
 
-        // Hook into price filters
-        add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_price'), 99, 2);
-        add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
-        add_filter('woocommerce_product_variation_get_price', array(__CLASS__, 'override_price'), 99, 2);
-        add_filter('woocommerce_product_variation_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
+        // Product page price override (when mg_type URL parameter is present)
+        if (isset($_GET['mg_type'])) {
+            add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_price'), 99, 2);
+            add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
+            add_filter('woocommerce_product_variation_get_price', array(__CLASS__, 'override_price'), 99, 2);
+            add_filter('woocommerce_product_variation_get_regular_price', array(__CLASS__, 'override_price'), 99, 2);
+            add_filter('woocommerce_product_get_name', array(__CLASS__, 'override_name'), 99, 2);
+        }
 
-        // Hook into name filter for Google Feed / Structured Data
-        add_filter('woocommerce_product_get_name', array(__CLASS__, 'override_name'), 99, 2);
+        // Cart/checkout price override for external plugins (e.g. Google Listings & Ads)
+        // Priority 100 to run after other price filters
+        add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
+        add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
     }
 
     /**
-     * Override the price based on URL parameters
-     * 
-     * @param string|float $price The current price
-     * @param WC_Product $product The product object
-     * @return string|float Modified price
+     * Override the price based on URL parameters (product page only)
      */
     public static function override_price($price, $product) {
-        // Double check simply to be safe, though init() guards this too.
         if (is_admin() || !isset($_GET['mg_type'])) {
             return $price;
         }
 
-        // We only want to override if we can calculate a valid new price
         $new_price = self::calculate_price_from_url();
-
         if ($new_price !== null && $new_price > 0) {
             return $new_price;
         }
@@ -51,12 +53,63 @@ class MG_Price_Override {
     }
 
     /**
+     * Override price on cart/checkout pages using stored cart item data.
+     * Uses mg_custom_fields_base_price (which contains the FULL calculated price)
+     * directly from the cart array, avoiding any filter recursion.
+     */
+    public static function override_cart_item_price($price, $product) {
+        // Recursion guard
+        if (self::$in_cart_override) {
+            return $price;
+        }
+
+        // Only on frontend
+        if (is_admin()) {
+            return $price;
+        }
+
+        // Only on cart/checkout pages
+        if (!function_exists('is_cart') || !function_exists('is_checkout')) {
+            return $price;
+        }
+        if (!is_cart() && !is_checkout()) {
+            return $price;
+        }
+
+        // Need cart to be available
+        if (!WC()->cart) {
+            return $price;
+        }
+
+        self::$in_cart_override = true;
+
+        $product_id = $product->get_id();
+        
+        // Access cart_contents directly to avoid triggering get_cart() hooks
+        $cart_contents = WC()->cart->cart_contents;
+        
+        foreach ($cart_contents as $cart_item) {
+            $item_product_id = isset($cart_item['product_id']) ? $cart_item['product_id'] : 0;
+            $item_variation_id = isset($cart_item['variation_id']) ? $cart_item['variation_id'] : 0;
+            
+            if ($item_product_id == $product_id || $item_variation_id == $product_id) {
+                // Read the stored price directly (no filter call, just array access)
+                if (isset($cart_item['mg_custom_fields_base_price']) && is_numeric($cart_item['mg_custom_fields_base_price'])) {
+                    $stored_price = floatval($cart_item['mg_custom_fields_base_price']);
+                    if ($stored_price > 0) {
+                        self::$in_cart_override = false;
+                        return $stored_price;
+                    }
+                }
+            }
+        }
+
+        self::$in_cart_override = false;
+        return $price;
+    }
+
+    /**
      * Override the product name based on URL parameters
-     * Appends the variant type label to the product name.
-     * 
-     * @param string $name The current product name
-     * @param WC_Product $product The product object
-     * @return string Modified name
      */
     public static function override_name($name, $product) {
         if (is_admin() || !isset($_GET['mg_type'])) {
@@ -67,7 +120,6 @@ class MG_Price_Override {
         $label = self::get_type_label($type_key);
 
         if ($label) {
-            // Avoid duplicate appending if theme or other plugins already added it
             if (strpos($name, $label) === false) {
                 return $name . ' - ' . $label;
             }
@@ -77,13 +129,9 @@ class MG_Price_Override {
     }
 
     /**
-     * Calculate price based strictly on URL parameters (mg_type, mg_color, mg_size)
-     * using the global catalog / helper functions.
-     * 
-     * @return float|null The calculated price or null if calculation failed/invalid
+     * Calculate price based strictly on URL parameters
      */
     private static function calculate_price_from_url() {
-        // Dependencies
         if (!function_exists('mgsc_compute_variant_price') || !function_exists('mgsc_get_size_surcharge')) {
             $surcharge_file = dirname(__DIR__) . '/includes/variant-surcharge-applier.php';
             if (file_exists($surcharge_file)) {
@@ -93,19 +141,15 @@ class MG_Price_Override {
             }
         }
         
-        // 1. Get parameters
         $type_key = sanitize_text_field($_GET['mg_type']);
         $color_slug = isset($_GET['mg_color']) ? sanitize_text_field($_GET['mg_color']) : '';
         $size_slug = isset($_GET['mg_size']) ? sanitize_text_field($_GET['mg_size']) : '';
 
-        // 2. Compute Base + Color Surcharge
         $price = mgsc_compute_variant_price($type_key, $color_slug);
-
         if ($price === null) {
-            return null; // Type not found
+            return null;
         }
 
-        // 3. Add Size Surcharge if present
         if ($size_slug) {
             $size_surcharge = mgsc_get_size_surcharge($type_key, $size_slug);
             $price += $size_surcharge;
@@ -116,9 +160,6 @@ class MG_Price_Override {
 
     /**
      * Get the label for a given type key from the global catalog
-     * 
-     * @param string $type_key
-     * @return string|null
      */
     private static function get_type_label($type_key) {
         if (!function_exists('mg_get_global_catalog')) {
@@ -135,7 +176,6 @@ class MG_Price_Override {
             return $catalog[$type_key]['label'];
         }
         
-        return null; // Fallback: could return ucfirst($type_key) if desired, but better strict
+        return null;
     }
-
 }
