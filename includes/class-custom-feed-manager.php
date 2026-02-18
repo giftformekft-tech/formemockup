@@ -377,13 +377,26 @@ class MG_Custom_Feed_Manager {
             $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
             
             // Categories logic (simple)
+            // Product Type: Ruházat > terméktípus > főkategória > alkategória
+            $product_type_parts = array('Ruházat', $type_label);
             $terms = get_the_terms($product_id, 'product_cat');
             if ($terms && !is_wp_error($terms)) {
-                $cat_names = wp_list_pluck($terms, 'name');
-                if (!empty($cat_names)) {
-                    $output .= '<g:product_type>' . self::xml_sanitize(implode(' > ', $cat_names)) . '</g:product_type>' . PHP_EOL;
+                $term = reset($terms);
+                foreach ($terms as $t) {
+                    if ($t->parent != 0) {
+                        $term = $t;
+                        break;
+                    }
+                }
+                if ($term->parent != 0) {
+                    $parent = get_term($term->parent, 'product_cat');
+                    $product_type_parts[] = $parent->name;
+                    $product_type_parts[] = $term->name;
+                } else {
+                    $product_type_parts[] = $term->name;
                 }
             }
+            $output .= '<g:product_type>' . self::xml_sanitize(implode(' > ', $product_type_parts)) . '</g:product_type>' . PHP_EOL;
 
             // New Mandatory Fields
             $output .= '<g:identifier_exists>no</g:identifier_exists>' . PHP_EOL;

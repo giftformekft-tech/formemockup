@@ -230,33 +230,22 @@ class MG_Google_Merchant_Feed {
             $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
             $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL; // To group variants together
-            
-            // Custom Label 0 for Type slug (useful for filtering campaigns)
-            $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+
+            // Product Type: Ruházat > terméktípus > főkategória > alkategória
+            $product_type_parts = array('Ruházat', $type_label);
 
             // Categories
             $terms = get_the_terms($product_id, 'product_cat');
+            $main_cat = '';
+            $sub_cat = '';
             if ($terms && !is_wp_error($terms)) {
-                $main_cat = '';
-                $sub_cat = '';
-                
-                // Sort terms so parents come first? No, we need logic.
-                // Let's find the deepest term or simply take the first one and its parent.
-                // Better approach: Find a term that has a parent, or allow multiple.
-                // Simple logic: Take the first term. If it has a parent, Parent -> Label 1, Term -> Label 2.
-                // If no parent, Term -> Label 1.
-                
                 $term = reset($terms);
-                
-                // Ideally, we want the most specific category. Yoast Primary Category would be best but standard WC:
-                // Let's try to find a child term first
                 foreach ($terms as $t) {
                     if ($t->parent != 0) {
                         $term = $t;
                         break;
                     }
                 }
-
                 if ($term->parent != 0) {
                     $parent = get_term($term->parent, 'product_cat');
                     $main_cat = $parent->name;
@@ -264,13 +253,25 @@ class MG_Google_Merchant_Feed {
                 } else {
                     $main_cat = $term->name;
                 }
+            }
 
-                if ($main_cat) {
-                    $output .= '<g:custom_label_1>' . self::xml_sanitize($main_cat) . '</g:custom_label_1>' . PHP_EOL;
-                }
-                if ($sub_cat) {
-                    $output .= '<g:custom_label_2>' . self::xml_sanitize($sub_cat) . '</g:custom_label_2>' . PHP_EOL;
-                }
+            if ($main_cat) {
+                $product_type_parts[] = $main_cat;
+            }
+            if ($sub_cat) {
+                $product_type_parts[] = $sub_cat;
+            }
+
+            $output .= '<g:product_type>' . self::xml_sanitize(implode(' > ', $product_type_parts)) . '</g:product_type>' . PHP_EOL;
+            
+            // Custom Label 0 for Type slug (useful for filtering campaigns)
+            $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+
+            if ($main_cat) {
+                $output .= '<g:custom_label_1>' . self::xml_sanitize($main_cat) . '</g:custom_label_1>' . PHP_EOL;
+            }
+            if ($sub_cat) {
+                $output .= '<g:custom_label_2>' . self::xml_sanitize($sub_cat) . '</g:custom_label_2>' . PHP_EOL;
             }
 
             // New Mandatory Fields
