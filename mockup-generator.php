@@ -51,6 +51,7 @@ add_action('plugins_loaded', function(){
         'admin/class-temu-export-page.php',
         'includes/class-google-merchant-feed.php',
         'includes/class-facebook-catalog-feed.php',
+        'includes/class-custom-feed-manager.php',
         'includes/class-product-structured-data.php',
         'includes/class-analytics-price-fix.php',
         'includes/class-server-side-price.php',
@@ -159,6 +160,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Facebook_Catalog_Feed')) {
         MG_Facebook_Catalog_Feed::init();
+    }
+    if (class_exists('MG_Custom_Feed_Manager')) {
+        MG_Custom_Feed_Manager::init();
     }
     if (class_exists('MG_Product_Structured_Data')) {
         MG_Product_Structured_Data::init();
