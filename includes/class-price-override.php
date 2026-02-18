@@ -34,6 +34,9 @@ class MG_Price_Override {
         // Priority 100 to run after other price filters
         add_filter('woocommerce_product_get_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
         add_filter('woocommerce_product_get_regular_price', array(__CLASS__, 'override_cart_item_price'), 100, 2);
+
+        // Cart/checkout name override for external plugins
+        add_filter('woocommerce_product_get_name', array(__CLASS__, 'override_cart_item_name'), 100, 2);
     }
 
     /**
@@ -106,6 +109,70 @@ class MG_Price_Override {
 
         self::$in_cart_override = false;
         return $price;
+    }
+
+    /**
+     * Override product name on cart/checkout pages by appending the product type label.
+     * This ensures external plugins (like GLA) see the correct variant name.
+     */
+    public static function override_cart_item_name($name, $product) {
+        // Recursion guard (reuse same flag)
+        if (self::$in_cart_override) {
+            return $name;
+        }
+
+        if (is_admin()) {
+            return $name;
+        }
+
+        if (!function_exists('is_cart') || !function_exists('is_checkout')) {
+            return $name;
+        }
+        if (!is_cart() && !is_checkout()) {
+            return $name;
+        }
+
+        if (!WC()->cart) {
+            return $name;
+        }
+
+        self::$in_cart_override = true;
+
+        $product_id = $product->get_id();
+        $cart_contents = WC()->cart->cart_contents;
+
+        foreach ($cart_contents as $cart_item) {
+            $item_product_id = isset($cart_item['product_id']) ? $cart_item['product_id'] : 0;
+            $item_variation_id = isset($cart_item['variation_id']) ? $cart_item['variation_id'] : 0;
+
+            if ($item_product_id == $product_id || $item_variation_id == $product_id) {
+                if (!empty($cart_item['mg_product_type'])) {
+                    $type_slug = sanitize_title($cart_item['mg_product_type']);
+                    $type_label = self::get_type_label_from_catalog($type_slug);
+                    if ($type_label && strpos($name, ' - ' . $type_label) === false) {
+                        self::$in_cart_override = false;
+                        return $name . ' - ' . $type_label;
+                    }
+                }
+            }
+        }
+
+        self::$in_cart_override = false;
+        return $name;
+    }
+
+    /**
+     * Get type label from catalog
+     */
+    private static function get_type_label_from_catalog($type_slug) {
+        if (!class_exists('MG_Variant_Display_Manager')) {
+            return ucfirst(str_replace('-', ' ', $type_slug));
+        }
+        $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        if (isset($catalog[$type_slug]['label'])) {
+            return $catalog[$type_slug]['label'];
+        }
+        return ucfirst(str_replace('-', ' ', $type_slug));
     }
 
     /**

@@ -115,7 +115,17 @@ class MG_Analytics_Price_Fix {
                 // if it's a fresh page load and our calculations happened in before_calculate_totals.
                 // Wait, before_calculate_totals sets $product->set_price(). So $product->get_price() IS correct.
                 
-                $variant_name = $product->get_name(); // Fallback
+                $variant_name = $product->get_name();
+                
+                // Append type label to name for tracking
+                if (!empty($item['mg_product_type'])) {
+                    $type_slug = sanitize_title($item['mg_product_type']);
+                    $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+                    $type_label = isset($catalog[$type_slug]['label']) ? $catalog[$type_slug]['label'] : ucfirst(str_replace('-', ' ', $type_slug));
+                    if ($type_label && strpos($variant_name, ' - ' . $type_label) === false) {
+                        $variant_name .= ' - ' . $type_label;
+                    }
+                }
                 
                 $id = $product->get_sku() ?: 'ID_' . $product->get_id();
                 // If it's a virtual variant, maybe append type info to ID?
@@ -127,7 +137,7 @@ class MG_Analytics_Price_Fix {
                     'id' => $id,
                     'price' => floatval($price),
                     'quantity' => $item['quantity'],
-                    'name' => $product->get_name(),
+                    'name' => $variant_name,
                 );
             }
         }

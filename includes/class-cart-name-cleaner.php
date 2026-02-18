@@ -24,6 +24,16 @@ class MG_Cart_Name_Cleaner {
         if (!$clean_name) {
             return $product_name;
         }
+
+        // Append product type label if available
+        $type_label = self::get_type_label_from_cart_item($cart_item);
+        if ($type_label) {
+            // Avoid duplicate appending
+            if (strpos($clean_name, ' - ' . $type_label) === false) {
+                $clean_name .= ' - ' . $type_label;
+            }
+        }
+
         $product = $cart_item['data'];
         $permalink = apply_filters(
             'woocommerce_cart_item_permalink',
@@ -35,6 +45,31 @@ class MG_Cart_Name_Cleaner {
             return sprintf('<a href="%s">%s</a>', esc_url($permalink), esc_html($clean_name));
         }
         return esc_html($clean_name);
+    }
+
+    /**
+     * Get the type label from the cart item's mg_product_type field
+     */
+    private static function get_type_label_from_cart_item($cart_item) {
+        if (empty($cart_item['mg_product_type'])) {
+            return '';
+        }
+
+        $type_slug = sanitize_title($cart_item['mg_product_type']);
+        if ($type_slug === '') {
+            return '';
+        }
+
+        // Try to get label from catalog
+        if (class_exists('MG_Variant_Display_Manager')) {
+            $catalog = MG_Variant_Display_Manager::get_catalog_index();
+            if (isset($catalog[$type_slug]['label'])) {
+                return $catalog[$type_slug]['label'];
+            }
+        }
+
+        // Fallback: use slug as label
+        return ucfirst(str_replace('-', ' ', $type_slug));
     }
 
     private static function strip_suffix($name) {
@@ -45,42 +80,5 @@ class MG_Cart_Name_Cleaner {
             return trim(substr($name, 0, -strlen(self::BULK_SUFFIX)));
         }
         return $name;
-    }
-
-    private static function strip_suffix_from_html($html) {
-        if (!$html || !is_string($html)) {
-            return $html;
-        }
-        $suffix = preg_quote(self::BULK_SUFFIX, '/');
-        $html = preg_replace('/' . $suffix . '(?=\\s*<)/u', '', $html);
-        $html = preg_replace('/' . $suffix . '\\s*$/u', '', $html);
-        return $html;
-    }
-
-    private static function strip_cart_item_description($product_name, $cart_item, $cart_item_key, $clean_name) {
-        if (!$product_name || !$clean_name) {
-            return $product_name;
-        }
-        $stripped = trim(wp_strip_all_tags($product_name));
-        if ($stripped === $clean_name) {
-            return $product_name;
-        }
-        if (strpos($stripped, $clean_name) !== 0) {
-            return $product_name;
-        }
-        if (!isset($cart_item['data']) || !($cart_item['data'] instanceof WC_Product)) {
-            return $product_name;
-        }
-        $product = $cart_item['data'];
-        $permalink = apply_filters(
-            'woocommerce_cart_item_permalink',
-            $product->is_visible() ? $product->get_permalink($cart_item) : '',
-            $cart_item,
-            $cart_item_key
-        );
-        if ($permalink) {
-            return sprintf('<a href="%s">%s</a>', esc_url($permalink), esc_html($clean_name));
-        }
-        return esc_html($clean_name);
     }
 }
