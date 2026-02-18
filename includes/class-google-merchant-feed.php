@@ -273,6 +273,20 @@ class MG_Google_Merchant_Feed {
                 }
             }
 
+            // New Mandatory Fields
+            $output .= '<g:identifier_exists>no</g:identifier_exists>' . PHP_EOL;
+            $output .= '<g:age_group>adult</g:age_group>' . PHP_EOL;
+            
+            // Gender logic
+            $gender = 'unisex';
+            $concat_name = $g_title . ' ' . $type_slug;
+            if (stripos($concat_name, 'férfi') !== false || stripos($concat_name, 'ferfi') !== false) {
+                $gender = 'male';
+            } elseif (stripos($concat_name, 'női') !== false || stripos($concat_name, 'noi') !== false) {
+                $gender = 'female';
+            }
+            $output .= '<g:gender>' . $gender . '</g:gender>' . PHP_EOL;
+
             $output .= '</item>' . PHP_EOL;
         }
         return $output;
