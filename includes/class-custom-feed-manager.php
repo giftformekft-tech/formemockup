@@ -388,7 +388,16 @@ class MG_Custom_Feed_Manager {
             // New Mandatory Fields
             $output .= '<g:identifier_exists>no</g:identifier_exists>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
-            $output .= '<g:age_group>adult</g:age_group>' . PHP_EOL;
+            
+            // Age Group Logic
+            $age_group = 'adult';
+            $concat_name_check = $g_title . ' ' . $type_slug;
+            if (stripos($concat_name_check, 'baba') !== false) {
+                $age_group = 'infant'; // infant or toddler
+            } elseif (stripos($concat_name_check, 'gyerek') !== false) {
+                $age_group = 'kids';
+            }
+            $output .= '<g:age_group>' . $age_group . '</g:age_group>' . PHP_EOL;
             
             // Gender logic
             $gender = 'unisex';
