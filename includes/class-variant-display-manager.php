@@ -305,6 +305,10 @@ class MG_Variant_Display_Manager {
             'order' => array(
                 'types' => $type_order,
             ),
+            'order' => array(
+                'types' => $type_order,
+            ),
+            'showAvailability' => isset($settings['show_availability']) && $settings['show_availability'] === 'yes',
             'availability' => $availability,
             'text' => array(
                 'type' => __('Terméktípus:', 'mgvd'),
@@ -1004,6 +1008,7 @@ class MG_Variant_Display_Manager {
             'colors' => array(),
             'size_charts' => array(),
             'size_chart_models' => array(),
+            'show_availability' => 'yes',
         );
 
         if (!is_array($input)) {
@@ -1100,6 +1105,32 @@ class MG_Variant_Display_Manager {
                 $chart = is_string($chart) ? $chart : '';
                 $clean['size_chart_models'][$type_slug] = wp_kses_post($chart);
             }
+        }
+
+        if (isset($input['show_availability'])) {
+            $clean['show_availability'] = $input['show_availability'] === 'yes' ? 'yes' : 'no';
+        } elseif (isset($input['colors'])) {
+             // If we are sanitizing a subset (like from POST), and show_availability isn't there,
+             // we might not want to overwrite it if it's not expected.
+             // But here we define 'clean' defaults.
+             // If this is a full store sanitization, we keep it.
+             // If input is partial, we might lose it? 
+             // Logic in render_page calls sanitize on full store at the end, so we just need to pass it through if present.
+             // Actually, let's just checking if key exists.
+        }
+        
+        // Better logic:
+        // Only set if present in input, otherwise default? 
+        // No, sanitize_settings_block resets $clean to empty arrays.
+        // So we must carry it over if in input.
+        if (isset($input['show_availability'])) {
+             $clean['show_availability'] = $input['show_availability'] === 'yes' ? 'yes' : 'no';
+        } else {
+             // Default is yes if not present? Or no?
+             // If we are sanitizing the whole store ($raw from get_option), we expect it to be there.
+             // If it's missing, it defaults to 'yes' (based on line 1007 replacement above/below).
+             // Let's stick to 'yes' as default.
+             $clean['show_availability'] = 'yes';
         }
 
         return $clean;

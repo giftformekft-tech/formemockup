@@ -87,6 +87,10 @@ class MG_Variant_Display_Page {
                 $input = isset($_POST['variant_display']) ? wp_unslash($_POST['variant_display']) : array();
                 $sanitized = MG_Variant_Display_Manager::sanitize_settings_block($input, array($posted_type => $catalog[$posted_type]));
                 $store = self::apply_type_settings($store, $posted_type, $sanitized);
+                // Manually merge global settings which are not type-specific
+                if (isset($sanitized['show_availability'])) {
+                    $store['show_availability'] = $sanitized['show_availability'];
+                }
                 $store = MG_Variant_Display_Manager::sanitize_settings_block($store, $catalog);
                 update_option('mg_variant_display', $store);
                 $synced_colors = isset($store['colors'][$posted_type]) ? $store['colors'][$posted_type] : array();
@@ -131,6 +135,18 @@ class MG_Variant_Display_Page {
         wp_nonce_field('mg_variant_display_save', 'mg_variant_display_nonce');
         echo '<input type="hidden" name="type_slug" value="' . esc_attr($selected_type) . '" />';
         echo '<div class="mgvd-type-grid">';
+        
+        // Global Settings Section
+        echo '<div class="mgvd-global-settings" style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; margin-bottom: 20px; box-shadow: 0 1px 1px rgba(0,0,0,.04);">';
+        echo '<h2 style="margin-top:0;">' . esc_html__('Általános beállítások', 'mgvd') . '</h2>';
+        $show_avail = !isset($store['show_availability']) || $store['show_availability'] === 'yes';
+        echo '<p>';
+        echo '<label for="mgvd-show-availability">';
+        echo '<input type="checkbox" id="mgvd-show-availability" name="variant_display[show_availability]" value="yes" ' . checked($show_avail, true, false) . ' /> ';
+        echo esc_html__('Készletinformáció (pl. "Raktáron") megjelenítése a termékoldalon', 'mgvd');
+        echo '</label>';
+        echo '</p>';
+        echo '</div>';
 
         echo '<section class="mgvd-type-card" data-type="' . esc_attr($selected_type) . '">';
         echo '<div class="mgvd-type-card__header">';

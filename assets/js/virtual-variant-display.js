@@ -225,11 +225,13 @@
         sizeSection.append(sizeLabel);
         this.$sizeOptions = $('<div class="mg-variant-options" role="radiogroup" />');
         sizeSection.append(this.$sizeOptions);
-        this.$availability = $('<div class="mg-variant-availability" />');
-        this.$availability.append($('<span class="mg-variant-availability__label" />').text(this.getText('availability', 'Elérhetőség') + ': '));
-        this.$availabilityValue = $('<span class="mg-variant-availability__value" />');
-        this.$availability.append(this.$availabilityValue);
-        sizeSection.append(this.$availability);
+        if (this.config.showAvailability) {
+            this.$availability = $('<div class="mg-variant-availability" />');
+            this.$availability.append($('<span class="mg-variant-availability__label" />').text(this.getText('availability', 'Elérhetőség') + ': '));
+            this.$availabilityValue = $('<span class="mg-variant-availability__value" />');
+            this.$availability.append(this.$availabilityValue);
+            sizeSection.append(this.$availability);
+        }
         wrapper.append(sizeSection);
 
         this.$wrapper.append(wrapper);
