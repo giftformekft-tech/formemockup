@@ -29,10 +29,15 @@ class MG_Cart_Pricing {
         if (!function_exists('is_cart') || !is_cart()) {
             return $price;
         }
+
+        // Removed base price override to ensure the actual effective price is shown (Google Merchant compatibility)
+        /*
         $base_price = self::get_cart_item_base_price($cart_item);
         if ($base_price !== null) {
             $price = wc_price($base_price);
         }
+        */
+        
         $label = esc_html__('Egység ár', 'mockup-generator');
         return sprintf(
             '<span class="mg-cart-price"><span class="mg-cart-price__label">%s</span><span class="mg-cart-price__value">%s</span></span>',
@@ -42,11 +47,8 @@ class MG_Cart_Pricing {
     }
 
     public static function format_blocks_cart_item_price($price, $cart_item, $cart_item_key) {
-        $base_price = self::get_cart_item_base_price($cart_item);
-        if ($base_price === null) {
-            return $price;
-        }
-        return wc_price($base_price);
+        // Removed base price override
+        return $price;
     }
 
     public static function format_cart_item_subtotal($subtotal, $cart_item, $cart_item_key) {
