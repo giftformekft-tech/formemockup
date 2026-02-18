@@ -401,6 +401,34 @@ class MG_Custom_Feed_Manager {
             }
             $output .= '<g:gender>' . $gender . '</g:gender>' . PHP_EOL;
 
+            // Default Color and Size
+            $default_color_slug = '';
+            $default_size_label = '';
+
+            // Color
+            if (!empty($type_data['color_order'])) {
+                $default_color_slug = reset($type_data['color_order']);
+            } elseif (!empty($type_data['colors'])) {
+                $keys = array_keys($type_data['colors']);
+                $default_color_slug = reset($keys);
+            }
+
+            // Size
+            if ($default_color_slug && !empty($type_data['colors'][$default_color_slug]['sizes'])) {
+                $default_size_label = reset($type_data['colors'][$default_color_slug]['sizes']);
+            } elseif (!empty($type_data['size_order'])) {
+                 $default_size_label = reset($type_data['size_order']);
+            }
+
+            if ($default_color_slug) {
+                 // Get label if possible
+                 $color_label = isset($type_data['colors'][$default_color_slug]['label']) ? $type_data['colors'][$default_color_slug]['label'] : $default_color_slug;
+                 $output .= '<g:color>' . self::xml_sanitize($color_label) . '</g:color>' . PHP_EOL;
+            }
+            if ($default_size_label) {
+                $output .= '<g:size>' . self::xml_sanitize($default_size_label) . '</g:size>' . PHP_EOL;
+            }
+
             $output .= '</item>' . PHP_EOL;
         }
 
