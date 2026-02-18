@@ -215,7 +215,6 @@ class MG_Settings_Page {
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
             }
-            }
         }
 
         // Emails Tab Saves
