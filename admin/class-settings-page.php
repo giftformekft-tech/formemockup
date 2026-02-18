@@ -205,6 +205,9 @@ class MG_Settings_Page {
                     'holidays' => $holidays,
                     'cutoff_time' => $cutoff_time,
                     'cutoff_extra_days' => $cutoff_extra_days,
+                    'mode' => sanitize_text_field($input['mode'] ?? 'automatic'),
+                    'manual_title' => sanitize_text_field($input['manual_title'] ?? ''),
+                    'manual_list' => sanitize_textarea_field($input['manual_list'] ?? ''),
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
             }
@@ -352,7 +355,7 @@ class MG_Settings_Page {
             $description_variables_lines[] = $slug . ' | ' . $text;
         }
         $description_variables_text = implode("\n", $description_variables_lines);
-        $delivery_settings = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::get_settings() : array('enabled' => true, 'normal_days' => 3, 'express_days' => 1, 'normal_label' => '', 'express_label' => '', 'cheapest_label' => '', 'cheapest_text' => '', 'icon_id' => 0, 'icon_url' => '', 'holidays' => array(), 'cutoff_time' => '', 'cutoff_extra_days' => 1);
+        $delivery_settings = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::get_settings() : array('enabled' => true, 'normal_days' => 3, 'express_days' => 1, 'normal_label' => '', 'express_label' => '', 'cheapest_label' => '', 'cheapest_text' => '', 'icon_id' => 0, 'icon_url' => '', 'holidays' => array(), 'cutoff_time' => '', 'cutoff_extra_days' => 1, 'mode' => 'automatic', 'manual_title' => '', 'manual_list' => '');
         $delivery_icon_url = $delivery_settings['icon_url'] ?? '';
         $delivery_icon_id = intval($delivery_settings['icon_id'] ?? 0);
         if ($delivery_icon_id > 0 && function_exists('wp_get_attachment_url')) {
@@ -433,6 +436,16 @@ class MG_Settings_Page {
                     <td><label><input type="checkbox" name="mg_delivery_estimate[enabled]" value="1" <?php checked(!empty($delivery_settings['enabled'])); ?> /> Engedélyezve</label></td>
                 </tr>
                 <tr>
+                    <th scope="row">Működési mód</th>
+                    <td>
+                        <select name="mg_delivery_estimate[mode]" id="mg_delivery_mode">
+                            <option value="automatic" <?php selected(($delivery_settings['mode'] ?? 'automatic'), 'automatic'); ?>>Automatikus dátum kalkuláció</option>
+                            <option value="manual" <?php selected(($delivery_settings['mode'] ?? 'automatic'), 'manual'); ?>>Manuális lista</option>
+                        </select>
+                    </td>
+                </tr>
+                <tbody id="mg_delivery_automatic_settings">
+                <tr>
                     <th scope="row">Normál szállítás (munkanap)</th>
                     <td><input type="number" name="mg_delivery_estimate[normal_days]" min="0" step="1" value="<?php echo esc_attr(intval($delivery_settings['normal_days'] ?? 0)); ?>" class="small-text" /> nap</td>
                 </tr>
@@ -459,14 +472,28 @@ class MG_Settings_Page {
                         <p class="description">Ez a szöveg jelenik meg a legolcsóbb sor jobb oldalán (nem jelenik meg dátum).</p>
                     </td>
                 </tr>
-                <tr>
-                    <th scope="row">Cutoff idő</th>
                     <td>
                         <input type="time" name="mg_delivery_estimate[cutoff_time]" value="<?php echo esc_attr($delivery_settings['cutoff_time'] ?? ''); ?>" />
                         <input type="number" name="mg_delivery_estimate[cutoff_extra_days]" min="0" step="1" value="<?php echo esc_attr(intval($delivery_settings['cutoff_extra_days'] ?? 0)); ?>" class="small-text" /> nap extra
                         <p class="description">Ha a rendelés ez után érkezik be egy munkanapon, ennyi plusz munkanap kerül hozzá a számításhoz.</p>
                     </td>
                 </tr>
+                </tbody>
+                <tbody id="mg_delivery_manual_settings" style="display:none;">
+                <tr>
+                    <th scope="row">Cím (Header)</th>
+                    <td>
+                        <input type="text" name="mg_delivery_estimate[manual_title]" value="<?php echo esc_attr($delivery_settings['manual_title'] ?? ''); ?>" class="large-text" placeholder="Várható szállítási idő 2-6 nap" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Szállítási módok listája</th>
+                    <td>
+                        <textarea name="mg_delivery_estimate[manual_list]" rows="6" class="large-text" placeholder="GLS Házhozszállítás | 1990 Ft&#10;Foxpost Csomagautomata | 1290 Ft"><?php echo esc_textarea($delivery_settings['manual_list'] ?? ''); ?></textarea>
+                        <p class="description">Soronként egy mód. Formátum: <code>Név | Ár</code></p>
+                    </td>
+                </tr>
+                </tbody>
                 <tr>
                     <th scope="row">PNG ikon feltöltés</th>
                     <td>
@@ -528,6 +555,19 @@ class MG_Settings_Page {
                     e.preventDefault();
                     setDeliveryIcon('', '');
                 });
+
+                function toggleDeliveryMode() {
+                    var mode = $('#mg_delivery_mode').val();
+                    if (mode === 'manual') {
+                        $('#mg_delivery_automatic_settings').hide();
+                        $('#mg_delivery_manual_settings').show();
+                    } else {
+                        $('#mg_delivery_automatic_settings').show();
+                        $('#mg_delivery_manual_settings').hide();
+                    }
+                }
+                $('#mg_delivery_mode').on('change', toggleDeliveryMode);
+                toggleDeliveryMode();
             });
         </script>
         

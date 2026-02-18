@@ -74,3 +74,38 @@ form.cart .single_add_to_cart_button,
 .mg-delivery-estimate__row--cheapest .mg-delivery-estimate__date {
     color: #000000;
 }
+
+/* Manual Mode Styles */
+.mg-delivery-estimate__header {
+    font-weight: 600;
+    font-size: 15px;
+    margin-bottom: 4px;
+    color: #111827;
+}
+
+.mg-delivery-estimate__list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.mg-delivery-estimate__list-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: #4b5563;
+}
+
+.mg-delivery-estimate__method-name {
+    flex: 1;
+}
+
+.mg-delivery-estimate__method-separator {
+    margin: 0 8px;
+    color: #9ca3af;
+}
+
+.mg-delivery-estimate__method-price {
+    font-weight: 600;
+    color: #111827;
+}

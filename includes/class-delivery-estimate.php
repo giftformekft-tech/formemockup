@@ -40,6 +40,9 @@ class MG_Delivery_Estimate {
             'holidays' => array(),
             'cutoff_time' => '',
             'cutoff_extra_days' => 1,
+            'mode' => 'automatic',
+            'manual_title' => '',
+            'manual_list' => '',
         );
         $settings = get_option(self::OPTION_KEY, array());
         if (!is_array($settings)) {
@@ -58,6 +61,9 @@ class MG_Delivery_Estimate {
         $merged['holidays'] = is_array($merged['holidays']) ? $merged['holidays'] : array();
         $merged['cutoff_time'] = is_string($merged['cutoff_time']) ? $merged['cutoff_time'] : $defaults['cutoff_time'];
         $merged['cutoff_extra_days'] = max(0, intval($merged['cutoff_extra_days']));
+        $merged['mode'] = in_array(($merged['mode'] ?? ''), array('automatic', 'manual'), true) ? $merged['mode'] : 'automatic';
+        $merged['manual_title'] = sanitize_text_field($merged['manual_title'] ?? '');
+        $merged['manual_list'] = sanitize_textarea_field($merged['manual_list'] ?? '');
         if ($merged['icon_id'] > 0 && function_exists('wp_get_attachment_url')) {
             $attachment_url = wp_get_attachment_url($merged['icon_id']);
             if ($attachment_url) {
@@ -75,6 +81,54 @@ class MG_Delivery_Estimate {
         if (empty($settings['enabled'])) {
             return;
         }
+        $icon_url = esc_url($settings['icon_url']);
+
+        // Manual Mode Rendering
+        if (isset($settings['mode']) && $settings['mode'] === 'manual') {
+             $manual_title = $settings['manual_title'] ? $settings['manual_title'] : 'Várható szállítási idő 2-6 nap';
+             $manual_list_raw = $settings['manual_list'];
+             $manual_list = array();
+             if ($manual_list_raw) {
+                 $lines = preg_split('/\r\n|\r|\n/', $manual_list_raw);
+                 foreach ($lines as $line) {
+                     if (trim($line) === '') continue;
+                     $parts = explode('|', $line);
+                     $name = trim($parts[0]);
+                     $price = isset($parts[1]) ? trim($parts[1]) : '';
+                     if ($name) {
+                         $manual_list[] = array('name' => $name, 'price' => $price);
+                     }
+                 }
+             }
+             ?>
+             <div class="mg-delivery-estimate mg-delivery-estimate--manual" role="note" aria-live="polite">
+                <?php if ($icon_url !== '') : ?>
+                    <div class="mg-delivery-estimate__icon">
+                        <img src="<?php echo esc_url($icon_url); ?>" alt="" />
+                    </div>
+                <?php endif; ?>
+                <div class="mg-delivery-estimate__content">
+                    <div class="mg-delivery-estimate__header">
+                        <?php echo esc_html($manual_title); ?>
+                    </div>
+                    <?php if (!empty($manual_list)) : ?>
+                    <div class="mg-delivery-estimate__list">
+                        <?php foreach ($manual_list as $item) : ?>
+                            <div class="mg-delivery-estimate__list-item">
+                                <span class="mg-delivery-estimate__method-name"><?php echo esc_html($item['name']); ?></span>
+                                <span class="mg-delivery-estimate__method-separator">-</span>
+                                <span class="mg-delivery-estimate__method-price"><?php echo esc_html($item['price']); ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+             </div>
+             <?php
+             return;
+        }
+
+        // Automatic Mode Rendering (Original)
         $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
         $holiday_lookup = self::build_holiday_lookup($settings['holidays']);
         $extra_days = self::get_cutoff_extra_days($settings, $timezone, $holiday_lookup);
@@ -86,7 +140,6 @@ class MG_Delivery_Estimate {
         $express_label = wp_kses_post($settings['express_label']);
         $cheapest_label = wp_kses_post($settings['cheapest_label']);
         $cheapest_text = wp_kses_post($settings['cheapest_text']);
-        $icon_url = esc_url($settings['icon_url']);
         ?>
         <div class="mg-delivery-estimate" role="note" aria-live="polite">
             <?php if ($icon_url !== '') : ?>
