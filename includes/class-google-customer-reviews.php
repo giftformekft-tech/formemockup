@@ -15,7 +15,7 @@ class MG_Google_Customer_Reviews {
     const MERCHANT_ID = 5728646952;
 
     /** Becsült szállítási idő napokban (alapértelmezés) */
-    const DEFAULT_DELIVERY_DAYS = 5;
+    const DEFAULT_DELIVERY_DAYS = 10;
 
     public static function init() {
         // Only on frontend
