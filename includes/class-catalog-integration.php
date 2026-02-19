@@ -39,26 +39,45 @@ class MG_Catalog_Integration {
         // heavy logic in the loop, we try to use cached or lightweight checks.
         
         // 1. Check if we can get the catalog from global function
-        if (!function_exists('mg_get_global_catalog')) {
-            return $link;
+        $catalog = array();
+        if (function_exists('mg_get_global_catalog')) {
+            $catalog = mg_get_global_catalog();
         }
 
-        // Determine default type
-        // Usually it's the first key in the global catalog, but filtering might apply per product.
-        // Since all products share the global catalog in this plugin version:
-        $catalog = mg_get_global_catalog();
+        // 2. Fallback to mg_products option if global catalog is empty (Admin based workaround)
         if (empty($catalog)) {
+            $products = get_option('mg_products', array());
+            if (!empty($products)) {
+                // Determine default for THIS product
+                // 'mg_products' is keyed by numeric index usually, but we need to find by Key/Slug
+                // Actually mg_products structure is: array of products.
+                // We need to match product ID or SKU?
+                // The structure in Settings Page:
+                
+                // Let's look for matching product key in mg_products
+                // But wait, mg_products stores TYPES/Products config
+                // Structure: array( array('key' => 'polo', 'slug' => 'polo', ... ) )
+                
+                // If we iterate through mg_products, we find TYPES.
+                // How do we know which types are assigned to the current Loop Product?
+                // Usually via 'mg_product_type' taxonomy or 'global attributes'.
+                
+                // Simplified strategy: Check if the product has 'product_cat' terms that match keys?
+                // Or just use the first available type from mg_products as default?
+                // Assuming all products share the same types layout (which seems to be the case in this plugin version).
+                
+                if (!empty($products)) {
+                    $first = reset($products);
+                    if (isset($first['slug'])) {
+                        $link = add_query_arg('mg_type', $first['slug'], $link);
+                        return $link;
+                    }
+                }
+            }
             return $link;
         }
 
-        // Get default type slug
-        // Logic from MG_Virtual_Variant_Manager::get_frontend_config
-        // 1. Check if there is an explicit default set in config (not easily accessible here without heavy call)
-        // 2. Just take the first available type from the catalog.
-        
-        // Let's assume the first type in the catalog is the default 
-        // OR checks if the product has specific allowed types (though current global-catalog implies all are allowed).
-        
+        // If global catalog is valid:
         reset($catalog);
         $default_type_slug = key($catalog);
 

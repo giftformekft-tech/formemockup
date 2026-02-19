@@ -101,23 +101,30 @@ class MG_Server_Side_Price {
             var urlParams = new URLSearchParams(window.location.search);
             var mgType = urlParams.get('mg_type');
             
-            if (mgType) {
-                // Wait for variant-display.js to load and mark ready
-                var checkReady = setInterval(function() {
-                    if (document.querySelector('.mg-variant-ready')) {
-                        clearInterval(checkReady);
-                    }
-                    // Fallback: show price after 1 second even if not marked ready
-                }, 50);
-                
-                setTimeout(function() {
+            // Always ensure price is revealed eventually
+            // Wait for variant-display.js to load and mark ready
+            var checkReady = setInterval(function() {
+                if (document.querySelector('.mg-variant-ready')) {
                     clearInterval(checkReady);
-                    // Force show if still hidden
-                    var priceEl = document.querySelector('.product .price');
-                    if (priceEl && window.getComputedStyle(priceEl).opacity === '0') {
-                        document.querySelector('.product').classList.add('mg-variant-ready');
-                    }
-                }, 1000);
+                }
+                // Fallback: show price after 1 second even if not marked ready
+            }, 50);
+            
+            setTimeout(function() {
+                clearInterval(checkReady);
+                // Force show if still hidden
+                var priceEl = document.querySelector('.product .price');
+                if (priceEl && window.getComputedStyle(priceEl).opacity === '0') {
+                    document.querySelector('.product').classList.add('mg-variant-ready');
+                    // Also force opacity style just in case
+                    priceEl.style.opacity = '1';
+                    var metaEl = document.querySelector('.product_meta');
+                    if (metaEl) metaEl.style.opacity = '1';
+                }
+            }, 1000);
+            
+            if (mgType) {
+                 // Additional logic for mgType if needed (syncing)
             }
         })();
         </script>
