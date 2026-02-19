@@ -15,11 +15,13 @@ class MG_Server_Side_Price {
         // ALWAYS hook logic that handles the price display if parameter is present
         add_filter('woocommerce_get_price_html', array(__CLASS__, 'modify_price_html'), 10, 2);
 
-        if (!isset($_GET['mg_type'])) {
+        // If mg_type IS present, we have the correct price from server.
+        // So we do NOT need to hide the price. The JS logic will just confirm it.
+        if (isset($_GET['mg_type'])) {
             return;
         }
     
-        // Output inline CSS to hide price until JS loads (fallback)
+        // Output inline CSS to hide price until JS loads (fallback for direct links without param)
         add_action('wp_head', array(__CLASS__, 'output_price_hiding_css'), 1);
         
         // Output inline JS to immediately show price after variant-display.js runs
