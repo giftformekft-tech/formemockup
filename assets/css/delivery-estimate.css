@@ -115,7 +115,17 @@ form.cart .single_add_to_cart_button,
     margin-top: 10px;
     width: 100%;
     order: 100;
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.mg-payment-image__label {
+    font-size: 11px;
+    color: #6b7280;
+    font-weight: 500;
+    letter-spacing: 0.02em;
 }
 
 .mg-payment-image img {

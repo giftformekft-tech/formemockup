@@ -138,6 +138,7 @@ class MG_Delivery_Estimate {
              $payment_image_url = esc_url($settings['payment_image_url']);
              if ($payment_image_url !== '') : ?>
              <div class="mg-payment-image">
+                 <span class="mg-payment-image__label">Biztonságos bankkártyás fizetés</span>
                  <img src="<?php echo $payment_image_url; ?>" alt="Fizetési lehetőségek" />
              </div>
              <?php endif;
@@ -182,6 +183,7 @@ class MG_Delivery_Estimate {
         $payment_image_url = esc_url($settings['payment_image_url']);
         if ($payment_image_url !== '') : ?>
         <div class="mg-payment-image">
+            <span class="mg-payment-image__label">Biztonságos bankkártyás fizetés</span>
             <img src="<?php echo $payment_image_url; ?>" alt="Fizetési lehetőségek" />
         </div>
         <?php endif;
