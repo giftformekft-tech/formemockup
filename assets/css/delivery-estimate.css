@@ -115,11 +115,12 @@ form.cart .single_add_to_cart_button,
     margin-top: 10px;
     width: 100%;
     order: 100;
+    text-align: center;
 }
 
 .mg-payment-image img {
-    display: block;
-    max-height: 50px;
+    display: inline-block;
+    max-height: 60px;
     width: auto;
     height: auto;
 }
