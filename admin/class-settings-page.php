@@ -196,6 +196,16 @@ class MG_Settings_Page {
                     $cutoff_time = '';
                 }
                 $cutoff_extra_days = max(0, intval($input['cutoff_extra_days'] ?? 0));
+                $payment_image_id = max(0, intval($input['payment_image_id'] ?? 0));
+                $payment_image_url = '';
+                if ($payment_image_id > 0) {
+                    $pay_url = wp_get_attachment_url($payment_image_id);
+                    if ($pay_url) {
+                        $payment_image_url = $pay_url;
+                    } else {
+                        $payment_image_id = 0;
+                    }
+                }
                 update_option('mg_delivery_estimate', array(
                     'enabled' => $enabled,
                     'normal_days' => $normal_days,
@@ -212,6 +222,8 @@ class MG_Settings_Page {
                     'mode' => sanitize_text_field($input['mode'] ?? 'automatic'),
                     'manual_title' => sanitize_text_field($input['manual_title'] ?? ''),
                     'manual_list' => sanitize_textarea_field($input['manual_list'] ?? ''),
+                    'payment_image_id' => $payment_image_id,
+                    'payment_image_url' => $payment_image_url,
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
             }
@@ -371,13 +383,21 @@ class MG_Settings_Page {
             $description_variables_lines[] = $slug . ' | ' . $text;
         }
         $description_variables_text = implode("\n", $description_variables_lines);
-        $delivery_settings = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::get_settings() : array('enabled' => true, 'normal_days' => 3, 'express_days' => 1, 'normal_label' => '', 'express_label' => '', 'cheapest_label' => '', 'cheapest_text' => '', 'icon_id' => 0, 'icon_url' => '', 'holidays' => array(), 'cutoff_time' => '', 'cutoff_extra_days' => 1, 'mode' => 'automatic', 'manual_title' => '', 'manual_list' => '');
+        $delivery_settings = class_exists('MG_Delivery_Estimate') ? MG_Delivery_Estimate::get_settings() : array('enabled' => true, 'normal_days' => 3, 'express_days' => 1, 'normal_label' => '', 'express_label' => '', 'cheapest_label' => '', 'cheapest_text' => '', 'icon_id' => 0, 'icon_url' => '', 'holidays' => array(), 'cutoff_time' => '', 'cutoff_extra_days' => 1, 'mode' => 'automatic', 'manual_title' => '', 'manual_list' => '', 'payment_image_id' => 0, 'payment_image_url' => '');
         $delivery_icon_url = $delivery_settings['icon_url'] ?? '';
         $delivery_icon_id = intval($delivery_settings['icon_id'] ?? 0);
         if ($delivery_icon_id > 0 && function_exists('wp_get_attachment_url')) {
             $icon_url = wp_get_attachment_url($delivery_icon_id);
             if ($icon_url) {
                 $delivery_icon_url = $icon_url;
+            }
+        }
+        $delivery_payment_image_id = intval($delivery_settings['payment_image_id'] ?? 0);
+        $delivery_payment_image_url = $delivery_settings['payment_image_url'] ?? '';
+        if ($delivery_payment_image_id > 0 && function_exists('wp_get_attachment_url')) {
+            $pay_url = wp_get_attachment_url($delivery_payment_image_id);
+            if ($pay_url) {
+                $delivery_payment_image_url = $pay_url;
             }
         }
         $delivery_holidays_text = '';
@@ -528,6 +548,23 @@ class MG_Settings_Page {
                     </td>
                 </tr>
                 <tr>
+                    <th scope="row">Fizetési opciók kép</th>
+                    <td>
+                        <input type="hidden" name="mg_delivery_estimate[payment_image_id]" id="mg-payment-image-id" value="<?php echo esc_attr($delivery_payment_image_id); ?>" />
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="button" id="mg-payment-image-upload">Kép kiválasztása</button>
+                            <button type="button" class="button" id="mg-payment-image-remove">Eltávolítás</button>
+                            <input type="text" id="mg-payment-image-url" class="regular-text" value="<?php echo esc_attr($delivery_payment_image_url); ?>" readonly />
+                        </div>
+                        <div id="mg-payment-image-preview" style="margin-top:10px;">
+                            <?php if (!empty($delivery_payment_image_url)) : ?>
+                                <img src="<?php echo esc_url($delivery_payment_image_url); ?>" alt="" style="max-height:60px;width:auto;" />
+                            <?php endif; ?>
+                        </div>
+                        <p class="description">A várható érkezés csempe alatt megjelenő fizetési opciók kép (pl. kártya, PayPal ikonok).</p>
+                    </td>
+                </tr>
+                <tr>
                     <th scope="row">Munkaszüneti napok</th>
                     <td>
                         <textarea name="mg_delivery_estimate[holidays]" rows="6" class="large-text code" placeholder="2024-12-25"><?php echo esc_textarea($delivery_holidays_text); ?></textarea>
@@ -570,6 +607,35 @@ class MG_Settings_Page {
                 $('#mg-delivery-icon-remove').on('click', function(e){
                     e.preventDefault();
                     setDeliveryIcon('', '');
+                });
+
+                var payFrame;
+                function setPaymentImage(id, url) {
+                    $('#mg-payment-image-id').val(id || '');
+                    $('#mg-payment-image-url').val(url || '');
+                    $('#mg-payment-image-preview').html(url ? '<img src="' + url + '" alt="" style="max-height:60px;width:auto;" />' : '');
+                }
+                $('#mg-payment-image-upload').on('click', function(e){
+                    e.preventDefault();
+                    if (payFrame) {
+                        payFrame.open();
+                        return;
+                    }
+                    payFrame = wp.media({
+                        title: 'Fizetési opciók kép kiválasztása',
+                        button: { text: 'Kiválasztás' },
+                        library: { type: 'image' },
+                        multiple: false
+                    });
+                    payFrame.on('select', function(){
+                        var attachment = payFrame.state().get('selection').first().toJSON();
+                        setPaymentImage(attachment.id, attachment.url);
+                    });
+                    payFrame.open();
+                });
+                $('#mg-payment-image-remove').on('click', function(e){
+                    e.preventDefault();
+                    setPaymentImage('', '');
                 });
 
                 function toggleDeliveryMode() {

@@ -43,6 +43,8 @@ class MG_Delivery_Estimate {
             'mode' => 'automatic',
             'manual_title' => '',
             'manual_list' => '',
+            'payment_image_id' => 0,
+            'payment_image_url' => '',
         );
         $settings = get_option(self::OPTION_KEY, array());
         if (!is_array($settings)) {
@@ -64,10 +66,18 @@ class MG_Delivery_Estimate {
         $merged['mode'] = in_array(($merged['mode'] ?? ''), array('automatic', 'manual'), true) ? $merged['mode'] : 'automatic';
         $merged['manual_title'] = sanitize_text_field($merged['manual_title'] ?? '');
         $merged['manual_list'] = sanitize_textarea_field($merged['manual_list'] ?? '');
+        $merged['payment_image_id'] = max(0, intval($merged['payment_image_id']));
+        $merged['payment_image_url'] = is_string($merged['payment_image_url']) ? $merged['payment_image_url'] : '';
         if ($merged['icon_id'] > 0 && function_exists('wp_get_attachment_url')) {
             $attachment_url = wp_get_attachment_url($merged['icon_id']);
             if ($attachment_url) {
                 $merged['icon_url'] = $attachment_url;
+            }
+        }
+        if ($merged['payment_image_id'] > 0 && function_exists('wp_get_attachment_url')) {
+            $pay_url = wp_get_attachment_url($merged['payment_image_id']);
+            if ($pay_url) {
+                $merged['payment_image_url'] = $pay_url;
             }
         }
         return $merged;
@@ -125,6 +135,12 @@ class MG_Delivery_Estimate {
                 </div>
              </div>
              <?php
+             $payment_image_url = esc_url($settings['payment_image_url']);
+             if ($payment_image_url !== '') : ?>
+             <div class="mg-payment-image">
+                 <img src="<?php echo $payment_image_url; ?>" alt="Fizetési lehetőségek" />
+             </div>
+             <?php endif;
              return;
         }
 
@@ -163,6 +179,12 @@ class MG_Delivery_Estimate {
             </div>
         </div>
         <?php
+        $payment_image_url = esc_url($settings['payment_image_url']);
+        if ($payment_image_url !== '') : ?>
+        <div class="mg-payment-image">
+            <img src="<?php echo $payment_image_url; ?>" alt="Fizetési lehetőségek" />
+        </div>
+        <?php endif;
     }
 
     public static function add_business_days($days, $holidays, $timezone) {

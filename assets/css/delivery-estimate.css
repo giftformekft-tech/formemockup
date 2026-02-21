@@ -109,3 +109,21 @@ form.cart .single_add_to_cart_button,
     font-weight: 600;
     color: #111827;
 }
+
+/* Payment image block */
+.mg-payment-image {
+    margin-top: 10px;
+    width: 100%;
+    order: 100;
+}
+
+.mg-payment-image img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+form.cart .mg-payment-image,
+.woocommerce-variation-add-to-cart .mg-payment-image {
+    order: 100;
+}
