@@ -11,6 +11,12 @@ class MG_Custom_Feed_Manager {
         add_action('admin_post_mg_delete_custom_feed', array(__CLASS__, 'handle_delete'));
         add_action('admin_post_mg_regenerate_custom_feed', array(__CLASS__, 'handle_regeneration'));
         add_action('init', array(__CLASS__, 'check_feed_request'));
+        add_action('mg_cron_regenerate_custom_feed_slug', array(__CLASS__, 'handle_cron_regeneration'));
+    }
+
+    public static function handle_cron_regeneration($slug) {
+        self::generate_feed_to_file($slug);
+        delete_transient('mg_custom_feed_regenerating_' . $slug);
     }
 
     public static function register_admin_page() {
@@ -223,24 +229,31 @@ class MG_Custom_Feed_Manager {
             $path = self::get_feed_file_path($slug);
 
             if (file_exists($path)) {
-                // If force check logic needed, add here.
-                // For now, simple serve or regen if missing.
+                // If STALE (older than 24h), schedule async background regeneration
+                if (time() - filemtime($path) > DAY_IN_SECONDS) {
+                    $lock_key = 'mg_custom_feed_regenerating_' . $slug;
+                    if (!get_transient($lock_key)) {
+                        wp_schedule_single_event(time(), 'mg_cron_regenerate_custom_feed_slug', array($slug));
+                        set_transient($lock_key, 'true', 10 * MINUTE_IN_SECONDS);
+                    }
+                }
+                // Always serve immediately (fresh or stale) – don't make Google wait
                 header('Content-Type: application/xml; charset=UTF-8');
                 header('Content-Length: ' . filesize($path));
                 readfile($path);
                 exit;
             } else {
-                
+                // First run: generate synchronously
                 self::generate_feed_to_file($slug);
-                $path = self::get_feed_file_path($slug); // Re-check after generation
-                 if (file_exists($path)) {
+                $path = self::get_feed_file_path($slug);
+                if (file_exists($path)) {
                     header('Content-Type: application/xml; charset=UTF-8');
                     header('Content-Length: ' . filesize($path));
                     readfile($path);
                     exit;
-                 } else {
-                     wp_die('Error generating feed.');
-                 }
+                } else {
+                    wp_die('Error generating feed.');
+                }
             }
         }
     }
@@ -285,8 +298,10 @@ class MG_Custom_Feed_Manager {
 
         $product_ids = get_posts($args);
         
-        // Start XML
-        $handle = fopen($path, 'w');
+        // Write to a temp file first, then rename atomically.
+        // This ensures the old file stays intact if generation fails mid-way.
+        $tmp_path = $path . '.tmp';
+        $handle = fopen($tmp_path, 'w');
         if (!$handle) return false;
 
         fwrite($handle, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL);
@@ -306,6 +321,9 @@ class MG_Custom_Feed_Manager {
         fwrite($handle, '</channel>' . PHP_EOL);
         fwrite($handle, '</rss>');
         fclose($handle);
+
+        // Atomic rename: only replaces the real file on full success
+        rename($tmp_path, $path);
 
         return true;
     }
