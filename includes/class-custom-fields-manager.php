@@ -443,6 +443,7 @@ class MG_Custom_Fields_Manager {
         if ($product_id <= 0) {
             return false;
         }
+        $preset_id = sanitize_key($preset_id);
         $preset = self::get_preset($preset_id);
         if (!$preset) {
             return false;
@@ -453,6 +454,22 @@ class MG_Custom_Fields_Manager {
         }
         self::save_fields_for_product($product_id, $fields);
         self::set_custom_product($product_id, true);
+
+        // Register the product in the preset's product_ids list so it
+        // appears as assigned on the custom fields preset page.
+        $presets = self::get_all_presets();
+        if (isset($presets[$preset_id])) {
+            $existing_ids = isset($presets[$preset_id]['product_ids']) && is_array($presets[$preset_id]['product_ids'])
+                ? $presets[$preset_id]['product_ids']
+                : array();
+            if (!in_array($product_id, $existing_ids, true)) {
+                $existing_ids[] = $product_id;
+                $presets[$preset_id]['product_ids'] = $existing_ids;
+                $presets[$preset_id]['updated'] = current_time('mysql');
+                self::save_all_presets($presets);
+            }
+        }
+
         return true;
     }
 
