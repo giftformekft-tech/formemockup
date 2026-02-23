@@ -158,8 +158,9 @@ class MG_Custom_Fields_Page {
                     $fields[] = $field;
                 }
                 MG_Custom_Fields_Manager::update_preset($preset_id, array('fields' => $fields));
-                add_settings_error('mg_custom_fields_admin', 'mgcf_field_saved', __('A mező beállításai mentve.', 'mgcf'), 'updated');
-                break;
+                set_transient('mg_custom_fields_notice_' . get_current_user_id(), array('type' => 'updated', 'message' => __('A mező beállításai mentve.', 'mgcf')), 60);
+                wp_safe_redirect(add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php')));
+                exit;
 
             case 'delete_field':
                 if ($preset_id === '') {
@@ -180,8 +181,9 @@ class MG_Custom_Fields_Page {
                     return empty($f['id']) || $f['id'] !== $field_id;
                 });
                 MG_Custom_Fields_Manager::update_preset($preset_id, array('fields' => array_values($fields)));
-                add_settings_error('mg_custom_fields_admin', 'mgcf_field_deleted', __('Mező törölve.', 'mgcf'), 'updated');
-                break;
+                set_transient('mg_custom_fields_notice_' . get_current_user_id(), array('type' => 'updated', 'message' => __('Mező törölve.', 'mgcf')), 60);
+                wp_safe_redirect(add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php')));
+                exit;
 
             case 'update_preset_name':
                 if ($preset_id === '') {
@@ -194,8 +196,9 @@ class MG_Custom_Fields_Page {
                     break;
                 }
                 MG_Custom_Fields_Manager::update_preset($preset_id, array('name' => $preset_name));
-                add_settings_error('mg_custom_fields_admin', 'mgcf_preset_updated', __('Preset neve frissítve.', 'mgcf'), 'updated');
-                break;
+                set_transient('mg_custom_fields_notice_' . get_current_user_id(), array('type' => 'updated', 'message' => __('Preset neve frissítve.', 'mgcf')), 60);
+                wp_safe_redirect(add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php')));
+                exit;
         }
     }
 
@@ -239,6 +242,16 @@ class MG_Custom_Fields_Page {
         echo '<div class="wrap mg-custom-fields-admin mgcf-admin">';
         echo '<div class="mgcf-notices">';
         settings_errors('mg_custom_fields_admin');
+        $transient_key = 'mg_custom_fields_notice_' . get_current_user_id();
+        $transient_notice = get_transient($transient_key);
+        if ($transient_notice) {
+            delete_transient($transient_key);
+            $notice_type = isset($transient_notice['type']) ? $transient_notice['type'] : 'updated';
+            $notice_msg  = isset($transient_notice['message']) ? $transient_notice['message'] : '';
+            if ($notice_msg) {
+                echo '<div class="notice notice-' . esc_attr($notice_type) . ' is-dismissible"><p>' . esc_html($notice_msg) . '</p></div>';
+            }
+        }
         echo '</div>';
 
         if ($current_preset_id !== '') {
