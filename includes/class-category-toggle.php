@@ -84,7 +84,6 @@ class MG_Category_Toggle {
             ];
 
             $query->set('tax_query', $tax_query);
-        }
     }
 
     public static function is_product_visible($visible, $product_id) {
