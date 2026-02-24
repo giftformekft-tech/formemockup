@@ -36,6 +36,10 @@ class MG_Virtual_Variant_Manager {
         add_action('wp_footer', array(__CLASS__, 'inject_cart_thumbnail_fix_script'), 999);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
+        
+        // Sync frontend title and price for Virtual Permalinks
+        add_filter('the_title', array(__CLASS__, 'sync_frontend_title'), 10, 2);
+        add_filter('woocommerce_get_price_html', array(__CLASS__, 'sync_frontend_price_html'), 10, 2);
     }
 
     protected static function is_supported_product($product) {
@@ -148,6 +152,44 @@ class MG_Virtual_Variant_Manager {
         echo '<input type="hidden" name="mg_preview_url" value="" />';
         echo '<input type="hidden" name="mg_design_id" value="' . esc_attr($design_id) . '" />';
         echo '<input type="hidden" name="mg_render_version" value="' . esc_attr($render_version) . '" />';
+    }
+    
+    public static function sync_frontend_title($title, $id = null) {
+        if (!is_admin() && is_product() && isset($_GET['mg_type']) && $id === get_the_ID()) {
+            if (in_the_loop() || is_main_query()) {
+                $product = wc_get_product($id);
+                if ($product) {
+                    $config = self::get_frontend_config($product);
+                    $type = sanitize_text_field($_GET['mg_type']);
+                    if (isset($config['types'][$type]['label'])) {
+                        $label = $config['types'][$type]['label'];
+                        // Avoid appending multiple times
+                        if (strpos($title, $label) === false) {
+                            // Strip generic wording if present
+                            $generic_postfixes = array(' póló pulcsi', ' polo pulcsi');
+                            foreach ($generic_postfixes as $postfix) {
+                                if (substr($title, -strlen($postfix)) === $postfix) {
+                                    $title = trim(substr($title, 0, -strlen($postfix)));
+                                }
+                            }
+                            return $title . ' - ' . $label;
+                        }
+                    }
+                }
+            }
+        }
+        return $title;
+    }
+    
+    public static function sync_frontend_price_html($price_html, $product) {
+        if (!is_admin() && is_product() && isset($_GET['mg_type'])) {
+            $config = self::get_frontend_config($product);
+            $type = sanitize_text_field($_GET['mg_type']);
+            if (isset($config['types'][$type]['price']) && $config['types'][$type]['price'] > 0) {
+                return wc_price($config['types'][$type]['price']);
+            }
+        }
+        return $price_html;
     }
 
     public static function get_frontend_config($product) {
