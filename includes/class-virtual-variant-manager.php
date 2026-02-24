@@ -124,12 +124,12 @@ class MG_Virtual_Variant_Manager {
         $render_version = self::get_render_version($product);
 
         $defaults = self::get_default_selection($product);
-        $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : $defaults['type'];
+        $type = self::get_type_from_request() ?: $defaults['type'];
         $color = $defaults['color'];
         $size = $defaults['size'];
 
         // If a specific type is requested, recalculate the default color and size for that type
-        if (isset($_GET['mg_type']) && isset($config['types'][$type])) {
+        if ($type && isset($config['types'][$type])) {
             $type_meta = $config['types'][$type];
             $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
             $color = $color_order ? reset($color_order) : '';
@@ -154,17 +154,39 @@ class MG_Virtual_Variant_Manager {
         echo '<input type="hidden" name="mg_render_version" value="' . esc_attr($render_version) . '" />';
     }
     
-    public static function sync_frontend_title($title, $id = null) {
-        if (!is_admin() && is_product() && $id === get_the_ID()) {
-            $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : get_query_var('mg_v_type');
-            
-            // Extreme early fallback: parse from REQUEST_URI
-            if (!$type && isset($_SERVER['REQUEST_URI'])) {
-                $uri = $_SERVER['REQUEST_URI'];
-                if (preg_match('/-([a-z0-9\-]+)\/?$/i', $uri, $matches)) {
-                    $type = $matches[1];
+    public static function get_type_from_request() {
+        if (isset($_GET['mg_type'])) {
+            return sanitize_text_field($_GET['mg_type']);
+        }
+        if (get_query_var('mg_v_type')) {
+            return get_query_var('mg_v_type');
+        }
+        
+        // Extreme early fallback: parse from REQUEST_URI using known catalog slugs
+        if (isset($_SERVER['REQUEST_URI'])) {
+            $uri = urldecode($_SERVER['REQUEST_URI']);
+            $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+            if (!empty($catalog)) {
+                $slugs = array_keys($catalog);
+                // Sort by length desc so longer slugs match first
+                usort($slugs, function($a, $b) { return strlen($b) - strlen($a); });
+                
+                foreach ($slugs as $slug) {
+                    $ending = '-' . $slug . '/';
+                    $ending_no_slash = '-' . $slug;
+                    
+                    if (substr($uri, -strlen($ending)) === $ending || substr($uri, -strlen($ending_no_slash)) === $ending_no_slash) {
+                        return $slug;
+                    }
                 }
             }
+        }
+        return false;
+    }
+
+    public static function sync_frontend_title($title, $id = null) {
+        if (!is_admin() && is_product() && $id === get_the_ID()) {
+            $type = self::get_type_from_request();
             
             if ($type) {
                 $product = wc_get_product($id);
@@ -192,15 +214,7 @@ class MG_Virtual_Variant_Manager {
     
     public static function sync_frontend_price_html($price_html, $product) {
         if (!is_admin() && is_product()) {
-            $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : get_query_var('mg_v_type');
-            
-            // Extreme early fallback: parse from REQUEST_URI
-            if (!$type && isset($_SERVER['REQUEST_URI'])) {
-                $uri = $_SERVER['REQUEST_URI'];
-                if (preg_match('/-([a-z0-9\-]+)\/?$/i', $uri, $matches)) {
-                    $type = $matches[1];
-                }
-            }
+            $type = self::get_type_from_request();
             
             if ($type) {
                 $config = self::get_frontend_config($product);
