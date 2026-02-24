@@ -30,8 +30,17 @@ add_action('wp_enqueue_scripts', 'astra_child_enqueue_styles', 15);
  * Override WooCommerce price display for variant products
  */
 function astra_child_custom_price_display() {
-    // Only on single product pages with mg_type parameter
-    if (!is_product() || !isset($_GET['mg_type'])) {
+    // Only on single product pages
+    if (!is_product()) {
+        return;
+    }
+    
+    if (!class_exists('MG_Virtual_Variant_Manager')) {
+        return;
+    }
+    
+    $requested_type = MG_Virtual_Variant_Manager::get_type_from_request();
+    if (!$requested_type) {
         return;
     }
     
@@ -43,8 +52,6 @@ function astra_child_custom_price_display() {
     if (!$product) {
         return;
     }
-    
-    $requested_type = sanitize_text_field($_GET['mg_type']);
     $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
     
     if (empty($config) || empty($config['types']) || !isset($config['types'][$requested_type])) {
@@ -63,12 +70,16 @@ add_action('woocommerce_before_single_product', 'astra_child_custom_price_displa
  * Display variant price
  */
 function astra_child_display_variant_price() {
-    if (!isset($_GET['mg_type']) || !class_exists('MG_Virtual_Variant_Manager')) {
+    if (!class_exists('MG_Virtual_Variant_Manager')) {
+        return;
+    }
+    
+    $requested_type = MG_Virtual_Variant_Manager::get_type_from_request();
+    if (!$requested_type) {
         return;
     }
     
     global $product;
-    $requested_type = sanitize_text_field($_GET['mg_type']);
     $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
     
     if (empty($config) || empty($config['types']) || !isset($config['types'][$requested_type])) {
@@ -101,7 +112,12 @@ function astra_child_variant_title($title, $id = null) {
         return $title;
     }
     
-    if (!isset($_GET['mg_type']) || !class_exists('MG_Virtual_Variant_Manager')) {
+    if (!class_exists('MG_Virtual_Variant_Manager')) {
+        return $title;
+    }
+    
+    $requested_type = MG_Virtual_Variant_Manager::get_type_from_request();
+    if (!$requested_type) {
         return $title;
     }
     
@@ -109,8 +125,6 @@ function astra_child_variant_title($title, $id = null) {
     if (!$product) {
         return $title;
     }
-    
-    $requested_type = sanitize_text_field($_GET['mg_type']);
     $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
     
     if (empty($config) || empty($config['types']) || !isset($config['types'][$requested_type])) {

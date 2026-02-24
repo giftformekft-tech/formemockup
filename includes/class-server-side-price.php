@@ -15,9 +15,10 @@ class MG_Server_Side_Price {
         // ALWAYS hook logic that handles the price display if parameter is present
         add_filter('woocommerce_get_price_html', array(__CLASS__, 'modify_price_html'), 10, 2);
 
-        // If mg_type IS present, we have the correct price from server.
+        $requested_type = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
+        // If mg_type IS present (or a Virtual Permalink type was detected), we have the correct price from server.
         // So we do NOT need to hide the price. The JS logic will just confirm it.
-        if (isset($_GET['mg_type'])) {
+        if ($requested_type) {
             return;
         }
     
@@ -40,12 +41,12 @@ class MG_Server_Side_Price {
             return $price_html;
         }
 
-        // Check for mg_type parameter
-        if (!isset($_GET['mg_type']) || empty($_GET['mg_type'])) {
+        // Check for mg_type parameter or Virtual Permalink type
+        $type_slug = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
+        
+        if (empty($type_slug)) {
             return $price_html;
         }
-
-        $type_slug = sanitize_title($_GET['mg_type']);
 
         // Get functionality to retrieve catalog price
         if (!function_exists('mg_get_global_catalog')) {
