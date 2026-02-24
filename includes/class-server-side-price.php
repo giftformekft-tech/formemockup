@@ -15,13 +15,6 @@ class MG_Server_Side_Price {
         // ALWAYS hook logic that handles the price display if parameter is present
         add_filter('woocommerce_get_price_html', array(__CLASS__, 'modify_price_html'), 10, 2);
 
-        $requested_type = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
-        // If mg_type IS present (or a Virtual Permalink type was detected), we have the correct price from server.
-        // So we do NOT need to hide the price. The JS logic will just confirm it.
-        if ($requested_type) {
-            return;
-        }
-    
         // Output inline CSS to hide price until JS loads (fallback for direct links without param)
         add_action('wp_head', array(__CLASS__, 'output_price_hiding_css'), 1);
         
@@ -71,7 +64,12 @@ class MG_Server_Side_Price {
 
     public static function output_price_hiding_css() {
 
-        if (!is_product()) {
+        if (!function_exists('is_product') || !is_product()) {
+            return;
+        }
+        
+        $requested_type = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
+        if ($requested_type) {
             return;
         }
         ?>

@@ -158,7 +158,9 @@ class MG_Virtual_Variant_Manager {
         if (isset($_GET['mg_type'])) {
             return sanitize_text_field($_GET['mg_type']);
         }
-        if (get_query_var('mg_v_type')) {
+        
+        global $wp_query;
+        if ($wp_query instanceof WP_Query && get_query_var('mg_v_type')) {
             return get_query_var('mg_v_type');
         }
         
