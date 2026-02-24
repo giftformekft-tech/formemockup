@@ -16,6 +16,9 @@ class MG_Category_Toggle {
 
         // Menü filterek
         add_filter('wp_get_nav_menu_items', [self::class, 'exclude_disabled_categories_from_menus'], 10, 3);
+
+        // Shortcode filter (pl. [products])
+        add_filter('woocommerce_shortcode_products_query', [self::class, 'exclude_from_shortcodes'], 10, 3);
     }
 
     private static function get_disabled_categories() {
@@ -24,15 +27,38 @@ class MG_Category_Toggle {
     }
 
     public static function exclude_disabled_categories($query) {
-        if (is_admin() || !$query->is_main_query()) {
+        // Backend listák kihagyása, viszont az AJAX (pl. élő keresők) futhat admin-ajax-on keresztül.
+        if (is_admin() && !wp_doing_ajax()) {
             return;
         }
 
-        if (is_shop() || is_product_category() || is_product_tag() || is_search() || is_post_type_archive('product')) {
-            $disabled_cats = self::get_disabled_categories();
-            if (empty($disabled_cats)) {
-                return;
-            }
+        $is_valid_query = false;
+
+        // Fő lekérdezés: Shop, archív, fő kereső
+        if ($query->is_main_query() && (is_shop() || is_product_category() || is_product_tag() || is_search() || is_post_type_archive('product'))) {
+            $is_valid_query = true;
+        }
+
+        // Másodlagos (vagy AJAX) lekérdezés kifejezetten termékekre keresve (pl. Astra live search, FiboSearch)
+        $post_type = $query->get('post_type');
+        $is_product = $post_type === 'product' || (is_array($post_type) && in_array('product', $post_type, true));
+        if ($is_product && $query->get('s')) {
+            $is_valid_query = true;
+        }
+
+        // WooCommerce Product block / custom WP_Query (ahol a wc_query property true)
+        if ($query->get('wc_query') === 'product_query') {
+            $is_valid_query = true;
+        }
+
+        if (!$is_valid_query) {
+            return;
+        }
+
+        $disabled_cats = self::get_disabled_categories();
+        if (empty($disabled_cats)) {
+            return;
+        }
 
             $tax_query = $query->get('tax_query');
             if (!is_array($tax_query)) {
@@ -171,5 +197,26 @@ class MG_Category_Toggle {
         }
 
         return $filtered_items;
+    }
+
+    public static function exclude_from_shortcodes($query_args, $attributes, $type) {
+        $disabled_cats = self::get_disabled_categories();
+        if (empty($disabled_cats)) {
+            return $query_args;
+        }
+
+        if (!isset($query_args['tax_query'])) {
+            $query_args['tax_query'] = [];
+        }
+
+        $query_args['tax_query'][] = [
+            'taxonomy' => 'product_cat',
+            'field'    => 'term_id',
+            'terms'    => $disabled_cats,
+            'operator' => 'NOT IN',
+            'include_children' => true,
+        ];
+
+        return $query_args;
     }
 }
