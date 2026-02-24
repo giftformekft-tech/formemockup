@@ -202,12 +202,16 @@ class MG_Product_Structured_Data {
             $price = (float) $product->get_price();
         }
         
-        // Product URL with type parameter
+        // Product URL with type parameter or virtual permalink
         $custom_urls = isset($config['typeUrls']) ? $config['typeUrls'] : array();
         if (isset($custom_urls[$type_slug]) && !empty($custom_urls[$type_slug])) {
             $product_url = $custom_urls[$type_slug];
         } else {
-            $product_url = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+            if (class_exists('MG_GMC_SEO_Optimizer')) {
+                $product_url = MG_GMC_SEO_Optimizer::get_virtual_permalink($product, $type_slug);
+            } else {
+                $product_url = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+            }
         }
         
         // Availability

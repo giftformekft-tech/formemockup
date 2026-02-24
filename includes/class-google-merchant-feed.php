@@ -189,7 +189,11 @@ class MG_Google_Merchant_Feed {
             if (isset($custom_urls[$type_slug]) && !empty($custom_urls[$type_slug])) {
                 $g_link = $custom_urls[$type_slug];
             } else {
-                $g_link = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+                if (class_exists('MG_GMC_SEO_Optimizer')) {
+                    $g_link = MG_GMC_SEO_Optimizer::get_virtual_permalink($product, $type_slug);
+                } else {
+                    $g_link = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+                }
             }
 
             // Image Link - Use the preview URL from config
@@ -229,7 +233,7 @@ class MG_Google_Merchant_Feed {
             $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
             $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
-            $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL; // To group variants together
+            // $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL; // Removed to treat variants as standalone products
 
             // Product Type: Ruházat > terméktípus > főkategória > alkategória
             $product_type_parts = array('Ruházat', $type_label);
