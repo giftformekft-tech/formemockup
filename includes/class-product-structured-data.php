@@ -15,6 +15,9 @@ class MG_Product_Structured_Data {
         // Output JSON-LD on product pages
         add_action('wp_head', array(__CLASS__, 'output_json_ld'), 5);
         
+        // Output Organization JSON-LD on front page
+        add_action('wp_head', array(__CLASS__, 'output_organization_schema'), 5);
+        
         // Disable WooCommerce default structured data (prevents duplicate schemas)
         add_filter('woocommerce_structured_data_product', '__return_false', 999);
         add_action('wp', array(__CLASS__, 'remove_woocommerce_structured_data'), 99);
@@ -34,6 +37,62 @@ class MG_Product_Structured_Data {
                 remove_action('wp_footer', array($structured_data, 'output_structured_data'), 10);
             }
         }
+    }
+
+    /**
+     * Output Organization and WebSite JSON-LD structured data on the front page
+     */
+    public static function output_organization_schema() {
+        if (!is_front_page() && !is_home()) {
+            return;
+        }
+
+        $organization_schema = array(
+            '@context' => 'https://schema.org',
+            '@type' => 'Organization',
+            'name' => 'Gift for me Kft.',
+            'url' => 'https://polodroid.hu',
+            'email' => 'info@polodroid.hu',
+            'telephone' => '+36305538083',
+            'address' => array(
+                '@type' => 'PostalAddress',
+                'streetAddress' => 'Hunyadi utca 35.',
+                'addressLocality' => 'Nyírlugos',
+                'postalCode' => '4371',
+                'addressCountry' => 'HU'
+            )
+        );
+
+        $website_schema = array(
+            '@context' => 'https://schema.org',
+            '@type' => 'WebSite',
+            'name' => 'Polodroid',
+            'url' => 'https://polodroid.hu',
+            'potentialAction' => array(
+                '@type' => 'SearchAction',
+                'target' => 'https://polodroid.hu/?s={search_term_string}',
+                'query-input' => 'required name=search_term_string'
+            )
+        );
+
+        $store_schema = array(
+            '@context' => 'https://schema.org',
+            '@type' => 'Store',
+            'name' => 'Polodroid',
+            'url' => 'https://polodroid.hu',
+            'telephone' => '+36305538083',
+            'address' => array(
+                '@type' => 'PostalAddress',
+                'streetAddress' => 'Hunyadi utca 35.',
+                'addressLocality' => 'Nyírlugos',
+                'postalCode' => '4371',
+                'addressCountry' => 'HU'
+            )
+        );
+
+        echo '<script type="application/ld+json">';
+        echo wp_json_encode(array($organization_schema, $website_schema, $store_schema), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        echo '</script>' . PHP_EOL;
     }
 
     /**
