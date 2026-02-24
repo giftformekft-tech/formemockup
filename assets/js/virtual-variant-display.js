@@ -925,7 +925,7 @@
         var typeLabel = this.getTypeLabel(this.state.type);
         var nextTitle = this.baseTitle;
         if (typeLabel) {
-            nextTitle = this.baseTitle + ' ' + typeLabel;
+            nextTitle = this.baseTitle + ' - ' + typeLabel;
         }
         this.$title.text(nextTitle);
     };
