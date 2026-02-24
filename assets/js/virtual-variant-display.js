@@ -838,19 +838,30 @@
                 var path = url.pathname;
                 // Strip existing known type slugs from the end of the path
                 if (this.config.types) {
-                    var allSlugs = Object.keys(this.config.types);
+                    var allSlugs = Object.keys(this.config.types).sort(function (a, b) { return b.length - a.length; });
                     for (var i = 0; i < allSlugs.length; i++) {
-                        var ending = '-' + allSlugs[i] + '/';
-                        if (path.indexOf(ending) === path.length - ending.length) {
-                            path = path.substring(0, path.length - ending.length + 1);
+                        var slugRegex = new RegExp('-' + allSlugs[i] + '/?$');
+                        if (slugRegex.test(path)) {
+                            path = path.replace(slugRegex, '');
                             break;
                         }
                     }
                 }
 
+                // Ensure trailing slash OR trailing dashes are gone before appending new slug
+                path = path.replace(/[\/-]+$/, '');
+
                 if (typeSlug) {
-                    path = path.replace(/\/$/, '') + '-' + typeSlug + '/';
+                    path = path + '-' + typeSlug + '/';
+                } else {
+                    path = path + '/';
                 }
+
+                // Don't push state if URL hasn't actually changed
+                if (url.pathname === path && !url.searchParams.has('mg_type')) {
+                    return;
+                }
+
                 url.pathname = path;
             } else {
                 if (typeSlug) {
