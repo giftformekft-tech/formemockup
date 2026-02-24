@@ -27,6 +27,10 @@ class MG_Category_Toggle {
     }
 
     public static function exclude_disabled_categories($query) {
+        if (!($query instanceof WP_Query)) {
+            return;
+        }
+
         // Backend listák kihagyása, viszont az AJAX (pl. élő keresők) futhat admin-ajax-on keresztül.
         if (is_admin() && !wp_doing_ajax()) {
             return;
@@ -34,9 +38,15 @@ class MG_Category_Toggle {
 
         $is_valid_query = false;
 
-        // Fő lekérdezés: Shop, archív, fő kereső
-        if ($query->is_main_query() && (is_shop() || is_product_category() || is_product_tag() || is_search() || is_post_type_archive('product'))) {
-            $is_valid_query = true;
+        // Fő lekérdezés: Shop, archív, fő kereső (biztonságos ellenőrzés a query objektumon)
+        if ($query->is_main_query()) {
+            if ($query->is_search() || $query->is_post_type_archive('product') || $query->is_tax('product_cat') || $query->is_tax('product_tag')) {
+                $is_valid_query = true;
+            } elseif (function_exists('is_shop') && is_shop()) {
+                $is_valid_query = true;
+            } elseif (function_exists('is_product_category') && is_product_category()) {
+                $is_valid_query = true;
+            }
         }
 
         // Másodlagos (vagy AJAX) lekérdezés kifejezetten termékekre keresve (pl. Astra live search, FiboSearch)
@@ -199,9 +209,13 @@ class MG_Category_Toggle {
         return $filtered_items;
     }
 
-    public static function exclude_from_shortcodes($query_args, $attributes, $type) {
+    public static function exclude_from_shortcodes($query_args, $attributes = null, $type = '') {
         $disabled_cats = self::get_disabled_categories();
         if (empty($disabled_cats)) {
+            return $query_args;
+        }
+
+        if (!is_array($query_args)) {
             return $query_args;
         }
 
