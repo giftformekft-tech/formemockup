@@ -157,24 +157,31 @@ class MG_Virtual_Variant_Manager {
     public static function sync_frontend_title($title, $id = null) {
         if (!is_admin() && is_product() && $id === get_the_ID()) {
             $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : get_query_var('mg_v_type');
+            
+            // Extreme early fallback: parse from REQUEST_URI
+            if (!$type && isset($_SERVER['REQUEST_URI'])) {
+                $uri = $_SERVER['REQUEST_URI'];
+                if (preg_match('/-([a-z0-9\-]+)\/?$/i', $uri, $matches)) {
+                    $type = $matches[1];
+                }
+            }
+            
             if ($type) {
-                if (in_the_loop() || is_main_query()) {
-                    $product = wc_get_product($id);
-                    if ($product) {
-                        $config = self::get_frontend_config($product);
-                        if (isset($config['types'][$type]['label'])) {
-                            $label = $config['types'][$type]['label'];
-                            // Avoid appending multiple times
-                            if (strpos($title, $label) === false) {
-                                // Strip generic wording if present
-                                $generic_postfixes = array(' póló pulcsi', ' polo pulcsi');
-                                foreach ($generic_postfixes as $postfix) {
-                                    if (substr($title, -strlen($postfix)) === $postfix) {
-                                        $title = trim(substr($title, 0, -strlen($postfix)));
-                                    }
+                $product = wc_get_product($id);
+                if ($product) {
+                    $config = self::get_frontend_config($product);
+                    if (isset($config['types'][$type]['label'])) {
+                        $label = $config['types'][$type]['label'];
+                        // Avoid appending multiple times
+                        if (strpos($title, $label) === false) {
+                            // Strip generic wording if present
+                            $generic_postfixes = array(' póló pulcsi', ' polo pulcsi');
+                            foreach ($generic_postfixes as $postfix) {
+                                if (substr($title, -strlen($postfix)) === $postfix) {
+                                    $title = trim(substr($title, 0, -strlen($postfix)));
                                 }
-                                return $title . ' - ' . $label;
                             }
+                            return $title . ' - ' . $label;
                         }
                     }
                 }
@@ -186,6 +193,15 @@ class MG_Virtual_Variant_Manager {
     public static function sync_frontend_price_html($price_html, $product) {
         if (!is_admin() && is_product()) {
             $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : get_query_var('mg_v_type');
+            
+            // Extreme early fallback: parse from REQUEST_URI
+            if (!$type && isset($_SERVER['REQUEST_URI'])) {
+                $uri = $_SERVER['REQUEST_URI'];
+                if (preg_match('/-([a-z0-9\-]+)\/?$/i', $uri, $matches)) {
+                    $type = $matches[1];
+                }
+            }
+            
             if ($type) {
                 $config = self::get_frontend_config($product);
                 if (isset($config['types'][$type]['price']) && $config['types'][$type]['price'] > 0) {
