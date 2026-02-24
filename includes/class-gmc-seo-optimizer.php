@@ -21,6 +21,7 @@ class MG_GMC_SEO_Optimizer {
         add_action('template_redirect', [self::class, 'hydrate_get_parameters'], 1);
 
         // SEO Overrides (Canonical)
+        add_filter('redirect_canonical', [self::class, 'disable_canonical_redirect_for_virtual'], 10, 2);
         add_filter('get_canonical_url', [self::class, 'override_canonical'], 999, 2);
         add_filter('wpseo_canonical', [self::class, 'override_canonical'], 999);
         add_filter('rank_math/frontend/canonical', [self::class, 'override_canonical'], 999);
@@ -105,6 +106,16 @@ class MG_GMC_SEO_Optimizer {
             }
         }
         return $canonical;
+    }
+
+    public static function disable_canonical_redirect_for_virtual($redirect_url, $requested_url) {
+        if (is_product() && get_query_var('mg_v_type')) {
+            // WordPress core tries to "helpfuly" redirect unknown endpoints on single posts
+            // back to the canonical URL string. We must disable this for our virtual variants
+            // so they don't 301 redirect back to the `?mg_type=` base link.
+            return false;
+        }
+        return $redirect_url;
     }
 
     public static function override_title($title) {
