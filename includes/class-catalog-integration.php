@@ -69,7 +69,11 @@ class MG_Catalog_Integration {
                 if (!empty($products)) {
                     $first = reset($products);
                     if (isset($first['slug'])) {
-                        $link = add_query_arg('mg_type', $first['slug'], $link);
+                        if (class_exists('MG_GMC_SEO_Optimizer')) {
+                            $link = MG_GMC_SEO_Optimizer::get_virtual_permalink($product, $first['slug']);
+                        } else {
+                            $link = add_query_arg('mg_type', $first['slug'], $link);
+                        }
                         return $link;
                     }
                 }
@@ -82,7 +86,11 @@ class MG_Catalog_Integration {
         $default_type_slug = key($catalog);
 
         if ($default_type_slug) {
-            $link = add_query_arg('mg_type', $default_type_slug, $link);
+            if (class_exists('MG_GMC_SEO_Optimizer')) {
+                $link = MG_GMC_SEO_Optimizer::get_virtual_permalink($product, $default_type_slug);
+            } else {
+                $link = add_query_arg('mg_type', $default_type_slug, $link);
+            }
         }
 
         return $link;
