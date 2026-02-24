@@ -252,6 +252,31 @@ class MG_Product_Structured_Data {
         // Add item condition
         $schema['itemCondition'] = 'https://schema.org/NewCondition';
         
+        // Add Color and Size based on defaults for this type
+        $default_color_slug = '';
+        $default_size_label = '';
+
+        if (!empty($type_data['color_order'])) {
+            $default_color_slug = reset($type_data['color_order']);
+        } elseif (!empty($type_data['colors'])) {
+            $keys = array_keys($type_data['colors']);
+            $default_color_slug = reset($keys);
+        }
+
+        if ($default_color_slug && !empty($type_data['colors'][$default_color_slug]['sizes'])) {
+            $default_size_label = reset($type_data['colors'][$default_color_slug]['sizes']);
+        } elseif (!empty($type_data['size_order'])) {
+            $default_size_label = reset($type_data['size_order']);
+        }
+
+        if ($default_color_slug) {
+            $color_label = isset($type_data['colors'][$default_color_slug]['label']) ? $type_data['colors'][$default_color_slug]['label'] : $default_color_slug;
+            $schema['color'] = $color_label;
+        }
+        if ($default_size_label) {
+            $schema['size'] = $default_size_label;
+        }
+        
         return $schema;
     }
 }

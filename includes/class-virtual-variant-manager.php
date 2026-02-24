@@ -119,10 +119,32 @@ class MG_Virtual_Variant_Manager {
         $design_id = self::get_design_id($product);
         $render_version = self::get_render_version($product);
 
+        $defaults = self::get_default_selection($product);
+        $type = isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : $defaults['type'];
+        $color = $defaults['color'];
+        $size = $defaults['size'];
+
+        // If a specific type is requested, recalculate the default color and size for that type
+        if (isset($_GET['mg_type']) && isset($config['types'][$type])) {
+            $type_meta = $config['types'][$type];
+            $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
+            $color = $color_order ? reset($color_order) : '';
+            if (!$color && !empty($type_meta['colors'])) {
+                $keys = array_keys($type_meta['colors']);
+                $color = reset($keys);
+            }
+            $size = '';
+            if ($color && !empty($type_meta['colors'][$color]['sizes'])) {
+                $size = reset($type_meta['colors'][$color]['sizes']);
+            } elseif (!empty($type_meta['size_order'])) {
+                $size = reset($type_meta['size_order']);
+            }
+        }
+
         echo '<div class="mg-virtual-variant" data-mg-virtual="1"></div>';
-        echo '<input type="hidden" name="mg_product_type" value="" />';
-        echo '<input type="hidden" name="mg_color" value="" />';
-        echo '<input type="hidden" name="mg_size" value="" />';
+        echo '<input type="hidden" name="mg_product_type" value="' . esc_attr($type) . '" />';
+        echo '<input type="hidden" name="mg_color" value="' . esc_attr($color) . '" />';
+        echo '<input type="hidden" name="mg_size" value="' . esc_attr($size) . '" />';
         echo '<input type="hidden" name="mg_preview_url" value="" />';
         echo '<input type="hidden" name="mg_design_id" value="' . esc_attr($design_id) . '" />';
         echo '<input type="hidden" name="mg_render_version" value="' . esc_attr($render_version) . '" />';
