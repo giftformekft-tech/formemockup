@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
 class MG_Google_Customer_Reviews {
 
     /** Google Merchant Center ID */
-    const MERCHANT_ID = 5728646952;
+    const MERCHANT_ID = 5730531016;
 
     /** Becsült szállítási idő napokban (alapértelmezés) */
     const DEFAULT_DELIVERY_DAYS = 10;
