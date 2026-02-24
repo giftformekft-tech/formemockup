@@ -830,11 +830,11 @@
 
         try {
             var url = new URL(window.location.href);
-            
+
             if (this.config && this.config.useVirtualPermalinks) {
                 // Remove ?mg_type if it exists from previous state
                 url.searchParams.delete('mg_type');
-                
+
                 var path = url.pathname;
                 // Strip existing known type slugs from the end of the path
                 if (this.config.types) {
@@ -847,7 +847,7 @@
                         }
                     }
                 }
-                
+
                 if (typeSlug) {
                     path = path.replace(/\/$/, '') + '-' + typeSlug + '/';
                 }
@@ -924,9 +924,10 @@
         var urlType = this.getTypeFromUrl();
         var initialType = urlType || defaults.type || '';
         this.setType(initialType);
-        if (urlType && this.config.typeUrls && this.config.typeUrls[urlType]) {
-            this.updateUrlForType(urlType);
-        }
+
+        // Always force update URL to ensure we push Virtual Permalinks if they are active,
+        // even if the user landed on a clean /product-slug/ root URL or ?p=123
+        this.updateUrlForType(initialType);
         if (defaults.color) {
             this.setColor(defaults.color);
         }
