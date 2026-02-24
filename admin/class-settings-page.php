@@ -62,6 +62,12 @@ class MG_Settings_Page {
     private static function handle_saves($tab) {
         // Products Tab Saves
         if ($tab === 'products') {
+            if (isset($_POST['mg_disabled_categories_nonce']) && wp_verify_nonce($_POST['mg_disabled_categories_nonce'], 'mg_save_disabled_categories')) {
+                $disabled_cats = isset($_POST['mg_disabled_categories']) && is_array($_POST['mg_disabled_categories']) ? array_map('intval', $_POST['mg_disabled_categories']) : array();
+                update_option('mg_disabled_categories', $disabled_cats);
+                echo '<div class="notice notice-success is-dismissible"><p>Letiltott kategóriák sikeresen elmentve.</p></div>';
+            }
+
             if (isset($_POST['mg_add_product_nonce']) && wp_verify_nonce($_POST['mg_add_product_nonce'],'mg_add_product')) {
                 // Logic moved to create_product_from_request generally, but here specifically for the main form
                 // maybe_handle_add_product_submission() is called usually, checking if we need to call it explicitely or if it runs on init?
@@ -260,6 +266,45 @@ class MG_Settings_Page {
             <?php endforeach; ?>
             </tbody>
         </table>
+
+        <br>
+        <hr>
+
+        <h2>Kategória ki/bekapcsolás</h2>
+        <p class="description">Válaszd ki azokat a kategóriákat, amelyekből <strong>NEM</strong> szeretnéd megjeleníteni a termékeket semmilyen felületen (shop, keresés, ajánló, feed).</p>
+        <?php
+        $disabled_cats = get_option('mg_disabled_categories', array());
+        if (!is_array($disabled_cats)) {
+            $disabled_cats = array();
+        }
+        $categories = get_terms(array(
+            'taxonomy'   => 'product_cat',
+            'hide_empty' => false,
+        ));
+        ?>
+        <form method="post">
+            <?php wp_nonce_field('mg_save_disabled_categories', 'mg_disabled_categories_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Letiltott kategóriák</th>
+                    <td>
+                        <fieldset>
+                            <?php if (!empty($categories) && !is_wp_error($categories)): ?>
+                                <?php foreach ($categories as $cat): ?>
+                                    <label style="display:block; margin-bottom: 5px;">
+                                        <input type="checkbox" name="mg_disabled_categories[]" value="<?php echo esc_attr($cat->term_id); ?>" <?php checked(in_array($cat->term_id, $disabled_cats)); ?> />
+                                        <?php echo esc_html($cat->name); ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <p>Nincsenek kategóriák.</p>
+                            <?php endif; ?>
+                        </fieldset>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('Kategóriák mentése'); ?>
+        </form>
 
         <br>
         <hr>

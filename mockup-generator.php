@@ -22,6 +22,7 @@ add_action('plugins_loaded', function(){
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',
         'includes/global-catalog.php',
+        'includes/class-category-toggle.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
@@ -188,6 +189,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Catalog_Integration')) {
         MG_Catalog_Integration::init();
+    }
+    if (class_exists('MG_Category_Toggle')) {
+        MG_Category_Toggle::init();
     }
 }, 20);
 
