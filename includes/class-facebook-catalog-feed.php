@@ -335,10 +335,10 @@ class MG_Facebook_Catalog_Feed {
             if ($default_color_slug) {
                  // Get label if possible
                  $color_label = isset($type_data['colors'][$default_color_slug]['label']) ? $type_data['colors'][$default_color_slug]['label'] : $default_color_slug;
-                 $output .= '<g:color>' . self::xml_sanitize($color_label) . '</g:color>' . PHP_EOL;
+                 // $output .= '<g:color>' . self::xml_sanitize($color_label) . '</g:color>' . PHP_EOL;
             }
             if ($default_size_label) {
-                $output .= '<g:size>' . self::xml_sanitize($default_size_label) . '</g:size>' . PHP_EOL;
+                // $output .= '<g:size>' . self::xml_sanitize($default_size_label) . '</g:size>' . PHP_EOL;
             }
 
             $output .= '</item>' . PHP_EOL;

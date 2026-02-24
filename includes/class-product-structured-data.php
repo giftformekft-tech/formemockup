@@ -271,10 +271,10 @@ class MG_Product_Structured_Data {
 
         if ($default_color_slug) {
             $color_label = isset($type_data['colors'][$default_color_slug]['label']) ? $type_data['colors'][$default_color_slug]['label'] : $default_color_slug;
-            $schema['color'] = $color_label;
+            // $schema['color'] = $color_label;
         }
         if ($default_size_label) {
-            $schema['size'] = $default_size_label;
+            // $schema['size'] = $default_size_label;
         }
         
         return $schema;
