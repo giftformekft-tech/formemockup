@@ -389,6 +389,7 @@ class MG_Virtual_Variant_Manager {
                 'types' => $type_order,
             ),
             'typeUrls' => $type_urls,
+            'useVirtualPermalinks' => class_exists('MG_GMC_SEO_Optimizer'),
             'preview_cache_limit' => $preview_cache_limit,
             'preview_preload' => $preview_preload,
             'priceFormat' => array(

@@ -785,10 +785,30 @@
         if (typeof window === 'undefined' || !window.location) {
             return '';
         }
+
         try {
             var params = new URLSearchParams(window.location.search || '');
             var candidate = params.get('mg_type') || '';
-            return candidate;
+            if (candidate) {
+                return candidate;
+            }
+
+            // Virtual Permalink detection from path
+            if (this.config && this.config.useVirtualPermalinks && this.config.types) {
+                var path = window.location.pathname || '';
+                var pathParts = path.replace(/\/$/, '').split('-');
+                if (pathParts.length > 1) {
+                    // Start checking backwards since slugs can have multiple hyphens
+                    for (var i = 1; i < pathParts.length; i++) {
+                        var possibleSlug = pathParts.slice(i).join('-');
+                        if (this.config.types[possibleSlug]) {
+                            return possibleSlug;
+                        }
+                    }
+                }
+            }
+
+            return '';
         } catch (err) {
             return '';
         }
@@ -807,13 +827,39 @@
             window.history.replaceState({}, '', urlMap[typeSlug]);
             return;
         }
+
         try {
             var url = new URL(window.location.href);
-            if (typeSlug) {
-                url.searchParams.set('mg_type', typeSlug);
-            } else {
+            
+            if (this.config && this.config.useVirtualPermalinks) {
+                // Remove ?mg_type if it exists from previous state
                 url.searchParams.delete('mg_type');
+                
+                var path = url.pathname;
+                // Strip existing known type slugs from the end of the path
+                if (this.config.types) {
+                    var allSlugs = Object.keys(this.config.types);
+                    for (var i = 0; i < allSlugs.length; i++) {
+                        var ending = '-' + allSlugs[i] + '/';
+                        if (path.indexOf(ending) === path.length - ending.length) {
+                            path = path.substring(0, path.length - ending.length + 1);
+                            break;
+                        }
+                    }
+                }
+                
+                if (typeSlug) {
+                    path = path.replace(/\/$/, '') + '-' + typeSlug + '/';
+                }
+                url.pathname = path;
+            } else {
+                if (typeSlug) {
+                    url.searchParams.set('mg_type', typeSlug);
+                } else {
+                    url.searchParams.delete('mg_type');
+                }
             }
+
             window.history.replaceState({}, '', url.toString());
         } catch (err) {
         }
