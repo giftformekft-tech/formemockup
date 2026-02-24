@@ -19,6 +19,9 @@ class MG_Category_Toggle {
 
         // Shortcode filter (pl. [products])
         add_filter('woocommerce_shortcode_products_query', [self::class, 'exclude_from_shortcodes'], 10, 3);
+
+        // Kategória listázások elrejtése (pl. kereső autocomplete, widgetek)
+        add_filter('get_terms_args', [self::class, 'exclude_disabled_terms_from_queries'], 10, 2);
     }
 
     private static function get_disabled_categories() {
@@ -231,5 +234,26 @@ class MG_Category_Toggle {
         ];
 
         return $query_args;
+    }
+
+    public static function exclude_disabled_terms_from_queries($args, $taxonomies) {
+        // Backend listák kihagyása, viszont az AJAX (pl. élő keresők) futhat admin-ajax-on keresztül.
+        if (is_admin() && !wp_doing_ajax()) {
+            return $args;
+        }
+
+        // apply only if product_cat is queried
+        if (!empty($taxonomies) && in_array('product_cat', (array) $taxonomies, true)) {
+            $disabled_cats = self::get_disabled_categories();
+            if (!empty($disabled_cats)) {
+                $existing_exclude = [];
+                if (isset($args['exclude'])) {
+                    $existing_exclude = is_array($args['exclude']) ? $args['exclude'] : wp_parse_id_list($args['exclude']);
+                }
+                $args['exclude'] = array_merge($existing_exclude, $disabled_cats);
+            }
+        }
+
+        return $args;
     }
 }
