@@ -401,7 +401,7 @@ class MG_Virtual_Variant_Manager {
             ),
             'text' => array(
                 'type' => __('Terméktípus:', 'mgvd'),
-                'typePrompt' => __('Válassz terméket:', 'mgvd'),
+                'typePrompt' => __('További termékek a mintával:', 'mgvd'),
                 'color' => __('Szín', 'mgvd'),
                 'size' => __('Méret', 'mgvd'),
                 'typePlaceholder' => __('Válassz terméktípust', 'mgvd'),

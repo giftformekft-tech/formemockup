@@ -1,4 +1,4 @@
-(function($){
+(function ($) {
     function VariantDisplay($form, config) {
         this.$form = $form;
         this.config = config;
@@ -71,14 +71,14 @@
         this.init();
     }
 
-    VariantDisplay.prototype.getText = function(key, fallback) {
+    VariantDisplay.prototype.getText = function (key, fallback) {
         if (this.config && this.config.text && typeof this.config.text[key] !== 'undefined') {
             return this.config.text[key];
         }
         return fallback;
     };
 
-    VariantDisplay.prototype.getTypeLabel = function(typeSlug) {
+    VariantDisplay.prototype.getTypeLabel = function (typeSlug) {
         if (!typeSlug) {
             return '';
         }
@@ -88,7 +88,7 @@
         return typeSlug;
     };
 
-    VariantDisplay.prototype.captureTitle = function() {
+    VariantDisplay.prototype.captureTitle = function () {
         if (this.$title && this.$title.length) {
             return;
         }
@@ -107,7 +107,7 @@
         }
     };
 
-    VariantDisplay.prototype.normalizeBaseTitle = function() {
+    VariantDisplay.prototype.normalizeBaseTitle = function () {
         if (!this.baseTitle || !this.config || !this.config.types) {
             return;
         }
@@ -116,10 +116,10 @@
             this.baseTitle = this.baseTitle.slice(0, -suffix.length).trim();
         }
         var self = this;
-        var labels = Object.keys(this.config.types).map(function(slug){
+        var labels = Object.keys(this.config.types).map(function (slug) {
             return self.getTypeLabel(slug).trim();
-        }).filter(function(label){ return label; });
-        labels.forEach(function(label){
+        }).filter(function (label) { return label; });
+        labels.forEach(function (label) {
             var dashed = ' - ' + label;
             var spaced = ' ' + label;
             if (self.baseTitle.slice(-dashed.length) === dashed) {
@@ -130,7 +130,7 @@
         });
     };
 
-    VariantDisplay.prototype.updateTitleForType = function() {
+    VariantDisplay.prototype.updateTitleForType = function () {
         if (!this.$title || !this.$title.length || !this.baseTitle) {
             return;
         }
@@ -142,7 +142,7 @@
         this.$title.text(nextTitle);
     };
 
-    VariantDisplay.prototype.relocateVariationPrice = function() {
+    VariantDisplay.prototype.relocateVariationPrice = function () {
         if (!this.$title || !this.$title.length) {
             return;
         }
@@ -159,7 +159,7 @@
         $holder.insertAfter(this.$title);
     };
 
-    VariantDisplay.prototype.supportsCanvas = function() {
+    VariantDisplay.prototype.supportsCanvas = function () {
         if (typeof document === 'undefined') {
             return false;
         }
@@ -171,7 +171,7 @@
         }
     };
 
-    VariantDisplay.prototype.init = function() {
+    VariantDisplay.prototype.init = function () {
         if (!this.$typeSelect.length || !this.$colorSelect.length || !this.$sizeSelect.length) {
             return;
         }
@@ -185,7 +185,7 @@
         this.initialSync();
     };
 
-    VariantDisplay.prototype.markReady = function() {
+    VariantDisplay.prototype.markReady = function () {
         if (this.isReady) {
             return;
         }
@@ -224,11 +224,11 @@
         }
     };
 
-    VariantDisplay.prototype.buildLayout = function() {
+    VariantDisplay.prototype.buildLayout = function () {
         var wrapper = $('<div class="mg-variant-display" />');
         this.$variantWrapper = wrapper;
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
-        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
+        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'További termékek a mintával:')));
         var $typeTrigger = $('<button type="button" class="mg-variant-type-trigger" aria-haspopup="dialog" aria-expanded="false" />');
         $typeTrigger.append($('<span class="mg-variant-type-trigger__label" />').text(this.getText('type', 'Terméktípus')));
         this.typeModal.$value = $('<span class="mg-variant-type-trigger__value" />').text(this.getText('typePlaceholder', 'Válassz terméktípust'));
@@ -272,7 +272,7 @@
 
         var typeOrder = (this.config.order && this.config.order.types && this.config.order.types.length) ? this.config.order.types : Object.keys(this.config.types);
         var self = this;
-        $.each(typeOrder, function(_, typeSlug){
+        $.each(typeOrder, function (_, typeSlug) {
             var meta = self.config.types[typeSlug];
             if (!meta) {
                 return;
@@ -293,7 +293,7 @@
         });
     };
 
-    VariantDisplay.prototype.createTypeModal = function() {
+    VariantDisplay.prototype.createTypeModal = function () {
         if (this.typeModal.$modal) {
             return;
         }
@@ -320,7 +320,7 @@
         this.$typeOptions = $list;
     };
 
-    VariantDisplay.prototype.getTypeMockup = function(typeSlug) {
+    VariantDisplay.prototype.getTypeMockup = function (typeSlug) {
         if (!typeSlug || !this.config || !this.config.visuals) {
             return '';
         }
@@ -334,7 +334,7 @@
         return '';
     };
 
-    VariantDisplay.prototype.showTypeModal = function() {
+    VariantDisplay.prototype.showTypeModal = function () {
         if (!this.typeModal.$modal || !this.typeModal.$trigger) {
             return;
         }
@@ -346,7 +346,7 @@
         }
     };
 
-    VariantDisplay.prototype.hideTypeModal = function() {
+    VariantDisplay.prototype.hideTypeModal = function () {
         if (!this.typeModal.$modal || !this.typeModal.$trigger) {
             return;
         }
@@ -356,7 +356,7 @@
         this.typeModal.$trigger.trigger('focus');
     };
 
-    VariantDisplay.prototype.getCustomFieldOrder = function($block) {
+    VariantDisplay.prototype.getCustomFieldOrder = function ($block) {
         if (!$block || !$block.length) {
             return 0;
         }
@@ -364,17 +364,17 @@
         return isNaN(order) ? 0 : order;
     };
 
-    VariantDisplay.prototype.findPlacementBlocks = function(placement) {
+    VariantDisplay.prototype.findPlacementBlocks = function (placement) {
         if (!this.$variantWrapper || !this.$variantWrapper.length) {
             return $();
         }
         return this.$variantWrapper.children('.mg-custom-fields[data-mgcf-placement="' + placement + '"]');
     };
 
-    VariantDisplay.prototype.insertBeforeHigherOrder = function($block, $collection, order) {
+    VariantDisplay.prototype.insertBeforeHigherOrder = function ($block, $collection, order) {
         var self = this;
         var inserted = false;
-        $collection.each(function(){
+        $collection.each(function () {
             var $candidate = $(this);
             var candidateOrder = self.getCustomFieldOrder($candidate);
             if (candidateOrder > order) {
@@ -386,7 +386,7 @@
         return inserted;
     };
 
-    VariantDisplay.prototype.insertAfterSection = function($block, placement, selector, order) {
+    VariantDisplay.prototype.insertAfterSection = function ($block, placement, selector, order) {
         if (!this.$variantWrapper || !this.$variantWrapper.length) {
             return false;
         }
@@ -406,7 +406,7 @@
         return false;
     };
 
-    VariantDisplay.prototype.applyCustomFieldSectionClasses = function($block, placement) {
+    VariantDisplay.prototype.applyCustomFieldSectionClasses = function ($block, placement) {
         if (!$block || !$block.length) {
             return;
         }
@@ -427,7 +427,7 @@
         }
     };
 
-    VariantDisplay.prototype.insertCustomFieldBlock = function($block, placement) {
+    VariantDisplay.prototype.insertCustomFieldBlock = function ($block, placement) {
         if (!$block || !$block.length || !this.$variantWrapper || !this.$variantWrapper.length) {
             return;
         }
@@ -486,14 +486,14 @@
         }
     };
 
-    VariantDisplay.prototype.relocateCustomFields = function() {
+    VariantDisplay.prototype.relocateCustomFields = function () {
         if (!this.$form || !this.$form.length) {
             return;
         }
         if (!this.$variantWrapper || !this.$variantWrapper.length) {
             return;
         }
-        var $blocks = this.$form.find('.mg-custom-fields').filter(function(){
+        var $blocks = this.$form.find('.mg-custom-fields').filter(function () {
             return $(this).attr('data-mgcf-relocated') !== '1';
         });
         if (!$blocks.length) {
@@ -501,7 +501,7 @@
         }
         var blocks = $blocks.toArray();
         var self = this;
-        blocks.sort(function(a, b){
+        blocks.sort(function (a, b) {
             var $a = $(a);
             var $b = $(b);
             var orderA = self.getCustomFieldOrder($a);
@@ -514,7 +514,7 @@
             return orderA - orderB;
         });
 
-        blocks.forEach(function(block){
+        blocks.forEach(function (block) {
             var $block = $(block);
             var placement = ($block.attr('data-mgcf-placement') || 'variant_bottom').toString();
             self.applyCustomFieldSectionClasses($block, placement);
@@ -523,17 +523,17 @@
         });
     };
 
-    VariantDisplay.prototype.bindEvents = function() {
+    VariantDisplay.prototype.bindEvents = function () {
         var self = this;
 
         if (this.typeModal.$trigger) {
-            this.typeModal.$trigger.on('click', function(e){
+            this.typeModal.$trigger.on('click', function (e) {
                 e.preventDefault();
                 self.showTypeModal();
             });
         }
 
-        this.$typeOptions.on('click', '.mg-variant-type-option', function(e){
+        this.$typeOptions.on('click', '.mg-variant-type-option', function (e) {
             e.preventDefault();
             var value = $(this).attr('data-value') || '';
             if ($(this).hasClass('is-disabled')) {
@@ -543,7 +543,7 @@
             self.hideTypeModal();
         });
 
-        this.$colorOptions.on('click', '.mg-variant-option', function(e){
+        this.$colorOptions.on('click', '.mg-variant-option', function (e) {
             e.preventDefault();
             if (!self.state.type) {
                 return;
@@ -555,7 +555,7 @@
             self.setColor(value, true);
         });
 
-        this.$colorOptions.on('mouseenter', '.mg-variant-option', function(){
+        this.$colorOptions.on('mouseenter', '.mg-variant-option', function () {
             if (!self.state.type || $(this).hasClass('is-disabled')) {
                 return;
             }
@@ -563,11 +563,11 @@
             self.setColorLabelText(label);
         });
 
-        this.$colorOptions.on('mouseleave', '.mg-variant-option', function(){
+        this.$colorOptions.on('mouseleave', '.mg-variant-option', function () {
             self.refreshColorLabel();
         });
 
-        this.$colorOptions.on('focus', '.mg-variant-option', function(){
+        this.$colorOptions.on('focus', '.mg-variant-option', function () {
             if (!self.state.type || $(this).hasClass('is-disabled')) {
                 return;
             }
@@ -575,11 +575,11 @@
             self.setColorLabelText(label);
         });
 
-        this.$colorOptions.on('blur', '.mg-variant-option', function(){
+        this.$colorOptions.on('blur', '.mg-variant-option', function () {
             self.refreshColorLabel();
         });
 
-        this.$sizeOptions.on('click', '.mg-variant-option', function(e){
+        this.$sizeOptions.on('click', '.mg-variant-option', function (e) {
             e.preventDefault();
             if (!self.state.type || !self.state.color) {
                 return;
@@ -592,7 +592,7 @@
         });
 
         if (this.sizeChart.$link) {
-            this.sizeChart.$link.on('click', function(e){
+            this.sizeChart.$link.on('click', function (e) {
                 e.preventDefault();
                 if ($(this).hasClass('is-disabled') || $(this).prop('disabled')) {
                     return;
@@ -602,26 +602,26 @@
         }
 
         if (this.typeModal.$close) {
-            this.typeModal.$close.on('click', function(){
+            this.typeModal.$close.on('click', function () {
                 self.hideTypeModal();
             });
         }
 
         if (this.typeModal.$modal) {
-            this.typeModal.$modal.on('click', function(event){
+            this.typeModal.$modal.on('click', function (event) {
                 if ($(event.target).is(self.typeModal.$modal) || $(event.target).is(self.typeModal.$backdrop)) {
                     self.hideTypeModal();
                 }
             });
         }
 
-        $(document).on('keydown.mgVariantTypeModal', function(event){
+        $(document).on('keydown.mgVariantTypeModal', function (event) {
             if (event.key === 'Escape' && self.typeModal.$modal && self.typeModal.$modal.hasClass('is-open')) {
                 self.hideTypeModal();
             }
         });
 
-        this.$typeSelect.on('change', function(){
+        this.$typeSelect.on('change', function () {
             if (self.syncing.type) {
                 return;
             }
@@ -629,7 +629,7 @@
             self.updateTypeUI(true);
         });
 
-        this.$colorSelect.on('change', function(){
+        this.$colorSelect.on('change', function () {
             if (self.syncing.color) {
                 return;
             }
@@ -637,7 +637,7 @@
             self.updateColorUI(true);
         });
 
-        this.$sizeSelect.on('change', function(){
+        this.$sizeSelect.on('change', function () {
             if (self.syncing.size) {
                 return;
             }
@@ -645,33 +645,33 @@
             self.updateSizeUI();
         });
 
-        this.$form.on('click', '.reset_variations', function(){
-            setTimeout(function(){
+        this.$form.on('click', '.reset_variations', function () {
+            setTimeout(function () {
                 self.syncFromSelects(false);
             }, 20);
         });
 
-        this.$form.on('reset_data', function(){
-            setTimeout(function(){
+        this.$form.on('reset_data', function () {
+            setTimeout(function () {
                 self.syncFromSelects(false);
             }, 20);
         });
 
-        this.$form.on('found_variation', function(event, variation){
+        this.$form.on('found_variation', function (event, variation) {
             self.handleFoundVariation(variation);
         });
 
-        this.$form.on('reset_data hide_variation', function(){
+        this.$form.on('reset_data hide_variation', function () {
             self.handleVariationReset();
         });
     };
 
-    VariantDisplay.prototype.initialSync = function() {
+    VariantDisplay.prototype.initialSync = function () {
         this.syncFromSelects(true);
         this.markReady();
     };
 
-    VariantDisplay.prototype.syncFromSelects = function(useDefaults) {
+    VariantDisplay.prototype.syncFromSelects = function (useDefaults) {
         var typeVal = this.$typeSelect.val() || (useDefaults && this.config.default ? this.config.default.type : '');
         var colorVal = this.$colorSelect.val() || (useDefaults && this.config.default ? this.config.default.color : '');
         var sizeVal = this.$sizeSelect.val() || (useDefaults && this.config.default ? this.config.default.size : '');
@@ -684,7 +684,7 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.setType = function(value, triggerChange) {
+    VariantDisplay.prototype.setType = function (value, triggerChange) {
         value = value || '';
         if (this.state.type === value) {
             if (triggerChange) {
@@ -714,7 +714,7 @@
         this.updateTypeUI(triggerChange !== false);
     };
 
-    VariantDisplay.prototype.setColor = function(value, triggerChange) {
+    VariantDisplay.prototype.setColor = function (value, triggerChange) {
         value = value || '';
         if (!this.state.type) {
             value = '';
@@ -741,7 +741,7 @@
         this.updateColorUI(triggerChange !== false);
     };
 
-    VariantDisplay.prototype.setSize = function(value, triggerChange) {
+    VariantDisplay.prototype.setSize = function (value, triggerChange) {
         value = value || '';
         if (!this.state.type || !this.state.color) {
             value = '';
@@ -766,9 +766,9 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.updateTypeUI = function(shouldTriggerChildren) {
+    VariantDisplay.prototype.updateTypeUI = function (shouldTriggerChildren) {
         var self = this;
-        this.$typeOptions.find('.mg-variant-type-option').each(function(){
+        this.$typeOptions.find('.mg-variant-type-option').each(function () {
             var $btn = $(this);
             var value = $btn.attr('data-value') || '';
             var isActive = value === self.state.type;
@@ -785,9 +785,9 @@
         this.updateTitleForType();
     };
 
-    VariantDisplay.prototype.updateColorUI = function(shouldTriggerSizes) {
+    VariantDisplay.prototype.updateColorUI = function (shouldTriggerSizes) {
         var self = this;
-        this.$colorOptions.find('.mg-variant-option').each(function(){
+        this.$colorOptions.find('.mg-variant-option').each(function () {
             var $btn = $(this);
             var value = $btn.attr('data-value') || '';
             var isActive = value === self.state.color;
@@ -799,9 +799,9 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.updateSizeUI = function() {
+    VariantDisplay.prototype.updateSizeUI = function () {
         var self = this;
-        this.$sizeOptions.find('.mg-variant-option').each(function(){
+        this.$sizeOptions.find('.mg-variant-option').each(function () {
             var $btn = $(this);
             var value = $btn.attr('data-value') || '';
             var isActive = value === self.state.size;
@@ -811,7 +811,7 @@
         this.updateAvailabilityText();
     };
 
-    VariantDisplay.prototype.updateAvailabilityText = function() {
+    VariantDisplay.prototype.updateAvailabilityText = function () {
         if (!this.$availabilityValue || !this.$availabilityValue.length) {
             return;
         }
@@ -840,7 +840,7 @@
         }
     };
 
-    VariantDisplay.prototype.setColorLabelText = function(label) {
+    VariantDisplay.prototype.setColorLabelText = function (label) {
         if (!this.$colorLabelValue || !this.$colorLabelValue.length) {
             return;
         }
@@ -848,7 +848,7 @@
         this.$colorLabelValue.text(text);
     };
 
-    VariantDisplay.prototype.refreshColorLabel = function() {
+    VariantDisplay.prototype.refreshColorLabel = function () {
         if (!this.$colorLabelValue || !this.$colorLabelValue.length) {
             return;
         }
@@ -863,7 +863,7 @@
         this.setColorLabelText(label);
     };
 
-    VariantDisplay.prototype.rebuildColorOptions = function(shouldTriggerSizeSync) {
+    VariantDisplay.prototype.rebuildColorOptions = function (shouldTriggerSizeSync) {
         this.$colorOptions.empty();
         if (!this.state.type || !this.config.types[this.state.type]) {
             this.$colorOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
@@ -887,7 +887,7 @@
             return;
         }
 
-        $.each(order, function(_, colorSlug){
+        $.each(order, function (_, colorSlug) {
             var meta = colors[colorSlug];
             if (!meta) {
                 return;
@@ -931,7 +931,7 @@
         this.updateColorUI(shouldTriggerSizeSync);
     };
 
-    VariantDisplay.prototype.rebuildSizeOptions = function(shouldTriggerSizeChange) {
+    VariantDisplay.prototype.rebuildSizeOptions = function (shouldTriggerSizeChange) {
         this.$sizeOptions.empty();
         if (!this.state.type) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('chooseTypeFirst', 'Először válassz terméktípust.')));
@@ -960,7 +960,7 @@
             return;
         }
 
-        $.each(sizes, function(_, sizeValue){
+        $.each(sizes, function (_, sizeValue) {
             var $btn = $('<button type="button" class="mg-variant-option mg-variant-option--size" aria-pressed="false" />');
             $btn.attr('data-value', sizeValue);
             $btn.append($('<span class="mg-variant-option__label" />').text(sizeValue));
@@ -993,7 +993,7 @@
         this.updateSizeChartLink();
     };
 
-    VariantDisplay.prototype.getAvailability = function(type, color, size) {
+    VariantDisplay.prototype.getAvailability = function (type, color, size) {
         var availability = this.config.availability || {};
         if (!availability[type] || !availability[type][color] || !availability[type][color][size]) {
             return { in_stock: true, is_purchasable: true };
@@ -1005,7 +1005,7 @@
         };
     };
 
-    VariantDisplay.prototype.getAvailableSizes = function(type, color) {
+    VariantDisplay.prototype.getAvailableSizes = function (type, color) {
         if (!this.config.types[type] || !this.config.types[type].colors[color]) {
             return [];
         }
@@ -1025,11 +1025,11 @@
         return out;
     };
 
-    VariantDisplay.prototype.getVisualDefaults = function() {
+    VariantDisplay.prototype.getVisualDefaults = function () {
         return (this.config && this.config.visuals && this.config.visuals.defaults) ? this.config.visuals.defaults : {};
     };
 
-    VariantDisplay.prototype.getVariationColor = function(variationId, typeSlug, colorSlug) {
+    VariantDisplay.prototype.getVariationColor = function (variationId, typeSlug, colorSlug) {
         var visuals = this.config && this.config.visuals ? this.config.visuals : {};
         if (variationId && visuals.variationColors && visuals.variationColors[variationId]) {
             return visuals.variationColors[variationId];
@@ -1044,7 +1044,7 @@
         return '';
     };
 
-    VariantDisplay.prototype.getVariationPattern = function(variationId) {
+    VariantDisplay.prototype.getVariationPattern = function (variationId) {
         var visuals = this.config && this.config.visuals ? this.config.visuals : {};
         if (variationId && visuals.variationPatterns && visuals.variationPatterns[variationId]) {
             return visuals.variationPatterns[variationId];
@@ -1056,7 +1056,7 @@
         return '';
     };
 
-    VariantDisplay.prototype.refreshPreviewState = function() {
+    VariantDisplay.prototype.refreshPreviewState = function () {
         if (!this.preview || !this.preview.$modal) {
             return;
         }
@@ -1110,7 +1110,7 @@
         }
     };
 
-    VariantDisplay.prototype.createPatternPreview = function() {
+    VariantDisplay.prototype.createPatternPreview = function () {
         if (this.preview.$button) {
             return;
         }
@@ -1145,31 +1145,31 @@
         this.preview.useCanvas = this.supportsCanvas();
 
         var self = this;
-        $button.on('click', function(){
+        $button.on('click', function () {
             self.showPatternPreview();
         });
 
-        $close.on('click', function(){
+        $close.on('click', function () {
             self.hidePatternPreview();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal) || $(event.target).is($backdrop)) {
                 self.hidePatternPreview();
             }
         });
 
-        $(document).on('keydown.mgPatternPreview', function(event){
+        $(document).on('keydown.mgPatternPreview', function (event) {
             if (event.key === 'Escape' && self.preview.$modal && self.preview.$modal.hasClass('is-open')) {
                 self.hidePatternPreview();
             }
         });
 
-        $content.on('contextmenu', function(event){
+        $content.on('contextmenu', function (event) {
             event.preventDefault();
         });
 
-        $content.on('dragstart selectstart', function(event){
+        $content.on('dragstart selectstart', function (event) {
             event.preventDefault();
         });
 
@@ -1189,7 +1189,7 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.applyPreviewWatermark = function(hasPattern, colorHex, watermarkText) {
+    VariantDisplay.prototype.applyPreviewWatermark = function (hasPattern, colorHex, watermarkText) {
         if (!this.preview.$watermark) {
             return;
         }
@@ -1223,7 +1223,7 @@
             });
     };
 
-    VariantDisplay.prototype.queueCanvasRender = function(patternUrl, colorHex, watermarkText) {
+    VariantDisplay.prototype.queueCanvasRender = function (patternUrl, colorHex, watermarkText) {
         if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
             return;
         }
@@ -1241,13 +1241,13 @@
         this.preview.renderQueued = true;
         var self = this;
         var delay = 120;
-        this.preview.renderTimer = window.setTimeout(function(){
+        this.preview.renderTimer = window.setTimeout(function () {
             self.preview.renderQueued = false;
             self.renderCanvasPattern();
         }, delay);
     };
 
-    VariantDisplay.prototype.paintCanvasWatermark = function(ctx, width, height, text) {
+    VariantDisplay.prototype.paintCanvasWatermark = function (ctx, width, height, text) {
         if (!ctx || !text) {
             return;
         }
@@ -1271,7 +1271,7 @@
         ctx.restore();
     };
 
-    VariantDisplay.prototype.renderCanvasPattern = function() {
+    VariantDisplay.prototype.renderCanvasPattern = function () {
         if (!this.preview.useCanvas || !this.preview.$canvas || !this.preview.$canvas.length) {
             return;
         }
@@ -1299,7 +1299,7 @@
         img.crossOrigin = 'anonymous';
         var self = this;
 
-        img.onload = function() {
+        img.onload = function () {
             var naturalWidth = img.naturalWidth || img.width || 1024;
             var naturalHeight = img.naturalHeight || img.height || 1024;
             var maxWidth = 1400;
@@ -1324,7 +1324,7 @@
             self.paintCanvasWatermark(ctx, drawWidth, drawHeight, watermarkText);
         };
 
-        img.onerror = function() {
+        img.onerror = function () {
             self.preview.loadFailed = true;
             self.preview.failedPattern = patternUrl;
             self.refreshPreviewState();
@@ -1333,7 +1333,7 @@
         img.src = patternUrl;
     };
 
-    VariantDisplay.prototype.showPatternPreview = function() {
+    VariantDisplay.prototype.showPatternPreview = function () {
         if (!this.preview.$modal) {
             return;
         }
@@ -1344,7 +1344,7 @@
         this.refreshPreviewState();
     };
 
-    VariantDisplay.prototype.hidePatternPreview = function() {
+    VariantDisplay.prototype.hidePatternPreview = function () {
         if (!this.preview.$modal) {
             return;
         }
@@ -1359,7 +1359,7 @@
         }
     };
 
-    VariantDisplay.prototype.handleFoundVariation = function(variation) {
+    VariantDisplay.prototype.handleFoundVariation = function (variation) {
         if (!variation) {
             return;
         }
@@ -1370,21 +1370,21 @@
         this.relocateVariationPrice();
     };
 
-    VariantDisplay.prototype.handleVariationReset = function() {
+    VariantDisplay.prototype.handleVariationReset = function () {
         this.preview.activeVariationId = 0;
         this.refreshPreviewState();
     };
 
-    $(function(){
+    $(function () {
         if (!window.MG_VARIANT_DISPLAY || !MG_VARIANT_DISPLAY.types) {
             return;
         }
-        $('form.variations_form').each(function(){
+        $('form.variations_form').each(function () {
             new VariantDisplay($(this), MG_VARIANT_DISPLAY);
         });
     });
 
-    VariantDisplay.prototype.createSizeChartModal = function() {
+    VariantDisplay.prototype.createSizeChartModal = function () {
         if (this.sizeChart.$modal) {
             return;
         }
@@ -1428,32 +1428,32 @@
         $body.append($modelsPanel);
 
         var self = this;
-        this.sizeChart.$close.on('click', function(){
+        this.sizeChart.$close.on('click', function () {
             self.hideSizeChart();
         });
 
-        this.sizeChart.$modelsButton.on('click', function(){
+        this.sizeChart.$modelsButton.on('click', function () {
             self.showSizeChartModels();
         });
 
-        this.sizeChart.$backButton.on('click', function(){
+        this.sizeChart.$backButton.on('click', function () {
             self.showSizeChart();
         });
 
-        $modal.on('click', function(event){
+        $modal.on('click', function (event) {
             if ($(event.target).is($modal)) {
                 self.hideSizeChart();
             }
         });
 
-        $(document).on('keydown.mgVariantSizeChart', function(event){
+        $(document).on('keydown.mgVariantSizeChart', function (event) {
             if (event.key === 'Escape' && self.sizeChart.$modal && self.sizeChart.$modal.hasClass('is-open')) {
                 self.hideSizeChart();
             }
         });
     };
 
-    VariantDisplay.prototype.updateSizeChartLink = function() {
+    VariantDisplay.prototype.updateSizeChartLink = function () {
         if (!this.sizeChart.$link) {
             return;
         }
@@ -1466,7 +1466,7 @@
         this.sizeChart.$link.attr('aria-expanded', this.sizeChart.$modal && this.sizeChart.$modal.hasClass('is-open') ? 'true' : 'false');
     };
 
-    VariantDisplay.prototype.getSizeChartContent = function() {
+    VariantDisplay.prototype.getSizeChartContent = function () {
         if (!this.state.type) {
             return '';
         }
@@ -1477,7 +1477,7 @@
         return typeMeta.size_chart;
     };
 
-    VariantDisplay.prototype.getSizeChartModelsContent = function() {
+    VariantDisplay.prototype.getSizeChartModelsContent = function () {
         if (!this.state.type) {
             return '';
         }
@@ -1488,7 +1488,7 @@
         return typeMeta.size_chart_models;
     };
 
-    VariantDisplay.prototype.captureDescriptionTargets = function() {
+    VariantDisplay.prototype.captureDescriptionTargets = function () {
         this.descriptionTargets = [];
         var selectors = [];
         if (this.config && $.isArray(this.config.descriptionTargets) && this.config.descriptionTargets.length) {
@@ -1502,8 +1502,8 @@
         }
 
         var self = this;
-        $.each(selectors, function(_, selector){
-            $(selector).each(function(){
+        $.each(selectors, function (_, selector) {
+            $(selector).each(function () {
                 var $el = $(this);
                 if (!$el.length) {
                     return;
@@ -1526,7 +1526,7 @@
         });
     };
 
-    VariantDisplay.prototype.updateDescription = function() {
+    VariantDisplay.prototype.updateDescription = function () {
         if (!this.descriptionTargets.length) {
             return;
         }
@@ -1557,7 +1557,7 @@
         });
     };
 
-    VariantDisplay.prototype.showSizeChart = function() {
+    VariantDisplay.prototype.showSizeChart = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1574,7 +1574,7 @@
         this.updateSizeChartLink();
     };
 
-    VariantDisplay.prototype.showSizeChartModels = function() {
+    VariantDisplay.prototype.showSizeChartModels = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1592,7 +1592,7 @@
         }
     };
 
-    VariantDisplay.prototype.hideSizeChart = function() {
+    VariantDisplay.prototype.hideSizeChart = function () {
         if (!this.sizeChart.$modal) {
             return;
         }
@@ -1611,7 +1611,7 @@
         this.updateSizeChartLink();
     };
 
-    VariantDisplay.prototype.updateSizeChartPanels = function() {
+    VariantDisplay.prototype.updateSizeChartPanels = function () {
         var chartContent = this.getSizeChartContent();
         var modelsContent = this.getSizeChartModelsContent();
         var hasModels = !!modelsContent;

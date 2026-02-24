@@ -197,7 +197,7 @@
         this.$variantWrapper = wrapper;
 
         var typeSection = $('<div class="mg-variant-section mg-variant-section--type" />');
-        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'Válassz terméket:')));
+        typeSection.append($('<div class="mg-variant-section__label" />').text(this.getText('typePrompt', 'További termékek a mintával:')));
         var $typeTrigger = $('<button type="button" class="mg-variant-type-trigger" aria-haspopup="dialog" aria-expanded="false" />');
         $typeTrigger.append($('<span class="mg-variant-type-trigger__label" />').text(this.getText('type', 'Terméktípus')));
         this.$typeValue = $('<span class="mg-variant-type-trigger__value" />').text(this.getText('typePlaceholder', 'Válassz terméktípust'));
