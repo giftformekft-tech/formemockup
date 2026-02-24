@@ -250,7 +250,7 @@ class MG_Facebook_Catalog_Feed {
             $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
             $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
-            $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL;
+            // $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL;
             
             // Product Type: Ruházat > terméktípus > főkategória > alkategória
             $product_type_parts = array('Ruházat', $type_label);
