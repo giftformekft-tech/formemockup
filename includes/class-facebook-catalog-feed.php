@@ -206,7 +206,11 @@ class MG_Facebook_Catalog_Feed {
             if (isset($custom_urls[$type_slug]) && !empty($custom_urls[$type_slug])) {
                 $g_link = $custom_urls[$type_slug];
             } else {
-                $g_link = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+                if (class_exists('MG_GMC_SEO_Optimizer')) {
+                    $g_link = MG_GMC_SEO_Optimizer::get_virtual_permalink($product, $type_slug);
+                } else {
+                    $g_link = add_query_arg('mg_type', $type_slug, $product->get_permalink());
+                }
             }
 
             // Image Link - Use the preview URL from config
