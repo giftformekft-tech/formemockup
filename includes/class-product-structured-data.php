@@ -47,13 +47,20 @@ class MG_Product_Structured_Data {
             return;
         }
 
+        $site_url = untrailingslashit(get_site_url());
+        $site_name = get_bloginfo('name');
+        
+        $seo_contact = get_option('mg_seo_contact', array('email' => '', 'phone' => ''));
+        $site_email = !empty($seo_contact['email']) ? $seo_contact['email'] : get_bloginfo('admin_email');
+        $site_phone = !empty($seo_contact['phone']) ? $seo_contact['phone'] : '+36305538083';
+        
         $organization_schema = array(
             '@context' => 'https://schema.org',
             '@type' => 'Organization',
             'name' => 'Gift for me Kft.',
-            'url' => 'https://polodroid.hu',
-            'email' => 'info@polodroid.hu',
-            'telephone' => '+36305538083',
+            'url' => $site_url,
+            'email' => $site_email,
+            'telephone' => $site_phone,
             'address' => array(
                 '@type' => 'PostalAddress',
                 'streetAddress' => 'Hunyadi utca 35.',
@@ -66,11 +73,11 @@ class MG_Product_Structured_Data {
         $website_schema = array(
             '@context' => 'https://schema.org',
             '@type' => 'WebSite',
-            'name' => 'Polodroid',
-            'url' => 'https://polodroid.hu',
+            'name' => $site_name,
+            'url' => $site_url,
             'potentialAction' => array(
                 '@type' => 'SearchAction',
-                'target' => 'https://polodroid.hu/?s={search_term_string}',
+                'target' => $site_url . '/?s={search_term_string}',
                 'query-input' => 'required name=search_term_string'
             )
         );
@@ -78,9 +85,9 @@ class MG_Product_Structured_Data {
         $store_schema = array(
             '@context' => 'https://schema.org',
             '@type' => 'Store',
-            'name' => 'Polodroid',
-            'url' => 'https://polodroid.hu',
-            'telephone' => '+36305538083',
+            'name' => $site_name,
+            'url' => $site_url,
+            'telephone' => $site_phone,
             'address' => array(
                 '@type' => 'PostalAddress',
                 'streetAddress' => 'Hunyadi utca 35.',

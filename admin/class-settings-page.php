@@ -235,6 +235,19 @@ class MG_Settings_Page {
             }
         }
 
+        // SEO Contacts
+        if (isset($_POST['mg_seo_contact_nonce']) && wp_verify_nonce($_POST['mg_seo_contact_nonce'], 'mg_seo_contact_save')) {
+            $input = isset($_POST['mg_seo_contact']) && is_array($_POST['mg_seo_contact']) ? wp_unslash($_POST['mg_seo_contact']) : array();
+            $email = sanitize_email($input['email'] ?? '');
+            $phone = sanitize_text_field($input['phone'] ?? '');
+            
+            update_option('mg_seo_contact', array(
+                'email' => $email,
+                'phone' => $phone,
+            ));
+            echo '<div class="notice notice-success is-dismissible"><p>SEO Kapcsolati adatok elmentve.</p></div>';
+        }
+
         // Emails Tab Saves
         if ($tab === 'emails') {
             if (isset($_POST['mg_emails_nonce']) && wp_verify_nonce($_POST['mg_emails_nonce'], 'mg_save_emails')) {
@@ -619,6 +632,34 @@ class MG_Settings_Page {
             </table>
             <?php submit_button('Várható érkezés mentése'); ?>
         </form>
+        <hr/>
+        
+        <h2>Schema.org Kapcsolati Adatok (Google Merchant)</h2>
+        <p>Ezek az adatok jelennek meg a weboldal kódjában a Google Bot számára (JSON-LD Organization és Store séma).</p>
+        <?php
+        $seo_contact = get_option('mg_seo_contact', array('email' => '', 'phone' => ''));
+        ?>
+        <form method="post">
+            <?php wp_nonce_field('mg_seo_contact_save', 'mg_seo_contact_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Kapcsolati E-mail</th>
+                    <td>
+                        <input type="email" name="mg_seo_contact[email]" value="<?php echo esc_attr($seo_contact['email'] ?? ''); ?>" class="regular-text" placeholder="<?php echo esc_attr(get_bloginfo('admin_email')); ?>" />
+                        <p class="description">Ha üresen hagyod, a rendszer a beállított admin e-mailt használja.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Telefonszám (Nemzetközi formátum)</th>
+                    <td>
+                        <input type="text" name="mg_seo_contact[phone]" value="<?php echo esc_attr($seo_contact['phone'] ?? ''); ?>" class="regular-text" placeholder="+36301234567" />
+                        <p class="description">Google által javasolt formátum. Ajánlott megadni a megfelelő merchant megfeleltetéshez.</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('Mentés'); ?>
+        </form>
+        
         <script>
             jQuery(function($){
                 var frame;
