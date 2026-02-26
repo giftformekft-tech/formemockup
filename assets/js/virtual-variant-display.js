@@ -779,6 +779,32 @@
                 self.showSizeChart();
             });
         }
+
+        if (this.$form && this.$form.length) {
+            this.$form.on('submit', function () {
+                if (typeof window.gtag === 'function' && self.state.type && self.config && self.config.types && self.config.types[self.state.type]) {
+                    var baseId = self.config.product ? self.config.product.id : '';
+                    var itemId = baseId ? (baseId + '-' + self.state.type) : self.state.type;
+
+                    var typeMeta = self.config.types[self.state.type];
+                    var basePrice = self.getTypeBasePrice(typeMeta);
+                    var colorSurcharge = self.getColorSurcharge(typeMeta);
+                    var sizeSurcharge = self.getSizeSurcharge(typeMeta);
+                    var total = Math.max(0, basePrice + colorSurcharge + sizeSurcharge);
+
+                    window.gtag('event', 'add_to_cart', {
+                        'value': total,
+                        'currency': 'HUF',
+                        'items': [{
+                            'id': itemId,
+                            'price': total,
+                            'quantity': parseInt(self.$form.find('input[name="quantity"]').first().val()) || 1,
+                            'google_business_vertical': 'retail'
+                        }]
+                    });
+                }
+            });
+        }
     };
 
     VirtualVariantDisplay.prototype.getTypeFromUrl = function () {

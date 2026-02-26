@@ -274,6 +274,17 @@ class MG_Settings_Page {
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Vásárlói vélemények beállítások elmentve.</p></div>';
             }
+
+            if (isset($_POST['mg_gads_nonce']) && wp_verify_nonce($_POST['mg_gads_nonce'], 'mg_save_gads')) {
+                $conversion_id = sanitize_text_field($_POST['mg_gads_conversion_id'] ?? '');
+                $purchase_label = sanitize_text_field($_POST['mg_gads_purchase_label'] ?? '');
+
+                update_option('mg_gads_settings', array(
+                    'conversion_id' => $conversion_id,
+                    'purchase_label' => $purchase_label
+                ));
+                echo '<div class="notice notice-success is-dismissible"><p>Google Ads követés beállítások elmentve.</p></div>';
+            }
         }
     }
 
@@ -871,6 +882,37 @@ class MG_Settings_Page {
                 </tr>
             </table>
             <?php submit_button('Mentés'); ?>
+        </form>
+
+        <hr/>
+
+        <h2>Google Ads Konverzió & Remarketing Követés</h2>
+        <p>A kompatibilis dinamikus remarketing és pontos konverziókövetés érdekében a rendszer <strong>a feed-ben küldött virtuális azonosítókat</strong> (pl. <code>[BaseID]-ferfi-polo</code>) és az adott variáns pontos árát küldi a Google Ads felé (`view_item` és `purchase` eseményként).</p>
+        <?php
+        $gads_settings = get_option('mg_gads_settings', array(
+            'conversion_id' => '',
+            'purchase_label' => ''
+        ));
+        ?>
+        <form method="post">
+            <?php wp_nonce_field('mg_save_gads', 'mg_gads_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Google Ads Conversion ID</th>
+                    <td>
+                        <input type="text" name="mg_gads_conversion_id" class="regular-text" placeholder="AW-123456789" value="<?php echo esc_attr($gads_settings['conversion_id']); ?>" />
+                        <p class="description">Ha megadod, a GTAG.js automatikusan beépül az oldal fejlécébe. Ehhez az ID-hoz mennek a `view_item` és `purchase` események.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Purchase (Sikeres tranzakció) Címke / Label</th>
+                    <td>
+                        <input type="text" name="mg_gads_purchase_label" class="regular-text" placeholder="ABcDeFGhijklmN123" value="<?php echo esc_attr($gads_settings['purchase_label']); ?>" />
+                        <p class="description">Opcionális. Ha meg van adva, a "thank you" oldalon sikeres fizetéskor ezt a címkét is hozzáfűzi a Google (megtérülésméréshez hasznos).</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('Google Ads Beállítások Mentése'); ?>
         </form>
         <?php
     }

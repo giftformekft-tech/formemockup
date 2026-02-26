@@ -58,6 +58,7 @@ add_action('plugins_loaded', function(){
         'includes/class-server-side-price.php',
         'includes/class-price-override.php',
         'includes/class-google-customer-reviews.php',
+        'includes/class-google-ads-tracking.php',
 
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
@@ -184,6 +185,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Google_Customer_Reviews')) {
         MG_Google_Customer_Reviews::init();
+    }
+    if (class_exists('MG_Google_Ads_Tracking')) {
+        MG_Google_Ads_Tracking::init();
     }
     if (class_exists('MG_Email_Footer')) {
         MG_Email_Footer::init();
