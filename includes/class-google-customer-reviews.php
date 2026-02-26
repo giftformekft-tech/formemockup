@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
  */
 class MG_Google_Customer_Reviews {
 
-    /** Google Merchant Center ID */
+    /** Elavult konstans (visszafelé kompatibilitás miatt) */
     const MERCHANT_ID = 5730531016;
 
     /** Becsült szállítási idő napokban (alapértelmezés) */
@@ -23,7 +23,15 @@ class MG_Google_Customer_Reviews {
             return;
         }
 
-        add_action('woocommerce_thankyou', array(__CLASS__, 'output_survey_optin'), 20, 1);
+        $settings = get_option('mg_gcr_settings', array(
+            'enabled' => true,
+            'merchant_id' => '5730531016',
+            'delivery_days' => 10
+        ));
+
+        if (!empty($settings['enabled']) && !empty($settings['merchant_id'])) {
+            add_action('woocommerce_thankyou', array(__CLASS__, 'output_survey_optin'), 20, 1);
+        }
     }
 
     /**
@@ -57,7 +65,16 @@ class MG_Google_Customer_Reviews {
         }
 
         // Estimated delivery date
-        $delivery_days = apply_filters('mg_gcr_estimated_delivery_days', self::DEFAULT_DELIVERY_DAYS, $order);
+        $settings = get_option('mg_gcr_settings', array(
+            'enabled' => true,
+            'merchant_id' => '5730531016',
+            'delivery_days' => 10
+        ));
+        
+        $base_days = max(1, intval($settings['delivery_days']));
+        $merchant_id = sanitize_text_field($settings['merchant_id']);
+
+        $delivery_days = apply_filters('mg_gcr_estimated_delivery_days', $base_days, $order);
         $order_date = $order->get_date_created();
         if ($order_date) {
             $estimated_date = clone $order_date;
@@ -99,7 +116,7 @@ class MG_Google_Customer_Reviews {
         window.renderOptIn = function() {
             window.gapi.load('surveyoptin', function() {
                 window.gapi.surveyoptin.render({
-                    "merchant_id": <?php echo intval(self::MERCHANT_ID); ?>,
+                    "merchant_id": <?php echo intval($merchant_id); ?>,
                     "order_id": "<?php echo esc_js($order->get_order_number()); ?>",
                     "email": "<?php echo esc_js($email); ?>",
                     "delivery_country": "<?php echo esc_js($country); ?>",

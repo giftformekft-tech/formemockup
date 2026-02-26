@@ -259,6 +259,22 @@ class MG_Settings_Page {
                 echo '<div class="notice notice-success is-dismissible"><p>E-mail beállítások elmentve.</p></div>';
             }
         }
+
+        // Feeds Tab Saves
+        if ($tab === 'feeds') {
+            if (isset($_POST['mg_gcr_nonce']) && wp_verify_nonce($_POST['mg_gcr_nonce'], 'mg_save_gcr')) {
+                $enabled = !empty($_POST['mg_gcr_enabled']);
+                $merchant_id = sanitize_text_field($_POST['mg_gcr_merchant_id'] ?? '');
+                $delivery_days = max(1, intval($_POST['mg_gcr_delivery_days'] ?? 10));
+
+                update_option('mg_gcr_settings', array(
+                    'enabled' => $enabled,
+                    'merchant_id' => $merchant_id,
+                    'delivery_days' => $delivery_days
+                ));
+                echo '<div class="notice notice-success is-dismissible"><p>Vásárlói vélemények beállítások elmentve.</p></div>';
+            }
+        }
     }
 
     private static function render_products_tab() {
@@ -819,6 +835,43 @@ class MG_Settings_Page {
                 </td>
             </tr>
         </table>
+
+        <hr/>
+
+        <h2>Google Vásárlói Vélemények (Customer Reviews)</h2>
+        <?php
+        $gcr_settings = get_option('mg_gcr_settings', array(
+            'enabled' => true,
+            'merchant_id' => '5730531016',
+            'delivery_days' => 10
+        ));
+        ?>
+        <form method="post">
+            <?php wp_nonce_field('mg_save_gcr', 'mg_gcr_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Engedélyezés</th>
+                    <td>
+                        <label><input type="checkbox" name="mg_gcr_enabled" value="1" <?php checked(!empty($gcr_settings['enabled'])); ?> /> Megjelenítés a fizetés utáni (Thank You) oldalon</label>
+                        <p class="description">Ha be van kapcsolva, a rendszer automatikusan felkínálja a vásárlóknak a Google értékelést.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Merchant Center ID</th>
+                    <td>
+                        <input type="text" name="mg_gcr_merchant_id" class="regular-text" value="<?php echo esc_attr($gcr_settings['merchant_id']); ?>" />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Kiszállítás becsült ideje (munkanap)</th>
+                    <td>
+                        <input type="number" name="mg_gcr_delivery_days" class="small-text" min="1" step="1" value="<?php echo esc_attr($gcr_settings['delivery_days']); ?>" />
+                        <p class="description">Mikor kapják meg a kérdőívet? A rendelés napjához ennyi napot adunk hozzá.</p>
+                    </td>
+                </tr>
+            </table>
+            <?php submit_button('Mentés'); ?>
+        </form>
         <?php
     }
 
