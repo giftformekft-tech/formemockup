@@ -170,7 +170,7 @@ class MG_Google_Ads_Tracking {
 
             // Próbáljuk kiolvasni a típust a kosárelem metákból
             $type_slug = '';
-            $type_label = $item->get_meta('Típus');
+            $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
             
             if ($type_label) {
                 // Meg kell találnunk a slug-ot a label alapján
