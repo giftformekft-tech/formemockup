@@ -7,6 +7,13 @@ class MG_Custom_Fields_Page {
     const NONCE_FIELD = 'mg_custom_fields_nonce';
     const NONCE_ACTION = 'mg_custom_fields_action';
 
+    public static function init() {
+        add_action('wp_ajax_mgcf_save_product_assignments', array(__CLASS__, 'ajax_save_product_assignments'));
+        add_action('wp_ajax_mgcf_update_preset', array(__CLASS__, 'ajax_update_preset'));
+        add_action('wp_ajax_mgcf_search_products_by_minta', array(__CLASS__, 'ajax_search_products_by_minta'));
+        add_action('wp_ajax_mgcf_assign_searched_products', array(__CLASS__, 'ajax_assign_searched_products'));
+    }
+
     public static function add_submenu_page() {
         $hook = add_submenu_page(
             'mockup-generator',
@@ -19,10 +26,6 @@ class MG_Custom_Fields_Page {
         if (!has_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_assets'))) {
             add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_assets'));
         }
-        add_action('wp_ajax_mgcf_save_product_assignments', array(__CLASS__, 'ajax_save_product_assignments'));
-        add_action('wp_ajax_mgcf_update_preset', array(__CLASS__, 'ajax_update_preset'));
-        add_action('wp_ajax_mgcf_search_products_by_minta', array(__CLASS__, 'ajax_search_products_by_minta'));
-        add_action('wp_ajax_mgcf_assign_searched_products', array(__CLASS__, 'ajax_assign_searched_products'));
         return $hook;
     }
 

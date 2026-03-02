@@ -126,6 +126,9 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Custom_Fields_Frontend')) {
         MG_Custom_Fields_Frontend::init();
     }
+    if (class_exists('MG_Custom_Fields_Page')) {
+        MG_Custom_Fields_Page::init();
+    }
     if (class_exists('MG_Size_Selection')) {
         MG_Size_Selection::init();
     }
