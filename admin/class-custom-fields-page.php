@@ -21,6 +21,8 @@ class MG_Custom_Fields_Page {
         }
         add_action('wp_ajax_mgcf_save_product_assignments', array(__CLASS__, 'ajax_save_product_assignments'));
         add_action('wp_ajax_mgcf_update_preset', array(__CLASS__, 'ajax_update_preset'));
+        add_action('wp_ajax_mgcf_search_products_by_minta', array(__CLASS__, 'ajax_search_products_by_minta'));
+        add_action('wp_ajax_mgcf_assign_searched_products', array(__CLASS__, 'ajax_assign_searched_products'));
         return $hook;
     }
 
@@ -384,6 +386,9 @@ class MG_Custom_Fields_Page {
         // Preset editor popup
         self::render_preset_editor_popup($preset_id, $preset);
 
+        // Product search section
+        self::render_product_search_section($preset_id);
+
         // Product assignment section
         self::render_product_assignment_section($preset_id, $assigned_product_ids);
     }
@@ -543,6 +548,39 @@ class MG_Custom_Fields_Page {
         echo '</div>';
     }
 
+    protected static function render_product_search_section($preset_id) {
+        echo '<section class="mgcf-section mgcf-search-section">';
+        echo '<div class="mgcf-section__header">';
+        echo '<h2>' . esc_html__('Keresés minta alapján', 'mgcf') . '</h2>';
+        echo '<p>' . esc_html__('Keress termékeket név vagy SKU alapján (minta), és rendeld hozzájuk ezt a presetet utólag.', 'mgcf') . '</p>';
+        echo '</div>';
+
+        echo '<div class="mgcf-search-controls">';
+        echo '<input type="text" id="mgcf-search-input" class="regular-text" placeholder="' . esc_attr__('Minta neve vagy azonosítója...', 'mgcf') . '" />';
+        echo '<button type="button" id="mgcf-search-btn" class="button button-secondary" data-preset="' . esc_attr($preset_id) . '">' . esc_html__('Keresés', 'mgcf') . '</button>';
+        echo '<span class="spinner" id="mgcf-search-spinner"></span>';
+        echo '</div>';
+
+        echo '<div id="mgcf-search-results-container" style="display:none; margin-top:20px;">';
+        echo '<div class="mgcf-table-wrap">';
+        echo '<table class="widefat striped mgcf-table" id="mgcf-search-results-table">';
+        echo '<thead><tr>';
+        echo '<th class="mgcf-table__check"><input type="checkbox" id="mgcf-search-select-all" /></th>';
+        echo '<th class="mgcf-table__image">' . esc_html__('Kép', 'mgcf') . '</th>';
+        echo '<th>' . esc_html__('Termék', 'mgcf') . '</th>';
+        echo '<th>' . esc_html__('Állapot', 'mgcf') . '</th>';
+        echo '</tr></thead>';
+        echo '<tbody></tbody>';
+        echo '</table>';
+        echo '</div>';
+
+        echo '<p class="submit">';
+        echo '<button type="button" id="mgcf-search-assign-btn" class="button button-primary" data-preset="' . esc_attr($preset_id) . '">' . esc_html__('Kiválasztottak hozzárendelése', 'mgcf') . '</button>';
+        echo '</p>';
+        echo '</div>';
+        echo '</section>';
+    }
+
     protected static function render_product_assignment_section($preset_id, $assigned_product_ids) {
         $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
         $per_page = isset($_GET['per_page']) ? intval($_GET['per_page']) : 25;
@@ -681,6 +719,78 @@ class MG_Custom_Fields_Page {
             wp_send_json_success(array('message' => __('Preset frissítve.', 'mgcf')));
         } else {
             wp_send_json_error(array('message' => __('Hiba történt a mentés során.', 'mgcf')));
+        }
+    }
+
+    public static function ajax_search_products_by_minta() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgcf')));
+        }
+
+        $query = isset($_POST['query']) ? sanitize_text_field($_POST['query']) : '';
+        if ($query === '') {
+            wp_send_json_success(array('products' => array()));
+        }
+
+        $args = array(
+            'post_type'      => 'product',
+            'posts_per_page' => 100, // Reasonable limit
+            'post_status'    => array('publish', 'draft', 'pending', 'private'),
+            's'              => $query,
+        );
+        $products = get_posts($args);
+        $results = array();
+
+        if (is_array($products)) {
+            foreach ($products as $post) {
+                $status = get_post_status_object($post->post_status);
+                $status_label = $status ? $status->label : $post->post_status;
+                $thumbnail = get_the_post_thumbnail($post->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
+                if (empty($thumbnail)) {
+                    $thumbnail = '<span class="mgcf-no-image">—</span>';
+                }
+                $results[] = array(
+                    'id' => $post->ID,
+                    'title' => get_the_title($post->ID),
+                    'status' => $status_label,
+                    'thumbnail' => $thumbnail
+                );
+            }
+        }
+
+        wp_send_json_success(array('products' => $results));
+    }
+
+    public static function ajax_assign_searched_products() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgcf')));
+        }
+
+        $preset_id = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+        $product_ids = isset($_POST['product_ids']) && is_array($_POST['product_ids']) ? array_map('intval', $_POST['product_ids']) : array();
+
+        if ($preset_id === '') {
+            wp_send_json_error(array('message' => __('Hiányzó preset azonosító.', 'mgcf')));
+        }
+        if (empty($product_ids)) {
+            wp_send_json_error(array('message' => __('Nincs kiválasztott termék.', 'mgcf')));
+        }
+
+        $success_count = 0;
+        foreach ($product_ids as $pid) {
+            if (MG_Custom_Fields_Manager::apply_preset_to_product($pid, $preset_id)) {
+                $success_count++;
+            }
+        }
+
+        if ($success_count > 0) {
+            wp_send_json_success(array('message' => sprintf(__('%d termék sikeresen hozzárendelve.', 'mgcf'), $success_count)));
+        } else {
+            wp_send_json_error(array('message' => __('Hiba történt a hozzárendelés során.', 'mgcf')));
         }
     }
 }
