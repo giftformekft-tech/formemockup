@@ -230,6 +230,7 @@ class MG_Settings_Page {
                     'manual_list' => sanitize_textarea_field($input['manual_list'] ?? ''),
                     'payment_image_id' => $payment_image_id,
                     'payment_image_url' => $payment_image_url,
+                    'mobile_font_size' => sanitize_text_field($input['mobile_font_size'] ?? ''),
                 ));
                 echo '<div class="notice notice-success is-dismissible"><p>Várható érkezés csempe beállítások elmentve.</p></div>';
             }
@@ -598,7 +599,6 @@ class MG_Settings_Page {
                         <input type="number" name="mg_delivery_estimate[cutoff_extra_days]" min="0" step="1" value="<?php echo esc_attr(intval($delivery_settings['cutoff_extra_days'] ?? 0)); ?>" class="small-text" /> nap extra
                         <p class="description">Ha a rendelés ez után érkezik be egy munkanapon, ennyi plusz munkanap kerül hozzá a számításhoz.</p>
                     </td>
-                </tr>
                 </tbody>
                 <tbody id="mg_delivery_manual_settings" style="display:none;">
                 <tr>
@@ -615,6 +615,13 @@ class MG_Settings_Page {
                     </td>
                 </tr>
                 </tbody>
+                <tr>
+                    <th scope="row">Mobil betűméret (px)</th>
+                    <td>
+                        <input type="number" name="mg_delivery_estimate[mobile_font_size]" min="10" max="30" step="1" value="<?php echo esc_attr($delivery_settings['mobile_font_size'] ?? ''); ?>" class="small-text" /> px
+                        <p class="description">Mobil nézetben (telefonokon) ezzel a mérettel jelenik meg a várható érkezés szövege. Hagyd üresen az alapbeállításhoz.</p>
+                    </td>
+                </tr>
                 <tr>
                     <th scope="row">PNG ikon feltöltés</th>
                     <td>

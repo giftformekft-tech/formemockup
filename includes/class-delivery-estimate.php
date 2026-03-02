@@ -45,6 +45,7 @@ class MG_Delivery_Estimate {
             'manual_list' => '',
             'payment_image_id' => 0,
             'payment_image_url' => '',
+            'mobile_font_size' => '',
         );
         $settings = get_option(self::OPTION_KEY, array());
         if (!is_array($settings)) {
@@ -68,6 +69,7 @@ class MG_Delivery_Estimate {
         $merged['manual_list'] = sanitize_textarea_field($merged['manual_list'] ?? '');
         $merged['payment_image_id'] = max(0, intval($merged['payment_image_id']));
         $merged['payment_image_url'] = is_string($merged['payment_image_url']) ? $merged['payment_image_url'] : '';
+        $merged['mobile_font_size'] = is_string($merged['mobile_font_size']) ? $merged['mobile_font_size'] : '';
         if ($merged['icon_id'] > 0 && function_exists('wp_get_attachment_url')) {
             $attachment_url = wp_get_attachment_url($merged['icon_id']);
             if ($attachment_url) {
@@ -92,6 +94,19 @@ class MG_Delivery_Estimate {
             return;
         }
         $icon_url = esc_url($settings['icon_url']);
+        $mobile_font_size = esc_attr($settings['mobile_font_size']);
+
+        if ($mobile_font_size !== '' && intval($mobile_font_size) > 0) {
+            echo '<style>
+                @media (max-width: 768px) {
+                    .mg-delivery-estimate .mg-delivery-estimate__row,
+                    .mg-delivery-estimate .mg-delivery-estimate__header,
+                    .mg-delivery-estimate .mg-delivery-estimate__list-item {
+                        font-size: ' . intval($mobile_font_size) . 'px !important;
+                    }
+                }
+            </style>';
+        }
 
         // Manual Mode Rendering
         if (isset($settings['mode']) && $settings['mode'] === 'manual') {
