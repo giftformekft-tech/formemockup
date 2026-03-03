@@ -574,6 +574,9 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
 } else {
     $prod['utt_skus'] = array();
 }
+if (isset($_POST['utt_size_suffix'])) {
+    $prod['utt_size_suffix'] = sanitize_text_field($_POST['utt_size_suffix']);
+}
             $removed_overrides = 0;
             $overrides_dirty = false;
 
@@ -969,6 +972,13 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                <?php $saved_suffix = isset($prod['utt_size_suffix']) ? $prod['utt_size_suffix'] : ''; ?>
+                <p style="margin-top:10px;">
+                    <label><strong>UTT méret utótag:</strong>
+                        <input type="text" name="utt_size_suffix" class="small-text" value="<?php echo esc_attr($saved_suffix); ?>" placeholder="pl: a" />
+                    </label>
+                    <span class="description">Ha kitöltöd (pl. <code>a</code>), a CSV-ben a méret végére kerül (2 → 2a, 4 → 4a).</span>
+                </p>
 
                 <h2>Nézetek (views)</h2>
                 <p><textarea id="mg-views-json" name="views" rows="12" class="large-text code"><?php echo esc_textarea(json_encode($views, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></textarea></p>

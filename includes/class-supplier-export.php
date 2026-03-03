@@ -187,7 +187,10 @@ class MG_Supplier_Export {
                 if ($has_utt) {
                     $base_sku = trim($product_lookup[$product_type]['utt_skus'][$color_slug]);
                     if ($base_sku !== '') {
-                        $final_sku = $base_sku . '-' . $size_val;
+                        // Apply size suffix if configured (e.g., "a" for kids: 2 → 2a)
+                        $suffix = isset($product_lookup[$product_type]['utt_size_suffix']) ? $product_lookup[$product_type]['utt_size_suffix'] : '';
+                        $final_size = $size_val . $suffix;
+                        $final_sku = $base_sku . '-' . $final_size;
                         if (!isset($aggregated[$final_sku])) {
                             $aggregated[$final_sku] = 0;
                         }
