@@ -4,6 +4,10 @@ if (!defined('ABSPATH')) exit;
 class MG_Supplier_Export {
 
     public static function init() {
+        // Register custom order status
+        add_action('init', [self::class, 'register_order_status']);
+        add_filter('wc_order_statuses', [self::class, 'add_to_status_list']);
+
         // Legacy (Post type) Orders
         add_filter('bulk_actions-edit-shop_order', [self::class, 'register_bulk_action'], 99);
         add_filter('handle_bulk_actions-edit-shop_order', [self::class, 'handle_bulk_action'], 10, 3);
@@ -17,6 +21,22 @@ class MG_Supplier_Export {
 
         // Fallback Javascript injection for aggressive themes/plugins
         add_action('admin_footer', [self::class, 'inject_bulk_action_js'], 999);
+    }
+
+    public static function register_order_status() {
+        register_post_status('wc-manufacturing', array(
+            'label'                     => 'Gyártás alatt',
+            'public'                    => true,
+            'exclude_from_search'       => false,
+            'show_in_admin_all_list'    => true,
+            'show_in_admin_status_list' => true,
+            'label_count'               => _n_noop('Gyártás alatt (%s)', 'Gyártás alatt (%s)', 'mockup-generator'),
+        ));
+    }
+
+    public static function add_to_status_list($statuses) {
+        $statuses['wc-manufacturing'] = 'Gyártás alatt';
+        return $statuses;
     }
 
     public static function register_bulk_action($bulk_actions) {
@@ -195,6 +215,14 @@ class MG_Supplier_Export {
         }
 
         $chunks = array_chunk($items, 100);
+
+        // Update order statuses to "Gyártás alatt"
+        foreach ($post_ids as $order_id) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order->update_status('manufacturing', 'Rendelés exportálva a Nagyker CSV-be.');
+            }
+        }
 
         // Clear any output buffers
         while (ob_get_level() > 0) {
