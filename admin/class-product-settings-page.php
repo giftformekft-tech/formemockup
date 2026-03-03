@@ -948,6 +948,7 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
                     </noscript>
                 </div>
 
+
                 <h2>UTT Cikkszámok (Nagykereskedés)</h2>
                 <p class="description">Add meg az alap UTT cikkszámot színenként. Ez kerül a Nagyker CSV exportba. Ha üres, nem kerül bele az adott szín. A méret később automatikusan kiegészül (pl. alap_cikkszám-méret).</p>
                 <table class="widefat striped">
