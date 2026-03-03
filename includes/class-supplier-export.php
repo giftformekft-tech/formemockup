@@ -117,9 +117,9 @@ class MG_Supplier_Export {
                 }
                 $debug[] = "  Item #{$item_id} ({$item->get_name()}) qty={$qty} meta: " . implode(', ', $meta_keys);
 
-                $product_type = $item->get_meta('termektipus') ?: $item->get_meta('pa_termektipus') ?: $item->get_meta('pa_product_type');
-                $color_slug = $item->get_meta('pa_szin') ?: $item->get_meta('pa_color') ?: $item->get_meta('szin');
-                $size_val = $item->get_meta('pa_meret') ?: $item->get_meta('pa_size') ?: $item->get_meta('meret');
+                $product_type = $item->get_meta('mg_product_type') ?: $item->get_meta('product_type') ?: $item->get_meta('termektipus') ?: $item->get_meta('pa_termektipus');
+                $color_slug = $item->get_meta('mg_color') ?: $item->get_meta('color') ?: $item->get_meta('pa_szin') ?: $item->get_meta('szin');
+                $size_val = $item->get_meta('mg_size') ?: $item->get_meta('size') ?: $item->get_meta('pa_meret') ?: $item->get_meta('meret');
 
                 // If missing, look at variation / product
                 if (empty($product_type) || empty($color_slug) || empty($size_val)) {
