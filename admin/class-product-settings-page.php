@@ -560,6 +560,20 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
     }
     $prod['size_surcharges'] = $ss;
 }
+// -- ÚJ: UTT (Nagykereskedés) cikkszámok mentése színenként --
+if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
+    $utt = array();
+    foreach ($_POST['utt_skus'] as $color_slug => $val) {
+        $color_key = sanitize_title($color_slug);
+        $sku_val = sanitize_text_field($val);
+        if ($color_key !== '' && $sku_val !== '') {
+            $utt[$color_key] = $sku_val;
+        }
+    }
+    $prod['utt_skus'] = $utt;
+} else {
+    $prod['utt_skus'] = array();
+}
             $removed_overrides = 0;
             $overrides_dirty = false;
 
@@ -933,6 +947,27 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
                         </p>
                     </noscript>
                 </div>
+
+                <h2>UTT Cikkszámok (Nagykereskedés)</h2>
+                <p class="description">Add meg az alap UTT cikkszámot színenként. Ez kerül a Nagyker CSV exportba. Ha üres, nem kerül bele az adott szín. A méret később automatikusan kiegészül (pl. alap_cikkszám-méret).</p>
+                <table class="widefat striped">
+                    <thead><tr><th>Szín</th><th>UTT Cikkszám (alap)</th></tr></thead>
+                    <tbody>
+                    <?php
+                    $colors_list = is_array($colors) ? $colors : array();
+                    $saved_utt = isset($prod['utt_skus']) && is_array($prod['utt_skus']) ? $prod['utt_skus'] : array();
+                    foreach ($colors_list as $c):
+                        if (!isset($c['slug'], $c['name'])) continue;
+                        $slug = $c['slug'];
+                        $val = isset($saved_utt[$slug]) ? $saved_utt[$slug] : '';
+                    ?>
+                        <tr>
+                            <td><?php echo esc_html($c['name']); ?> (<code><?php echo esc_html($slug); ?></code>)</td>
+                            <td><input type="text" name="utt_skus[<?php echo esc_attr($slug); ?>]" class="regular-text" value="<?php echo esc_attr($val); ?>" placeholder="pl: gi2000as" /></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
 
                 <h2>Nézetek (views)</h2>
                 <p><textarea id="mg-views-json" name="views" rows="12" class="large-text code"><?php echo esc_textarea(json_encode($views, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)); ?></textarea></p>
