@@ -169,6 +169,15 @@ class MG_Supplier_Export {
                     'xxl'   => '2xl',
                     'xxxl'  => '3xl',
                     'xxxxl' => '4xl',
+                    '2'     => '2a',
+                    '4'     => '4a',
+                    '6'     => '6a',
+                    '8'     => '8a',
+                    '10'    => '10a',
+                    '12'    => '12a',
+                    '3-6-ho'   => '3/6m',
+                    '6-12-ho'  => '6/12m',
+                    '12-18-ho' => '12/18m',
                 );
                 if (isset($size_map[$size_val])) {
                     $size_val = $size_map[$size_val];
@@ -187,10 +196,7 @@ class MG_Supplier_Export {
                 if ($has_utt) {
                     $base_sku = trim($product_lookup[$product_type]['utt_skus'][$color_slug]);
                     if ($base_sku !== '') {
-                        // Apply size suffix if configured (e.g., "a" for kids: 2 → 2a)
-                        $suffix = isset($product_lookup[$product_type]['utt_size_suffix']) ? $product_lookup[$product_type]['utt_size_suffix'] : '';
-                        $final_size = $size_val . $suffix;
-                        $final_sku = $base_sku . '-' . $final_size;
+                        $final_sku = $base_sku . '-' . $size_val;
                         if (!isset($aggregated[$final_sku])) {
                             $aggregated[$final_sku] = 0;
                         }
