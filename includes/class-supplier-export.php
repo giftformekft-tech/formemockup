@@ -22,8 +22,10 @@ class MG_Supplier_Export {
     }
 
     public static function inject_bulk_action_js() {
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if (!$screen || ($screen->id !== 'edit-shop_order' && $screen->id !== 'woocommerce_page_wc-orders')) {
+        if (!is_admin()) return;
+        $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
+        $post_type = isset($_GET['post_type']) ? sanitize_key($_GET['post_type']) : '';
+        if ($page !== 'wc-orders' && $post_type !== 'shop_order') {
             return;
         }
         ?>
