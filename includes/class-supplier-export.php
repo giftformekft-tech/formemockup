@@ -13,7 +13,7 @@ class MG_Supplier_Export {
         add_filter('handle_bulk_actions-woocommerce_page_wc-orders', [self::class, 'handle_bulk_action'], 10, 3);
 
         // Fallback Javascript injection for aggressive themes/plugins
-        add_action('admin_footer', [self::class, 'inject_bulk_action_js']);
+        add_action('admin_footer', [self::class, 'inject_bulk_action_js'], 999);
     }
 
     public static function register_bulk_action($bulk_actions) {
@@ -25,20 +25,23 @@ class MG_Supplier_Export {
         if (!is_admin()) return;
         $page = isset($_GET['page']) ? sanitize_key($_GET['page']) : '';
         $post_type = isset($_GET['post_type']) ? sanitize_key($_GET['post_type']) : '';
+        
         if ($page !== 'wc-orders' && $post_type !== 'shop_order') {
             return;
         }
         ?>
         <script type="text/javascript">
             jQuery(document).ready(function($) {
-                var option = '<option value="mg_export_supplier_csv">Nagyker CSV Export (UTT)</option>';
-                // Check if it already exists to prevent duplicates
-                if ($('select[name="action"] option[value="mg_export_supplier_csv"]').length === 0) {
-                    $('select[name="action"]').append(option);
-                }
-                if ($('select[name="action2"] option[value="mg_export_supplier_csv"]').length === 0) {
-                    $('select[name="action2"]').append(option);
-                }
+                setTimeout(function() {
+                    var option = '<option value="mg_export_supplier_csv">Nagyker CSV Export (UTT)</option>';
+                    // Check if it already exists to prevent duplicates
+                    if ($('select[name="action"] option[value="mg_export_supplier_csv"]').length === 0) {
+                        $('select[name="action"]').append(option);
+                    }
+                    if ($('select[name="action2"] option[value="mg_export_supplier_csv"]').length === 0) {
+                        $('select[name="action2"]').append(option);
+                    }
+                }, 500); // 500ms delay to wait for any other JS that clears/modifies the DOM
             });
         </script>
         <?php
