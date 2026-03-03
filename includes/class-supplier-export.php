@@ -32,16 +32,26 @@ class MG_Supplier_Export {
         ?>
         <script type="text/javascript">
             jQuery(document).ready(function($) {
-                setTimeout(function() {
+                console.log('MG Export JS initialized on wc-orders page');
+                var attempts = 0;
+                var interval = setInterval(function() {
+                    attempts++;
                     var option = '<option value="mg_export_supplier_csv">Nagyker CSV Export (UTT)</option>';
-                    // Check if it already exists to prevent duplicates
-                    if ($('select[name="action"] option[value="mg_export_supplier_csv"]').length === 0) {
-                        $('select[name="action"]').append(option);
+                    var added = false;
+                    
+                    ['select[name="action"]', 'select[name="action2"]', '#bulk-action-selector-top', '#bulk-action-selector-bottom'].forEach(function(selector) {
+                        var $select = $(selector);
+                        if ($select.length > 0 && $select.find('option[value="mg_export_supplier_csv"]').length === 0) {
+                            $select.append(option);
+                            added = true;
+                        }
+                    });
+                    
+                    if (added || attempts > 20) { // Stop after 10 seconds (20 * 500ms)
+                        clearInterval(interval);
+                        console.log('MG Export option added or timed out');
                     }
-                    if ($('select[name="action2"] option[value="mg_export_supplier_csv"]').length === 0) {
-                        $('select[name="action2"]').append(option);
-                    }
-                }, 500); // 500ms delay to wait for any other JS that clears/modifies the DOM
+                }, 500); 
             });
         </script>
         <?php
