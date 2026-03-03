@@ -63,6 +63,7 @@ add_action('plugins_loaded', function(){
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
         'includes/class-gmc-seo-optimizer.php',
+        'includes/class-supplier-export.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -203,6 +204,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_GMC_SEO_Optimizer')) {
         MG_GMC_SEO_Optimizer::init();
+    }
+    if (class_exists('MG_Supplier_Export')) {
+        MG_Supplier_Export::init();
     }
 }, 20);
 
