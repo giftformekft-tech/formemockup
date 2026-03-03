@@ -4,22 +4,42 @@ if (!defined('ABSPATH')) exit;
 class MG_Supplier_Export {
 
     public static function init() {
-        // High priority Action handling
-        add_filter('bulk_actions-edit-shop_order', [self::class, 'register_bulk_action_shop_order']);
+        // Legacy (Post type) Orders
+        add_filter('bulk_actions-edit-shop_order', [self::class, 'register_bulk_action'], 99);
         add_filter('handle_bulk_actions-edit-shop_order', [self::class, 'handle_bulk_action'], 10, 3);
 
-        add_filter('bulk_actions-woocommerce_page_wc-orders', [self::class, 'register_bulk_action_wc_orders']);
+        // HPOS Orders
+        add_filter('bulk_actions-woocommerce_page_wc-orders', [self::class, 'register_bulk_action'], 99);
         add_filter('handle_bulk_actions-woocommerce_page_wc-orders', [self::class, 'handle_bulk_action'], 10, 3);
+
+        // Fallback Javascript injection for aggressive themes/plugins
+        add_action('admin_footer', [self::class, 'inject_bulk_action_js']);
     }
 
-    public static function register_bulk_action_shop_order($bulk_actions) {
+    public static function register_bulk_action($bulk_actions) {
         $bulk_actions['mg_export_supplier_csv'] = __('Nagyker CSV Export (UTT)', 'mgdtp');
         return $bulk_actions;
     }
 
-    public static function register_bulk_action_wc_orders($bulk_actions) {
-        $bulk_actions['mg_export_supplier_csv'] = __('Nagyker CSV Export (UTT)', 'mgdtp');
-        return $bulk_actions;
+    public static function inject_bulk_action_js() {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen || ($screen->id !== 'edit-shop_order' && $screen->id !== 'woocommerce_page_wc-orders')) {
+            return;
+        }
+        ?>
+        <script type="text/javascript">
+            jQuery(document).ready(function($) {
+                var option = '<option value="mg_export_supplier_csv">Nagyker CSV Export (UTT)</option>';
+                // Check if it already exists to prevent duplicates
+                if ($('select[name="action"] option[value="mg_export_supplier_csv"]').length === 0) {
+                    $('select[name="action"]').append(option);
+                }
+                if ($('select[name="action2"] option[value="mg_export_supplier_csv"]').length === 0) {
+                    $('select[name="action2"]').append(option);
+                }
+            });
+        </script>
+        <?php
     }
 
     public static function handle_bulk_action($redirect_to, $action, $post_ids) {
