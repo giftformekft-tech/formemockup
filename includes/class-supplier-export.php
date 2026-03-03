@@ -144,6 +144,16 @@ class MG_Supplier_Export {
                 $color_slug = sanitize_title($color_slug);
                 $size_val = sanitize_title($size_val);
 
+                // Normalize legacy size names
+                $size_map = array(
+                    'xxl'   => '2xl',
+                    'xxxl'  => '3xl',
+                    'xxxxl' => '4xl',
+                );
+                if (isset($size_map[$size_val])) {
+                    $size_val = $size_map[$size_val];
+                }
+
                 $debug[] = "    Extracted: type={$product_type} color={$color_slug} size={$size_val}";
 
                 if (empty($product_type) || empty($color_slug) || empty($size_val)) {
