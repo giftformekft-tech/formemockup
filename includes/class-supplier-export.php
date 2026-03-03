@@ -12,6 +12,9 @@ class MG_Supplier_Export {
         add_filter('bulk_actions-woocommerce_page_wc-orders', [self::class, 'register_bulk_action'], 99);
         add_filter('handle_bulk_actions-woocommerce_page_wc-orders', [self::class, 'handle_bulk_action'], 10, 3);
 
+        // Error notices for export
+        add_action('admin_notices', [self::class, 'show_export_notices']);
+
         // Fallback Javascript injection for aggressive themes/plugins
         add_action('admin_footer', [self::class, 'inject_bulk_action_js'], 999);
     }
@@ -63,8 +66,14 @@ class MG_Supplier_Export {
         }
 
         if (empty($post_ids)) {
+            set_transient('mg_export_notice', 'Nem voltak rendelések kiválasztva.', 60);
             return add_query_arg('mg_export_error', 'no_orders', $redirect_to);
         }
+
+        // Debug log
+        $debug = array();
+        $debug[] = '=== MG Supplier Export Debug ===';
+        $debug[] = 'Order IDs: ' . implode(', ', $post_ids);
 
         // Aggregate order items
         $aggregated = array();
@@ -75,12 +84,16 @@ class MG_Supplier_Export {
                 $product_lookup[$p['key']] = $p;
             }
         }
+        $debug[] = 'Product types with UTT: ' . implode(', ', array_keys($product_lookup));
 
         foreach ($post_ids as $order_id) {
             $order = wc_get_order($order_id);
             if (!$order) {
+                $debug[] = "Order #{$order_id}: NOT FOUND";
                 continue;
             }
+
+            $debug[] = "Order #{$order_id}: " . count($order->get_items()) . " items";
 
             foreach ($order->get_items() as $item_id => $item) {
                 if (!$item instanceof WC_Order_Item_Product) {
@@ -97,6 +110,13 @@ class MG_Supplier_Export {
                 $size_val = '';
 
                 // First try to extract from order item metadata
+                $all_meta = $item->get_meta_data();
+                $meta_keys = array();
+                foreach ($all_meta as $meta) {
+                    $meta_keys[] = $meta->key . '=' . $meta->value;
+                }
+                $debug[] = "  Item #{$item_id} ({$item->get_name()}) qty={$qty} meta: " . implode(', ', $meta_keys);
+
                 $product_type = $item->get_meta('termektipus') ?: $item->get_meta('pa_termektipus') ?: $item->get_meta('pa_product_type');
                 $color_slug = $item->get_meta('pa_szin') ?: $item->get_meta('pa_color') ?: $item->get_meta('szin');
                 $size_val = $item->get_meta('pa_meret') ?: $item->get_meta('pa_size') ?: $item->get_meta('meret');
@@ -104,9 +124,10 @@ class MG_Supplier_Export {
                 // If missing, look at variation / product
                 if (empty($product_type) || empty($color_slug) || empty($size_val)) {
                     $variation_id = $item->get_variation_id();
-                    $product = $variation_id > 0 ? wc_get_product($variation_id) : wc_get_product($item->get_product_id());
-                    if ($product) {
-                        $attributes = $product->get_attributes();
+                    $wc_product = $variation_id > 0 ? wc_get_product($variation_id) : wc_get_product($item->get_product_id());
+                    if ($wc_product) {
+                        $attributes = $wc_product->get_attributes();
+                        $debug[] = "    Fallback attributes: " . wp_json_encode($attributes);
                         if (empty($product_type)) {
                             $product_type = $attributes['pa_termektipus'] ?? ($attributes['pa_product_type'] ?? '');
                         }
@@ -123,11 +144,17 @@ class MG_Supplier_Export {
                 $color_slug = sanitize_title($color_slug);
                 $size_val = sanitize_title($size_val);
 
+                $debug[] = "    Extracted: type={$product_type} color={$color_slug} size={$size_val}";
+
                 if (empty($product_type) || empty($color_slug) || empty($size_val)) {
+                    $debug[] = "    SKIPPED: missing type/color/size";
                     continue;
                 }
 
-                if (isset($product_lookup[$product_type]['utt_skus'][$color_slug])) {
+                $has_utt = isset($product_lookup[$product_type]['utt_skus'][$color_slug]);
+                $debug[] = "    UTT lookup [{$product_type}][{$color_slug}]: " . ($has_utt ? $product_lookup[$product_type]['utt_skus'][$color_slug] : 'NOT FOUND');
+
+                if ($has_utt) {
                     $base_sku = trim($product_lookup[$product_type]['utt_skus'][$color_slug]);
                     if ($base_sku !== '') {
                         $final_sku = $base_sku . '-' . $size_val;
@@ -135,12 +162,19 @@ class MG_Supplier_Export {
                             $aggregated[$final_sku] = 0;
                         }
                         $aggregated[$final_sku] += $qty;
+                        $debug[] = "    => ADDED: {$final_sku} x {$qty}";
                     }
                 }
             }
         }
 
+        // Save debug log
+        $debug[] = 'Aggregated items: ' . count($aggregated);
+        $upload_dir = wp_upload_dir();
+        file_put_contents($upload_dir['basedir'] . '/mg-supplier-export-debug.log', implode("\n", $debug));
+
         if (empty($aggregated)) {
+            set_transient('mg_export_notice', 'Nem találtam exportálható tételt. Ellenőrizd, hogy az UTT cikkszámok be vannak-e állítva a terméktípusoknál, és a rendelések tartalmazzák-e a szükséges metaadatokat (típus, szín, méret). Debug log: ' . $upload_dir['baseurl'] . '/mg-supplier-export-debug.log', 120);
             return add_query_arg('mg_export_error', 'no_skus', $redirect_to);
         }
 
@@ -152,16 +186,27 @@ class MG_Supplier_Export {
 
         $chunks = array_chunk($items, 100);
 
+        // Clear any output buffers
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
         if (count($chunks) === 1) {
-            // Single file
             $filename = 'nagyker-rendeles-' . gmdate('Y-m-d-H-i-s') . '.csv';
             self::download_csv($filename, $chunks[0]);
         } else {
-            // Multiple files in a ZIP
             $zip_filename = 'nagyker-rendelesek-' . gmdate('Y-m-d-H-i-s') . '.zip';
             self::download_zip($zip_filename, $chunks);
         }
         exit;
+    }
+
+    public static function show_export_notices() {
+        $notice = get_transient('mg_export_notice');
+        if ($notice) {
+            delete_transient('mg_export_notice');
+            echo '<div class="notice notice-error is-dismissible"><p><strong>Nagyker CSV Export:</strong> ' . esc_html($notice) . '</p></div>';
+        }
     }
 
     private static function download_csv($filename, $data) {
