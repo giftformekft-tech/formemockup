@@ -21,7 +21,7 @@ class MG_Product_Image_Performance {
         }
 
         $product = wc_get_product(get_queried_object_id());
-        if (!$product || !$product->get_id() || !$product->is_type('variable')) {
+        if (!$product || !$product->get_id()) {
             return;
         }
 
@@ -37,7 +37,7 @@ class MG_Product_Image_Performance {
             return $image_ids;
         }
 
-        if (!$product instanceof WC_Product || !$product->is_type('variable')) {
+        if (!$product instanceof WC_Product) {
             return $image_ids;
         }
 

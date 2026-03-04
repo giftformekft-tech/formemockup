@@ -225,11 +225,22 @@ class MG_Supplier_Export {
 
         $chunks = array_chunk($items, 100);
 
+        // Disable LiteSpeed Cache purging temporarily to prevent server spikes (crawler storms)
+        if (!defined('LITESPEED_DISABLE_ALL')) {
+            define('LITESPEED_DISABLE_ALL', true);
+        }
+        
+        // Remove common WooCommerce cache purge hooks specifically for order status changes
+        if (class_exists('LiteSpeed\Purge')) {
+            remove_action('woocommerce_order_status_changed', 'LiteSpeed\Purge::purge_woo');
+        }
+
         // Update order statuses to "Gyártás alatt"
         foreach ($post_ids as $order_id) {
             $order = wc_get_order($order_id);
             if ($order) {
-                $order->update_status('manufacturing', 'Rendelés exportálva a Nagyker CSV-be.');
+                // By using third param true we prevent certain aggressive webhooks
+                $order->update_status('manufacturing', 'Rendelés exportálva a Nagyker CSV-be.', true);
             }
         }
 
