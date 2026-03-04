@@ -105,6 +105,11 @@ class MG_Product_Image_Performance {
         $sizes = wp_get_attachment_image_sizes(self::$lcp_image_id, 'full');
         ?>
         <link rel="preload" as="image" href="<?php echo $src_url; ?>"<?php echo $srcset ? ' imagesrcset="' . esc_attr($srcset) . '"' : ''; ?><?php echo $sizes ? ' imagesizes="' . esc_attr($sizes) . '"' : ''; ?> fetchpriority="high" />
+        <style>
+        /* Critical: override WooCommerce gallery opacity:0 so the LCP image renders immediately */
+        .woocommerce-product-gallery.images{opacity:1!important;transition:none!important}
+        .woocommerce-product-gallery__image{opacity:1!important;transition:none!important}
+        </style>
         <?php
     }
 }
