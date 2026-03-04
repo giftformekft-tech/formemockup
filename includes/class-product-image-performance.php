@@ -62,6 +62,31 @@ class MG_Product_Image_Performance {
         $attr['loading'] = 'eager';
         $attr['decoding'] = 'async';
 
+        // Fix 1x1 placeholder dimensions if the image is a mockup but not properly registered in the media library
+        $current_w = isset($attr['width']) ? (int) $attr['width'] : 0;
+        $current_h = isset($attr['height']) ? (int) $attr['height'] : 0;
+        if ($current_w <= 1 || $current_h <= 1) {
+            $src = isset($attr['src']) ? $attr['src'] : '';
+            if ($src && strpos($src, 'mg_mockups') !== false) {
+                $upload_dir = wp_upload_dir();
+                $file_path = str_replace(
+                    trailingslashit($upload_dir['baseurl']),
+                    trailingslashit($upload_dir['basedir']),
+                    strtok($src, '?')
+                );
+                if (file_exists($file_path)) {
+                    $info = @getimagesize($file_path);
+                    if (!empty($info[0]) && $info[0] > 1) {
+                        $attr['width']  = $info[0];
+                        $attr['height'] = $info[1];
+                        // Also fix the srcset with correct sizes so it renders correctly
+                        $attr['srcset'] = esc_url($src);
+                        $attr['sizes']  = '(max-width: ' . $info[0] . 'px) 100vw, ' . $info[0] . 'px';
+                    }
+                }
+            }
+        }
+
         return $attr;
     }
 
