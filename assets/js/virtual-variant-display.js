@@ -1902,6 +1902,8 @@
         $img.attr('src', url);
         $img.attr('srcset', url);
         $img.attr('data-src', url);
+        $img.attr('fetchpriority', 'high');
+        $img.attr('loading', 'eager');
     };
 
     $(function () {
