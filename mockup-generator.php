@@ -50,6 +50,7 @@ add_action('plugins_loaded', function(){
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
         'admin/class-temu-export-page.php',
+        'admin/class-order-design-download.php',
         'includes/class-google-merchant-feed.php',
         'includes/class-facebook-catalog-feed.php',
         'includes/class-custom-feed-manager.php',
@@ -164,6 +165,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Temu_Export_Page')) {
         MG_Temu_Export_Page::init();
+    }
+    if (class_exists('MG_Order_Design_Download')) {
+        MG_Order_Design_Download::init();
     }
     if (class_exists('MG_Google_Merchant_Feed')) {
         MG_Google_Merchant_Feed::init();
