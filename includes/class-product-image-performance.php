@@ -30,6 +30,7 @@ class MG_Product_Image_Performance {
         add_action('wp_head', array(__CLASS__, 'output_lcp_preload'), 1);
         add_filter('woocommerce_product_get_gallery_image_ids', array(__CLASS__, 'limit_gallery_image_ids'), 20, 2);
         add_filter('wp_get_attachment_image_attributes', array(__CLASS__, 'filter_attachment_attributes'), 20, 3);
+        add_filter('post_thumbnail_html', array(__CLASS__, 'inject_fetchpriority_in_thumbnail_html'), 20, 5);
     }
 
     public static function limit_gallery_image_ids($image_ids, $product) {
@@ -112,4 +113,35 @@ class MG_Product_Image_Performance {
         </style>
         <?php
     }
+
+    /**
+     * Fallback: inject fetchpriority=high and loading=eager directly into the
+     * rendered post-thumbnail HTML when the attachment attributes filter missed it.
+     * This covers Astra / WooCommerce code paths that don't go through
+     * wp_get_attachment_image() for the featured image.
+     */
+    public static function inject_fetchpriority_in_thumbnail_html($html, $post_id, $thumbnail_id, $size, $attr) {
+        if (!function_exists('is_product') || !is_product()) {
+            return $html;
+        }
+
+        if (self::$lcp_image_id <= 0 || (int) $thumbnail_id !== self::$lcp_image_id) {
+            return $html;
+        }
+
+        // Inject fetchpriority=high if not already present
+        if (strpos($html, 'fetchpriority') === false) {
+            $html = str_replace('<img ', '<img fetchpriority="high" ', $html);
+        }
+
+        // Ensure loading=eager (override lazy if set)
+        if (strpos($html, 'loading=') !== false) {
+            $html = preg_replace('/loading=["\']lazy["\']/', 'loading="eager"', $html);
+        } else {
+            $html = str_replace('<img ', '<img loading="eager" ', $html);
+        }
+
+        return $html;
+    }
 }
+
