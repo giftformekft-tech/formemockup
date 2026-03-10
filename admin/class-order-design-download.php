@@ -28,6 +28,12 @@ class MG_Order_Design_Download {
 
         // Early intercept: the ZIP download must be streamed before any output
         add_action('admin_init', array(__CLASS__, 'maybe_stream_zip'));
+
+        // Order quick-view: add a download link per line item
+        add_action('woocommerce_admin_order_preview_line_item_html', array(__CLASS__, 'preview_line_item_download_btn'), 10, 3);
+
+        // Single PNG download via AJAX (used by the preview button)
+        add_action('wp_ajax_mg_download_design_single', array(__CLASS__, 'ajax_download_single'));
     }
 
     /* ------------------------------------------------------------------ */
@@ -164,8 +170,87 @@ class MG_Order_Design_Download {
     /* ------------------------------------------------------------------ */
 
     /**
+     * Renders a small "⬇ Minta letöltése" link in each line item row of the
+     * WooCommerce order quick-view popup.
+     *
+     * Hook: woocommerce_admin_order_preview_line_item_html
+     *
+     * @param string                  $product_html  Existing line-item HTML.
+     * @param WC_Order_Item_Product   $item
+     * @param WC_Order                $order
+     */
+    public static function preview_line_item_download_btn($product_html, $item, $order) {
+        if (!($item instanceof WC_Order_Item_Product)) {
+            return $product_html;
+        }
+
+        $product_id  = (int) $item->get_product_id();
+        if ($product_id <= 0) {
+            return $product_html;
+        }
+
+        $design_path = self::resolve_design_path($product_id);
+        if ($design_path === '') {
+            return $product_html; // no design – nothing to add
+        }
+
+        $nonce = wp_create_nonce('mg_dl_design_' . $product_id);
+        $url   = add_query_arg(array(
+            'action'     => 'mg_download_design_single',
+            'product_id' => $product_id,
+            '_wpnonce'   => $nonce,
+        ), admin_url('admin-ajax.php'));
+
+        $btn = sprintf(
+            '<a href="%s" class="button button-small" style="margin-top:6px;display:inline-block;" target="_blank">&#8595; %s</a>',
+            esc_url($url),
+            esc_html__('Minta letöltése', 'mg')
+        );
+
+        return $product_html . $btn;
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * AJAX endpoint: streams a single product design PNG to the browser.
+     * URL: admin-ajax.php?action=mg_download_design_single&product_id=X&_wpnonce=Y
+     */
+    public static function ajax_download_single() {
+        $product_id = isset($_GET['product_id']) ? absint($_GET['product_id']) : 0;
+        if ($product_id <= 0) {
+            wp_die(__('Érvénytelen termék azonosító.', 'mg'), '', array('response' => 400));
+        }
+
+        if (!wp_verify_nonce(isset($_GET['_wpnonce']) ? $_GET['_wpnonce'] : '', 'mg_dl_design_' . $product_id)) {
+            wp_die(__('Érvénytelen biztonsági token.', 'mg'), '', array('response' => 403));
+        }
+
+        if (!current_user_can('edit_shop_orders')) {
+            wp_die(__('Nincs jogosultság.', 'mg'), '', array('response' => 403));
+        }
+
+        $design_path = self::resolve_design_path($product_id);
+        if ($design_path === '' || !file_exists($design_path)) {
+            wp_die(__('A mintafájl nem található.', 'mg'), '', array('response' => 404));
+        }
+
+        $filename = sanitize_file_name(get_the_title($product_id)) . '.png';
+
+        status_header(200);
+        header('Content-Type: image/png');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Content-Length: ' . filesize($design_path));
+        header('Cache-Control: no-cache');
+
+        readfile($design_path);
+        exit;
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
      * Resolves the base design PNG path for a product.
-     * Falls back from _mg_last_design_path attachment to the attachment file itself.
      *
      * @param  int    $product_id
      * @return string Absolute file path, or '' if not found.
@@ -192,3 +277,4 @@ class MG_Order_Design_Download {
         return '';
     }
 }
+
