@@ -420,6 +420,29 @@ class MG_Custom_Feed_Manager {
             }
             $output .= '<g:product_type>' . self::xml_sanitize(implode(' > ', $product_type_parts)) . '</g:product_type>' . PHP_EOL;
 
+            // Custom labels for categories (matching main Google feed)
+            $main_cat_cf = '';
+            $sub_cat_cf  = '';
+            if ($terms && !is_wp_error($terms)) {
+                $term_cf = reset($terms);
+                foreach ($terms as $t) {
+                    if ($t->parent != 0) { $term_cf = $t; break; }
+                }
+                if ($term_cf->parent != 0) {
+                    $parent_cf   = get_term($term_cf->parent, 'product_cat');
+                    $main_cat_cf = $parent_cf->name;
+                    $sub_cat_cf  = $term_cf->name;
+                } else {
+                    $main_cat_cf = $term_cf->name;
+                }
+            }
+            if ($main_cat_cf) {
+                $output .= '<g:custom_label_2>' . self::xml_sanitize($main_cat_cf) . '</g:custom_label_2>' . PHP_EOL;
+            }
+            if ($sub_cat_cf) {
+                $output .= '<g:custom_label_3>' . self::xml_sanitize($sub_cat_cf) . '</g:custom_label_3>' . PHP_EOL;
+            }
+
             // New Mandatory Fields
             $output .= '<g:identifier_exists>no</g:identifier_exists>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;

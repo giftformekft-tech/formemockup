@@ -272,10 +272,10 @@ class MG_Google_Merchant_Feed {
             $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
 
             if ($main_cat) {
-                $output .= '<g:custom_label_1>' . self::xml_sanitize($main_cat) . '</g:custom_label_1>' . PHP_EOL;
+                $output .= '<g:custom_label_2>' . self::xml_sanitize($main_cat) . '</g:custom_label_2>' . PHP_EOL;
             }
             if ($sub_cat) {
-                $output .= '<g:custom_label_2>' . self::xml_sanitize($sub_cat) . '</g:custom_label_2>' . PHP_EOL;
+                $output .= '<g:custom_label_3>' . self::xml_sanitize($sub_cat) . '</g:custom_label_3>' . PHP_EOL;
             }
 
             // New Mandatory Fields
