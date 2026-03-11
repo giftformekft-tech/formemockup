@@ -25,8 +25,9 @@ class MG_Google_Ads_Tracking {
             return;
         }
 
-        // 1. Global Site Tag (gtag.js) minden oldalra
-        add_action('wp_head', array(__CLASS__, 'output_gtag_script'), 5);
+        // 1. Global Site Tag (gtag.js) - NEM töltjük be kétszer, a Cookie Banner plugin kezeli
+        // A cookie plugin már inicializálja a gtag-et rcb:consent után.
+        // add_action('wp_head', array(__CLASS__, 'output_gtag_script'), 5);
 
         // 2. View Item (Remarketing) - Termékoldalon
         add_action('woocommerce_after_single_product', array(__CLASS__, 'output_view_item_event'), 20);
@@ -35,11 +36,10 @@ class MG_Google_Ads_Tracking {
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
     }
 
-    /**
-     * Visszaadja a pontos ID-t a virtuális variánsnak megfelelően.
-     */
     private static function get_virtual_item_id($product, $type_slug = '') {
         $base_id = method_exists($product, 'get_parent_id') && $product->get_parent_id() ? $product->get_parent_id() : $product->get_id();
+        $actual_product = method_exists($product, 'get_parent_id') && $product->get_parent_id() ? wc_get_product($product->get_parent_id()) : $product;
+        $base_sku = $actual_product->get_sku() ? $actual_product->get_sku() : 'ID_' . $base_id;
         
         if (empty($type_slug)) {
             $type_slug = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
@@ -47,13 +47,13 @@ class MG_Google_Ads_Tracking {
 
         if (!empty($type_slug)) {
             // Ez a formátum megegyezik a Google Merchant Feed generator logikájával
-            return $base_id . '-' . $type_slug;
+            return $base_sku . '_' . $type_slug;
         }
 
         // Ha nincs paraméter, próbáljuk kikerülni, hogy legalább az alapvető ID átmenjen
         $catalog = get_option('mg_product_catalog', array());
         if (empty($catalog)) {
-            return (string) $base_id;
+            return (string) $base_sku;
         }
 
         // Keresünk egy alapértelmezett típust
@@ -66,10 +66,10 @@ class MG_Google_Ads_Tracking {
         }
         
         if (!empty($first_type_slug)) {
-             return $base_id . '-' . $first_type_slug;
+             return $base_sku . '_' . $first_type_slug;
         }
 
-        return (string) $base_id;
+        return (string) $base_sku;
     }
 
     /**
@@ -121,16 +121,37 @@ class MG_Google_Ads_Tracking {
 
         ?>
         <script>
-            if (typeof gtag === 'function') {
-                gtag('event', 'view_item', {
-                    'send_to': '<?php echo $conversion_id; ?>',
-                    'value': <?php echo number_format($price, 2, '.', ''); ?>,
-                    'items': [{
-                        'id': '<?php echo esc_js($item_id); ?>',
-                        'google_business_vertical': 'retail'
-                    }]
-                });
+        (function() {
+            var _mgViewItemData = {
+                send_to: '<?php echo $conversion_id; ?>',
+                value: <?php echo number_format($price, 2, '.', ''); ?>,
+                items: [{
+                    id: '<?php echo esc_js($item_id); ?>',
+                    google_business_vertical: 'retail'
+                }]
+            };
+
+            function mg_fire_view_item() {
+                if (typeof window.gtag === 'function') {
+                    window.gtag('event', 'view_item', _mgViewItemData);
+                    return true;
+                }
+                return false;
             }
+
+            if (!mg_fire_view_item()) {
+                // 1. Saját RCB süti opt-in esemény
+                document.addEventListener('mg_gads_consent', mg_fire_view_item);
+                // 2. Általános RCB consent fallback
+                document.addEventListener('rcb:consent', function(e) {
+                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_view_item, 300); }
+                });
+                // 3. Polling fallback
+                var _r = 0, _t = setInterval(function() {
+                    if (mg_fire_view_item() || ++_r > 20) clearInterval(_t);
+                }, 500);
+            }
+        })();
         </script>
         <?php
     }
@@ -189,7 +210,8 @@ class MG_Google_Ads_Tracking {
             $item_price = (float) $item->get_total() / max(1, $item->get_quantity());
 
             $items[] = array(
-                'id' => $item_id,
+                'id' => $item_id, // Google Ads Remarketing
+                'item_id' => $item_id, // GA4 & Cart Conversions
                 'price' => number_format($item_price, 2, '.', ''),
                 'quantity' => $item->get_quantity(),
                 'google_business_vertical' => 'retail'
@@ -198,15 +220,39 @@ class MG_Google_Ads_Tracking {
 
         ?>
         <script>
-            if (typeof gtag === 'function') {
-                gtag('event', 'purchase', {
-                    'send_to': '<?php echo $send_to; ?>',
-                    'transaction_id': '<?php echo esc_js($transaction_id); ?>',
-                    'value': <?php echo number_format($value, 2, '.', ''); ?>,
-                    'currency': '<?php echo esc_js($currency); ?>',
-                    'items': <?php echo wp_json_encode($items); ?>
-                });
+        (function() {
+            var _mgPurchaseData = {
+                send_to: '<?php echo $send_to; ?>',
+                transaction_id: '<?php echo esc_js($transaction_id); ?>',
+                value: <?php echo number_format($value, 2, '.', ''); ?>,
+                currency: '<?php echo esc_js($currency); ?>',
+                items: <?php echo wp_json_encode($items); ?>
+            };
+            var _mgSent = false;
+
+            function mg_fire_purchase() {
+                if (_mgSent) return true;
+                if (typeof window.gtag === 'function') {
+                    window.gtag('event', 'purchase', _mgPurchaseData);
+                    _mgSent = true;
+                    return true;
+                }
+                return false;
             }
+
+            if (!mg_fire_purchase()) {
+                // 1. Saját RCB süti opt-in esemény
+                document.addEventListener('mg_gads_consent', mg_fire_purchase);
+                // 2. Általános RCB consent fallback
+                document.addEventListener('rcb:consent', function(e) {
+                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_purchase, 300); }
+                });
+                // 3. Polling fallback
+                var _r = 0, _t = setInterval(function() {
+                    if (mg_fire_purchase() || ++_r > 20) clearInterval(_t);
+                }, 500);
+            }
+        })();
         </script>
         <?php
     }

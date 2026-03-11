@@ -60,6 +60,7 @@ add_action('plugins_loaded', function(){
         'includes/class-price-override.php',
         'includes/class-google-customer-reviews.php',
         'includes/class-google-ads-tracking.php',
+        'includes/class-google-ads-settings.php',
 
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
@@ -195,6 +196,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Google_Ads_Tracking')) {
         MG_Google_Ads_Tracking::init();
+    }
+    if (class_exists('MG_Google_Ads_Settings')) {
+        MG_Google_Ads_Settings::init();
     }
     if (class_exists('MG_Email_Footer')) {
         MG_Email_Footer::init();
