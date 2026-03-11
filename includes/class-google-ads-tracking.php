@@ -109,12 +109,21 @@ class MG_Google_Ads_Tracking {
         $settings = get_option('mg_gads_settings');
         $conversion_id = esc_js($settings['conversion_id']);
 
-        $item_id = self::get_virtual_item_id($product);
-        
-        // Dinamikus ár kiszámítása a paraméter vagy fallback alapján
-        $price = (float) $product->get_price();
+        // Típus meghatározása: request → frontend config alapértelmezett → üres
         $type_slug = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
+
+        // Ha nem sikerült a request-ből kiolvasni, kérjük el a termék alapértelmezett típusát
+        if (empty($type_slug) && class_exists('MG_Virtual_Variant_Manager')) {
+            $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+            if (!empty($config['types'])) {
+                $type_slug = array_key_first($config['types']);
+            }
+        }
+
+        $item_id = self::get_virtual_item_id($product, $type_slug);
         
+        // Dinamikus ár kiszámítása
+        $price = (float) $product->get_price();
         if (!empty($type_slug)) {
             $catalog = get_option('mg_product_catalog', array());
             foreach ($catalog as $level2) {
