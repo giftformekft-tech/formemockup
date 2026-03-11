@@ -189,18 +189,29 @@ class MG_Google_Ads_Tracking {
                 continue;
             }
 
-            // Próbáljuk kiolvasni a típust a kosárelem metákból
+            // Próbáljuk kiolvasni a típust a rendelés elem metákból
             $type_slug = '';
-            $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
-            
-            if ($type_label) {
-                // Meg kell találnunk a slug-ot a label alapján
-                $catalog = get_option('mg_product_catalog', array());
-                foreach ($catalog as $level2) {
-                    foreach ($level2 as $slug => $data) {
-                        if (isset($data['label']) && $data['label'] === $type_label) {
-                            $type_slug = $slug;
-                            break 2;
+
+            // 1. Legjobb: direkt slug meta (ezt menti el a cart pricing kód)
+            $direct_slug = $item->get_meta('mg_product_type');
+            if (!empty($direct_slug)) {
+                $type_slug = sanitize_key($direct_slug);
+            }
+
+            // 2. Fallback: label alapú keresés
+            if (empty($type_slug)) {
+                $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
+                if (!$type_label) {
+                    $type_label = $item->get_meta('Terméktípus');
+                }
+                if ($type_label) {
+                    $catalog = get_option('mg_product_catalog', array());
+                    foreach ($catalog as $level2) {
+                        foreach ($level2 as $slug => $data) {
+                            if (isset($data['label']) && $data['label'] === $type_label) {
+                                $type_slug = $slug;
+                                break 2;
+                            }
                         }
                     }
                 }
