@@ -25,9 +25,10 @@ class MG_Google_Ads_Tracking {
             return;
         }
 
-        // 1. Global Site Tag (gtag.js) - NEM töltjük be kétszer, a Cookie Banner plugin kezeli
-        // A cookie plugin már inicializálja a gtag-et rcb:consent után.
-        // add_action('wp_head', array(__CLASS__, 'output_gtag_script'), 5);
+        // 1. Global Site Tag (gtag.js) betöltése Consent Mode v2-vel
+        // A gtag most betöltődik az oldal elejéről (denied alapértelmezéssel),
+        // a cookie banner csak a consent 'update'-et hívja, nem az inicializáló szkriptet.
+        add_action('wp_head', array(__CLASS__, 'output_gtag_script'), 1);
 
         // 2. View Item (Remarketing) - Termékoldalon
         add_action('woocommerce_after_single_product', array(__CLASS__, 'output_view_item_event'), 20);
@@ -82,20 +83,31 @@ class MG_Google_Ads_Tracking {
     }
 
     /**
-     * Injektálja a Google tag alap szkriptet a fejlécbe.
+     * Injektálja a Google tag alap szkriptet Consent Mode v2-vel.
+     * A gtag.js az oldal elejesétől betöltődik, de csak beleegyezés után küld adatot.
      */
     public static function output_gtag_script() {
         $settings = get_option('mg_gads_settings');
         $conversion_id = esc_js($settings['conversion_id']);
         ?>
-        <!-- Google tag (gtag.js) - Mockup Generator -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $conversion_id; ?>"></script>
+        <!-- Google tag (gtag.js) + Consent Mode v2 - Mockup Generator -->
         <script>
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
 
-          gtag('config', '<?php echo $conversion_id; ?>');
+          // Consent Mode v2: alapból minden tiltva (GDPR-kompatibilis)
+          gtag('consent', 'default', {
+              'ad_storage':          'denied',
+              'ad_user_data':        'denied',
+              'ad_personalization':  'denied',
+              'analytics_storage':   'denied',
+              'wait_for_update':     2000
+          });
+        </script>
+        <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $conversion_id; ?>"></script>
+        <script>
+          gtag('js', new Date());
+          gtag('config', '<?php echo $conversion_id; ?>', {'send_page_view': false});
         </script>
         <?php
     }
