@@ -40,6 +40,9 @@ class MG_Google_Ads_Tracking {
 
         // 5. Add to Cart - JS esemény a termékoldalakon
         add_action('woocommerce_after_add_to_cart_button', array(__CLASS__, 'output_add_to_cart_script'), 10);
+
+        // 6. View Cart - Kosár oldalon
+        add_action('woocommerce_before_cart', array(__CLASS__, 'output_view_cart_event'), 5);
     }
 
     private static function get_virtual_item_id($product, $type_slug = '') {
@@ -405,6 +408,73 @@ class MG_Google_Ads_Tracking {
                     });
                 }
             });
+        })();
+        </script>
+        <?php
+    }
+
+    /**
+     * View Cart esemény a kosár oldalon.
+     */
+    public static function output_view_cart_event() {
+        if (!WC()->cart) {
+            return;
+        }
+
+        $settings = get_option('mg_gads_settings');
+        $conversion_id = esc_js($settings['conversion_id']);
+
+        $items = array();
+        $total = 0;
+
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            if (!$product) continue;
+
+            $type_slug = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
+            $item_id = self::get_virtual_item_id($product, $type_slug);
+            $price = (float) $product->get_price();
+            $qty = (int) $cart_item['quantity'];
+            $total += $price * $qty;
+
+            $items[] = array(
+                'id'                       => $item_id,
+                'price'                    => number_format($price, 2, '.', ''),
+                'quantity'                 => $qty,
+                'google_business_vertical' => 'retail',
+            );
+        }
+
+        if (empty($items)) {
+            return;
+        }
+        ?>
+        <script>
+        (function() {
+            var _mgCartData = {
+                send_to: '<?php echo $conversion_id; ?>',
+                value: <?php echo number_format($total, 2, '.', ''); ?>,
+                currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
+                items: <?php echo wp_json_encode($items); ?>
+            };
+
+            function mg_fire_view_cart() {
+                if (typeof window.gtag === 'function') {
+                    window.gtag('event', 'view_cart', _mgCartData);
+                    return true;
+                }
+                return false;
+            }
+
+            if (!mg_fire_view_cart()) {
+                document.addEventListener('mg_gads_consent', mg_fire_view_cart);
+                document.addEventListener('rcb:consent', function(e) {
+                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_view_cart, 300); }
+                });
+                var _r = 0, _t = setInterval(function() {
+                    if (mg_fire_view_cart() || ++_r > 20) clearInterval(_t);
+                }, 500);
+            }
         })();
         </script>
         <?php
