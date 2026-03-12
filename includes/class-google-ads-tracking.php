@@ -238,14 +238,39 @@ class MG_Google_Ads_Tracking {
             $item_id = self::get_virtual_item_id($product, $type_slug);
             $item_price = (float) $item->get_total() / max(1, $item->get_quantity());
 
+            // GA4 standard item mezők
+            $item_name = $product->get_name();
+            if (!empty($type_slug)) {
+                $catalog = get_option('mg_product_catalog', array());
+                foreach ($catalog as $level2) {
+                    if (isset($level2[$type_slug]['label'])) {
+                        $item_name .= ' - ' . $level2[$type_slug]['label'];
+                        break;
+                    }
+                }
+            }
+
+            $item_category = '';
+            $terms = get_the_terms($product->get_id(), 'product_cat');
+            if ($terms && !is_wp_error($terms)) {
+                $item_category = reset($terms)->name;
+            }
+
             $items[] = array(
-                'id' => $item_id, // Google Ads Remarketing
-                'item_id' => $item_id, // GA4 & Cart Conversions
-                'price' => number_format($item_price, 2, '.', ''),
-                'quantity' => $item->get_quantity(),
-                'google_business_vertical' => 'retail'
+                'id'                       => $item_id,   // Google Ads Remarketing
+                'item_id'                  => $item_id,   // GA4
+                'item_name'                => $item_name,
+                'item_category'            => $item_category,
+                'item_brand'               => get_bloginfo('name'),
+                'price'                    => number_format($item_price, 2, '.', ''),
+                'quantity'                 => $item->get_quantity(),
+                'google_business_vertical' => 'retail',
             );
         }
+
+        // Enhanced Conversions: vásárló email SHA-256 hash-e
+        $customer_email = $order->get_billing_email();
+        $hashed_email   = !empty($customer_email) ? hash('sha256', strtolower(trim($customer_email))) : '';
 
         ?>
         <script>
@@ -255,7 +280,10 @@ class MG_Google_Ads_Tracking {
                 transaction_id: '<?php echo esc_js($transaction_id); ?>',
                 value: <?php echo number_format($value, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js($currency); ?>',
-                items: <?php echo wp_json_encode($items); ?>
+                items: <?php echo wp_json_encode($items); ?><?php if (!empty($hashed_email)): ?>,
+                user_data: {
+                    sha256_email_address: '<?php echo esc_js($hashed_email); ?>'
+                }<?php endif; ?>
             };
             var _mgSent = false;
 
