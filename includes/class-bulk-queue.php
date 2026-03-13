@@ -14,8 +14,8 @@ class MG_Bulk_Queue {
     const ACTIVE_WORKER_TTL = 300;
     const ACTIVE_WORKER_HEARTBEAT = 30;
     const DISPATCH_LOCK = 'mg_bulk_dispatch_lock';
-    const LOCK_TTL = 180; // seconds
-    const STALE_TTL = 300; // seconds
+    const LOCK_TTL = 360; // seconds – must be > STALE_TTL to prevent false stale detection
+    const STALE_TTL = 300; // seconds – job considered stale after this
     const MAX_JOBS_PER_WORKER = 10;
     const CRON_HOOK = 'mg_bulk_process_queue';
     const CRON_LOCK = 'mg_bulk_queue_lock';
@@ -686,8 +686,18 @@ class MG_Bulk_Queue {
             $started_at = isset($job['started_at']) ? intval($job['started_at']) : 0;
             $lock = get_transient(self::lock_key($job_id));
             $is_stale = ($started_at > 0 && ($now - $started_at) > self::STALE_TTL);
+
+            // Ha van aktív lock ÉS az elvégző worker még életjelet adott, ne állítsuk vissza
             if (!$is_stale && $lock !== false) {
                 continue;
+            }
+
+            // Ha a worker még életben van (heartbeat), ne állítsuk vissza akkor sem
+            if (!empty($job['worker'])) {
+                $active_workers = self::load_active_workers();
+                if (isset($active_workers[$job['worker']])) {
+                    continue; // Worker még aktív, hagyjuk dolgozni
+                }
             }
 
             self::release_lock($job_id);
