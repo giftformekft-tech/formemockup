@@ -1175,7 +1175,7 @@ class MG_Custom_Fields_Frontend {
     }
 
     /**
-     * Render the "KÉRHETED EGYEDI SZÁMMAL!" badge for custom products.
+     * Render the "KÉRHETED EGYEDI FELIRATTAL!" badge for custom products.
      */
     public static function render_customizable_badge() {
         global $product;
@@ -1184,7 +1184,7 @@ class MG_Custom_Fields_Frontend {
         }
 
         if (MG_Custom_Fields_Manager::is_custom_product($product->get_id())) {
-            echo '<span class="mg-customizable-badge">' . esc_html__('Kérheted egyedi', 'mgcf') . '<br>' . esc_html__('számmal!', 'mgcf') . '</span>';
+            echo '<span class="mg-customizable-badge">' . esc_html__('Kérheted egyedi', 'mgcf') . '<br>' . esc_html__('felirattal', 'mgcf') . '</span>';
         }
     }
 }
