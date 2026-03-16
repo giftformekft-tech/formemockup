@@ -1184,7 +1184,10 @@ class MG_Custom_Fields_Frontend {
         }
 
         if (MG_Custom_Fields_Manager::is_custom_product($product->get_id())) {
-            echo '<span class="mg-customizable-badge">' . esc_html__('Kérheted egyedi', 'mgcf') . '<br>' . esc_html__('felirattal', 'mgcf') . '</span>';
+            echo '<span class="mg-customizable-badge">';
+            echo '<span class="mg-badge-desktop">' . esc_html__('Kérheted egyedi', 'mgcf') . '<br>' . esc_html__('felirattal', 'mgcf') . '</span>';
+            echo '<span class="mg-badge-mobile">' . esc_html__('Testreszabható felirat', 'mgcf') . '</span>';
+            echo '</span>';
         }
     }
 }
