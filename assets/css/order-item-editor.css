@@ -1,0 +1,144 @@
+/* MG Order Item Editor – Modal Styles */
+
+/* Overlay */
+.mg-item-editor-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Modal box */
+.mg-item-editor-modal {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Header */
+.mg-item-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #f6f7f7;
+}
+
+.mg-item-editor-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.mg-item-editor-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+    padding: 0 4px;
+}
+
+.mg-item-editor-close:hover {
+    color: #d63638;
+}
+
+/* Body */
+.mg-item-editor-body {
+    padding: 18px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.mg-item-editor-loading {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.mg-item-editor-loading .spinner {
+    float: none;
+    display: inline-block;
+    margin: 0;
+}
+
+/* Table */
+.mg-item-editor-table {
+    width: 100%;
+    margin-bottom: 0;
+}
+
+.mg-item-editor-table th {
+    width: 140px;
+    font-weight: 600;
+    vertical-align: middle;
+    padding: 8px 10px 8px 0;
+    color: #3c434a;
+}
+
+.mg-item-editor-table td {
+    vertical-align: middle;
+    padding: 8px 0;
+}
+
+.mg-item-editor-table select.regular-text {
+    width: 100%;
+    max-width: 280px;
+}
+
+/* Message */
+.mg-item-editor-message {
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 3px;
+    border-left: 4px solid transparent;
+    font-weight: 500;
+}
+
+.mg-item-editor-message.notice-success {
+    background: #f0f6e6;
+    border-left-color: #46b450;
+    color: #1d6a0e;
+}
+
+.mg-item-editor-message.notice-error {
+    background: #fce8e8;
+    border-left-color: #d63638;
+    color: #8d2525;
+}
+
+/* Footer */
+.mg-item-editor-footer {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 18px;
+    border-top: 1px solid #dcdcdc;
+    background: #f6f7f7;
+}
+
+/* Edit button in order item */
+.mg-order-item-editor-wrap .mg-edit-item-btn {
+    font-size: 12px;
+    padding: 2px 8px;
+    height: auto;
+    line-height: 1.8;
+    color: #2271b1;
+    border-color: #2271b1;
+}
+
+.mg-order-item-editor-wrap .mg-edit-item-btn:hover {
+    background: #2271b1;
+    color: #fff;
+}
