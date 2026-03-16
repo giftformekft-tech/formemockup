@@ -72,7 +72,7 @@ class MG_Custom_Fields_Frontend {
         $script_path = dirname(__DIR__) . '/assets/js/custom-fields-frontend.js';
         $script_url = plugins_url('assets/js/custom-fields-frontend.js', $base_file);
         wp_enqueue_style(
-            'mg-custom-fields',
+            'mg-custom-fields-v2',
             $style_url,
             array(),
             file_exists($style_path) ? filemtime($style_path) : '1.0.0'
