@@ -161,25 +161,24 @@ class MG_Google_Ads_Tracking {
                 }]
             };
 
+            var _mgSent = false;
+
             function mg_fire_view_item() {
+                if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
                     window.gtag('event', 'view_item', _mgViewItemData);
-                    return true;
+                    _mgSent = true;
                 }
-                return false;
             }
 
-            if (!mg_fire_view_item()) {
-                // 1. Saját RCB süti opt-in esemény
-                document.addEventListener('mg_gads_consent', mg_fire_view_item);
-                // 2. Általános RCB consent fallback
-                document.addEventListener('rcb:consent', function(e) {
-                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_view_item, 300); }
-                });
-                // 3. Polling fallback
-                var _r = 0, _t = setInterval(function() {
-                    if (mg_fire_view_item() || ++_r > 20) clearInterval(_t);
-                }, 500);
+            document.addEventListener('mg_gads_consent', mg_fire_view_item);
+            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_view_item, 200); });
+            
+            var fallback = function() { setTimeout(mg_fire_view_item, 800); };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fallback);
+            } else {
+                fallback();
             }
         })();
         </script>
@@ -300,26 +299,21 @@ class MG_Google_Ads_Tracking {
             var _mgSent = false;
 
             function mg_fire_purchase() {
-                if (_mgSent) return true;
+                if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
                     window.gtag('event', 'purchase', _mgPurchaseData);
                     _mgSent = true;
-                    return true;
                 }
-                return false;
             }
 
-            if (!mg_fire_purchase()) {
-                // 1. Saját RCB süti opt-in esemény
-                document.addEventListener('mg_gads_consent', mg_fire_purchase);
-                // 2. Általános RCB consent fallback
-                document.addEventListener('rcb:consent', function(e) {
-                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_purchase, 300); }
-                });
-                // 3. Polling fallback
-                var _r = 0, _t = setInterval(function() {
-                    if (mg_fire_purchase() || ++_r > 20) clearInterval(_t);
-                }, 500);
+            document.addEventListener('mg_gads_consent', mg_fire_purchase);
+            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_purchase, 200); });
+            
+            var fallback = function() { setTimeout(mg_fire_purchase, 800); };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fallback);
+            } else {
+                fallback();
             }
         })();
         </script>
@@ -370,23 +364,24 @@ class MG_Google_Ads_Tracking {
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 items: <?php echo wp_json_encode($items); ?>
             };
+            var _mgSent = false;
 
             function mg_fire_checkout() {
+                if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
                     window.gtag('event', 'begin_checkout', _mgCheckoutData);
-                    return true;
+                    _mgSent = true;
                 }
-                return false;
             }
 
-            if (!mg_fire_checkout()) {
-                document.addEventListener('mg_gads_consent', mg_fire_checkout);
-                document.addEventListener('rcb:consent', function(e) {
-                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_checkout, 300); }
-                });
-                var _r = 0, _t = setInterval(function() {
-                    if (mg_fire_checkout() || ++_r > 20) clearInterval(_t);
-                }, 500);
+            document.addEventListener('mg_gads_consent', mg_fire_checkout);
+            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_checkout, 200); });
+            
+            var fallback = function() { setTimeout(mg_fire_checkout, 800); };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fallback);
+            } else {
+                fallback();
             }
         })();
         </script>
@@ -497,23 +492,24 @@ class MG_Google_Ads_Tracking {
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 items: <?php echo wp_json_encode($items); ?>
             };
+            var _mgSent = false;
 
             function mg_fire_view_cart() {
+                if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
                     window.gtag('event', 'view_cart', _mgCartData);
-                    return true;
+                    _mgSent = true;
                 }
-                return false;
             }
 
-            if (!mg_fire_view_cart()) {
-                document.addEventListener('mg_gads_consent', mg_fire_view_cart);
-                document.addEventListener('rcb:consent', function(e) {
-                    if (e.detail && e.detail.acceptedAll) { setTimeout(mg_fire_view_cart, 300); }
-                });
-                var _r = 0, _t = setInterval(function() {
-                    if (mg_fire_view_cart() || ++_r > 20) clearInterval(_t);
-                }, 500);
+            document.addEventListener('mg_gads_consent', mg_fire_view_cart);
+            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_view_cart, 200); });
+            
+            var fallback = function() { setTimeout(mg_fire_view_cart, 800); };
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', fallback);
+            } else {
+                fallback();
             }
         })();
         </script>
