@@ -43,18 +43,28 @@ class MG_Custom_Fields_Frontend {
         add_action('woocommerce_before_calculate_totals', array(__CLASS__, 'apply_cart_surcharges'), 30, 1);
         add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_order_item_design_reference'), 10, 3);
         add_action('admin_post_mgcf_download_design', array(__CLASS__, 'handle_admin_design_download'));
+
+        // Custom Product Badge Hooks
+        add_action('woocommerce_before_shop_loop_item_title', array(__CLASS__, 'render_customizable_badge'), 9);
+        add_action('woocommerce_before_single_product_summary', array(__CLASS__, 'render_customizable_badge'), 9);
     }
 
     public static function enqueue_assets() {
-        if (!function_exists('is_product') || !is_product()) {
+        if (!function_exists('is_woocommerce')) {
             return;
         }
-        global $post;
-        if (!$post) {
+
+        // Only load on WooCommerce pages (shop, category, single product, cart, checkout)
+        if (!is_woocommerce() && !is_cart() && !is_checkout()) {
             return;
         }
-        if (!MG_Custom_Fields_Manager::is_custom_product($post->ID)) {
-            return;
+
+        // On single product pages, only load if it has custom fields (to save resources)
+        if (is_product()) {
+            global $post;
+            if (!$post || !MG_Custom_Fields_Manager::is_custom_product($post->ID)) {
+                return;
+            }
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
         $style_path = dirname(__DIR__) . '/assets/css/custom-fields.css';
@@ -1162,5 +1172,19 @@ class MG_Custom_Fields_Frontend {
         }
 
         return hash('sha256', implode('|', $parts));
+    }
+
+    /**
+     * Render the "KÉRHETED EGYEDI SZÁMMAL!" badge for custom products.
+     */
+    public static function render_customizable_badge() {
+        global $product;
+        if (!$product) {
+            return;
+        }
+
+        if (MG_Custom_Fields_Manager::is_custom_product($product->get_id())) {
+            echo '<span class="mg-customizable-badge">' . esc_html__('Kérheted egyedi', 'mgcf') . '<br>' . esc_html__('számmal!', 'mgcf') . '</span>';
+        }
     }
 }

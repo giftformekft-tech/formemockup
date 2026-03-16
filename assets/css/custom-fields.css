@@ -715,3 +715,41 @@ body.mgcf-modal-open {
 .mg-required {
     color: #c00;
 }
+
+/* Custom Product Badge */
+.mg-customizable-badge {
+    position: absolute;
+    top: 15px;
+    left: -8px;
+    z-index: 99;
+    background: #ffc107;
+    color: #111;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.15);
+    letter-spacing: 0.5px;
+    line-height: 1.3;
+    text-align: center;
+    pointer-events: none;
+}
+
+.mg-customizable-badge::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -6px;
+    border-top: 6px solid #d39e00;
+    border-left: 8px solid transparent;
+}
+
+/* Ensure the product image container has position relative for absolute positioning */
+.woocommerce ul.products li.product .woocommerce-loop-product__link {
+    position: relative;
+    display: block;
+}
+
+.woocommerce div.product div.images {
+    position: relative;
+}
