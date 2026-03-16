@@ -744,6 +744,37 @@ body.mgcf-modal-open {
     border-left: 8px solid transparent;
 }
 
+/* Category Page (Shop Loop) Badge Resizing */
+.woocommerce ul.products li.product .mg-customizable-badge {
+    top: 10px;
+    left: -6px;
+    font-size: 8.5px;
+    padding: 4px 8px;
+    letter-spacing: 0;
+}
+
+.woocommerce ul.products li.product .mg-customizable-badge::before {
+    bottom: -4px;
+    border-top: 4px solid #d39e00;
+    border-left: 6px solid transparent;
+}
+
+/* Even smaller on mobile category pages */
+@media (max-width: 480px) {
+    .woocommerce ul.products li.product .mg-customizable-badge {
+        font-size: 7.5px;
+        padding: 3px 6px;
+        top: 8px;
+        left: -4px;
+    }
+
+    .woocommerce ul.products li.product .mg-customizable-badge::before {
+        bottom: -3px;
+        border-top: 3px solid #d39e00;
+        border-left: 4px solid transparent;
+    }
+}
+
 /* Ensure the product image container has position relative for absolute positioning */
 .woocommerce ul.products li.product .woocommerce-loop-product__link {
     position: relative;
