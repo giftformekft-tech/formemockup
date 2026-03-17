@@ -120,7 +120,8 @@ class MG_Custom_Fields_Page {
                     break;
                 }
                 $product_ids = isset($_POST['product_ids']) && is_array($_POST['product_ids']) ? array_map('intval', $_POST['product_ids']) : array();
-                if (MG_Custom_Fields_Manager::assign_products_to_preset($preset_id, $product_ids)) {
+                $visible_ids  = isset($_POST['visible_product_ids']) && is_array($_POST['visible_product_ids']) ? array_map('intval', $_POST['visible_product_ids']) : array();
+                if (MG_Custom_Fields_Manager::assign_products_to_preset_merge($preset_id, $product_ids, $visible_ids)) {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_assignments_saved', __('Termék hozzárendelések mentve.', 'mgcf'), 'updated');
                 } else {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_assignments_failed', __('Nem sikerült menteni a hozzárendeléseket.', 'mgcf'), 'error');
@@ -650,6 +651,9 @@ class MG_Custom_Fields_Page {
                 $thumbnail = '<span class="mgcf-no-image">—</span>';
             }
 
+            // Track which product IDs are visible on this page
+            echo '<input type="hidden" name="visible_product_ids[]" value="' . esc_attr($product->ID) . '" />';
+
             echo '<tr>';
             echo '<td class="mgcf-table__check"><input type="checkbox" name="product_ids[]" value="' . esc_attr($product->ID) . '"' . checked($is_assigned, true, false) . ' /></td>';
             echo '<td class="mgcf-table__image">' . $thumbnail . '</td>';
@@ -685,14 +689,15 @@ class MG_Custom_Fields_Page {
             wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgcf')));
         }
 
-        $preset_id = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+        $preset_id   = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
         $product_ids = isset($_POST['product_ids']) && is_array($_POST['product_ids']) ? array_map('intval', $_POST['product_ids']) : array();
+        $visible_ids = isset($_POST['visible_product_ids']) && is_array($_POST['visible_product_ids']) ? array_map('intval', $_POST['visible_product_ids']) : array();
 
         if ($preset_id === '') {
             wp_send_json_error(array('message' => __('Hiányzó preset azonosító.', 'mgcf')));
         }
 
-        if (MG_Custom_Fields_Manager::assign_products_to_preset($preset_id, $product_ids)) {
+        if (MG_Custom_Fields_Manager::assign_products_to_preset_merge($preset_id, $product_ids, $visible_ids)) {
             wp_send_json_success(array('message' => __('Hozzárendelések mentve.', 'mgcf')));
         } else {
             wp_send_json_error(array('message' => __('Hiba történt a mentés során.', 'mgcf')));

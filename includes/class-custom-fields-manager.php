@@ -369,6 +369,70 @@ class MG_Custom_Fields_Manager {
     }
 
     /**
+     * Merge-based product assignment: only affect products visible on the current page.
+     * Products on other pages (not in $visible_ids) are left untouched.
+     *
+     * @param string $preset_id   The preset ID.
+     * @param array  $product_ids Checked product IDs (from current page form submission).
+     * @param array  $visible_ids All product IDs that were rendered/visible on the current page.
+     * @return bool True on success.
+     */
+    public static function assign_products_to_preset_merge($preset_id, $product_ids, $visible_ids) {
+        $preset_id = sanitize_key($preset_id);
+        if ($preset_id === '') {
+            return false;
+        }
+        $presets = self::get_all_presets();
+        if (!isset($presets[$preset_id])) {
+            return false;
+        }
+
+        // Sanitize incoming IDs
+        $clean_checked = array();
+        foreach ((array) $product_ids as $pid) {
+            $pid = intval($pid);
+            if ($pid > 0) {
+                $clean_checked[] = $pid;
+            }
+        }
+        $clean_visible = array();
+        foreach ((array) $visible_ids as $pid) {
+            $pid = intval($pid);
+            if ($pid > 0) {
+                $clean_visible[] = $pid;
+            }
+        }
+
+        // Start from the existing list, keep entries NOT on this page, then add checked ones from this page
+        $existing = isset($presets[$preset_id]['product_ids']) && is_array($presets[$preset_id]['product_ids'])
+            ? $presets[$preset_id]['product_ids']
+            : array();
+
+        // Remove products that were visible on this page (we'll replace with new checked state)
+        $preserved = array_values(array_filter($existing, function($pid) use ($clean_visible) {
+            return !in_array(intval($pid), $clean_visible, true);
+        }));
+
+        // Merge: preserved (other pages) + newly checked (this page)
+        $merged = array_values(array_unique(array_merge($preserved, $clean_checked)));
+
+        $presets[$preset_id]['product_ids'] = $merged;
+        $presets[$preset_id]['updated'] = current_time('mysql');
+        self::save_all_presets($presets);
+
+        // Apply preset fields to newly checked products on this page
+        $fields = isset($presets[$preset_id]['fields']) ? $presets[$preset_id]['fields'] : array();
+        foreach ($clean_checked as $pid) {
+            if (!empty($fields)) {
+                self::save_fields_for_product($pid, $fields);
+            }
+            self::set_custom_product($pid, true);
+        }
+
+        return true;
+    }
+
+    /**
      * Update preset settings (name and/or fields).
      *
      * @param string $preset_id The preset ID.
