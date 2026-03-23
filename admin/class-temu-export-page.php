@@ -631,13 +631,24 @@ class MG_Temu_Export_Page {
             // Better to provide the predicted URL so they can fix missing files later.
             // But let's check validation if possible? No, faster to just output predicted for bulk.
 
+            // Termék leírás helyett Category SEO
+            $export_description = '';
+            if (function_exists('mgtd__build_description_context')) {
+                $desc_context = mgtd__build_description_context($product);
+                // "category seos" is requested, but use fallback just in case
+                $export_description = !empty($desc_context['category_seos']) ? $desc_context['category_seos'] : ($desc_context['category_seo'] ?? '');
+            }
+            if (empty($export_description)) {
+                $export_description = $product->get_description(); // Fallback ha egyáltalán nincs SEO leírás
+            }
+
             $rows[] = [
                 $product->get_name(), // Termék név
                 $sku_generated,       // SKU
                 $sub_sku,             // Sub SKU
                 $color_label,         // Szín
                 $size,                // Méret
-                $product->get_description(), // Leírás
+                $export_description,  // Leírás
                 $img_url              // Img URL
             ];
         }
