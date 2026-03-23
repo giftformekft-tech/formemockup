@@ -663,6 +663,23 @@ class MG_Temu_Export_Page {
                 $export_description,  // Leírás
                 $img_url              // Img URL
             ];
+
+            // Ha gyerekpóló (12-es méret, ami 12Y lett), csinálünk egy extra '14Y' sort a Temu miatt
+            if ($normalized_size === '12') {
+                $letters_14y = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 3);
+                $numbers_14y = substr(str_shuffle("0123456789"), 0, 3);
+                $sub_sku_14y = $sku_generated . $letters_14y . $numbers_14y;
+
+                $rows[] = [
+                    $product->get_name(), // Termék név
+                    $sku_generated,       // SKU
+                    $sub_sku_14y,         // Kamu méret új Sub SKU-ja
+                    $color_label,         // Szín
+                    '14Y',                // Kamu méret
+                    $export_description,  // Leírás
+                    $img_url              // Img URL (A 12-es méreté hasznosítva)
+                ];
+            }
         }
 
         // Export
