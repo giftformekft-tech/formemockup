@@ -408,7 +408,7 @@ class MG_Temu_Export_Page {
                     type: 'POST',
                     data: {
                         action: 'mg_temu_generate_export',
-                        selection: selection,
+                        selection: JSON.stringify(selection),
                         nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                     },
                     success: function(response) {
@@ -553,7 +553,13 @@ class MG_Temu_Export_Page {
     public static function ajax_generate_export() {
         check_ajax_referer('mg_temu_nonce', 'nonce');
         
-        $selection = isset($_POST['selection']) ? $_POST['selection'] : []; 
+        $selection = isset($_POST['selection']) ? wp_unslash($_POST['selection']) : ''; 
+        if (is_string($selection)) {
+            $selection = json_decode($selection, true);
+        }
+        if (!is_array($selection)) {
+            $selection = [];
+        }
         // selection = [ { pid, type, color, size }, ... ]
         
         // CSV Header
