@@ -601,6 +601,12 @@ class MG_Temu_Export_Page {
                 'xxxxl' => 'XXXXL',
                 '5xl' => 'XXXXXL',
                 'xxxxxl' => 'XXXXXL',
+                '2'  => '2Y',
+                '4'  => '4Y',
+                '6'  => '6Y',
+                '8'  => '8Y',
+                '10' => '10Y',
+                '12' => '12Y',
             ];
             
             if (isset($temu_size_map[$normalized_size])) {
