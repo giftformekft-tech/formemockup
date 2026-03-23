@@ -557,7 +557,7 @@ class MG_Temu_Export_Page {
         // selection = [ { pid, type, color, size }, ... ]
         
         // CSV Header
-        $header = ['Termék neve', 'SKU', 'Szín', 'Méret', 'Leírás', 'Kép URL'];
+        $header = ['Termék neve', 'SKU', 'Sub SKU', 'Szín', 'Méret', 'Leírás', 'Kép URL'];
         $rows = [];
 
         // Cache products to avoid reloading
@@ -579,11 +579,40 @@ class MG_Temu_Export_Page {
             $color_slug = $item['color'];
             $size = $item['size'];
             
+            // Map sizes for Temu
+            $normalized_size = strtolower(trim($size));
+            $temu_size_map = [
+                'xs' => 'XS',
+                's'  => 'S',
+                'm'  => 'M',
+                'l'  => 'L',
+                'xl' => 'XL',
+                '2xl' => 'XXL',
+                'xxl' => 'XXL',
+                '3xl' => 'XXXL',
+                'xxxl' => 'XXXL',
+                '4xl' => 'XXXXL',
+                'xxxxl' => 'XXXXL',
+                '5xl' => 'XXXXXL',
+                'xxxxxl' => 'XXXXXL',
+            ];
+            
+            if (isset($temu_size_map[$normalized_size])) {
+                $size = $temu_size_map[$normalized_size];
+            } else {
+                $size = strtoupper($size);
+            }
+            
             $base_sku = $config['product']['sku'] ?? $product->get_sku();
             // Fallback for SKU
             if (empty($base_sku)) $base_sku = 'SKU_' . $pid;
             
             $sku_generated = $base_sku;
+            
+            // Generate Sub SKU: sku + random 3 letters + 3 numbers
+            $letters = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 3);
+            $numbers = substr(str_shuffle("0123456789"), 0, 3);
+            $sub_sku = $sku_generated . $letters . $numbers;
 
             // Labels
             $type_label = $config['types'][$type_slug]['label'] ?? $type_slug;
@@ -605,6 +634,7 @@ class MG_Temu_Export_Page {
             $rows[] = [
                 $product->get_name(), // Termék név
                 $sku_generated,       // SKU
+                $sub_sku,             // Sub SKU
                 $color_label,         // Szín
                 $size,                // Méret
                 $product->get_description(), // Leírás
