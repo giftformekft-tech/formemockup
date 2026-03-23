@@ -620,6 +620,11 @@ class MG_Temu_Export_Page {
             if (empty($base_sku)) $base_sku = 'SKU_' . $pid;
             
             $sku_generated = $base_sku;
+
+            // Ha gyerekpóló (2, 4, 6, 8, 10, 12 méretek), hozzátesszük az SKU-hoz, hogy GYEREK
+            if (in_array($normalized_size, ['2', '4', '6', '8', '10', '12'], true)) {
+                $sku_generated .= '-GYEREK';
+            }
             
             // Generate Sub SKU: sku + random 3 letters + 3 numbers
             $letters = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 3);
