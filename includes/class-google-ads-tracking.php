@@ -301,6 +301,12 @@ class MG_Google_Ads_Tracking {
             function mg_fire_purchase() {
                 if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
+                    <?php if (!empty($hashed_email)): ?>
+                    // Enhanced Conversions: globálisan is beállítjuk a user_data-t (Google ajánlás)
+                    window.gtag('set', 'user_data', {
+                        sha256_email_address: '<?php echo esc_js($hashed_email); ?>'
+                    });
+                    <?php endif; ?>
                     window.gtag('event', 'purchase', _mgPurchaseData);
                     _mgSent = true;
                 }
