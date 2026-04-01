@@ -107,7 +107,11 @@ class MG_Google_Ads_Tracking {
         <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $conversion_id; ?>"></script>
         <script>
           gtag('js', new Date());
-          gtag('config', '<?php echo $conversion_id; ?>', {'send_page_view': false});
+          // allow_enhanced_conversions:true szükséges a Bővített konverziók működéséhez
+          gtag('config', '<?php echo $conversion_id; ?>', {
+              'send_page_view': false,
+              'allow_enhanced_conversions': true
+          });
         </script>
         <?php
     }
@@ -279,9 +283,28 @@ class MG_Google_Ads_Tracking {
             );
         }
 
-        // Enhanced Conversions: vásárló email SHA-256 hash-e
-        $customer_email = $order->get_billing_email();
-        $hashed_email   = !empty($customer_email) ? hash('sha256', strtolower(trim($customer_email))) : '';
+        // Enhanced Conversions: vásárló adatai (Google normalizálja és hash-eli a plaintext-et)
+        $customer_email = strtolower(trim($order->get_billing_email()));
+        $customer_phone = $order->get_billing_phone();
+        // E.164 format: csak számok + előtag
+        $phone_e164 = '';
+        if (!empty($customer_phone)) {
+            $phone_digits = preg_replace('/[^0-9]/', '', $customer_phone);
+            // Magyar számok: 06... → +36...
+            if (strlen($phone_digits) === 11 && substr($phone_digits, 0, 2) === '06') {
+                $phone_e164 = '+36' . substr($phone_digits, 2);
+            } elseif (strlen($phone_digits) >= 11) {
+                $phone_e164 = '+' . $phone_digits;
+            }
+        }
+        $first_name   = $order->get_billing_first_name();
+        $last_name    = $order->get_billing_last_name();
+        $street       = $order->get_billing_address_1();
+        $city         = $order->get_billing_city();
+        $postal_code  = $order->get_billing_postcode();
+        $country      = $order->get_billing_country(); // ISO 2-letter
+        // SHA-256 csak email-hez (fallback), a többit plaintext küldjük – Google hasheli
+        $hashed_email = !empty($customer_email) ? hash('sha256', $customer_email) : '';
 
         ?>
         <script>
@@ -301,11 +324,23 @@ class MG_Google_Ads_Tracking {
             function mg_fire_purchase() {
                 if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
-                    <?php if (!empty($hashed_email)): ?>
-                    // Enhanced Conversions: globálisan is beállítjuk a user_data-t (Google ajánlás)
-                    window.gtag('set', 'user_data', {
-                        sha256_email_address: '<?php echo esc_js($hashed_email); ?>'
-                    });
+                    <?php
+                    // Felépítjük a user_data objektumot (Google majd normalizálja/hasheli)
+                    $ud_fields = [];
+                    if (!empty($customer_email))  { $ud_fields[] = '"email": ' . json_encode($customer_email); }
+                    if (!empty($phone_e164))      { $ud_fields[] = '"phone_number": ' . json_encode($phone_e164); }
+                    $addr_fields = [];
+                    if (!empty($first_name))  { $addr_fields[] = '"first_name": ' . json_encode($first_name); }
+                    if (!empty($last_name))   { $addr_fields[] = '"last_name": '  . json_encode($last_name); }
+                    if (!empty($street))      { $addr_fields[] = '"street": '     . json_encode($street); }
+                    if (!empty($city))        { $addr_fields[] = '"city": '       . json_encode($city); }
+                    if (!empty($postal_code)) { $addr_fields[] = '"postal_code": '. json_encode($postal_code); }
+                    if (!empty($country))     { $addr_fields[] = '"country": '    . json_encode($country); }
+                    if (!empty($addr_fields)) { $ud_fields[] = '"address": {' . implode(',', $addr_fields) . '}'; }
+                    ?>
+                    <?php if (!empty($ud_fields)): ?>
+                    // Enhanced Conversions: user_data globálisan (Google ajánlás)
+                    window.gtag('set', 'user_data', { <?php echo implode(',', $ud_fields); ?> });
                     <?php endif; ?>
                     window.gtag('event', 'purchase', _mgPurchaseData);
                     _mgSent = true;
