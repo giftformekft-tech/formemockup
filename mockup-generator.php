@@ -21,12 +21,14 @@ add_action('plugins_loaded', function(){
         'includes/class-bulk-queue.php',
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',
+        'includes/class-bundle-discount.php',
         'includes/global-catalog.php',
         'includes/class-category-toggle.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
         'admin/class-variant-display-page.php',
+        'admin/class-bundle-discount-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
@@ -98,6 +100,9 @@ add_action('plugins_loaded', function(){
         if (class_exists('MG_Surcharge_Options_Page')) {
             MG_Surcharge_Options_Page::add_submenu_page();
         }
+        if (class_exists('MG_Bundle_Discount_Page')) {
+            MG_Bundle_Discount_Page::add_submenu_page();
+        }
         });
 
     add_action('add_meta_boxes', function($post_type) {
@@ -143,6 +148,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Cart_Pricing')) {
         MG_Cart_Pricing::init();
+    }
+    if (class_exists('MG_Bundle_Discount')) {
+        MG_Bundle_Discount::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();

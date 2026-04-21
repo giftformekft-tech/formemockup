@@ -129,6 +129,11 @@ class MG_Admin_Page {
                 'type'      => 'legacy',
                 'page_slug' => 'mockup-generator-surcharges',
             ),
+            'bundle_discount' => array(
+                'label'     => __('Mennyiségi kedvezmény', 'mockup-generator'),
+                'type'      => 'legacy',
+                'page_slug' => 'mockup-generator-bundle-discount',
+            ),
             'custom_fields' => array(
                 'label'     => __('Egyedi mezők', 'mockup-generator'),
                 'type'      => 'legacy',
@@ -196,6 +201,7 @@ class MG_Admin_Page {
             'mockup-generator-dashboard'        => 'dashboard',
             'mockup-generator-variant-display'  => 'variants',
             'mockup-generator-surcharges'       => 'surcharges',
+            'mockup-generator-bundle-discount'  => 'bundle_discount',
             'mockup-generator-custom-fields'    => 'custom_fields',
             'mockup-generator-settings'         => 'settings',
             'mockup-generator-product'          => 'mockups',
@@ -218,6 +224,9 @@ class MG_Admin_Page {
         }
         if (class_exists('MG_Surcharge_Options_Page')) {
             $callbacks['mockup-generator-surcharges'] = array('MG_Surcharge_Options_Page', 'render');
+        }
+        if (class_exists('MG_Bundle_Discount_Page')) {
+            $callbacks['mockup-generator-bundle-discount'] = array('MG_Bundle_Discount_Page', 'render');
         }
         if (class_exists('MG_Custom_Fields_Page')) {
             $callbacks['mockup-generator-custom-fields'] = array('MG_Custom_Fields_Page', 'render_page');
