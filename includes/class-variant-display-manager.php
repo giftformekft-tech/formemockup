@@ -395,47 +395,52 @@ class MG_Variant_Display_Manager {
             }
         }
 
-        // NEW: Use same logic as MG_Design_Gallery to get type mockups
-        // For each type, find the first variation that has that type and get its image
-        if (!empty($types_payload) && method_exists($product, 'get_children')) {
-            $children = $product->get_children();
+        // Build typeMockups from the already-loaded $available array (no extra wc_get_product() calls).
+        // get_available_variations() already returns image_id and attributes for each variation,
+        // so we can build a type→image_id map in a single pass without any additional DB queries.
+        if (!empty($types_payload) && is_array($available)) {
+            // Single pass: collect the first image_id per type_slug from $available.
+            $type_image_ids = array();
+            foreach ($available as $variation) {
+                if (!is_array($variation)) {
+                    continue;
+                }
+                $attributes = isset($variation['attributes']) ? $variation['attributes'] : array();
+                $var_type = isset($attributes['attribute_pa_termektipus'])
+                    ? sanitize_title($attributes['attribute_pa_termektipus'])
+                    : '';
+
+                if ($var_type === '' || isset($type_image_ids[$var_type])) {
+                    continue; // Skip unknown type or already found an image for this type
+                }
+
+                $image_id = !empty($variation['image_id']) ? absint($variation['image_id']) : 0;
+
+                // Fallback: check the nested image array (populated by WC for variable products)
+                if ($image_id === 0 && !empty($variation['image']['id'])) {
+                    $image_id = absint($variation['image']['id']);
+                }
+
+                if ($image_id > 0) {
+                    $type_image_ids[$var_type] = $image_id;
+                }
+            }
+
+            // Now resolve URLs only for the types we actually need.
             foreach ($types_payload as $type_slug => $type_meta) {
                 if (isset($visuals['typeMockups'][$type_slug])) {
-                    continue; // Already have a mockup for this type
+                    continue; // Already set (e.g. from a previous source)
                 }
-                
-                // Find the preferred color for this type (same logic as design gallery)
-                $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
-                $preferred_color = $color_order ? reset($color_order) : '';
-                if ($preferred_color === '' && !empty($type_meta['colors']) && is_array($type_meta['colors'])) {
-                    $color_keys = array_keys($type_meta['colors']);
-                    $preferred_color = $color_keys ? reset($color_keys) : '';
+                if (empty($type_image_ids[$type_slug])) {
+                    continue; // No image found for this type in $available
                 }
-                
-                // Search through variations to find one matching this type
-                foreach ((array) $children as $child_id) {
-                    $variation = wc_get_product($child_id);
-                    if (!$variation || !method_exists($variation, 'get_attributes')) {
-                        continue;
-                    }
-                    $attrs = $variation->get_attributes();
-                    $var_type = sanitize_title($attrs['pa_termektipus'] ?? '');
-                    
-                    if ($var_type !== $type_slug) {
-                        continue; // Not the type we're looking for
-                    }
-                    
-                    // Found a variation with this type, now get its image
-                    if (method_exists($variation, 'get_image_id')) {
-                        $image_id = (int) $variation->get_image_id();
-                        if ($image_id > 0 && function_exists('wp_get_attachment_image_url')) {
-                            $url = wp_get_attachment_image_url($image_id, 'large');
-                            if ($url && self::is_valid_mockup_url($url)) {
-                                $visuals['typeMockups'][$type_slug] = $url;
-                                break; // Found image for this type, move to next type
-                            }
-                        }
-                    }
+
+                $url = function_exists('wp_get_attachment_image_url')
+                    ? wp_get_attachment_image_url($type_image_ids[$type_slug], 'large')
+                    : '';
+
+                if ($url && self::is_valid_mockup_url($url)) {
+                    $visuals['typeMockups'][$type_slug] = $url;
                 }
             }
         }
