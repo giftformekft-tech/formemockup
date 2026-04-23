@@ -68,6 +68,7 @@ add_action('plugins_loaded', function(){
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
         'includes/class-gmc-seo-optimizer.php',
+        'includes/class-category-popularity-pins.php',
     ];
     foreach ($files as $rel) {
         $abs = plugin_dir_path(__FILE__) . $rel;
@@ -223,6 +224,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_GMC_SEO_Optimizer')) {
         MG_GMC_SEO_Optimizer::init();
+    }
+    if (class_exists('MG_Category_Popularity_Pins')) {
+        MG_Category_Popularity_Pins::init();
     }
     // Supplier Export — loaded separately so a missing file won't kill the plugin
     $supplier_export_file = plugin_dir_path(__FILE__) . 'includes/class-supplier-export.php';
