@@ -29,14 +29,14 @@ class MG_Design_Gallery {
             'mg-design-gallery',
             plugins_url('assets/css/design-gallery.css', $base_file),
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
 
         wp_register_script(
             'mg-design-gallery',
             plugins_url('assets/js/design-gallery.js', $base_file),
             array(),
-            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
     }
@@ -187,7 +187,7 @@ class MG_Design_Gallery {
             'mg-design-gallery-block',
             plugins_url('assets/js/design-gallery-block.js', $base_file),
             array('wp-blocks', 'wp-element', 'wp-components', 'wp-i18n', 'wp-block-editor'),
-            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
 

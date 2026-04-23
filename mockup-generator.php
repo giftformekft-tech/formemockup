@@ -9,6 +9,12 @@ require_once __DIR__ . '/includes/type-description-applier.php';
 
 if (!defined('ABSPATH')) exit;
 
+// Plugin version constant — used for asset cache-busting across all enqueue calls.
+// Increment this when deploying CSS/JS changes instead of relying on filemtime().
+if (!defined('MG_VERSION')) {
+    define('MG_VERSION', '2.0.1');
+}
+
 add_action('plugins_loaded', function(){
     if (!class_exists('WooCommerce')) {
         add_action('admin_notices', function(){

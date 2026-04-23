@@ -24,11 +24,9 @@ class MG_Surcharge_Frontend {
     }
 
     public static function register_assets() {
-        $base_dir = plugin_dir_path(__FILE__) . '../assets/';
-        $css_version = file_exists($base_dir . 'css/mg-surcharges.css') ? filemtime($base_dir . 'css/mg-surcharges.css') : '1.0.0';
-        $js_version = file_exists($base_dir . 'js/mg-surcharges.js') ? filemtime($base_dir . 'js/mg-surcharges.js') : '1.0.0';
-        wp_register_style('mg-surcharges', plugins_url('../assets/css/mg-surcharges.css', __FILE__), [], $css_version);
-        wp_register_script('mg-surcharges', plugins_url('../assets/js/mg-surcharges.js', __FILE__), ['jquery'], $js_version, true);
+        $mg_ver = defined('MG_VERSION') ? MG_VERSION : '2.0.1';
+        wp_register_style('mg-surcharges', plugins_url('../assets/css/mg-surcharges.css', __FILE__), [], $mg_ver);
+        wp_register_script('mg-surcharges', plugins_url('../assets/js/mg-surcharges.js', __FILE__), ['jquery'], $mg_ver, true);
     }
 
     public static function render_product_options() {

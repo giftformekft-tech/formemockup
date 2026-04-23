@@ -22,7 +22,7 @@ class MG_Delivery_Estimate {
             'mg-delivery-estimate',
             $style_url,
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
     }
 

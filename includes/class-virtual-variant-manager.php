@@ -77,14 +77,14 @@ class MG_Virtual_Variant_Manager {
             'mg-variant-display',
             plugins_url('assets/css/variant-display.css', $base_file),
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
 
         wp_enqueue_script(
             'mg-virtual-variant-display',
             plugins_url('assets/js/virtual-variant-display.js', $base_file),
             array('jquery'),
-            file_exists($script_path) ? filemtime($script_path) : time(),
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
 

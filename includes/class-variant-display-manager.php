@@ -52,14 +52,14 @@ class MG_Variant_Display_Manager {
             'mg-variant-display',
             plugins_url('assets/css/variant-display.css', $base_file),
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
 
         wp_enqueue_script(
             'mg-variant-display',
             plugins_url('assets/js/variant-display.js', $base_file),
             array('jquery', 'wc-add-to-cart-variation'),
-            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
 

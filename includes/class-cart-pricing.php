@@ -16,12 +16,11 @@ class MG_Cart_Pricing {
             return;
         }
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
-        $style_path = dirname(__DIR__) . '/assets/css/cart-pricing.css';
         wp_enqueue_style(
             'mg-cart-pricing',
             plugins_url('assets/css/cart-pricing.css', $base_file),
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
     }
 

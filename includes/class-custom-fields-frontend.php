@@ -75,13 +75,13 @@ class MG_Custom_Fields_Frontend {
             'mg-custom-fields-v2',
             $style_url,
             array(),
-            file_exists($style_path) ? filemtime($style_path) : '1.0.0'
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
         );
         wp_enqueue_script(
             'mg-custom-fields-frontend',
             $script_url,
             array(),
-            file_exists($script_path) ? filemtime($script_path) : '1.0.0',
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
     }
