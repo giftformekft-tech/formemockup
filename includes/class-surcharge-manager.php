@@ -80,6 +80,7 @@ class MG_Surcharge_Manager {
             'default_enabled' => false,
             'frontend_display' => 'product',
             'cart_lock' => false,
+            'is_express' => false,
             'conditions' => [
                 'product_types' => [],
                 'colors' => [],
@@ -101,6 +102,7 @@ class MG_Surcharge_Manager {
         $surcharge['require_choice'] = !empty($surcharge['require_choice']);
         $surcharge['default_enabled'] = !empty($surcharge['default_enabled']);
         $surcharge['cart_lock'] = !empty($surcharge['cart_lock']);
+        $surcharge['is_express'] = !empty($surcharge['is_express']);
         $allowed_display = ['product', 'cart', 'both'];
         $surcharge['frontend_display'] = in_array($surcharge['frontend_display'], $allowed_display, true) ? $surcharge['frontend_display'] : 'product';
         $conditions = is_array($surcharge['conditions']) ? $surcharge['conditions'] : [];

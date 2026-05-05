@@ -6,34 +6,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * MG_Express_Order_Flag
  *
- * Detects orders that contain the "express 24 órás gyártás" surcharge
- * and shows a visual ⚡ badge next to the order amount in the admin orders list.
+ * Detects orders that contain an "express" surcharge (is_express = true)
+ * and shows a visual ⚡ Express badge next to the order amount in the admin orders list.
  *
- * The surcharge name is stored as order item meta key (see MG_Surcharge_Frontend::add_order_item_meta).
- * We match it case-insensitively so minor naming differences don't break detection.
+ * The surcharge name is stored as order item meta key by MG_Surcharge_Frontend::add_order_item_meta.
+ * We look up which surcharge IDs are flagged as express, then check whether any item
+ * has a meta key matching one of those surcharge names.
  */
 class MG_Express_Order_Flag {
 
-    /** The surcharge meta key to look for (as stored by MG_Surcharge_Frontend). */
-    const SURCHARGE_NAME = 'express 24 órás gyártás';
+    /** Runtime cache: array of surcharge names that are flagged is_express. */
+    private static $express_names = null;
 
-    /** Cache: order_id → bool (has express). */
-    private static $cache = [];
+    /** Per-request cache: order_id → bool. */
+    private static $order_cache = [];
 
     public static function init() {
-        // Badge in the order amount column
         add_filter( 'woocommerce_admin_order_amount_html', [ __CLASS__, 'append_badge_to_amount' ], 10, 2 );
-
-        // Inject CSS (only on orders list screens)
         add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_styles' ] );
     }
 
     /**
      * Append the ⚡ Express badge after the formatted order amount HTML.
-     *
-     * @param string   $amount_html  The existing HTML for the amount column.
-     * @param WC_Order $order
-     * @return string
      */
     public static function append_badge_to_amount( $amount_html, $order ) {
         if ( ! $order instanceof WC_Abstract_Order ) {
@@ -41,7 +35,7 @@ class MG_Express_Order_Flag {
         }
 
         if ( self::order_has_express( $order ) ) {
-            $badge = '<span class="mg-express-badge" title="' . esc_attr__( 'Express 24 órás gyártás', 'mockup-generator' ) . '">⚡ Express</span>';
+            $badge = '<span class="mg-express-badge" title="' . esc_attr__( 'Express gyártás', 'mockup-generator' ) . '">⚡ Express</span>';
             $amount_html .= '<br>' . $badge;
         }
 
@@ -49,10 +43,33 @@ class MG_Express_Order_Flag {
     }
 
     /**
-     * Check whether any line item in the order has the express surcharge meta.
+     * Returns the list of surcharge names (meta keys) that are flagged as is_express.
+     * Result is cached for the lifetime of the request.
      *
-     * Result is cached per request to avoid redundant DB queries when
-     * WooCommerce calls the filter multiple times per order row.
+     * @return string[]  Lowercase surcharge names.
+     */
+    private static function get_express_names() {
+        if ( self::$express_names !== null ) {
+            return self::$express_names;
+        }
+
+        self::$express_names = [];
+
+        if ( ! class_exists( 'MG_Surcharge_Manager' ) ) {
+            return self::$express_names;
+        }
+
+        foreach ( MG_Surcharge_Manager::get_surcharges( false ) as $surcharge ) {
+            if ( ! empty( $surcharge['is_express'] ) && ! empty( $surcharge['name'] ) ) {
+                self::$express_names[] = mb_strtolower( trim( $surcharge['name'] ) );
+            }
+        }
+
+        return self::$express_names;
+    }
+
+    /**
+     * Check whether any line item in the order has an express surcharge meta.
      *
      * @param WC_Abstract_Order $order
      * @return bool
@@ -60,26 +77,27 @@ class MG_Express_Order_Flag {
     private static function order_has_express( WC_Abstract_Order $order ) {
         $order_id = $order->get_id();
 
-        if ( isset( self::$cache[ $order_id ] ) ) {
-            return self::$cache[ $order_id ];
+        if ( isset( self::$order_cache[ $order_id ] ) ) {
+            return self::$order_cache[ $order_id ];
         }
 
-        $needle = mb_strtolower( trim( self::SURCHARGE_NAME ) );
-        $found  = false;
+        $express_names = self::get_express_names();
+        $found         = false;
 
-        foreach ( $order->get_items() as $item ) {
-            /** @var WC_Order_Item_Product $item */
-            foreach ( $item->get_meta_data() as $meta ) {
-                $meta_data = $meta->get_data();
-                $key       = mb_strtolower( trim( (string) $meta_data['key'] ) );
-                if ( $key === $needle ) {
-                    $found = true;
-                    break 2; // exit both loops
+        if ( ! empty( $express_names ) ) {
+            foreach ( $order->get_items() as $item ) {
+                foreach ( $item->get_meta_data() as $meta ) {
+                    $meta_data = $meta->get_data();
+                    $key       = mb_strtolower( trim( (string) $meta_data['key'] ) );
+                    if ( in_array( $key, $express_names, true ) ) {
+                        $found = true;
+                        break 2;
+                    }
                 }
             }
         }
 
-        self::$cache[ $order_id ] = $found;
+        self::$order_cache[ $order_id ] = $found;
         return $found;
     }
 
@@ -90,15 +108,15 @@ class MG_Express_Order_Flag {
      */
     public static function enqueue_styles( $hook ) {
         $is_orders_page = (
-            $hook === 'edit.php'                          // classic CPT orders list
-            || $hook === 'woocommerce_page_wc-orders'    // HPOS orders list
+            $hook === 'edit.php'
+            || $hook === 'woocommerce_page_wc-orders'
         );
 
         if ( ! $is_orders_page ) {
             return;
         }
 
-        // Only load on shop_order post type (classic mode guard)
+        // Classic CPT mode: only for shop_order post type
         if ( $hook === 'edit.php' ) {
             $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
             if ( $post_type !== 'shop_order' ) {
