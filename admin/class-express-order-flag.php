@@ -3,133 +3,144 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-/**
- * MG_Express_Order_Flag
- *
- * Detects orders that contain an "express" surcharge (is_express = true)
- * and shows a visual ⚡ Express badge next to the order amount in the admin orders list.
- *
- * The surcharge name is stored as order item meta key by MG_Surcharge_Frontend::add_order_item_meta.
- * We look up which surcharge IDs are flagged as express, then check whether any item
- * has a meta key matching one of those surcharge names.
- */
 class MG_Express_Order_Flag {
 
-    /** Runtime cache: array of surcharge names that are flagged is_express. */
+    const META_KEY = '_mg_has_express';
+
     private static $express_names = null;
 
-    /** Per-request cache: order_id → bool. */
-    private static $order_cache = [];
-
     public static function init() {
-        add_filter( 'woocommerce_admin_order_amount_html', [ __CLASS__, 'append_badge_to_amount' ], 10, 2 );
-        add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_styles' ] );
+        add_action( 'woocommerce_checkout_order_created', [ __CLASS__, 'flag_on_create' ] );
+        add_action( 'current_screen',                     [ __CLASS__, 'on_orders_screen' ] );
+        add_action( 'admin_footer',                       [ __CLASS__, 'inject_script' ] );
+        add_action( 'admin_head',                         [ __CLASS__, 'inline_styles' ] );
     }
 
-    /**
-     * Append the ⚡ Express badge after the formatted order amount HTML.
-     */
-    public static function append_badge_to_amount( $amount_html, $order ) {
-        if ( ! $order instanceof WC_Abstract_Order ) {
-            return $amount_html;
-        }
+    /* ── Checkout: flag new orders ─────────────────────────────────── */
 
-        if ( self::order_has_express( $order ) ) {
-            $badge = '<span class="mg-express-badge" title="' . esc_attr__( 'Express gyártás', 'mockup-generator' ) . '">⚡ Express</span>';
-            $amount_html .= '<br>' . $badge;
+    public static function flag_on_create( $order ) {
+        if ( ! ( $order instanceof WC_Abstract_Order ) ) {
+            return;
         }
-
-        return $amount_html;
+        if ( self::has_express( $order ) ) {
+            $order->update_meta_data( self::META_KEY, '1' );
+            $order->save_meta_data();
+        }
     }
 
-    /**
-     * Returns the list of surcharge names (meta keys) that are flagged as is_express.
-     * Result is cached for the lifetime of the request.
-     *
-     * @return string[]  Lowercase surcharge names.
-     */
-    private static function get_express_names() {
-        if ( self::$express_names !== null ) {
-            return self::$express_names;
+    /* ── On orders screen: backfill old orders ─────────────────────── */
+
+    public static function on_orders_screen( $screen ) {
+        if ( ! $screen || ! in_array( $screen->id, [ 'woocommerce_page_wc-orders', 'edit-shop_order' ], true ) ) {
+            return;
         }
 
-        self::$express_names = [];
+        // Check 30 un-flagged orders per page load
+        $orders = wc_get_orders( [
+            'limit'      => 30,
+            'return'     => 'objects',
+            'meta_query' => [ [ 'key' => self::META_KEY, 'compare' => 'NOT EXISTS' ] ],
+        ] );
 
-        if ( ! class_exists( 'MG_Surcharge_Manager' ) ) {
-            return self::$express_names;
+        foreach ( $orders as $order ) {
+            $value = self::has_express( $order ) ? '1' : '0';
+            $order->update_meta_data( self::META_KEY, $value );
+            $order->save_meta_data();
         }
-
-        foreach ( MG_Surcharge_Manager::get_surcharges( false ) as $surcharge ) {
-            if ( ! empty( $surcharge['is_express'] ) && ! empty( $surcharge['name'] ) ) {
-                self::$express_names[] = mb_strtolower( trim( $surcharge['name'] ) );
-            }
-        }
-
-        return self::$express_names;
     }
 
-    /**
-     * Check whether any line item in the order has an express surcharge meta.
-     *
-     * @param WC_Abstract_Order $order
-     * @return bool
-     */
-    private static function order_has_express( WC_Abstract_Order $order ) {
-        $order_id = $order->get_id();
+    /* ── JS: inject badge into DOM ─────────────────────────────────── */
 
-        if ( isset( self::$order_cache[ $order_id ] ) ) {
-            return self::$order_cache[ $order_id ];
+    public static function inject_script() {
+        $screen = get_current_screen();
+        if ( ! $screen || ! in_array( $screen->id, [ 'woocommerce_page_wc-orders', 'edit-shop_order' ], true ) ) {
+            return;
         }
 
-        $express_names = self::get_express_names();
-        $found         = false;
+        $ids = wc_get_orders( [
+            'meta_key'   => self::META_KEY,
+            'meta_value' => '1',
+            'limit'      => 2000,
+            'return'     => 'ids',
+        ] );
 
-        if ( ! empty( $express_names ) ) {
-            foreach ( $order->get_items() as $item ) {
-                foreach ( $item->get_meta_data() as $meta ) {
-                    $meta_data = $meta->get_data();
-                    $key       = mb_strtolower( trim( (string) $meta_data['key'] ) );
-                    if ( in_array( $key, $express_names, true ) ) {
-                        $found = true;
-                        break 2;
-                    }
+        if ( empty( $ids ) ) {
+            return;
+        }
+        ?>
+        <script>
+        (function () {
+            var ids   = <?php echo wp_json_encode( array_map( 'intval', $ids ) ); ?>;
+            var badge = '<span class="mg-express-badge" title="Express gy\u00e1rt\u00e1s">&#9889; Express</span>';
+            ids.forEach( function ( id ) {
+                var row = document.getElementById( 'order-' + id );
+                if ( ! row ) {
+                    row = document.querySelector( '[data-order-id="' + id + '"]' );
+                }
+                if ( ! row ) return;
+                var cell = row.querySelector( '.column-order_total' );
+                if ( ! cell ) cell = row.querySelector( 'td.order_total' );
+                if ( cell ) cell.innerHTML += '<br>' + badge;
+            } );
+        } )();
+        </script>
+        <?php
+    }
+
+    /* ── CSS ───────────────────────────────────────────────────────── */
+
+    public static function inline_styles() {
+        $screen = get_current_screen();
+        if ( ! $screen || ! in_array( $screen->id, [ 'woocommerce_page_wc-orders', 'edit-shop_order' ], true ) ) {
+            return;
+        }
+        echo '<style>.mg-express-badge{display:inline-block;margin-top:4px;padding:2px 8px;background:linear-gradient(135deg,#ff8c00,#ff4500);color:#fff;font-size:11px;font-weight:700;border-radius:3px;line-height:1.5;box-shadow:0 1px 3px rgba(255,69,0,.35);cursor:default}</style>';
+    }
+
+    /* ── Detection ─────────────────────────────────────────────────── */
+
+    private static function has_express( WC_Abstract_Order $order ) {
+        $names = self::express_names();
+        if ( empty( $names ) ) {
+            return false;
+        }
+
+        // Check fees first (format: "express 24 órás gyártás (Termék neve)")
+        foreach ( $order->get_fees() as $fee ) {
+            $n = mb_strtolower( trim( $fee->get_name() ) );
+            foreach ( $names as $name ) {
+                if ( strpos( $n, $name ) === 0 ) {
+                    return true;
                 }
             }
         }
 
-        self::$order_cache[ $order_id ] = $found;
-        return $found;
-    }
-
-    /**
-     * Enqueue the badge stylesheet only on the WooCommerce orders admin screen.
-     *
-     * @param string $hook
-     */
-    public static function enqueue_styles( $hook ) {
-        $is_orders_page = (
-            $hook === 'edit.php'
-            || $hook === 'woocommerce_page_wc-orders'
-        );
-
-        if ( ! $is_orders_page ) {
-            return;
-        }
-
-        // Classic CPT mode: only for shop_order post type
-        if ( $hook === 'edit.php' ) {
-            $post_type = isset( $_GET['post_type'] ) ? sanitize_key( wp_unslash( $_GET['post_type'] ) ) : '';
-            if ( $post_type !== 'shop_order' ) {
-                return;
+        // Fallback: item meta key = surcharge name
+        foreach ( $order->get_items() as $item ) {
+            foreach ( $item->get_meta_data() as $meta ) {
+                $d = $meta->get_data();
+                if ( in_array( mb_strtolower( trim( (string) $d['key'] ) ), $names, true ) ) {
+                    return true;
+                }
             }
         }
 
-        $mg_ver = defined( 'MG_VERSION' ) ? MG_VERSION : '2.0.1';
-        wp_enqueue_style(
-            'mg-express-order-flag',
-            plugins_url( '../assets/css/express-order-flag.css', __FILE__ ),
-            [],
-            $mg_ver
-        );
+        return false;
+    }
+
+    private static function express_names() {
+        if ( self::$express_names !== null ) {
+            return self::$express_names;
+        }
+        self::$express_names = [];
+        if ( ! class_exists( 'MG_Surcharge_Manager' ) ) {
+            return self::$express_names;
+        }
+        foreach ( MG_Surcharge_Manager::get_surcharges( false ) as $s ) {
+            if ( ! empty( $s['is_express'] ) && ! empty( $s['name'] ) ) {
+                self::$express_names[] = mb_strtolower( trim( $s['name'] ) );
+            }
+        }
+        return self::$express_names;
     }
 }
