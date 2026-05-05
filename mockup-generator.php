@@ -60,6 +60,7 @@ add_action('plugins_loaded', function(){
         'admin/class-temu-export-page.php',
         'admin/class-order-design-download.php',
         'admin/class-order-item-editor.php',
+        'admin/class-express-order-flag.php',
         'includes/class-google-merchant-feed.php',
         'includes/class-facebook-catalog-feed.php',
         'includes/class-custom-feed-manager.php',
@@ -188,6 +189,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Order_Item_Editor')) {
         MG_Order_Item_Editor::init();
+    }
+    if (class_exists('MG_Express_Order_Flag')) {
+        MG_Express_Order_Flag::init();
     }
     if (class_exists('MG_Google_Merchant_Feed')) {
         MG_Google_Merchant_Feed::init();
