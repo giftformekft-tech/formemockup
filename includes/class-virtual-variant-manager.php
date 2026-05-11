@@ -9,6 +9,21 @@ class MG_Virtual_Variant_Manager {
     protected static $config_cache = array();
     protected static $generated_preview_cache = array();
 
+    /**
+     * Return wp_upload_dir() result, cached for the lifetime of this request.
+     * Prevents repeated filesystem/filter overhead when multiple methods call
+     * wp_upload_dir() during the same page load.
+     *
+     * @return array
+     */
+    protected static function get_upload_dir() {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = wp_upload_dir();
+        }
+        return $cache;
+    }
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
         add_action('woocommerce_before_add_to_cart_button', array(__CLASS__, 'render_selection_ui'), 5);
@@ -278,7 +293,7 @@ class MG_Virtual_Variant_Manager {
         }
         
         // Mockup configuration for predictable URLs
-        $uploads = wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $mockup_config = array(
             'baseUrl' => isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '',
             'pattern' => '{sku}/{sku}_{type}_{color}_{view}.webp'
@@ -360,7 +375,7 @@ class MG_Virtual_Variant_Manager {
             $preview_url = '';
             if ($sku && !empty($color_order)) {
                 $preview_color = reset($color_order);
-                $uploads = wp_upload_dir();
+                $uploads = self::get_upload_dir();
                 $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
                 if ($base_url !== '') {
                     $filename = $sku . '_' . $type_slug . '_' . $preview_color . '_front.webp';
@@ -545,7 +560,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_base_dir() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         if ($base_dir === '') {
             return '';
@@ -554,7 +569,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function get_render_base_url() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
         if ($base_url === '') {
             return '';
@@ -692,7 +707,7 @@ class MG_Virtual_Variant_Manager {
         $design_path = get_post_meta($post_id, '_mg_last_design_path', true);
         $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
         if ($design_path !== '' && file_exists($design_path)) {
-            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $uploads = self::get_upload_dir();
             $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
             $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
             if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
@@ -722,7 +737,7 @@ class MG_Virtual_Variant_Manager {
             return $mockups;
         }
         
-        $uploads = wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
         if ($base_url === '') {
             return $mockups;
@@ -787,7 +802,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function convert_path_to_url($path) {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
             return '';
         }
@@ -965,7 +980,7 @@ class MG_Virtual_Variant_Manager {
             if ($product) {
                 $sku = $product->get_sku();
                 if ($sku) {
-                    $uploads = wp_upload_dir();
+                    $uploads = self::get_upload_dir();
                     $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
                     $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
                     
@@ -1067,7 +1082,7 @@ class MG_Virtual_Variant_Manager {
         }
         
         if ($design_url === '' && $design_path !== '' && file_exists($design_path)) {
-            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $uploads = self::get_upload_dir();
             $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
             $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
             if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {
@@ -1333,7 +1348,7 @@ class MG_Virtual_Variant_Manager {
             return '';
         }
 
-        $uploads = wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
         if ($base_url === '') {
             error_log('MG Get Preview URL: No base URL');
@@ -1741,7 +1756,7 @@ class MG_Virtual_Variant_Manager {
         // NEW: Pattern-based resolution
         $sku = $product->get_sku();
         if ($sku) {
-            $uploads = wp_upload_dir();
+            $uploads = self::get_upload_dir();
             $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
             $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
             

@@ -18,6 +18,21 @@ class MG_Variant_Display_Manager {
      */
     protected static $language_attributes_hooked = false;
 
+    /**
+     * Return wp_upload_dir() result, cached for the lifetime of this request.
+     * Prevents repeated filesystem/filter overhead when multiple methods call
+     * wp_upload_dir() during the same page load.
+     *
+     * @return array
+     */
+    protected static function get_upload_dir() {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = wp_upload_dir();
+        }
+        return $cache;
+    }
+
     public static function init() {
         add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_assets'), 20);
     }
@@ -491,7 +506,7 @@ class MG_Variant_Display_Manager {
         if (!wp_http_validate_url($url)) {
             return false;
         }
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
             return true;
         }
@@ -641,7 +656,7 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function convert_path_to_url($path) {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         if (empty($uploads['basedir']) || empty($uploads['baseurl'])) {
             return '';
         }
@@ -667,7 +682,7 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function get_render_base_dir() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         if ($base_dir === '') {
             return '';
@@ -676,7 +691,7 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function get_render_base_url() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
         if ($base_url === '') {
             return '';
@@ -687,7 +702,7 @@ class MG_Variant_Display_Manager {
     // NEW HELPERS FOR SKU BASED PATHS
 
     protected static function get_sku_render_base_dir() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         if ($base_dir === '') {
             return '';
@@ -696,7 +711,7 @@ class MG_Variant_Display_Manager {
     }
 
     protected static function get_sku_render_base_url() {
-        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $uploads = self::get_upload_dir();
         $base_url = isset($uploads['baseurl']) ? rtrim($uploads['baseurl'], '/') : '';
         if ($base_url === '') {
             return '';
@@ -824,7 +839,7 @@ class MG_Variant_Display_Manager {
         $design_path = get_post_meta($post_id, '_mg_last_design_path', true);
         $design_path = is_string($design_path) ? wp_normalize_path($design_path) : '';
         if ($design_path !== '' && file_exists($design_path)) {
-            $uploads = function_exists('wp_upload_dir') ? wp_upload_dir() : array();
+            $uploads = self::get_upload_dir();
             $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
             $base_url = isset($uploads['baseurl']) ? $uploads['baseurl'] : '';
             if ($base_dir !== '' && $base_url !== '' && strpos($design_path, $base_dir) === 0) {

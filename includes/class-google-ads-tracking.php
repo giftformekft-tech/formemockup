@@ -33,8 +33,11 @@ class MG_Google_Ads_Tracking {
         // 2. View Item (Remarketing) - Termékoldalon
         add_action('woocommerce_after_single_product', array(__CLASS__, 'output_view_item_event'), 20);
 
-        // 3. Purchase (Conversion) - Köszönöm oldalon
+        // 3. Purchase (Conversion) - Köszönöm oldalon (klasszikus + block checkout)
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
+        // Block checkout kompatibilitás (WC 8.3+)
+        add_action('woocommerce_store_api_checkout_order_processed', array(__CLASS__, 'mark_order_for_tracking'), 10, 1);
+        add_action('woocommerce_order_status_changed', array(__CLASS__, 'output_purchase_event_status_hook'), 10, 3);
 
         // 4. Begin Checkout - Pénztár oldalon
         add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_begin_checkout_event'), 5);
@@ -108,8 +111,9 @@ class MG_Google_Ads_Tracking {
         <script>
           gtag('js', new Date());
           // allow_enhanced_conversions:true szükséges a Bővített konverziók működéséhez
+          // send_page_view: true szükséges az Enhanced Conversions session-linkinghez
           gtag('config', '<?php echo $conversion_id; ?>', {
-              'send_page_view': false,
+              'send_page_view': true,
               'allow_enhanced_conversions': true
           });
         </script>
@@ -314,10 +318,7 @@ class MG_Google_Ads_Tracking {
                 transaction_id: '<?php echo esc_js($transaction_id); ?>',
                 value: <?php echo number_format($value, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js($currency); ?>',
-                items: <?php echo wp_json_encode($items); ?><?php if (!empty($hashed_email)): ?>,
-                user_data: {
-                    sha256_email_address: '<?php echo esc_js($hashed_email); ?>'
-                }<?php endif; ?>
+                items: <?php echo wp_json_encode($items); ?>
             };
             var _mgSent = false;
 
@@ -348,9 +349,10 @@ class MG_Google_Ads_Tracking {
             }
 
             document.addEventListener('mg_gads_consent', mg_fire_purchase);
-            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_purchase, 200); });
-            
-            var fallback = function() { setTimeout(mg_fire_purchase, 800); };
+            document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_purchase, 300); });
+
+            // Fallback: 1200ms elegendő lassú mobilon is (cookie banner betöltéséhez)
+            var fallback = function() { setTimeout(mg_fire_purchase, 1200); };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', fallback);
             } else {
@@ -555,5 +557,30 @@ class MG_Google_Ads_Tracking {
         })();
         </script>
         <?php
+    }
+
+    /**
+     * Block Checkout: elmenti az order ID-t tranzientbe, hogy a thank you oldalon tüzelhessen.
+     * Meghívva: woocommerce_store_api_checkout_order_processed
+     */
+    public static function mark_order_for_tracking($order) {
+        if (!$order) return;
+        $order_id = is_object($order) ? $order->get_id() : (int)$order;
+        set_transient('mg_gads_block_order_' . $order_id, 1, 3600);
+    }
+
+    /**
+     * Block Checkout: status változáskor ellenőrzi, hogy kell-e a purchase eventet sütni.
+     * A WC block checkout esetén a woocommerce_thankyou hook nem mindig fut le.
+     */
+    public static function output_purchase_event_status_hook($order_id, $old_status, $new_status) {
+        // Csak processing/completed státuszra, és csak ha block checkout jelölte meg
+        if (!in_array($new_status, array('processing', 'completed'), true)) return;
+        if (!get_transient('mg_gads_block_order_' . $order_id)) return;
+        delete_transient('mg_gads_block_order_' . $order_id);
+        // Csak ha éppen a thank you oldalon vagyunk (is_order_received_page)
+        if (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received')) {
+            self::output_purchase_event($order_id);
+        }
     }
 }
