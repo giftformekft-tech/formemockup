@@ -1,0 +1,20 @@
+/* =============================================================
+   Express 24 órás gyártás – order list badge
+   ============================================================= */
+
+.mg-express-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    background: linear-gradient(135deg, #ff8c00, #ff4500);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    line-height: 1.5;
+    box-shadow: 0 1px 3px rgba(255, 69, 0, 0.35);
+    cursor: default;
+    vertical-align: middle;
+}
