@@ -14,8 +14,8 @@ class MG_Bulk_Queue {
     const ACTIVE_WORKER_TTL = 300;
     const ACTIVE_WORKER_HEARTBEAT = 30;
     const DISPATCH_LOCK = 'mg_bulk_dispatch_lock';
-    const LOCK_TTL = 360; // seconds – must be > STALE_TTL to prevent false stale detection
-    const STALE_TTL = 300; // seconds – job considered stale after this
+    const LOCK_TTL = 720; // seconds – must be > STALE_TTL to prevent false stale detection
+    const STALE_TTL = 600; // seconds – job considered stale after this (must allow for slow 2-phase generation)
     const MAX_JOBS_PER_WORKER = 10;
     const CRON_HOOK = 'mg_bulk_process_queue';
     const CRON_LOCK = 'mg_bulk_queue_lock';
@@ -315,7 +315,7 @@ class MG_Bulk_Queue {
         if (get_transient(self::CRON_LOCK)) {
             return;
         }
-        set_transient(self::CRON_LOCK, 1, 300);
+        set_transient(self::CRON_LOCK, 1, 600); // 600s – matches STALE_TTL to prevent double execution
         $worker_id = uniqid('cron_', true);
         self::mark_worker_active($worker_id, true);
         try {
@@ -452,6 +452,7 @@ class MG_Bulk_Queue {
                 );
                 
                 foreach ($selected as $prod) {
+                    self::mark_worker_active($worker_id, true); // heartbeat – prevent stale detection during slow generation
                     $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
                     if (is_wp_error($res)) {
                         throw new RuntimeException($res->get_error_message());
@@ -490,6 +491,7 @@ class MG_Bulk_Queue {
                     $empty_images[$prod['key']] = array();
                 }
                 
+                self::mark_worker_active($worker_id, true); // heartbeat before product creation
                 $result_product_id = $creator->create_parent_with_type_color_size_webp_fast(
                     $parent_name, 
                     $selected, 
@@ -548,6 +550,7 @@ class MG_Bulk_Queue {
                 );
                 
                 foreach ($selected as $prod) {
+                    self::mark_worker_active($worker_id, true); // heartbeat – prevent stale detection during slow generation
                     $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
                     if (is_wp_error($res)) {
                         throw new RuntimeException($res->get_error_message());
