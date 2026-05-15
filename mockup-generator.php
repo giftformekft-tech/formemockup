@@ -29,6 +29,8 @@ add_action('plugins_loaded', function(){
         'includes/class-cart-pricing.php',
         'includes/class-bundle-discount.php',
         'includes/class-bundle-discount-banner.php',
+        'includes/class-crosssell-manager.php',
+        'includes/class-crosssell-frontend.php',
         'includes/global-catalog.php',
         'includes/class-category-toggle.php',
         'admin/class-admin-page.php',
@@ -36,6 +38,7 @@ add_action('plugins_loaded', function(){
         'admin/class-product-settings-page.php',
         'admin/class-variant-display-page.php',
         'admin/class-bundle-discount-page.php',
+        'admin/class-crosssell-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
@@ -112,6 +115,9 @@ add_action('plugins_loaded', function(){
         if (class_exists('MG_Bundle_Discount_Page')) {
             MG_Bundle_Discount_Page::add_submenu_page();
         }
+        if (class_exists('MG_Crosssell_Page')) {
+            MG_Crosssell_Page::add_submenu_page();
+        }
         });
 
     add_action('add_meta_boxes', function($post_type) {
@@ -163,6 +169,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Bundle_Discount_Banner')) {
         MG_Bundle_Discount_Banner::init();
+    }
+    if (class_exists('MG_Crosssell_Frontend')) {
+        MG_Crosssell_Frontend::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
