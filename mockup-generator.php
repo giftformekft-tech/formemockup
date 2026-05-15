@@ -28,6 +28,7 @@ add_action('plugins_loaded', function(){
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',
         'includes/class-bundle-discount.php',
+        'includes/class-bundle-discount-banner.php',
         'includes/global-catalog.php',
         'includes/class-category-toggle.php',
         'admin/class-admin-page.php',
@@ -159,6 +160,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Bundle_Discount')) {
         MG_Bundle_Discount::init();
+    }
+    if (class_exists('MG_Bundle_Discount_Banner')) {
+        MG_Bundle_Discount_Banner::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
