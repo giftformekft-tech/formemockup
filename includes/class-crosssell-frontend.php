@@ -37,7 +37,7 @@ class MG_Crosssell_Frontend {
             return;
         }
         $ver      = defined( 'MG_VERSION' ) ? MG_VERSION : '2.0.1';
-        $base_url = plugins_url( '', dirname( __FILE__ ) . '/mockup-generator.php' );
+        $base_url = plugins_url( '', __DIR__ . '/../mockup-generator.php' );
 
         wp_enqueue_style(
             'mg-crosssell',
