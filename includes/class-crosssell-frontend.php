@@ -7,17 +7,16 @@ if ( ! defined( 'ABSPATH' ) ) {
  * MG_Crosssell_Frontend
  *
  * Kosár oldali cross-sell ajánló megjelenítése.
- * Támogatja a WooCommerce Blocks alapú kosarat (render_block filter)
- * és a klasszikus shortcode kosarat (woocommerce_after_cart_table hook).
+ * WooCommerce Blocks kosárhoz: wp_footer + JavaScript DOM injekció.
+ * Klasszikus shortcode kosárhoz: woocommerce_after_cart_table hook.
  */
 class MG_Crosssell_Frontend {
 
-    private static $rendered_pairs  = array();
-    private static $block_injected  = false; // csak egyszer injektálunk
+    private static $rendered_pairs = array();
 
     public static function init() {
-        // WooCommerce Blocks kosár
-        add_filter( 'render_block', array( __CLASS__, 'inject_into_cart_block' ), 10, 2 );
+        // WooCommerce Blocks kosár: wp_footer-ben adjuk ki, JS pozicionálja
+        add_action( 'wp_footer', array( __CLASS__, 'output_in_footer' ), 20 );
 
         // Klasszikus shortcode kosár (fallback)
         add_action( 'woocommerce_after_cart_table', array( __CLASS__, 'render_crosssell_offers' ), 20 );
@@ -76,32 +75,58 @@ class MG_Crosssell_Frontend {
     }
 
     // -------------------------------------------------------------------------
-    // WooCommerce Blocks – inject into woocommerce/cart block
+    // WooCommerce Blocks – wp_footer + JS DOM injekció
     // -------------------------------------------------------------------------
 
     /**
-     * WooCommerce Blocks kosár blokk után injektálja a cross-sell HTML-t.
-     * A render_block filter minden blokknál süt el – csak a woocommerce/cart blokkra reagunk.
+     * A cross-sell HTML-t a footer-ben adjuk ki rejtve.
+     * JavaScript mozgatja a .wp-block-woocommerce-cart elem után.
+     * Ez megkerüli a React hydration problémát.
      */
-    public static function inject_into_cart_block( $block_content, $block ) {
-        if ( empty( $block['blockName'] ) || $block['blockName'] !== 'woocommerce/cart' ) {
-            return $block_content;
-        }
-        if ( self::$block_injected ) {
-            return $block_content;
-        }
-        self::$block_injected = true;
-
-        if ( ! class_exists( 'MG_Crosssell_Manager' ) ) {
-            return $block_content;
-        }
-
+    public static function output_in_footer() {
         $html = self::get_crosssell_html();
         if ( ! $html ) {
-            return $block_content;
+            return;
         }
 
-        return $block_content . $html;
+        wp_enqueue_style( 'mg-crosssell' );
+        wp_enqueue_script( 'mg-crosssell' );
+        ?>
+        <div id="mg-crosssell-hidden" style="display:none;">
+            <?php echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+        </div>
+        <script>
+        (function() {
+            function mgcsInject() {
+                var hidden = document.getElementById('mg-crosssell-hidden');
+                if (!hidden) return;
+
+                var cartBlock = document.querySelector('.wp-block-woocommerce-cart');
+                if (!cartBlock) {
+                    // Klasszikus kosárnál a PHP hook kezeli – hidden div marad, de láthatatlan
+                    return;
+                }
+
+                var wrapper = hidden.querySelector('.mg-crosssell-wrapper');
+                if (!wrapper) return;
+
+                // Beillesztés a kosár blokk UTÁN
+                cartBlock.parentNode.insertBefore(wrapper, cartBlock.nextSibling);
+                hidden.remove();
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', mgcsInject);
+            } else {
+                mgcsInject();
+            }
+
+            // WC Blocks React késő render esetén újrapróbálkozás
+            setTimeout(mgcsInject, 300);
+            setTimeout(mgcsInject, 1000);
+        })();
+        </script>
+        <?php
     }
 
     // -------------------------------------------------------------------------
@@ -114,6 +139,8 @@ class MG_Crosssell_Frontend {
         }
         $html = self::get_crosssell_html();
         if ( $html ) {
+            wp_enqueue_style( 'mg-crosssell' );
+            wp_enqueue_script( 'mg-crosssell' );
             echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         }
     }
@@ -135,9 +162,11 @@ class MG_Crosssell_Frontend {
         $blocks = array();
 
         foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
+            // Kihagyjuk a már meglévő cross-sell tételeket
             if ( ! empty( $cart_item['mg_crosssell_rule_id'] ) ) {
                 continue;
             }
+            // Csak mg_product_type-os tételekre (VVM termékek)
             if ( empty( $cart_item['mg_product_type'] ) ) {
                 continue;
             }
@@ -161,8 +190,7 @@ class MG_Crosssell_Frontend {
             return '';
         }
 
-        wp_enqueue_style( 'mg-crosssell' );
-        wp_enqueue_script( 'mg-crosssell' );
+        // Localize script adatok hozzáadása
         wp_localize_script( 'mg-crosssell', 'MG_Crosssell', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'mg_crosssell_nonce' ),
@@ -179,7 +207,6 @@ class MG_Crosssell_Frontend {
 
     /**
      * Felépíti egy szabály ajánló blokkját egy forrás cart itemhez.
-     * A célok mg_product_type slugok – UGYANAZON a WC terméken belül.
      */
     private static function build_offer_block( $rule, $source_cart_item, $source_cart_item_key ) {
         $source_product_id = (int) ( $source_cart_item['product_id'] ?? 0 );
