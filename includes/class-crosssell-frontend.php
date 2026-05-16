@@ -3,22 +3,16 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-/**
- * MG_Crosssell_Frontend
- *
- * Kosár oldali cross-sell ajánló megjelenítése.
- * WooCommerce Blocks kosárhoz: wp_footer + JavaScript DOM injekció.
- * Klasszikus shortcode kosárhoz: woocommerce_after_cart_table hook.
- */
 class MG_Crosssell_Frontend {
 
-    private static $rendered_pairs = array();
+    private static $rendered_pairs   = array();
+    private static $content_injected = false;
 
     public static function init() {
-        // WooCommerce Blocks kosár: wp_footer-ben adjuk ki, JS pozicionálja
-        add_action( 'wp_footer', array( __CLASS__, 'output_in_footer' ), 20 );
+        // PHP alapú injekció – the_content filter, nincs JS DOM manipuláció
+        add_filter( 'the_content', array( __CLASS__, 'append_to_cart_content' ), 20 );
 
-        // Klasszikus shortcode kosár (fallback)
+        // Klasszikus shortcode kosár fallback
         add_action( 'woocommerce_after_cart_table', array( __CLASS__, 'render_crosssell_offers' ), 20 );
 
         // AJAX
@@ -32,25 +26,28 @@ class MG_Crosssell_Frontend {
         add_filter( 'woocommerce_get_cart_item_from_session', array( __CLASS__, 'restore_cart_item' ), 10, 2 );
 
         // Assets
-        add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+        add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_on_cart' ) );
     }
 
     // -------------------------------------------------------------------------
     // Assets
     // -------------------------------------------------------------------------
 
-    public static function register_assets() {
+    public static function enqueue_on_cart() {
+        if ( ! is_cart() ) {
+            return;
+        }
         $ver      = defined( 'MG_VERSION' ) ? MG_VERSION : '2.0.1';
         $base_url = plugins_url( '', dirname( __FILE__ ) . '/mockup-generator.php' );
 
-        wp_register_style(
+        wp_enqueue_style(
             'mg-crosssell',
             $base_url . '/assets/css/mg-crosssell.css',
             array(),
             $ver
         );
 
-        wp_register_script(
+        wp_enqueue_script(
             'mg-crosssell',
             $base_url . '/assets/js/mg-crosssell.js',
             array( 'jquery' ),
@@ -58,10 +55,16 @@ class MG_Crosssell_Frontend {
             true
         );
 
-        // CSS-t azonnal betöltjük kosár oldalon (wp_footer-ben már késő lenne)
-        if ( is_cart() || ( function_exists( 'is_page' ) && is_page() && has_block( 'woocommerce/cart' ) ) ) {
-            wp_enqueue_style( 'mg-crosssell' );
-        }
+        wp_localize_script( 'mg-crosssell', 'MG_Crosssell', array(
+            'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'nonce'    => wp_create_nonce( 'mg_crosssell_nonce' ),
+            'i18n'     => array(
+                'adding'  => __( 'Hozzáadás...', 'mockup-generator' ),
+                'added'   => __( '✓ Kosárban van', 'mockup-generator' ),
+                'error'   => __( 'Hiba történt, próbáld újra.', 'mockup-generator' ),
+                'already' => __( '✓ Már a kosárban', 'mockup-generator' ),
+            ),
+        ) );
     }
 
     // -------------------------------------------------------------------------
@@ -80,58 +83,24 @@ class MG_Crosssell_Frontend {
     }
 
     // -------------------------------------------------------------------------
-    // WooCommerce Blocks – wp_footer + JS DOM injekció
+    // the_content filter – WC Blocks kosár után injektálja a cross-sell HTML-t
     // -------------------------------------------------------------------------
 
-    /**
-     * A cross-sell HTML-t a footer-ben adjuk ki rejtve.
-     * JavaScript mozgatja a .wp-block-woocommerce-cart elem után.
-     * Ez megkerüli a React hydration problémát.
-     */
-    public static function output_in_footer() {
+    public static function append_to_cart_content( $content ) {
+        if ( ! is_cart() ) {
+            return $content;
+        }
+        if ( self::$content_injected ) {
+            return $content;
+        }
+        self::$content_injected = true;
+
         $html = self::get_crosssell_html();
         if ( ! $html ) {
-            return;
+            return $content;
         }
 
-        wp_enqueue_style( 'mg-crosssell' );
-        wp_enqueue_script( 'mg-crosssell' );
-        ?>
-        <div id="mg-crosssell-hidden" style="display:none;">
-            <?php echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-        </div>
-        <script>
-        (function() {
-            function mgcsInject() {
-                var hidden = document.getElementById('mg-crosssell-hidden');
-                if (!hidden) return;
-
-                var cartBlock = document.querySelector('.wp-block-woocommerce-cart');
-                if (!cartBlock) {
-                    // Klasszikus kosárnál a PHP hook kezeli – hidden div marad, de láthatatlan
-                    return;
-                }
-
-                var wrapper = hidden.querySelector('.mg-crosssell-wrapper');
-                if (!wrapper) return;
-
-                // Beillesztés a kosár blokk UTÁN
-                cartBlock.parentNode.insertBefore(wrapper, cartBlock.nextSibling);
-                hidden.remove();
-            }
-
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', mgcsInject);
-            } else {
-                mgcsInject();
-            }
-
-            // WC Blocks React késő render esetén újrapróbálkozás
-            setTimeout(mgcsInject, 300);
-            setTimeout(mgcsInject, 1000);
-        })();
-        </script>
-        <?php
+        return $content . $html;
     }
 
     // -------------------------------------------------------------------------
@@ -139,26 +108,20 @@ class MG_Crosssell_Frontend {
     // -------------------------------------------------------------------------
 
     public static function render_crosssell_offers() {
-        if ( ! is_cart() ) {
-            return;
-        }
         $html = self::get_crosssell_html();
         if ( $html ) {
-            wp_enqueue_style( 'mg-crosssell' );
-            wp_enqueue_script( 'mg-crosssell' );
             echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         }
     }
 
     // -------------------------------------------------------------------------
-    // HTML generálás (közös)
+    // HTML generálás
     // -------------------------------------------------------------------------
 
     private static function get_crosssell_html() {
         if ( ! class_exists( 'MG_Crosssell_Manager' ) ) {
             return '';
         }
-
         $cart = WC()->cart;
         if ( ! $cart ) {
             return '';
@@ -167,11 +130,9 @@ class MG_Crosssell_Frontend {
         $blocks = array();
 
         foreach ( $cart->get_cart() as $cart_item_key => $cart_item ) {
-            // Kihagyjuk a már meglévő cross-sell tételeket
             if ( ! empty( $cart_item['mg_crosssell_rule_id'] ) ) {
                 continue;
             }
-            // Csak mg_product_type-os tételekre (VVM termékek)
             if ( empty( $cart_item['mg_product_type'] ) ) {
                 continue;
             }
@@ -195,24 +156,9 @@ class MG_Crosssell_Frontend {
             return '';
         }
 
-        // Localize script adatok hozzáadása
-        wp_localize_script( 'mg-crosssell', 'MG_Crosssell', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'nonce'    => wp_create_nonce( 'mg_crosssell_nonce' ),
-            'i18n'     => array(
-                'adding'  => __( 'Hozzáadás...', 'mockup-generator' ),
-                'added'   => __( '✓ Kosárban van', 'mockup-generator' ),
-                'error'   => __( 'Hiba történt, próbáld újra.', 'mockup-generator' ),
-                'already' => __( '✓ Már a kosárban', 'mockup-generator' ),
-            ),
-        ) );
-
         return '<div class="mg-crosssell-wrapper">' . implode( '', $blocks ) . '</div>';
     }
 
-    /**
-     * Felépíti egy szabály ajánló blokkját egy forrás cart itemhez.
-     */
     private static function build_offer_block( $rule, $source_cart_item, $source_cart_item_key ) {
         $source_product_id = (int) ( $source_cart_item['product_id'] ?? 0 );
         $design_id         = (int) ( $source_cart_item['mg_design_id'] ?? 0 );
@@ -222,7 +168,6 @@ class MG_Crosssell_Frontend {
         $discount          = (float) $rule['discount_amount'];
         $catalog           = self::get_catalog();
 
-        // Forrás termék SKU-ja a mockup render URL-hez
         $product_obj = wc_get_product( $source_product_id );
         $source_sku  = $product_obj ? strtoupper( preg_replace( '/[^a-zA-Z0-9\-_]/', '', $product_obj->get_sku() ) ) : '';
 
@@ -254,11 +199,10 @@ class MG_Crosssell_Frontend {
                     $orig_price = isset( $type_data['price'] ) ? (float) $type_data['price'] : 0.0;
                     $disc_price = max( 0, $orig_price - $discount );
 
-                    // Cél típus képe: SKU alapú mockup render (ugyanaz mint a product page selector)
+                    // Típus képe: SKU alapú mockup render (ugyanaz mint product page selector)
                     $type_img_url = '';
                     if ( $source_sku !== '' && class_exists( 'MG_Variant_Display_Manager' )
                         && method_exists( 'MG_Variant_Display_Manager', 'find_sku_render_url' ) ) {
-                        // Először az alapalapértelmezett (első) színnel próbáljuk
                         $first_color = '';
                         if ( ! empty( $type_data['color_order'] ) ) {
                             $first_color = reset( $type_data['color_order'] );
@@ -272,7 +216,6 @@ class MG_Crosssell_Frontend {
                             );
                         }
                     }
-                    // Fallback: WC termék fénykép kis méretben
                     if ( ! $type_img_url && $product_obj ) {
                         $img_id       = $product_obj->get_image_id();
                         $type_img_url = $img_id ? wp_get_attachment_image_url( $img_id, 'thumbnail' ) : wc_placeholder_img_src();
@@ -290,7 +233,6 @@ class MG_Crosssell_Frontend {
                             <img src="<?php echo esc_url( $type_img_url ); ?>"
                                  alt="<?php echo esc_attr( $type_label ); ?>"
                                  class="mg-crosssell-product__img" />
-
                             <?php if ( $discount > 0 ) : ?>
                                 <span class="mg-crosssell-product__badge">
                                     -<?php echo wp_kses_post( wc_price( $discount ) ); ?>
@@ -352,14 +294,10 @@ class MG_Crosssell_Frontend {
             return;
         }
 
-        $cart = WC()->cart;
-        if ( ! $cart ) {
-            wp_send_json_error( array( 'message' => 'A kosár nem elérhető.' ) );
-            return;
-        }
-
+        $cart        = WC()->cart;
         $cart_items  = $cart->get_cart();
         $source_item = $cart_items[ $source_key ] ?? null;
+
         if ( ! $source_item ) {
             wp_send_json_error( array( 'message' => 'A forrás kosártétel nem található.' ) );
             return;
@@ -374,38 +312,26 @@ class MG_Crosssell_Frontend {
         $product_id = (int) ( $source_item['product_id'] ?? 0 );
         $design_id  = (int) ( $source_item['mg_design_id'] ?? 0 );
 
-        if ( ! $product_id ) {
-            wp_send_json_error( array( 'message' => 'A forrás termék nem azonosítható.' ) );
-            return;
-        }
-
         if ( MG_Crosssell_Manager::is_already_in_cart( $product_id, $target_type, $design_id, $rule_id ) ) {
             wp_send_json_error( array( 'message' => 'Már a kosárban van.', 'already_added' => true ) );
             return;
         }
 
-        if ( ! wc_get_product( $product_id ) ) {
-            wp_send_json_error( array( 'message' => 'A termék nem található.' ) );
-            return;
-        }
+        $catalog   = self::get_catalog();
+        $type_data = $catalog[ $target_type ] ?? array();
 
-        // Cél típus alapértelmezett szín/méret a katalógusból
         $default_color = '';
         $default_size  = '';
-        $catalog       = self::get_catalog();
-        $type_data     = $catalog[ $target_type ] ?? array();
-
-        if ( ! empty( $type_data['color_order'] ) && is_array( $type_data['color_order'] ) ) {
+        if ( ! empty( $type_data['color_order'] ) ) {
             $default_color = reset( $type_data['color_order'] );
-        } elseif ( ! empty( $type_data['colors'] ) && is_array( $type_data['colors'] ) ) {
-            $color_keys    = array_keys( $type_data['colors'] );
-            $default_color = reset( $color_keys );
+        } elseif ( ! empty( $type_data['colors'] ) ) {
+            $keys          = array_keys( $type_data['colors'] );
+            $default_color = reset( $keys );
         }
-        if ( ! empty( $type_data['sizes'] ) && is_array( $type_data['sizes'] ) ) {
+        if ( ! empty( $type_data['sizes'] ) ) {
             $default_size = reset( $type_data['sizes'] );
         }
 
-        // $_POST ideiglenes beállítása a VVM számára
         $post_backup = $_POST;
         $_POST['mg_product_type']   = $target_type;
         $_POST['mg_color']          = $default_color;
@@ -428,10 +354,7 @@ class MG_Crosssell_Frontend {
         $_POST = $post_backup;
 
         if ( $new_cart_key ) {
-            wp_send_json_success( array(
-                'message'       => 'Sikeresen hozzáadva!',
-                'cart_item_key' => $new_cart_key,
-            ) );
+            wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $new_cart_key ) );
         } else {
             $notices = wc_get_notices( 'error' );
             $msg     = ! empty( $notices ) ? wp_strip_all_tags( $notices[0]['notice'] ) : 'Nem sikerült hozzáadni.';
@@ -445,13 +368,7 @@ class MG_Crosssell_Frontend {
     // -------------------------------------------------------------------------
 
     public static function restore_cart_item( $cart_item, $values ) {
-        $fields = array(
-            'mg_crosssell_rule_id',
-            'mg_crosssell_discount_amount',
-            'mg_crosssell_source_key',
-            'mg_design_id',
-        );
-        foreach ( $fields as $field ) {
+        foreach ( array( 'mg_crosssell_rule_id', 'mg_crosssell_discount_amount', 'mg_crosssell_source_key', 'mg_design_id' ) as $field ) {
             if ( isset( $values[ $field ] ) ) {
                 $cart_item[ $field ] = $values[ $field ];
             }
@@ -473,13 +390,6 @@ class MG_Crosssell_Frontend {
         }
     }
 
-    private static function get_crosssell_flag() {
-        if ( ! function_exists( 'WC' ) || ! WC()->session ) {
-            return false;
-        }
-        return (bool) WC()->session->get( 'mg_crosssell_adding' );
-    }
-
     // -------------------------------------------------------------------------
     // Kedvezmény fee
     // -------------------------------------------------------------------------
@@ -488,26 +398,17 @@ class MG_Crosssell_Frontend {
         if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
             return;
         }
-
         foreach ( $cart->get_cart() as $cart_item ) {
             if ( empty( $cart_item['mg_crosssell_discount_amount'] ) ) {
                 continue;
             }
-            $discount_per_item = (float) $cart_item['mg_crosssell_discount_amount'];
-            if ( $discount_per_item <= 0 ) {
-                continue;
-            }
-            $qty    = isset( $cart_item['quantity'] ) ? max( 1, (int) $cart_item['quantity'] ) : 1;
-            $amount = $discount_per_item * $qty;
-
-            $type_slug  = $cart_item['mg_product_type'] ?? '';
-            $catalog    = self::get_catalog();
-            $type_label = isset( $catalog[ $type_slug ]['label'] ) ? $catalog[ $type_slug ]['label'] : $type_slug;
-
-            $label = $type_label
-                ? sprintf( '🎁 %s (%s)', __( 'Cross-sell kedvezmény', 'mockup-generator' ), $type_label )
+            $amount    = (float) $cart_item['mg_crosssell_discount_amount'] * max( 1, (int) ( $cart_item['quantity'] ?? 1 ) );
+            $catalog   = self::get_catalog();
+            $type_slug = $cart_item['mg_product_type'] ?? '';
+            $label_str = isset( $catalog[ $type_slug ]['label'] ) ? $catalog[ $type_slug ]['label'] : $type_slug;
+            $label     = $label_str
+                ? sprintf( '🎁 %s (%s)', __( 'Cross-sell kedvezmény', 'mockup-generator' ), $label_str )
                 : __( '🎁 Cross-sell kedvezmény', 'mockup-generator' );
-
             $cart->add_fee( $label, -1 * $amount, false );
         }
     }
