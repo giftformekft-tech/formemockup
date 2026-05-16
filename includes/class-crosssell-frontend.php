@@ -395,6 +395,17 @@ class MG_Crosssell_Frontend {
         self::set_crosssell_flag( false );
         $_POST = $post_backup;
 
+        // Közvetlen session javítás: a filter chain nem mindig írja be helyesen a target
+        // mg_product_type-t (a virtual-variant-manager felülírhatja), ezért az add_to_cart
+        // után közvetlenül javítjuk a kosár item adatait a WC session-ben.
+        if ( $new_cart_key && isset( $cart->cart_contents[ $new_cart_key ] ) ) {
+            $cart->cart_contents[ $new_cart_key ]['mg_product_type'] = $target_type;
+            $cart->cart_contents[ $new_cart_key ]['mg_color']        = $default_color;
+            $cart->cart_contents[ $new_cart_key ]['mg_size']         = $default_size;
+            $cart->cart_contents[ $new_cart_key ]['mg_design_id']    = $design_id;
+            $cart->set_session();
+        }
+
         if ( $new_cart_key ) {
             wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $new_cart_key ) );
         } else {
@@ -410,7 +421,15 @@ class MG_Crosssell_Frontend {
     // -------------------------------------------------------------------------
 
     public static function restore_cart_item( $cart_item, $values ) {
-        foreach ( array( 'mg_crosssell_rule_id', 'mg_crosssell_discount_amount', 'mg_crosssell_source_key', 'mg_design_id' ) as $field ) {
+        foreach ( array(
+            'mg_crosssell_rule_id',
+            'mg_crosssell_discount_amount',
+            'mg_crosssell_source_key',
+            'mg_design_id',
+            'mg_product_type',
+            'mg_color',
+            'mg_size',
+        ) as $field ) {
             if ( isset( $values[ $field ] ) ) {
                 $cart_item[ $field ] = $values[ $field ];
             }
