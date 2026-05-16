@@ -239,7 +239,18 @@ class MG_Crosssell_Frontend {
             <div class="mg-crosssell-block__products">
                 <?php foreach ( $rule['target_mg_types'] as $target_type_slug ) :
                     $type_data  = $catalog[ $target_type_slug ] ?? array();
-                    $type_label = $type_data['label'] ?? $type_data['name'] ?? $target_type_slug;
+                    $type_label = ( ! empty( $type_data['label'] ) && $type_data['label'] !== $target_type_slug )
+                        ? $type_data['label']
+                        : ( $type_data['name'] ?? '' );
+                    if ( $type_label === '' || $type_label === $target_type_slug ) {
+                        $term = get_term_by( 'slug', $target_type_slug, 'pa_termektipus' );
+                        if ( $term && ! is_wp_error( $term ) ) {
+                            $type_label = $term->name;
+                        }
+                    }
+                    if ( $type_label === '' ) {
+                        $type_label = $target_type_slug;
+                    }
                     $orig_price = isset( $type_data['price'] ) ? (float) $type_data['price'] : 0.0;
                     $disc_price = max( 0, $orig_price - $discount );
 
@@ -248,11 +259,21 @@ class MG_Crosssell_Frontend {
                     if ( $source_sku !== '' && class_exists( 'MG_Variant_Display_Manager' )
                         && method_exists( 'MG_Variant_Display_Manager', 'find_sku_render_url' ) ) {
                         $first_color = '';
-                        if ( ! empty( $type_data['color_order'] ) ) {
+                        if ( ! empty( $type_data['primary_color'] ) ) {
+                            $first_color = $type_data['primary_color'];
+                        } elseif ( ! empty( $type_data['color_order'] ) ) {
                             $first_color = reset( $type_data['color_order'] );
                         } elseif ( ! empty( $type_data['colors'] ) ) {
-                            $color_keys  = array_keys( $type_data['colors'] );
-                            $first_color = reset( $color_keys );
+                            $first_entry = reset( $type_data['colors'] );
+                            if ( is_array( $first_entry ) && ! empty( $first_entry['slug'] ) ) {
+                                $first_color = sanitize_title( $first_entry['slug'] );
+                            } elseif ( is_string( $first_entry ) ) {
+                                $first_color = sanitize_title( $first_entry );
+                            } else {
+                                $color_keys  = array_keys( $type_data['colors'] );
+                                $ck          = reset( $color_keys );
+                                $first_color = is_string( $ck ) ? $ck : '';
+                            }
                         }
                         if ( $first_color !== '' ) {
                             $type_img_url = MG_Variant_Display_Manager::find_sku_render_url(
@@ -366,17 +387,26 @@ class MG_Crosssell_Frontend {
 
         $default_color = '';
         $default_size  = 'Egyméret';
-        if ( ! empty( $type_data['color_order'] ) ) {
+        if ( ! empty( $type_data['primary_color'] ) ) {
+            $default_color = $type_data['primary_color'];
+        } elseif ( ! empty( $type_data['color_order'] ) ) {
             $default_color = reset( $type_data['color_order'] );
         } elseif ( ! empty( $type_data['colors'] ) ) {
-            $keys          = array_keys( $type_data['colors'] );
-            $default_color = reset( $keys );
+            $first_entry = reset( $type_data['colors'] );
+            if ( is_array( $first_entry ) && ! empty( $first_entry['slug'] ) ) {
+                $default_color = sanitize_title( $first_entry['slug'] );
+            } elseif ( is_string( $first_entry ) ) {
+                $default_color = sanitize_title( $first_entry );
+            } else {
+                $keys = array_keys( $type_data['colors'] );
+                $ck   = reset( $keys );
+                $default_color = is_string( $ck ) ? $ck : '';
+            }
         }
         if ( ! empty( $type_data['sizes'] ) ) {
             $default_size = reset( $type_data['sizes'] );
         }
         // Ha a katalógus AJAX kontextusban nem ad vissza színt, a forrás item színét vesszük alapul.
-        // Így az image generation nem bukik el üres mg_color miatt.
         if ( $default_color === '' ) {
             $default_color = $source_item['mg_color'] ?? 'feher';
         }
