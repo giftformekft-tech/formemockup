@@ -20,18 +20,17 @@ class MG_Cart_Name_Cleaner {
         if (!$original_name) {
             return $product_name;
         }
-        $clean_name = self::strip_suffix($original_name);
+
+        // Strip the " – Type" or " - Type" suffix from the WC product title,
+        // then re-append the correct type label for this cart item (handles crosssell).
+        $type_label = self::get_type_label_from_cart_item($cart_item);
+        $clean_name = self::strip_type_suffix($original_name);
         if (!$clean_name) {
             return $product_name;
         }
 
-        // Append product type label if available
-        $type_label = self::get_type_label_from_cart_item($cart_item);
         if ($type_label) {
-            // Avoid duplicate appending
-            if (strpos($clean_name, ' - ' . $type_label) === false) {
-                $clean_name .= ' - ' . $type_label;
-            }
+            $clean_name .= " \u{2013} " . $type_label; // em dash separator
         }
 
         $product = $cart_item['data'];
@@ -61,23 +60,44 @@ class MG_Cart_Name_Cleaner {
         }
 
         // Try to get label from catalog
+        $label = '';
         if (class_exists('MG_Variant_Display_Manager')) {
             $catalog = MG_Variant_Display_Manager::get_catalog_index();
-            if (isset($catalog[$type_slug]['label'])) {
-                return $catalog[$type_slug]['label'];
+            if (isset($catalog[$type_slug]['label']) && $catalog[$type_slug]['label'] !== $type_slug) {
+                $label = $catalog[$type_slug]['label'];
             }
         }
 
-        // Fallback: use slug as label
-        return ucfirst(str_replace('-', ' ', $type_slug));
+        // Fallback: WooCommerce product attribute taxonomy (helyes ékezetes nevek)
+        if ($label === '') {
+            $term = get_term_by('slug', $type_slug, 'pa_termektipus');
+            if ($term && !is_wp_error($term)) {
+                $label = $term->name;
+            }
+        }
+
+        return $label !== '' ? $label : ucfirst(str_replace('-', ' ', $type_slug));
     }
 
-    private static function strip_suffix($name) {
+    private static function strip_type_suffix($name) {
         if (!$name || !is_string($name)) {
             return $name;
         }
+        // Remove legacy BULK_SUFFIX first
         if (substr($name, -strlen(self::BULK_SUFFIX)) === self::BULK_SUFFIX) {
             return trim(substr($name, 0, -strlen(self::BULK_SUFFIX)));
+        }
+        // Strip " – Type" or " — Type" or " - Type" at the end.
+        // Uses the last occurrence so "Design – Sub – Type" → "Design – Sub".
+        $pos = strrpos($name, " \u{2013} "); // en dash
+        if ($pos === false) {
+            $pos = strrpos($name, " \u{2014} "); // em dash
+        }
+        if ($pos === false) {
+            $pos = strrpos($name, ' - '); // hyphen-minus fallback
+        }
+        if ($pos !== false && $pos > 0) {
+            return trim(substr($name, 0, $pos));
         }
         return $name;
     }

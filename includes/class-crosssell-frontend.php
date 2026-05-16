@@ -509,18 +509,21 @@ class MG_Crosssell_Frontend {
         $catalog    = self::get_catalog();
         $type_label = $catalog[ $target_type ]['label'] ?? $catalog[ $target_type ]['name'] ?? $target_type;
 
-        // VVM esetleg már hozzáadta ugyanezeket – duplikáció elkerülése
+        // VVM esetleg már hozzáadta ugyanezeket (priority 10, 'name' kulcsot használ).
+        // Mindkét kulcsformátumot szűrjük ('key' = Block, 'name' = klasszikus).
         $dupe_keys = array( 'Terméktípus', 'Szín', 'Méret' );
         $item_data = array_values( array_filter( $item_data, function ( $entry ) use ( $dupe_keys ) {
-            return ! in_array( $entry['key'] ?? '', $dupe_keys, true );
+            $k = $entry['key'] ?? $entry['name'] ?? '';
+            return ! in_array( $k, $dupe_keys, true );
         } ) );
 
-        $item_data[] = array( 'key' => 'Terméktípus', 'value' => $type_label,    'display' => '' );
+        // Mindkét formátummal adjuk hozzá (kompatibilitás: Block + klasszikus kosár)
+        $item_data[] = array( 'key' => 'Terméktípus', 'name' => 'Terméktípus', 'value' => $type_label,    'display' => '' );
         if ( $target_color !== '' ) {
-            $item_data[] = array( 'key' => 'Szín',        'value' => $target_color, 'display' => '' );
+            $item_data[] = array( 'key' => 'Szín',        'name' => 'Szín',        'value' => $target_color, 'display' => '' );
         }
         if ( $target_size !== '' ) {
-            $item_data[] = array( 'key' => 'Méret',       'value' => $target_size,  'display' => '' );
+            $item_data[] = array( 'key' => 'Méret',       'name' => 'Méret',       'value' => $target_size,  'display' => '' );
         }
 
         return $item_data;
