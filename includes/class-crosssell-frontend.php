@@ -403,13 +403,15 @@ class MG_Crosssell_Frontend {
         self::$adding_crosssell = false;
         $_POST = $post_backup;
 
-        // Közvetlenül felülírjuk a cart_contents-ben a mg_product_type-t,
-        // ha az add_to_cart valami miatt rosszul állította be
+        // Közvetlenül felülírjuk a cart_contents-ben a helyes target értékeket.
+        // mg_preview_url-t is töröljük, hogy get_cart_item_preview_url
+        // dinamikusan generálja a helyes képet mg_product_type + mg_color alapján.
         if ( $new_cart_key && isset( $cart->cart_contents[ $new_cart_key ] ) ) {
             $cart->cart_contents[ $new_cart_key ]['mg_product_type'] = $target_type;
             $cart->cart_contents[ $new_cart_key ]['mg_color']        = $default_color;
             $cart->cart_contents[ $new_cart_key ]['mg_size']         = $default_size;
             $cart->cart_contents[ $new_cart_key ]['mg_design_id']    = $design_id;
+            $cart->cart_contents[ $new_cart_key ]['mg_preview_url']  = '';
             $cart->set_session();
         }
 
