@@ -57,6 +57,11 @@ class MG_Crosssell_Frontend {
             $ver,
             true
         );
+
+        // CSS-t azonnal betöltjük kosár oldalon (wp_footer-ben már késő lenne)
+        if ( is_cart() || ( function_exists( 'is_page' ) && is_page() && has_block( 'woocommerce/cart' ) ) ) {
+            wp_enqueue_style( 'mg-crosssell' );
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -217,9 +222,9 @@ class MG_Crosssell_Frontend {
         $discount          = (float) $rule['discount_amount'];
         $catalog           = self::get_catalog();
 
+        // Forrás termék SKU-ja a mockup render URL-hez
         $product_obj = wc_get_product( $source_product_id );
-        $image_id    = $product_obj ? $product_obj->get_image_id() : 0;
-        $base_image  = $image_id ? wp_get_attachment_image_url( $image_id, 'woocommerce_thumbnail' ) : wc_placeholder_img_src();
+        $source_sku  = $product_obj ? strtoupper( preg_replace( '/[^a-zA-Z0-9\-_]/', '', $product_obj->get_sku() ) ) : '';
 
         ob_start();
         ?>
@@ -249,15 +254,43 @@ class MG_Crosssell_Frontend {
                     $orig_price = isset( $type_data['price'] ) ? (float) $type_data['price'] : 0.0;
                     $disc_price = max( 0, $orig_price - $discount );
 
+                    // Cél típus képe: SKU alapú mockup render (ugyanaz mint a product page selector)
+                    $type_img_url = '';
+                    if ( $source_sku !== '' && class_exists( 'MG_Variant_Display_Manager' )
+                        && method_exists( 'MG_Variant_Display_Manager', 'find_sku_render_url' ) ) {
+                        // Először az alapalapértelmezett (első) színnel próbáljuk
+                        $first_color = '';
+                        if ( ! empty( $type_data['color_order'] ) ) {
+                            $first_color = reset( $type_data['color_order'] );
+                        } elseif ( ! empty( $type_data['colors'] ) ) {
+                            $color_keys  = array_keys( $type_data['colors'] );
+                            $first_color = reset( $color_keys );
+                        }
+                        if ( $first_color !== '' ) {
+                            $type_img_url = MG_Variant_Display_Manager::find_sku_render_url(
+                                $source_sku, $target_type_slug, $first_color
+                            );
+                        }
+                    }
+                    // Fallback: WC termék fénykép kis méretben
+                    if ( ! $type_img_url && $product_obj ) {
+                        $img_id       = $product_obj->get_image_id();
+                        $type_img_url = $img_id ? wp_get_attachment_image_url( $img_id, 'thumbnail' ) : wc_placeholder_img_src();
+                    }
+                    if ( ! $type_img_url ) {
+                        $type_img_url = wc_placeholder_img_src();
+                    }
+
                     $already_in_cart = MG_Crosssell_Manager::is_already_in_cart(
                         $source_product_id, $target_type_slug, $design_id, $rule['id']
                     );
                     ?>
                     <div class="mg-crosssell-product" data-type-slug="<?php echo esc_attr( $target_type_slug ); ?>">
                         <div class="mg-crosssell-product__img-wrap">
-                            <img src="<?php echo esc_url( $base_image ); ?>"
+                            <img src="<?php echo esc_url( $type_img_url ); ?>"
                                  alt="<?php echo esc_attr( $type_label ); ?>"
                                  class="mg-crosssell-product__img" />
+
                             <?php if ( $discount > 0 ) : ?>
                                 <span class="mg-crosssell-product__badge">
                                     -<?php echo wp_kses_post( wc_price( $discount ) ); ?>
