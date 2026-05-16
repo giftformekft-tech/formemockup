@@ -5,12 +5,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MG_Crosssell_Frontend {
 
-    private static $rendered_pairs   = array();
-    private static $content_injected = false;
+    private static $rendered_pairs = array();
 
     public static function init() {
-        // PHP alapú injekció – the_content filter, nincs JS DOM manipuláció
-        add_filter( 'the_content', array( __CLASS__, 'append_to_cart_content' ), 20 );
+        // CSS + JS: wp_enqueue_scripts hookra (head-be kerül, biztonságos)
+        add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_on_cart' ) );
+
+        // HTML output: wp_footer végén, egyszerű echo – nincs DOM manipuláció
+        add_action( 'wp_footer', array( __CLASS__, 'output_in_footer' ), 5 );
 
         // Klasszikus shortcode kosár fallback
         add_action( 'woocommerce_after_cart_table', array( __CLASS__, 'render_crosssell_offers' ), 20 );
@@ -24,9 +26,6 @@ class MG_Crosssell_Frontend {
 
         // Session restore
         add_filter( 'woocommerce_get_cart_item_from_session', array( __CLASS__, 'restore_cart_item' ), 10, 2 );
-
-        // Assets
-        add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_on_cart' ) );
     }
 
     // -------------------------------------------------------------------------
@@ -83,24 +82,18 @@ class MG_Crosssell_Frontend {
     }
 
     // -------------------------------------------------------------------------
-    // the_content filter – WC Blocks kosár után injektálja a cross-sell HTML-t
+    // wp_footer output – WC Blocks kosár után, JS DOM érintése nélkül
     // -------------------------------------------------------------------------
 
-    public static function append_to_cart_content( $content ) {
+    public static function output_in_footer() {
         if ( ! is_cart() ) {
-            return $content;
+            return;
         }
-        if ( self::$content_injected ) {
-            return $content;
-        }
-        self::$content_injected = true;
-
         $html = self::get_crosssell_html();
         if ( ! $html ) {
-            return $content;
+            return;
         }
-
-        return $content . $html;
+        echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
     }
 
     // -------------------------------------------------------------------------

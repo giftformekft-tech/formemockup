@@ -719,7 +719,7 @@ class MG_Variant_Display_Manager {
         return trailingslashit($base_url) . 'mg_mockups';
     }
 
-    protected static function find_sku_render_url($sku, $type_slug, $color_slug) {
+    public static function find_sku_render_url($sku, $type_slug, $color_slug) {
         $base_dir = self::get_sku_render_base_dir();
         $base_url = self::get_sku_render_base_url();
         
