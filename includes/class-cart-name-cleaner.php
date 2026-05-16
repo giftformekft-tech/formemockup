@@ -10,6 +10,9 @@ class MG_Cart_Name_Cleaner {
     public static function init() {
         add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
         add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
+        // Block cart (Store API): set the correct per-item name in the REST JSON response.
+        // Runs at PHP_INT_MAX so it has final say over any earlier name overrides.
+        add_filter('woocommerce_store_api_cart_item', [__CLASS__, 'filter_store_api_cart_item_name'], PHP_INT_MAX, 2);
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
@@ -47,19 +50,69 @@ class MG_Cart_Name_Cleaner {
     }
 
     /**
-     * Get the type label from the cart item's mg_product_type field
+     * Block cart (Store API): set correct per-item name in the REST JSON response.
+     *
+     * The WC Block cart React app reads the 'name' field from the Store API cart item.
+     * This filter runs after woocommerce_product_get_name and any earlier Store API
+     * overrides, ensuring each line item displays the name for its own product type
+     * (including crosssell items that share a product_id with the source item).
+     */
+    public static function filter_store_api_cart_item_name($cart_item_data, $cart_item) {
+        if (empty($cart_item['mg_product_type'])) {
+            return $cart_item_data;
+        }
+
+        $product = $cart_item['data'] ?? null;
+        if (!($product instanceof WC_Product)) {
+            return $cart_item_data;
+        }
+
+        // Crosssell items: mg_product_type was already overwritten with the target type
+        // by fix_crosssell_cart_item_data, but mg_crosssell_target_type is the authoritative
+        // source for crosssell items. For regular items both fields agree (or only mg_product_type exists).
+        $type_key = !empty($cart_item['mg_crosssell_target_type'])
+            ? $cart_item['mg_crosssell_target_type']
+            : $cart_item['mg_product_type'];
+
+        $raw_name   = $product->get_name();
+        $clean_name = self::strip_type_suffix($raw_name);
+        if (!$clean_name) {
+            return $cart_item_data;
+        }
+
+        $type_label = self::get_type_label_from_slug(sanitize_title($type_key));
+        if ($type_label) {
+            $clean_name .= " \u{2013} " . $type_label;
+        }
+
+        $cart_item_data['name'] = $clean_name;
+        return $cart_item_data;
+    }
+
+    /**
+     * Get the type label from the cart item's mg_product_type field.
+     * For crosssell items, mg_crosssell_target_type takes precedence.
      */
     private static function get_type_label_from_cart_item($cart_item) {
-        if (empty($cart_item['mg_product_type'])) {
+        // Prefer crosssell target type when present (crosssell items)
+        $type_key = !empty($cart_item['mg_crosssell_target_type'])
+            ? $cart_item['mg_crosssell_target_type']
+            : ($cart_item['mg_product_type'] ?? '');
+
+        if (empty($type_key)) {
             return '';
         }
 
-        $type_slug = sanitize_title($cart_item['mg_product_type']);
+        $type_slug = sanitize_title($type_key);
+
+        return self::get_type_label_from_slug($type_slug);
+    }
+
+    private static function get_type_label_from_slug($type_slug) {
         if ($type_slug === '') {
             return '';
         }
 
-        // Try to get label from catalog
         $label = '';
         if (class_exists('MG_Variant_Display_Manager')) {
             $catalog = MG_Variant_Display_Manager::get_catalog_index();
@@ -68,7 +121,6 @@ class MG_Cart_Name_Cleaner {
             }
         }
 
-        // Fallback: WooCommerce product attribute taxonomy (helyes ékezetes nevek)
         if ($label === '') {
             $term = get_term_by('slug', $type_slug, 'pa_termektipus');
             if ($term && !is_wp_error($term)) {
