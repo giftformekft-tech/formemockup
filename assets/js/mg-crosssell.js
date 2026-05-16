@@ -1,20 +1,21 @@
 /**
  * MG Cross-sell – AJAX Kosárba adás
+ * Ugyanaz a WC termék, más mg_product_type (bogre, parna stb.)
  */
 (function ($) {
     'use strict';
 
-    var cfg = window.MG_Crosssell || {};
+    var cfg     = window.MG_Crosssell || {};
     var ajaxUrl = cfg.ajax_url || '';
     var nonce   = cfg.nonce   || '';
-    var i18n    = cfg.i18n   || {};
+    var i18n    = cfg.i18n    || {};
 
     $(document).on('click', '.mg-crosssell-btn--add', function (e) {
         e.preventDefault();
 
         var $btn       = $(this);
-        var productId  = $btn.data('product-id');
-        var sourceKey  = $btn.data('source-key');
+        var targetType = $btn.data('target-type');   // mg_product_type slug (pl. "bogre")
+        var sourceKey  = $btn.data('source-key');    // forrás cart item key
         var ruleId     = $btn.data('rule-id');
 
         if ($btn.hasClass('mg-crosssell-btn--adding') || $btn.hasClass('mg-crosssell-btn--added')) {
@@ -31,21 +32,20 @@
             url:    ajaxUrl,
             method: 'POST',
             data: {
-                action:              'mg_crosssell_add',
-                nonce:               nonce,
-                product_id:          productId,
+                action:               'mg_crosssell_add',
+                nonce:                nonce,
+                target_type:          targetType,
                 source_cart_item_key: sourceKey,
-                rule_id:             ruleId,
+                rule_id:              ruleId,
             },
             success: function (response) {
                 if (response.success) {
-                    // Sikerült – gomb állapot megváltoztatása
                     $btn.removeClass('mg-crosssell-btn--adding')
                         .addClass('mg-crosssell-btn--added')
                         .text(i18n.added || '✓ Kosárban van')
                         .prop('disabled', true);
 
-                    // WC kosár fragment frissítése (mini cart stb.)
+                    // WC kosár fragment frissítése
                     $(document.body).trigger('wc_fragment_refresh');
                     $(document.body).trigger('added_to_cart', [response.data]);
 
@@ -60,10 +60,9 @@
                     } else {
                         $btn.removeClass('mg-crosssell-btn--adding')
                             .addClass('mg-crosssell-btn--add')
-                            .text(i18n.error || 'Hiba történt')
+                            .text(i18n.error || 'Hiba')
                             .prop('disabled', false);
 
-                        // 2 mp után visszaáll
                         setTimeout(function () {
                             $btn.text('+ Kosárba');
                         }, 2000);
@@ -73,7 +72,7 @@
             error: function () {
                 $btn.removeClass('mg-crosssell-btn--adding')
                     .addClass('mg-crosssell-btn--add')
-                    .text(i18n.error || 'Hiba történt')
+                    .text(i18n.error || 'Hiba')
                     .prop('disabled', false);
 
                 setTimeout(function () {

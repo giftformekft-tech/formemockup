@@ -75,7 +75,6 @@ class MG_Crosssell_Page {
             </form>
         </div>
 
-        <!-- Szabály sablon -->
         <script type="text/html" id="mg-cs-rule-template">
             <?php self::render_rule_row( '__IDX__', array(
                 'id'              => '',
@@ -83,7 +82,7 @@ class MG_Crosssell_Page {
                 'enabled'         => true,
                 'source_cats'     => array(),
                 'source_mg_types' => array(),
-                'target_products' => array(),
+                'target_mg_types' => array(),
                 'discount_amount' => 0.0,
                 'headline'        => '',
                 'description'     => '',
@@ -224,17 +223,17 @@ class MG_Crosssell_Page {
     }
 
     private static function render_rule_row( $idx, $rule, $wc_categories, $mg_types, $is_template = false ) {
-        $name        = $rule['name'] ?? '';
-        $enabled     = ! empty( $rule['enabled'] );
-        $source_cats = $rule['source_cats'] ?? array();
-        $source_types= $rule['source_mg_types'] ?? array();
-        $targets     = $rule['target_products'] ?? array();
-        $discount    = $rule['discount_amount'] ?? 0.0;
-        $headline    = $rule['headline'] ?? '';
-        $description = $rule['description'] ?? '';
-        $id          = $rule['id'] ?? '';
-        $title       = $name !== '' ? $name : __( 'Névtelen szabály', 'mockup-generator' );
-        $prefix      = "rules[{$idx}]";
+        $name         = $rule['name'] ?? '';
+        $enabled      = ! empty( $rule['enabled'] );
+        $source_cats  = $rule['source_cats'] ?? array();
+        $source_types = $rule['source_mg_types'] ?? array();
+        $target_types = $rule['target_mg_types'] ?? array();
+        $discount     = $rule['discount_amount'] ?? 0.0;
+        $headline     = $rule['headline'] ?? '';
+        $description  = $rule['description'] ?? '';
+        $id           = $rule['id'] ?? '';
+        $title        = $name !== '' ? $name : __( 'Névtelen szabály', 'mockup-generator' );
+        $prefix       = "rules[{$idx}]";
         ?>
         <div class="mg-cs-rule-box" data-idx="<?php echo esc_attr( $idx ); ?>">
             <div class="mg-cs-rule-header">
@@ -296,22 +295,17 @@ class MG_Crosssell_Page {
                     </tr>
 
                     <tr>
-                        <th><?php esc_html_e( 'Ajánlott termékek', 'mockup-generator' ); ?></th>
-                        <td class="mg-cs-target-products">
-                            <select class="wc-product-search"
-                                    name="<?php echo esc_attr( $prefix ); ?>[target_products][]"
-                                    multiple
-                                    data-placeholder="<?php esc_attr_e( 'Keress termékre...', 'mockup-generator' ); ?>">
-                                <?php foreach ( $targets as $target_id ) :
-                                    $p = wc_get_product( $target_id );
-                                    if ( ! $p ) continue;
-                                    ?>
-                                    <option value="<?php echo esc_attr( $target_id ); ?>" selected>
-                                        <?php echo esc_html( $p->get_name() . ' (#' . $target_id . ')' ); ?>
+                        <th><?php esc_html_e( 'Ajánlott terméktípusok', 'mockup-generator' ); ?></th>
+                        <td class="mg-cs-rule-targets">
+                            <select multiple name="<?php echo esc_attr( $prefix ); ?>[target_mg_types][]" size="5">
+                                <?php foreach ( $mg_types as $slug => $label ) : ?>
+                                    <option value="<?php echo esc_attr( $slug ); ?>"
+                                        <?php echo in_array( $slug, $target_types, true ) ? 'selected' : ''; ?>>
+                                        <?php echo esc_html( $label . ' (' . $slug . ')' ); ?>
                                     </option>
                                 <?php endforeach; ?>
                             </select>
-                            <p class="description"><?php esc_html_e( 'Ezeket a termékeket ajánljuk fel a vevőnek.', 'mockup-generator' ); ?></p>
+                            <p class="description"><?php esc_html_e( 'Ezeket a terméktípusokat ajánljuk fel a vevőnek. Ctrl+klikk a több kiválasztáshoz.', 'mockup-generator' ); ?></p>
                         </td>
                     </tr>
 

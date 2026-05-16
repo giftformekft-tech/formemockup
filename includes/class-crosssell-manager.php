@@ -7,10 +7,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * MG_Crosssell_Manager
  *
  * Cross-sell szabályok tárolása és lekérdezése.
- * Egy szabály meghatározza: melyik forrás kategóriájú/típusú termék
- * kosárban léte esetén melyik célterméket ajánljuk fel kedvezménnyel.
  *
- * Option: mg_crosssell_rules (array of rule arrays)
+ * Logika:
+ * - Ha a kosárban van X mg_product_type-ú tétel (pl. ferfi-polo) → felajánljuk
+ *   ugyanazt a mintát (mg_design_id) más mg_product_type-okon (pl. bogre, parna).
+ * - A cél termék UGYANAZ a WC termék, csak más mg_product_type-szal kerül a kosárba.
+ *
+ * Option: mg_crosssell_rules
  */
 class MG_Crosssell_Manager {
 
@@ -55,34 +58,33 @@ class MG_Crosssell_Manager {
                 continue;
             }
 
-            // Forrás kategóriák
             $source_cats = array();
             if ( ! empty( $rule['source_cats'] ) && is_array( $rule['source_cats'] ) ) {
                 $source_cats = array_values( array_filter( array_map( 'intval', $rule['source_cats'] ) ) );
             }
 
-            // Forrás mg_types
+            // Forrás mg_types (melyik típus TRIGGERELI az ajánlót)
             $source_mg_types = array();
             if ( ! empty( $rule['source_mg_types'] ) && is_array( $rule['source_mg_types'] ) ) {
                 $source_mg_types = array_values( array_filter( array_map( 'sanitize_key', $rule['source_mg_types'] ) ) );
             }
 
-            // Cél termékek
-            $target_products = array();
-            if ( ! empty( $rule['target_products'] ) && is_array( $rule['target_products'] ) ) {
-                $target_products = array_values( array_filter( array_map( 'intval', $rule['target_products'] ) ) );
+            // Cél mg_types (ezeket ajánljuk fel – ugyanazon WC terméken)
+            $target_mg_types = array();
+            if ( ! empty( $rule['target_mg_types'] ) && is_array( $rule['target_mg_types'] ) ) {
+                $target_mg_types = array_values( array_filter( array_map( 'sanitize_key', $rule['target_mg_types'] ) ) );
             }
 
             $clean[] = array(
-                'id'               => sanitize_key( isset( $rule['id'] ) && $rule['id'] !== '' ? $rule['id'] : uniqid( 'cs_' ) ),
-                'name'             => sanitize_text_field( $rule['name'] ?? '' ),
-                'enabled'          => ! empty( $rule['enabled'] ),
-                'source_cats'      => $source_cats,
-                'source_mg_types'  => $source_mg_types,
-                'target_products'  => $target_products,
-                'discount_amount'  => max( 0.0, floatval( $rule['discount_amount'] ?? 0 ) ),
-                'headline'         => sanitize_text_field( $rule['headline'] ?? '' ),
-                'description'      => sanitize_textarea_field( $rule['description'] ?? '' ),
+                'id'              => sanitize_key( isset( $rule['id'] ) && $rule['id'] !== '' ? $rule['id'] : uniqid( 'cs_' ) ),
+                'name'            => sanitize_text_field( $rule['name'] ?? '' ),
+                'enabled'         => ! empty( $rule['enabled'] ),
+                'source_cats'     => $source_cats,
+                'source_mg_types' => $source_mg_types,
+                'target_mg_types' => $target_mg_types,
+                'discount_amount' => max( 0.0, floatval( $rule['discount_amount'] ?? 0 ) ),
+                'headline'        => sanitize_text_field( $rule['headline'] ?? '' ),
+                'description'     => sanitize_textarea_field( $rule['description'] ?? '' ),
             );
         }
 
@@ -94,11 +96,8 @@ class MG_Crosssell_Manager {
     // -------------------------------------------------------------------------
 
     /**
-     * Visszaadja azokat az aktív szabályokat, amelyek illeszkednek az adott cart itemre.
-     * Illesztés: ha a termék benne van a source_cats-ban ÉS (ha meg van adva) a source_mg_types-ban.
-     *
-     * @param array $cart_item
-     * @return array  Illeszkedő szabályok tömbje
+     * Visszaadja a cart itemre illeszkedő aktív szabályokat.
+     * A source cart itemnek mg_product_type-szal kell rendelkeznie.
      */
     public static function get_matching_rules( $cart_item ) {
         $rules = self::get_rules();
@@ -109,7 +108,7 @@ class MG_Crosssell_Manager {
         $product_id = isset( $cart_item['product_id'] ) ? (int) $cart_item['product_id'] : 0;
         $mg_type    = isset( $cart_item['mg_product_type'] ) ? sanitize_key( $cart_item['mg_product_type'] ) : '';
 
-        if ( ! $product_id ) {
+        if ( ! $product_id || ! $mg_type ) {
             return array();
         }
 
@@ -120,50 +119,55 @@ class MG_Crosssell_Manager {
             if ( empty( $rule['enabled'] ) ) {
                 continue;
             }
-            if ( empty( $rule['target_products'] ) ) {
+            if ( empty( $rule['target_mg_types'] ) ) {
                 continue;
             }
 
-            // Forrás kategória szűrő
+            // Forrás kategória szűrő (opcionális)
             if ( ! empty( $rule['source_cats'] ) ) {
                 if ( empty( $product_cat_ids ) || empty( array_intersect( $rule['source_cats'], $product_cat_ids ) ) ) {
                     continue;
                 }
             }
 
-            // Forrás mg_type szűrő
+            // Forrás mg_type szűrő – a kosárban lévő típusnak egyeznie kell
             if ( ! empty( $rule['source_mg_types'] ) ) {
-                if ( empty( $mg_type ) || ! in_array( $mg_type, $rule['source_mg_types'], true ) ) {
+                if ( ! in_array( $mg_type, $rule['source_mg_types'], true ) ) {
                     continue;
                 }
             }
 
-            $matched[] = $rule;
+            // A forrás típust kizárjuk a célok közül (ne ajánljuk ugyanazt)
+            $targets = array_diff( $rule['target_mg_types'], array( $mg_type ) );
+            if ( empty( $targets ) ) {
+                continue;
+            }
+
+            $matched_rule                    = $rule;
+            $matched_rule['target_mg_types'] = array_values( $targets );
+            $matched[]                       = $matched_rule;
         }
 
         return $matched;
     }
 
     /**
-     * Ellenőrzi, hogy a megadott termék már a kosárban van-e az adott design_id-val cross-sell-ként.
-     *
-     * @param int    $target_product_id
-     * @param int    $design_id
-     * @param string $rule_id
-     * @return bool
+     * Ellenőrzi, hogy a (product_id + target_mg_type + design_id + rule_id) kombináció
+     * már a kosárban van-e cross-sell tételként.
      */
-    public static function is_already_in_cart( $target_product_id, $design_id, $rule_id ) {
+    public static function is_already_in_cart( $product_id, $target_mg_type, $design_id, $rule_id ) {
         if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
             return false;
         }
         foreach ( WC()->cart->get_cart() as $item ) {
-            if ( (int) $item['product_id'] !== (int) $target_product_id ) {
+            if ( (int) $item['product_id'] !== (int) $product_id ) {
                 continue;
             }
             if ( empty( $item['mg_crosssell_rule_id'] ) ) {
                 continue;
             }
-            if ( (int) ( $item['mg_design_id'] ?? 0 ) === (int) $design_id
+            if ( ( $item['mg_product_type'] ?? '' ) === $target_mg_type
+                && (int) ( $item['mg_design_id'] ?? 0 ) === (int) $design_id
                 && $item['mg_crosssell_rule_id'] === $rule_id ) {
                 return true;
             }
