@@ -151,6 +151,49 @@ class MG_Crosssell_Page {
                 reindex();
             });
 
+            // Termékkeresés init függvény
+            var csAjaxUrl  = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+            var csNonce    = '<?php echo esc_js( wp_create_nonce( 'search-products' ) ); ?>';
+            var csPlaceholder = '<?php echo esc_js( __( 'Keress termékre...', 'mockup-generator' ) ); ?>';
+
+            function initProductSearch( $el ) {
+                if ( $el.hasClass('select2-hidden-accessible') ) return;
+                $el.select2({
+                    ajax: {
+                        url: csAjaxUrl,
+                        dataType: 'json',
+                        delay: 300,
+                        data: function( params ) {
+                            return {
+                                term:    params.term,
+                                action:  'woocommerce_json_search_products_and_variations',
+                                security: csNonce
+                            };
+                        },
+                        processResults: function( data ) {
+                            var results = [];
+                            if ( data ) {
+                                $.each( data, function( id, text ) {
+                                    results.push({ id: id, text: text });
+                                });
+                            }
+                            return { results: results };
+                        },
+                        cache: true
+                    },
+                    minimumInputLength: 1,
+                    placeholder: csPlaceholder,
+                    allowClear: true,
+                    multiple: true,
+                    width: '400px'
+                });
+            }
+
+            // Meglévő termékkeresők init
+            $('.wc-product-search').each(function() {
+                initProductSearch( $(this) );
+            });
+
             // Új szabály
             $('#mg-cs-add-rule').on('click', function() {
                 var idx  = $('#mg-cs-rules-list .mg-cs-rule-box').length;
@@ -158,31 +201,7 @@ class MG_Crosssell_Page {
                 var $box = $(html);
                 $box.find('.mg-cs-rule-body').show();
                 $('#mg-cs-rules-list').append($box);
-                // WC product search init
-                $box.find('.wc-product-search').select2({
-                    ajax: {
-                        url: '<?php echo esc_url( admin_url('admin-ajax.php') ); ?>',
-                        dataType: 'json',
-                        delay: 250,
-                        data: function(params) {
-                            return { term: params.term, action: 'woocommerce_json_search_products', security: '<?php echo esc_js( wp_create_nonce('search-products') ); ?>' };
-                        },
-                        processResults: function(data) {
-                            var terms = [];
-                            if (data) {
-                                $.each(data, function(id, text) {
-                                    terms.push({ id: id, text: text });
-                                });
-                            }
-                            return { results: terms };
-                        },
-                        cache: true
-                    },
-                    minimumInputLength: 1,
-                    placeholder: '<?php echo esc_js( __( 'Keress termékre...', 'mockup-generator' ) ); ?>',
-                    allowClear: true,
-                    multiple: true,
-                });
+                initProductSearch( $box.find('.wc-product-search') );
             });
 
             // Meglévő szabályok bezárva induljanak
@@ -198,36 +217,6 @@ class MG_Crosssell_Page {
                     });
                 });
             }
-
-            // WC product search init meglévőkre
-            $('.wc-product-search').each(function() {
-                if (!$(this).hasClass('select2-hidden-accessible')) {
-                    $(this).select2({
-                        ajax: {
-                            url: '<?php echo esc_url( admin_url('admin-ajax.php') ); ?>',
-                            dataType: 'json',
-                            delay: 250,
-                            data: function(params) {
-                                return { term: params.term, action: 'woocommerce_json_search_products', security: '<?php echo esc_js( wp_create_nonce('search-products') ); ?>' };
-                            },
-                            processResults: function(data) {
-                                var terms = [];
-                                if (data) {
-                                    $.each(data, function(id, text) {
-                                        terms.push({ id: id, text: text });
-                                    });
-                                }
-                                return { results: terms };
-                            },
-                            cache: true
-                        },
-                        minimumInputLength: 1,
-                        placeholder: '<?php echo esc_js( __( 'Keress termékre...', 'mockup-generator' ) ); ?>',
-                        allowClear: true,
-                        multiple: true,
-                    });
-                }
-            });
 
         })(jQuery);
         </script>
@@ -429,19 +418,26 @@ class MG_Crosssell_Page {
     }
 
     private static function get_mg_types() {
-        $catalog = get_option( 'mg_product_catalog', array() );
-        $types   = array();
+        // MG_Variant_Display_Manager::get_catalog_index() adja vissza a lapos slug => data tömböt
+        if ( class_exists( 'MG_Variant_Display_Manager' )
+            && method_exists( 'MG_Variant_Display_Manager', 'get_catalog_index' ) ) {
+            $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        } else {
+            $catalog = get_option( 'mg_product_catalog', array() );
+        }
+
+        $types = array();
         if ( ! is_array( $catalog ) ) {
             return $types;
         }
-        foreach ( $catalog as $level2 ) {
-            if ( ! is_array( $level2 ) ) {
-                continue;
-            }
-            foreach ( $level2 as $slug => $data ) {
-                if ( ! isset( $types[ $slug ] ) ) {
-                    $types[ $slug ] = isset( $data['label'] ) ? $data['label'] : $slug;
-                }
+
+        foreach ( $catalog as $slug => $data ) {
+            if ( is_array( $data ) && isset( $data['label'] ) ) {
+                $types[ $slug ] = $data['label'];
+            } elseif ( is_string( $data ) ) {
+                $types[ $slug ] = $data;
+            } else {
+                $types[ $slug ] = $slug;
             }
         }
         asort( $types );
