@@ -355,11 +355,17 @@ class MG_Crosssell_Frontend {
             return;
         }
 
+        $product_obj = wc_get_product( $product_id );
+        if ( ! $product_obj ) {
+            wp_send_json_error( array( 'message' => 'A termék nem található.' ) );
+            return;
+        }
+
         $catalog   = self::get_catalog();
         $type_data = $catalog[ $target_type ] ?? array();
 
         $default_color = '';
-        $default_size  = '';
+        $default_size  = 'Egyméret';
         if ( ! empty( $type_data['color_order'] ) ) {
             $default_color = reset( $type_data['color_order'] );
         } elseif ( ! empty( $type_data['colors'] ) ) {
@@ -370,50 +376,50 @@ class MG_Crosssell_Frontend {
             $default_size = reset( $type_data['sizes'] );
         }
 
-        $post_backup = $_POST;
-        $_POST['mg_product_type']   = $target_type;
-        $_POST['mg_color']          = $default_color;
-        $_POST['mg_size']           = $default_size;
-        $_POST['mg_design_id']      = $design_id;
-        $_POST['mg_preview_url']    = '';
-        $_POST['mg_render_version'] = '';
+        // Egyedi cart item kulcs generálása
+        $cart_item_key = md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $target_type . '|' . $design_id );
 
-        $extra_data = array(
+        // Ha már létezik ez a kulcs, ne adjuk hozzá újra
+        if ( isset( $cart->cart_contents[ $cart_item_key ] ) ) {
+            wp_send_json_error( array( 'message' => 'Már a kosárban van.', 'already_added' => true ) );
+            return;
+        }
+
+        // Direktben építjük a cart itemet – megkerüljük a WC filter chain-t
+        // ami felülírja a mg_product_type értékét
+        $new_item = array(
+            'product_id'                   => $product_id,
+            'variation_id'                 => 0,
+            'variation'                    => array(),
+            'quantity'                     => 1,
+            'data'                         => $product_obj,
+            'data_hash'                    => function_exists( 'wc_get_cart_item_data_hash' )
+                                                ? wc_get_cart_item_data_hash( $product_obj )
+                                                : md5( serialize( array( $product_id ) ) ),
+            'line_tax_data'                => array( 'subtotal' => array(), 'total' => array() ),
+            'line_subtotal'                => 0,
+            'line_subtotal_tax'            => 0,
+            'line_total'                   => 0,
+            'line_tax'                     => 0,
+            // MG specifikus mezők – KÖZVETLENÜL a target értékekkel
+            'mg_product_type'              => $target_type,
+            'mg_color'                     => $default_color,
+            'mg_size'                      => $default_size,
+            'mg_design_id'                 => $design_id,
+            'mg_preview_url'               => '',
+            'mg_render_version'            => '',
+            // Crosssell azonosítók
             'mg_crosssell_rule_id'         => $rule_id,
             'mg_crosssell_discount_amount' => (float) $rule['discount_amount'],
             'mg_crosssell_source_key'      => $source_key,
-            'mg_design_id'                 => $design_id,
-            'unique_key'                   => md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $target_type . '|' . $design_id ),
-            // Target értékek explicit tárolva – a fix_crosssell_cart_item_data filter használja
-            'mg_crosssell_target_type'     => $target_type,
-            'mg_crosssell_target_color'    => $default_color,
-            'mg_crosssell_target_size'     => $default_size,
+            'unique_key'                   => $cart_item_key,
         );
 
-        self::set_crosssell_flag( true );
-        $new_cart_key = $cart->add_to_cart( $product_id, 1, 0, array(), $extra_data );
-        self::set_crosssell_flag( false );
-        $_POST = $post_backup;
+        // Direktben beleírjuk a WC cart contents-be és mentjük a sessionbe
+        $cart->cart_contents[ $cart_item_key ] = $new_item;
+        $cart->set_session();
 
-        // Közvetlen session javítás: a filter chain nem mindig írja be helyesen a target
-        // mg_product_type-t (a virtual-variant-manager felülírhatja), ezért az add_to_cart
-        // után közvetlenül javítjuk a kosár item adatait a WC session-ben.
-        if ( $new_cart_key && isset( $cart->cart_contents[ $new_cart_key ] ) ) {
-            $cart->cart_contents[ $new_cart_key ]['mg_product_type'] = $target_type;
-            $cart->cart_contents[ $new_cart_key ]['mg_color']        = $default_color;
-            $cart->cart_contents[ $new_cart_key ]['mg_size']         = $default_size;
-            $cart->cart_contents[ $new_cart_key ]['mg_design_id']    = $design_id;
-            $cart->set_session();
-        }
-
-        if ( $new_cart_key ) {
-            wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $new_cart_key ) );
-        } else {
-            $notices = wc_get_notices( 'error' );
-            $msg     = ! empty( $notices ) ? wp_strip_all_tags( $notices[0]['notice'] ) : 'Nem sikerült hozzáadni.';
-            wc_clear_notices();
-            wp_send_json_error( array( 'message' => $msg ) );
-        }
+        wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $cart_item_key ) );
     }
 
     // -------------------------------------------------------------------------
