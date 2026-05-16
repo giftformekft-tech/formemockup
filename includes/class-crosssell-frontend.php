@@ -5,7 +5,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class MG_Crosssell_Frontend {
 
-    private static $rendered_pairs = array();
+    private static $rendered_pairs   = array();
+    // Statikus flag – szinkron, session nélkül jelzi a crosssell add_to_cart hívást
+    private static $adding_crosssell = false;
 
     public static function init() {
         // HTML: the_content filter – a kosár blokk után kerül (PHP, nincs JS)
@@ -44,7 +46,8 @@ class MG_Crosssell_Frontend {
         if ( ! $passed ) {
             return $passed;
         }
-        if ( function_exists( 'WC' ) && WC()->session && WC()->session->get( 'mg_crosssell_adding' ) ) {
+        // Statikus flag – szinkron, session-független bypass a crosssell add_to_cart idejére
+        if ( self::$adding_crosssell ) {
             return true;
         }
         return $passed;
@@ -355,12 +358,6 @@ class MG_Crosssell_Frontend {
             return;
         }
 
-        $product_obj = wc_get_product( $product_id );
-        if ( ! $product_obj ) {
-            wp_send_json_error( array( 'message' => 'A termék nem található.' ) );
-            return;
-        }
-
         $catalog   = self::get_catalog();
         $type_data = $catalog[ $target_type ] ?? array();
 
@@ -376,50 +373,54 @@ class MG_Crosssell_Frontend {
             $default_size = reset( $type_data['sizes'] );
         }
 
-        // Egyedi cart item kulcs generálása
-        $cart_item_key = md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $target_type . '|' . $design_id );
+        // Statikus flag – szinkron jelzés a bypass_crosssell_validation filternek;
+        // session helyett, hogy 100%-ban megbízható legyen az átadás
+        self::$adding_crosssell = true;
 
-        // Ha már létezik ez a kulcs, ne adjuk hozzá újra
-        if ( isset( $cart->cart_contents[ $cart_item_key ] ) ) {
-            wp_send_json_error( array( 'message' => 'Már a kosárban van.', 'already_added' => true ) );
-            return;
-        }
+        // $_POST-t is beállítjuk, hogy a virtual-variant-manager add_cart_item_data
+        // filtere (priority 10) a helyes target értékeket olvassa
+        $post_backup = $_POST;
+        $_POST['mg_product_type']   = $target_type;
+        $_POST['mg_color']          = $default_color;
+        $_POST['mg_size']           = $default_size;
+        $_POST['mg_design_id']      = $design_id;
+        $_POST['mg_preview_url']    = '';
+        $_POST['mg_render_version'] = '';
 
-        // Direktben építjük a cart itemet – megkerüljük a WC filter chain-t
-        // ami felülírja a mg_product_type értékét
-        $new_item = array(
-            'product_id'                   => $product_id,
-            'variation_id'                 => 0,
-            'variation'                    => array(),
-            'quantity'                     => 1,
-            'data'                         => $product_obj,
-            'data_hash'                    => function_exists( 'wc_get_cart_item_data_hash' )
-                                                ? wc_get_cart_item_data_hash( $product_obj )
-                                                : md5( serialize( array( $product_id ) ) ),
-            'line_tax_data'                => array( 'subtotal' => array(), 'total' => array() ),
-            'line_subtotal'                => 0,
-            'line_subtotal_tax'            => 0,
-            'line_total'                   => 0,
-            'line_tax'                     => 0,
-            // MG specifikus mezők – KÖZVETLENÜL a target értékekkel
-            'mg_product_type'              => $target_type,
-            'mg_color'                     => $default_color,
-            'mg_size'                      => $default_size,
-            'mg_design_id'                 => $design_id,
-            'mg_preview_url'               => '',
-            'mg_render_version'            => '',
-            // Crosssell azonosítók
+        $extra_data = array(
             'mg_crosssell_rule_id'         => $rule_id,
             'mg_crosssell_discount_amount' => (float) $rule['discount_amount'],
             'mg_crosssell_source_key'      => $source_key,
-            'unique_key'                   => $cart_item_key,
+            'mg_design_id'                 => $design_id,
+            'unique_key'                   => md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $target_type . '|' . $design_id ),
+            'mg_crosssell_target_type'     => $target_type,
+            'mg_crosssell_target_color'    => $default_color,
+            'mg_crosssell_target_size'     => $default_size,
         );
 
-        // Direktben beleírjuk a WC cart contents-be és mentjük a sessionbe
-        $cart->cart_contents[ $cart_item_key ] = $new_item;
-        $cart->set_session();
+        $new_cart_key = $cart->add_to_cart( $product_id, 1, 0, array(), $extra_data );
 
-        wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $cart_item_key ) );
+        self::$adding_crosssell = false;
+        $_POST = $post_backup;
+
+        // Közvetlenül felülírjuk a cart_contents-ben a mg_product_type-t,
+        // ha az add_to_cart valami miatt rosszul állította be
+        if ( $new_cart_key && isset( $cart->cart_contents[ $new_cart_key ] ) ) {
+            $cart->cart_contents[ $new_cart_key ]['mg_product_type'] = $target_type;
+            $cart->cart_contents[ $new_cart_key ]['mg_color']        = $default_color;
+            $cart->cart_contents[ $new_cart_key ]['mg_size']         = $default_size;
+            $cart->cart_contents[ $new_cart_key ]['mg_design_id']    = $design_id;
+            $cart->set_session();
+        }
+
+        if ( $new_cart_key ) {
+            wp_send_json_success( array( 'message' => 'Sikeresen hozzáadva!', 'cart_item_key' => $new_cart_key ) );
+        } else {
+            $notices = wc_get_notices( 'error' );
+            $msg     = ! empty( $notices ) ? wp_strip_all_tags( $notices[0]['notice'] ) : 'Nem sikerült hozzáadni.';
+            wc_clear_notices();
+            wp_send_json_error( array( 'message' => $msg ) );
+        }
     }
 
     // -------------------------------------------------------------------------
