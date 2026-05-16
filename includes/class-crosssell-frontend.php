@@ -26,6 +26,9 @@ class MG_Crosssell_Frontend {
         // Session restore
         add_filter( 'woocommerce_get_cart_item_from_session', array( __CLASS__, 'restore_cart_item' ), 10, 2 );
 
+        // Crosssell metadata megjelenítés a Block kosárban (VVM-től független, priority 20)
+        add_filter( 'woocommerce_get_item_data', array( __CLASS__, 'render_crosssell_item_data' ), 20, 2 );
+
         // Crosssell kosárba adás fix-ek:
         // Priority 5: validáció bypass – a virtual-variant-manager (priority 10) előtt fut;
         //   ha crosssell_adding session flag aktív, kihagyjuk a típus/szín/méret validációt.
@@ -372,6 +375,11 @@ class MG_Crosssell_Frontend {
         if ( ! empty( $type_data['sizes'] ) ) {
             $default_size = reset( $type_data['sizes'] );
         }
+        // Ha a katalógus AJAX kontextusban nem ad vissza színt, a forrás item színét vesszük alapul.
+        // Így az image generation nem bukik el üres mg_color miatt.
+        if ( $default_color === '' ) {
+            $default_color = $source_item['mg_color'] ?? 'feher';
+        }
 
         // Statikus flag – szinkron jelzés a bypass_crosssell_validation filternek;
         // session helyett, hogy 100%-ban megbízható legyen az átadás
@@ -438,12 +446,54 @@ class MG_Crosssell_Frontend {
             'mg_product_type',
             'mg_color',
             'mg_size',
+            'mg_crosssell_target_type',
+            'mg_crosssell_target_color',
+            'mg_crosssell_target_size',
         ) as $field ) {
             if ( isset( $values[ $field ] ) ) {
                 $cart_item[ $field ] = $values[ $field ];
             }
         }
         return $cart_item;
+    }
+
+    // -------------------------------------------------------------------------
+    // Crosssell metadata – Block kosár (woocommerce_get_item_data, priority 20)
+    // VVM render_cart_item_data-jától független: mg_crosssell_target_* mezőkből
+    // dolgozik, így nem függ az mg_color / mg_size nem-üres voltától.
+    // -------------------------------------------------------------------------
+
+    public static function render_crosssell_item_data( $item_data, $cart_item ) {
+        if ( empty( $cart_item['mg_crosssell_rule_id'] ) ) {
+            return $item_data;
+        }
+
+        $target_type  = $cart_item['mg_crosssell_target_type']  ?? $cart_item['mg_product_type'] ?? '';
+        $target_color = $cart_item['mg_crosssell_target_color'] ?? $cart_item['mg_color']        ?? '';
+        $target_size  = $cart_item['mg_crosssell_target_size']  ?? $cart_item['mg_size']         ?? '';
+
+        if ( ! $target_type ) {
+            return $item_data;
+        }
+
+        $catalog    = self::get_catalog();
+        $type_label = $catalog[ $target_type ]['label'] ?? $catalog[ $target_type ]['name'] ?? $target_type;
+
+        // VVM esetleg már hozzáadta ugyanezeket – duplikáció elkerülése
+        $dupe_keys = array( 'Terméktípus', 'Szín', 'Méret' );
+        $item_data = array_values( array_filter( $item_data, function ( $entry ) use ( $dupe_keys ) {
+            return ! in_array( $entry['key'] ?? '', $dupe_keys, true );
+        } ) );
+
+        $item_data[] = array( 'key' => 'Terméktípus', 'value' => $type_label,    'display' => '' );
+        if ( $target_color !== '' ) {
+            $item_data[] = array( 'key' => 'Szín',        'value' => $target_color, 'display' => '' );
+        }
+        if ( $target_size !== '' ) {
+            $item_data[] = array( 'key' => 'Méret',       'value' => $target_size,  'display' => '' );
+        }
+
+        return $item_data;
     }
 
     // -------------------------------------------------------------------------
