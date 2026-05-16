@@ -24,8 +24,46 @@ class MG_Crosssell_Frontend {
         // Session restore
         add_filter( 'woocommerce_get_cart_item_from_session', array( __CLASS__, 'restore_cart_item' ), 10, 2 );
 
+        // Crosssell kosárba adás fix-ek:
+        // Priority 5: validáció bypass – a virtual-variant-manager (priority 10) előtt fut;
+        //   ha crosssell_adding session flag aktív, kihagyjuk a típus/szín/méret validációt.
+        add_filter( 'woocommerce_add_to_cart_validation', array( __CLASS__, 'bypass_crosssell_validation' ), 5, 2 );
+        // Priority 20: adat-javító filter – a virtual-variant-manager (priority 10) UTÁN fut;
+        //   felülírja az mg_product_type-t az extra_data-ban eltárolt helyes target értékkel.
+        add_filter( 'woocommerce_add_cart_item_data', array( __CLASS__, 'fix_crosssell_cart_item_data' ), 20, 2 );
+
         // CSS + JS: korai enqueue (head-be kerül)
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_on_cart' ) );
+    }
+
+    // -------------------------------------------------------------------------
+    // Crosssell validáció bypass (priority 5, a virtual-variant-manager előtt)
+    // -------------------------------------------------------------------------
+
+    public static function bypass_crosssell_validation( $passed, $product_id ) {
+        if ( ! $passed ) {
+            return $passed;
+        }
+        if ( function_exists( 'WC' ) && WC()->session && WC()->session->get( 'mg_crosssell_adding' ) ) {
+            return true;
+        }
+        return $passed;
+    }
+
+    // -------------------------------------------------------------------------
+    // Crosssell cart item adat-javító (priority 20, a virtual-variant-manager után)
+    // -------------------------------------------------------------------------
+
+    public static function fix_crosssell_cart_item_data( $cart_item_data, $product_id ) {
+        if ( empty( $cart_item_data['mg_crosssell_rule_id'] ) ) {
+            return $cart_item_data;
+        }
+        if ( ! empty( $cart_item_data['mg_crosssell_target_type'] ) ) {
+            $cart_item_data['mg_product_type'] = $cart_item_data['mg_crosssell_target_type'];
+            $cart_item_data['mg_color']        = $cart_item_data['mg_crosssell_target_color'] ?? $cart_item_data['mg_color'] ?? '';
+            $cart_item_data['mg_size']         = $cart_item_data['mg_crosssell_target_size'] ?? $cart_item_data['mg_size'] ?? '';
+        }
+        return $cart_item_data;
     }
 
     // -------------------------------------------------------------------------
@@ -346,6 +384,10 @@ class MG_Crosssell_Frontend {
             'mg_crosssell_source_key'      => $source_key,
             'mg_design_id'                 => $design_id,
             'unique_key'                   => md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $target_type . '|' . $design_id ),
+            // Target értékek explicit tárolva – a fix_crosssell_cart_item_data filter használja
+            'mg_crosssell_target_type'     => $target_type,
+            'mg_crosssell_target_color'    => $default_color,
+            'mg_crosssell_target_size'     => $default_size,
         );
 
         self::set_crosssell_flag( true );
