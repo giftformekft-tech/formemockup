@@ -29,6 +29,9 @@ class MG_Crosssell_Frontend {
         // Crosssell metadata megjelenítés a Block kosárban (VVM-től független, priority 20)
         add_filter( 'woocommerce_get_item_data', array( __CLASS__, 'render_crosssell_item_data' ), 20, 2 );
 
+        // Block kosár: crosssell tétel nevének javítása a Store API válaszban (priority 20, VVM után)
+        add_filter( 'woocommerce_store_api_cart_item', array( __CLASS__, 'fix_crosssell_store_api_name' ), 20, 2 );
+
         // Crosssell kosárba adás fix-ek:
         // Priority 5: validáció bypass – a virtual-variant-manager (priority 10) előtt fut;
         //   ha crosssell_adding session flag aktív, kihagyjuk a típus/szín/méret validációt.
@@ -564,5 +567,77 @@ class MG_Crosssell_Frontend {
                 : __( '🎁 Cross-sell kedvezmény', 'mockup-generator' );
             $cart->add_fee( $label, -1 * $amount, false );
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Block kosár: crosssell tétel neve (woocommerce_store_api_cart_item, priority 20)
+    // A WC Block cart React a Store API 'name' mezőjét jeleníti meg, nem a PHP
+    // woocommerce_cart_item_name filtert. Crosssell itemekre felülírjuk a nevet:
+    // "Design – Forrás típus" → "Design – Cél típus" (pl. "Design – Baseball sapka").
+    // -------------------------------------------------------------------------
+
+    public static function fix_crosssell_store_api_name( $cart_item_data, $cart_item ) {
+        if ( empty( $cart_item['mg_crosssell_rule_id'] ) ) {
+            return $cart_item_data;
+        }
+
+        $target_type = $cart_item['mg_crosssell_target_type'] ?? $cart_item['mg_product_type'] ?? '';
+        if ( ! $target_type ) {
+            return $cart_item_data;
+        }
+
+        $product = $cart_item['data'] ?? null;
+        if ( ! ( $product instanceof WC_Product ) ) {
+            return $cart_item_data;
+        }
+
+        // Forrás típus utótagot levágjuk a WC terméknévből
+        $original_name = $product->get_name();
+        $clean_name    = self::strip_name_type_suffix( $original_name );
+
+        // Cél típus neve
+        $type_label = self::resolve_type_label( $target_type );
+        if ( $type_label !== '' ) {
+            $clean_name .= " \u{2013} " . $type_label;
+        }
+
+        $cart_item_data['name'] = $clean_name;
+        return $cart_item_data;
+    }
+
+    private static function strip_name_type_suffix( $name ) {
+        if ( ! $name ) {
+            return $name;
+        }
+        $pos = strrpos( $name, " \u{2013} " ); // en dash
+        if ( $pos === false ) {
+            $pos = strrpos( $name, " \u{2014} " ); // em dash
+        }
+        if ( $pos === false ) {
+            $pos = strrpos( $name, ' - ' );
+        }
+        if ( $pos !== false && $pos > 0 ) {
+            return trim( substr( $name, 0, $pos ) );
+        }
+        return $name;
+    }
+
+    private static function resolve_type_label( $type_slug ) {
+        $catalog   = self::get_catalog();
+        $type_data = $catalog[ $type_slug ] ?? array();
+        $label     = '';
+
+        if ( ! empty( $type_data['label'] ) && $type_data['label'] !== $type_slug ) {
+            $label = $type_data['label'];
+        }
+
+        if ( $label === '' ) {
+            $term = get_term_by( 'slug', $type_slug, 'pa_termektipus' );
+            if ( $term && ! is_wp_error( $term ) ) {
+                $label = $term->name;
+            }
+        }
+
+        return $label !== '' ? $label : $type_slug;
     }
 }
