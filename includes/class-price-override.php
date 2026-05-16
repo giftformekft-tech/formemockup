@@ -114,6 +114,12 @@ class MG_Price_Override {
     /**
      * Override product name on cart/checkout pages by appending the product type label.
      * This ensures external plugins (like GLA) see the correct variant name.
+     *
+     * When multiple cart items share the same product_id (e.g. source + crosssell items),
+     * we cannot determine which specific item triggered get_name(), so we return the base
+     * name without a type suffix. Per-item filters (woocommerce_cart_item_name,
+     * woocommerce_blocks_cart_item_name, woocommerce_store_api_cart_item) then append the
+     * correct type for each individual item.
      */
     public static function override_cart_item_name($name, $product) {
         // Recursion guard (reuse same flag)
@@ -141,19 +147,29 @@ class MG_Price_Override {
         $product_id = $product->get_id();
         $cart_contents = WC()->cart->cart_contents;
 
+        $types_found = array();
         foreach ($cart_contents as $cart_item) {
-            $item_product_id = isset($cart_item['product_id']) ? $cart_item['product_id'] : 0;
+            $item_product_id   = isset($cart_item['product_id'])   ? $cart_item['product_id']   : 0;
             $item_variation_id = isset($cart_item['variation_id']) ? $cart_item['variation_id'] : 0;
 
             if ($item_product_id == $product_id || $item_variation_id == $product_id) {
                 if (!empty($cart_item['mg_product_type'])) {
-                    $type_slug = sanitize_title($cart_item['mg_product_type']);
-                    $type_label = self::get_type_label_from_catalog($type_slug);
-                    if ($type_label && strpos($name, ' - ' . $type_label) === false) {
-                        self::$in_cart_override = false;
-                        return $name . ' - ' . $type_label;
-                    }
+                    $types_found[] = sanitize_title($cart_item['mg_product_type']);
                 }
+            }
+        }
+
+        $unique_types = array_unique($types_found);
+
+        // Only append the type when there is exactly one distinct type for this product_id.
+        // If multiple cart items share the product_id (crosssell items), return the base name
+        // so that per-item filters can append the correct type for each line.
+        if (count($unique_types) === 1) {
+            $type_slug  = $unique_types[0];
+            $type_label = self::get_type_label_from_catalog($type_slug);
+            if ($type_label && strpos($name, ' - ' . $type_label) === false) {
+                self::$in_cart_override = false;
+                return $name . ' - ' . $type_label;
             }
         }
 
