@@ -16,36 +16,42 @@ class MG_Cart_Name_Cleaner {
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
-        // $cart_item is normally the session array. Some WC Blocks versions pass the
-        // WC_Product object instead. Resolve the product and the session data separately.
-        $product   = null;
+        // Always look up the live session item by key so we get the correct mg_product_type
+        // for every item, even when woocommerce_blocks_cart_item_name passes a WC_Product
+        // object or the wrong array as $cart_item.
         $item_data = null;
-
-        if (is_array($cart_item) && isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
-            $product   = $cart_item['data'];
+        if ($cart_item_key && WC()->cart) {
+            $item_data = WC()->cart->get_cart_item($cart_item_key);
+        }
+        // Fallback: use the passed $cart_item if the key lookup returned nothing
+        if (!$item_data && is_array($cart_item)) {
             $item_data = $cart_item;
-        } elseif ($cart_item instanceof WC_Product) {
-            $product = $cart_item;
-            // Look up the full session array so we can read mg_product_type etc.
-            if ($cart_item_key && WC()->cart) {
-                $item_data = WC()->cart->get_cart_item($cart_item_key);
-            }
+        }
+        if (!$item_data) {
+            return $product_name;
         }
 
+        $product = $item_data['data'] ?? null;
+        if (!($product instanceof WC_Product)) {
+            // Last resort: $cart_item itself might be the WC_Product
+            if ($cart_item instanceof WC_Product) {
+                $product = $cart_item;
+            }
+        }
         if (!($product instanceof WC_Product)) {
             return $product_name;
         }
 
-        // Use 'edit' context to get the raw stored title without triggering
+        // Use 'edit' context: returns the raw stored title without triggering
         // woocommerce_product_get_name filters (avoids override_cart_item_name recursion).
         $original_name = $product->get_name('edit');
         if (!$original_name) {
             return $product_name;
         }
 
-        // Strip the " – Type" or " - Type" suffix from the WC product title,
-        // then re-append the correct type label for this cart item (handles crosssell).
-        $type_label = $item_data ? self::get_type_label_from_cart_item($item_data) : '';
+        // Strip the " – Type" or " - Type" suffix from the stored product title,
+        // then re-append the correct type label for this specific cart item.
+        $type_label = self::get_type_label_from_cart_item($item_data);
         $clean_name = self::strip_type_suffix($original_name);
         if (!$clean_name) {
             return $product_name;
@@ -57,8 +63,8 @@ class MG_Cart_Name_Cleaner {
 
         $permalink = apply_filters(
             'woocommerce_cart_item_permalink',
-            $product->is_visible() ? $product->get_permalink($item_data ?? []) : '',
-            $item_data ?? [],
+            $product->is_visible() ? $product->get_permalink($item_data) : '',
+            $item_data,
             $cart_item_key
         );
         if ($permalink) {
