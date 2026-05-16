@@ -49,37 +49,21 @@ class MG_Google_Ads_Tracking {
         add_action('woocommerce_before_cart', array(__CLASS__, 'output_view_cart_event'), 5);
     }
 
-    private static function get_virtual_item_id($product, $type_slug = '') {
+    /**
+     * @param bool $allow_request_fallback false on thank-you page to avoid URL-based type guessing
+     */
+    private static function get_virtual_item_id($product, $type_slug = '', $allow_request_fallback = true) {
         $base_id = method_exists($product, 'get_parent_id') && $product->get_parent_id() ? $product->get_parent_id() : $product->get_id();
         $actual_product = method_exists($product, 'get_parent_id') && $product->get_parent_id() ? wc_get_product($product->get_parent_id()) : $product;
         $base_sku = $actual_product->get_sku() ? $actual_product->get_sku() : 'ID_' . $base_id;
-        
-        if (empty($type_slug)) {
+
+        if (empty($type_slug) && $allow_request_fallback) {
             $type_slug = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
         }
 
         if (!empty($type_slug)) {
             // Ez a formátum megegyezik a Google Merchant Feed generator logikájával
             return $base_sku . '_' . $type_slug;
-        }
-
-        // Ha nincs paraméter, próbáljuk kikerülni, hogy legalább az alapvető ID átmenjen
-        $catalog = get_option('mg_product_catalog', array());
-        if (empty($catalog)) {
-            return (string) $base_sku;
-        }
-
-        // Keresünk egy alapértelmezett típust
-        $first_type_slug = '';
-        foreach ($catalog as $type_arr) {
-            foreach ($type_arr as $slug => $data) {
-                $first_type_slug = $slug;
-                break 2;
-            }
-        }
-        
-        if (!empty($first_type_slug)) {
-             return $base_sku . '_' . $first_type_slug;
         }
 
         return (string) $base_sku;
@@ -232,40 +216,61 @@ class MG_Google_Ads_Tracking {
             // 1. Legjobb: direkt slug meta (ezt menti el a cart pricing kód)
             $direct_slug = $item->get_meta('mg_product_type');
             if (!empty($direct_slug)) {
-                $type_slug = sanitize_key($direct_slug);
+                // sanitize_title matches how the catalog keys and feed IDs are built
+                $type_slug = sanitize_title($direct_slug);
             }
 
-            // 2. Fallback: label alapú keresés
+            // 2. Fallback: label alapú keresés a feed-del azonos katalógusban
             if (empty($type_slug)) {
                 $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
                 if (!$type_label) {
                     $type_label = $item->get_meta('Terméktípus');
                 }
                 if ($type_label) {
-                    $catalog = get_option('mg_product_catalog', array());
-                    foreach ($catalog as $level2) {
-                        foreach ($level2 as $slug => $data) {
-                            if (isset($data['label']) && $data['label'] === $type_label) {
-                                $type_slug = $slug;
-                                break 2;
+                    // Először a MG_Variant_Display_Manager katalógusából keresünk (feed-del azonos forrás)
+                    $catalog_flat = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+                    foreach ($catalog_flat as $raw_slug => $data) {
+                        if (isset($data['label']) && $data['label'] === $type_label) {
+                            $type_slug = sanitize_title($raw_slug);
+                            break;
+                        }
+                    }
+                    // Ha nem találtunk, próbáljuk a legacy mg_product_catalog struktúrát
+                    if (empty($type_slug)) {
+                        $catalog = get_option('mg_product_catalog', array());
+                        foreach ($catalog as $level2) {
+                            foreach ($level2 as $slug => $data) {
+                                if (isset($data['label']) && $data['label'] === $type_label) {
+                                    $type_slug = sanitize_title($slug);
+                                    break 2;
+                                }
                             }
                         }
                     }
                 }
             }
 
-            $item_id = self::get_virtual_item_id($product, $type_slug);
+            $item_id = self::get_virtual_item_id($product, $type_slug, false);
             $item_price = (float) $item->get_total() / max(1, $item->get_quantity());
 
             // GA4 standard item mezők
             $item_name = $product->get_name();
             if (!empty($type_slug)) {
-                $catalog = get_option('mg_product_catalog', array());
-                foreach ($catalog as $level2) {
-                    if (isset($level2[$type_slug]['label'])) {
-                        $item_name .= ' - ' . $level2[$type_slug]['label'];
-                        break;
+                $type_label = '';
+                $catalog_flat = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+                if (isset($catalog_flat[$type_slug]['label'])) {
+                    $type_label = $catalog_flat[$type_slug]['label'];
+                } else {
+                    $catalog = get_option('mg_product_catalog', array());
+                    foreach ($catalog as $level2) {
+                        if (isset($level2[$type_slug]['label'])) {
+                            $type_label = $level2[$type_slug]['label'];
+                            break;
+                        }
                     }
+                }
+                if ($type_label) {
+                    $item_name .= ' - ' . $type_label;
                 }
             }
 
