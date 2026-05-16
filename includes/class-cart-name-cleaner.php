@@ -16,31 +16,49 @@ class MG_Cart_Name_Cleaner {
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
-        if (!isset($cart_item['data']) || !($cart_item['data'] instanceof WC_Product)) {
+        // $cart_item is normally the session array. Some WC Blocks versions pass the
+        // WC_Product object instead. Resolve the product and the session data separately.
+        $product   = null;
+        $item_data = null;
+
+        if (is_array($cart_item) && isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product) {
+            $product   = $cart_item['data'];
+            $item_data = $cart_item;
+        } elseif ($cart_item instanceof WC_Product) {
+            $product = $cart_item;
+            // Look up the full session array so we can read mg_product_type etc.
+            if ($cart_item_key && WC()->cart) {
+                $item_data = WC()->cart->get_cart_item($cart_item_key);
+            }
+        }
+
+        if (!($product instanceof WC_Product)) {
             return $product_name;
         }
-        $original_name = $cart_item['data']->get_name();
+
+        // Use 'edit' context to get the raw stored title without triggering
+        // woocommerce_product_get_name filters (avoids override_cart_item_name recursion).
+        $original_name = $product->get_name('edit');
         if (!$original_name) {
             return $product_name;
         }
 
         // Strip the " – Type" or " - Type" suffix from the WC product title,
         // then re-append the correct type label for this cart item (handles crosssell).
-        $type_label = self::get_type_label_from_cart_item($cart_item);
+        $type_label = $item_data ? self::get_type_label_from_cart_item($item_data) : '';
         $clean_name = self::strip_type_suffix($original_name);
         if (!$clean_name) {
             return $product_name;
         }
 
         if ($type_label) {
-            $clean_name .= " \u{2013} " . $type_label; // em dash separator
+            $clean_name .= " \u{2013} " . $type_label;
         }
 
-        $product = $cart_item['data'];
         $permalink = apply_filters(
             'woocommerce_cart_item_permalink',
-            $product->is_visible() ? $product->get_permalink($cart_item) : '',
-            $cart_item,
+            $product->is_visible() ? $product->get_permalink($item_data ?? []) : '',
+            $item_data ?? [],
             $cart_item_key
         );
         if ($permalink) {
@@ -74,7 +92,9 @@ class MG_Cart_Name_Cleaner {
             ? $cart_item['mg_crosssell_target_type']
             : $cart_item['mg_product_type'];
 
-        $raw_name   = $product->get_name();
+        // 'edit' context returns the stored title without triggering woocommerce_product_get_name
+        // filters, avoiding override_cart_item_name adding the wrong type for this item.
+        $raw_name   = $product->get_name('edit');
         $clean_name = self::strip_type_suffix($raw_name);
         if (!$clean_name) {
             return $cart_item_data;
