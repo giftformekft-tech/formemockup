@@ -248,55 +248,77 @@ class MG_Crosssell_Frontend {
             return;
         }
 
-        // Forrás cart item lekérdezése
+        // Forrás cart item
         $cart_items  = $cart->get_cart();
-        $source_item = isset( $cart_items[ $source_key ] ) ? $cart_items[ $source_key ] : null;
+        $source_item = $cart_items[ $source_key ] ?? null;
         if ( ! $source_item ) {
             wp_send_json_error( array( 'message' => 'A forrás kosártétel nem található.' ) );
             return;
         }
 
-        // Szabály lekérdezése
+        // Szabály
         $rule = MG_Crosssell_Manager::get_rule( $rule_id );
-        if ( ! $rule ) {
-            wp_send_json_error( array( 'message' => 'A szabály nem található.' ) );
+        if ( ! $rule || ! in_array( $product_id, array_map( 'intval', $rule['target_products'] ), true ) ) {
+            wp_send_json_error( array( 'message' => 'A szabály nem érvényes.' ) );
             return;
         }
 
-        // Ellenőrizzük hogy a cél termék szerepel a szabályban
-        if ( ! in_array( $product_id, array_map( 'intval', $rule['target_products'] ), true ) ) {
-            wp_send_json_error( array( 'message' => 'Ez a termék nem szerepel a cross-sell szabályban.' ) );
-            return;
-        }
-
+        // A DESIGN ID az, ami a mintát azonosítja – ez kerül át a bögrére
         $design_id = (int) ( $source_item['mg_design_id'] ?? 0 );
 
-        // Már a kosárban van?
+        // Már a kosárban?
         if ( MG_Crosssell_Manager::is_already_in_cart( $product_id, $design_id, $rule_id ) ) {
-            wp_send_json_error( array(
-                'message'      => 'A termék már a kosárban van.',
-                'already_added' => true,
-            ) );
+            wp_send_json_error( array( 'message' => 'A termék már a kosárban van.', 'already_added' => true ) );
             return;
         }
 
-        // Extra cart item adat
+        // Cél termék (bögre) – VVM alapértelmezett típus/szín/méret lekérése
+        $target_product = wc_get_product( $product_id );
+        if ( ! $target_product ) {
+            wp_send_json_error( array( 'message' => 'A cél termék nem található.' ) );
+            return;
+        }
+
+        $defaults = array();
+        $is_vvm   = false;
+        if ( class_exists( 'MG_Virtual_Variant_Manager' )
+            && method_exists( 'MG_Virtual_Variant_Manager', 'get_default_selection' ) ) {
+            $defaults = MG_Virtual_Variant_Manager::get_default_selection( $target_product );
+            $is_vvm   = ! empty( $defaults['type'] ) && ! empty( $defaults['color'] );
+        }
+
+        // $_POST mentése, majd VVM számára szükséges mezők ideiglenes beállítása
+        // (A VVM add_cart_item_data és validate_add_to_cart $_POST-ból olvas)
+        $post_backup = $_POST;
+
+        if ( $is_vvm ) {
+            $_POST['mg_product_type']  = $defaults['type']  ?? '';
+            $_POST['mg_color']         = $defaults['color'] ?? '';
+            $_POST['mg_size']          = $defaults['size']  ?? '';
+            $_POST['mg_design_id']     = $design_id;
+            $_POST['mg_preview_url']   = ''; // A VVM generálja a bögrére a saját preview-ját
+            $_POST['mg_render_version']= '';
+        }
+
+        // Extra meta – a cross-sell azonosításhoz és fee számításhoz
         $extra_data = array(
-            'mg_crosssell_rule_id'        => $rule_id,
+            'mg_crosssell_rule_id'         => $rule_id,
             'mg_crosssell_discount_amount' => (float) $rule['discount_amount'],
             'mg_crosssell_source_key'      => $source_key,
             'mg_design_id'                 => $design_id,
-            'mg_preview_url'               => $source_item['mg_preview_url'] ?? '',
-            // unique_key hogy ne merge-öljön más tételekkel
-            'unique_key'                   => md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $design_id . '|' . $source_key ),
+            // unique_key: ugyanazt a mintát + bögrét ne merge-öljük más tétellel
+            'unique_key' => md5( 'mg_cs|' . $rule_id . '|' . $product_id . '|' . $design_id . '|' . $source_key ),
         );
 
-        // Belső flag: a VVM validátor skip-pelése kereszteladáshoz
+        // VVM validáció skip flag beállítása (csak ha nem VVM, de legyen ott biztonságból)
         self::set_crosssell_flag( true );
 
         $new_cart_key = $cart->add_to_cart( $product_id, 1, 0, array(), $extra_data );
 
         self::set_crosssell_flag( false );
+
+        // $_POST visszaállítása
+        $_POST = $post_backup;
 
         if ( $new_cart_key ) {
             wp_send_json_success( array(
@@ -304,7 +326,11 @@ class MG_Crosssell_Frontend {
                 'cart_item_key' => $new_cart_key,
             ) );
         } else {
-            wp_send_json_error( array( 'message' => 'Nem sikerült hozzáadni a kosárhoz.' ) );
+            // WC notice-okat összegyűjtjük a hibáról
+            $notices = wc_get_notices( 'error' );
+            $msg     = ! empty( $notices ) ? wp_strip_all_tags( $notices[0]['notice'] ) : 'Nem sikerült hozzáadni.';
+            wc_clear_notices();
+            wp_send_json_error( array( 'message' => $msg ) );
         }
     }
 
