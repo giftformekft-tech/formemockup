@@ -68,13 +68,54 @@ class MG_Bundle_Discount_Banner {
             return;
         }
 
+        $threshold_type = isset( $campaign['threshold_type'] ) ? $campaign['threshold_type'] : 'qty';
+
         wp_enqueue_style( 'mg-discount-banner' );
         wp_enqueue_script( 'mg-discount-banner' );
 
-        // Alap egységár a termékből
         $base_price = (float) $product->get_price();
 
-        // Kosárban lévő darabszám
+        if ( $threshold_type === 'amount' ) {
+            // Összeg-alapú kampány: termékoldali banner egyszerűsített nézet
+            ?>
+            <div class="mg-discount-banner mg-discount-banner--product"
+                 data-campaign-id="<?php echo esc_attr( $campaign['id'] ); ?>">
+
+                <div class="mg-discount-banner__header">
+                    <span class="mg-discount-banner__icon">🏷️</span>
+                    <span class="mg-discount-banner__title">
+                        <?php echo esc_html( $campaign['name'] ); ?>
+                    </span>
+                </div>
+
+                <div class="mg-discount-banner__tiers">
+                    <?php foreach ( $campaign['tiers'] as $tier ) :
+                        $min_amount   = (float) $tier['min_amount'];
+                        $discount_amt = (float) $tier['amount'];
+                        ?>
+                        <div class="mg-discount-banner__tier">
+                            <span class="mg-discount-banner__tier-qty">
+                                <?php printf( esc_html__( '%s felett', 'mockup-generator' ), wp_kses_post( wc_price( $min_amount ) ) ); ?>
+                            </span>
+                            <span class="mg-discount-banner__tier-arrow">→</span>
+                            <span class="mg-discount-banner__tier-amount">
+                                <strong><?php echo wp_kses_post( wc_price( $discount_amt ) ); ?></strong>
+                                <?php esc_html_e( 'kedvezmény', 'mockup-generator' ); ?>
+                            </span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="mg-discount-banner__disclaimer">
+                    <?php esc_html_e( 'ℹ️ Egyéb mennyiségi kedvezmény ezekre a termékekre nem érvényes.', 'mockup-generator' ); ?>
+                </div>
+
+            </div>
+            <?php
+            return;
+        }
+
+        // Darabszám-alapú kampány (eredeti logika)
         $cart_qty = MG_Bundle_Discount::get_campaign_qty_in_cart( $campaign['id'] );
         $next     = MG_Bundle_Discount::get_next_tier( $cart_qty, $campaign['tiers'] );
 
@@ -95,7 +136,6 @@ class MG_Bundle_Discount_Banner {
                     $active       = $cart_qty >= (int) $tier['min_qty'];
                     $min_qty      = (int) $tier['min_qty'];
                     $discount_amt = (float) $tier['amount'];
-                    // Effektív egységár: alap ár - (levonás / min db)
                     $unit_price   = $base_price > 0 ? max( 0, $base_price - ( $discount_amt / $min_qty ) ) : 0;
                     ?>
                     <div class="mg-discount-banner__tier <?php echo $active ? 'mg-discount-banner__tier--active' : ''; ?>">
@@ -150,7 +190,6 @@ class MG_Bundle_Discount_Banner {
                 </div>
             <?php endif; ?>
 
-
         </div>
         <?php
     }
@@ -176,54 +215,106 @@ class MG_Bundle_Discount_Banner {
                 continue;
             }
 
-            $cart_qty = MG_Bundle_Discount::get_campaign_qty_in_cart( $campaign['id'] );
-            if ( $cart_qty < 1 ) {
-                continue;
-            }
+            $threshold_type = isset( $campaign['threshold_type'] ) ? $campaign['threshold_type'] : 'qty';
 
-            $next = MG_Bundle_Discount::get_next_tier( $cart_qty, $campaign['tiers'] );
-
-            if ( ! $next ) {
-                // Maximális szinten van – mutassuk hogy elérte
-                $current_discount = 0.0;
-                foreach ( $campaign['tiers'] as $tier ) {
-                    if ( $cart_qty >= (int) $tier['min_qty'] ) {
-                        $current_discount = (float) $tier['amount'];
-                    }
+            if ( $threshold_type === 'amount' ) {
+                // Összeg-alapú kampány kosár banner
+                $cart_amount = MG_Bundle_Discount::get_campaign_amount_in_cart( $campaign['id'] );
+                if ( $cart_amount <= 0 ) {
+                    continue;
                 }
-                ?>
-                <div class="mg-discount-banner mg-discount-banner--cart mg-discount-banner--reached">
-                    <span class="mg-discount-banner__icon">🎉</span>
-                    <strong><?php echo esc_html( $campaign['name'] ); ?></strong>:
-                    <?php printf(
-                        esc_html__( 'Maximális kedvezmény elérve! (%s)', 'mockup-generator' ),
-                        wp_kses_post( wc_price( $current_discount ) )
-                    ); ?>
-                </div>
-                <?php
-            } else {
-                // Van következő sáv
-                $pct = min( 100, round( ( $cart_qty / $next['min_qty'] ) * 100 ) );
-                wp_enqueue_style( 'mg-discount-banner' );
-                ?>
-                <div class="mg-discount-banner mg-discount-banner--cart">
-                    <div class="mg-discount-banner__cart-text">
-                        <span class="mg-discount-banner__icon">⚡</span>
+
+                $next = MG_Bundle_Discount::get_next_amount_tier( $cart_amount, $campaign['tiers'] );
+
+                if ( ! $next ) {
+                    $current_discount = 0.0;
+                    foreach ( $campaign['tiers'] as $tier ) {
+                        if ( $cart_amount >= (float) $tier['min_amount'] ) {
+                            $current_discount = (float) $tier['amount'];
+                        }
+                    }
+                    ?>
+                    <div class="mg-discount-banner mg-discount-banner--cart mg-discount-banner--reached">
+                        <span class="mg-discount-banner__icon">🎉</span>
                         <strong><?php echo esc_html( $campaign['name'] ); ?></strong>:
                         <?php printf(
-                            esc_html__( 'Még %1$d db kell a %2$s kedvezményhez!', 'mockup-generator' ),
-                            $next['needed'],
-                            wp_kses_post( wc_price( $next['amount'] ) )
+                            esc_html__( 'Maximális kedvezmény elérve! (%s)', 'mockup-generator' ),
+                            wp_kses_post( wc_price( $current_discount ) )
                         ); ?>
                     </div>
-                    <div class="mg-discount-banner__bar-wrap">
-                        <div class="mg-discount-banner__bar" style="width: <?php echo esc_attr( $pct ); ?>%"></div>
+                    <?php
+                } else {
+                    $pct = $next['min_amount'] > 0 ? min( 100, round( ( $cart_amount / $next['min_amount'] ) * 100 ) ) : 0;
+                    wp_enqueue_style( 'mg-discount-banner' );
+                    ?>
+                    <div class="mg-discount-banner mg-discount-banner--cart">
+                        <div class="mg-discount-banner__cart-text">
+                            <span class="mg-discount-banner__icon">⚡</span>
+                            <strong><?php echo esc_html( $campaign['name'] ); ?></strong>:
+                            <?php printf(
+                                esc_html__( 'Még %1$s kell a %2$s kedvezményhez!', 'mockup-generator' ),
+                                wp_kses_post( wc_price( $next['needed'] ) ),
+                                wp_kses_post( wc_price( $next['amount'] ) )
+                            ); ?>
+                        </div>
+                        <div class="mg-discount-banner__bar-wrap">
+                            <div class="mg-discount-banner__bar" style="width: <?php echo esc_attr( $pct ); ?>%"></div>
+                        </div>
+                        <div class="mg-discount-banner__bar-label">
+                            <?php echo wp_kses_post( wc_price( $cart_amount ) ); ?> / <?php echo wp_kses_post( wc_price( $next['min_amount'] ) ); ?>
+                        </div>
                     </div>
-                    <div class="mg-discount-banner__bar-label">
-                        <?php echo esc_html( $cart_qty ); ?> / <?php echo esc_html( $next['min_qty'] ); ?> db
+                    <?php
+                }
+            } else {
+                // Darabszám-alapú kampány kosár banner (eredeti logika)
+                $cart_qty = MG_Bundle_Discount::get_campaign_qty_in_cart( $campaign['id'] );
+                if ( $cart_qty < 1 ) {
+                    continue;
+                }
+
+                $next = MG_Bundle_Discount::get_next_tier( $cart_qty, $campaign['tiers'] );
+
+                if ( ! $next ) {
+                    $current_discount = 0.0;
+                    foreach ( $campaign['tiers'] as $tier ) {
+                        if ( $cart_qty >= (int) $tier['min_qty'] ) {
+                            $current_discount = (float) $tier['amount'];
+                        }
+                    }
+                    ?>
+                    <div class="mg-discount-banner mg-discount-banner--cart mg-discount-banner--reached">
+                        <span class="mg-discount-banner__icon">🎉</span>
+                        <strong><?php echo esc_html( $campaign['name'] ); ?></strong>:
+                        <?php printf(
+                            esc_html__( 'Maximális kedvezmény elérve! (%s)', 'mockup-generator' ),
+                            wp_kses_post( wc_price( $current_discount ) )
+                        ); ?>
                     </div>
-                </div>
-                <?php
+                    <?php
+                } else {
+                    $pct = min( 100, round( ( $cart_qty / $next['min_qty'] ) * 100 ) );
+                    wp_enqueue_style( 'mg-discount-banner' );
+                    ?>
+                    <div class="mg-discount-banner mg-discount-banner--cart">
+                        <div class="mg-discount-banner__cart-text">
+                            <span class="mg-discount-banner__icon">⚡</span>
+                            <strong><?php echo esc_html( $campaign['name'] ); ?></strong>:
+                            <?php printf(
+                                esc_html__( 'Még %1$d db kell a %2$s kedvezményhez!', 'mockup-generator' ),
+                                $next['needed'],
+                                wp_kses_post( wc_price( $next['amount'] ) )
+                            ); ?>
+                        </div>
+                        <div class="mg-discount-banner__bar-wrap">
+                            <div class="mg-discount-banner__bar" style="width: <?php echo esc_attr( $pct ); ?>%"></div>
+                        </div>
+                        <div class="mg-discount-banner__bar-label">
+                            <?php echo esc_html( $cart_qty ); ?> / <?php echo esc_html( $next['min_qty'] ); ?> db
+                        </div>
+                    </div>
+                    <?php
+                }
             }
             $banners_rendered++;
         }

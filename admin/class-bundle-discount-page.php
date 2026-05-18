@@ -6,7 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * MG_Bundle_Discount_Page
  *
- * Admin aloldal a mennyiségi kedvezmény és kampány beállításokhoz.
+ * Admin aloldal a mennyiségi / összeghatár kedvezmény és kampány beállításokhoz.
  * Elérhető: Mockup Generator → Mennyiségi kedvezmény
  */
 class MG_Bundle_Discount_Page {
@@ -44,22 +44,26 @@ class MG_Bundle_Discount_Page {
         settings_errors( 'mg_bundle_discount' );
 
         $settings = class_exists( 'MG_Bundle_Discount' ) ? MG_Bundle_Discount::get_settings() : array(
-            'enabled'     => true,
-            'type'        => 'fixed',
-            'qty2_amount' => 990.0,
-            'qty3_amount' => 2480.0,
-            'campaigns'   => array(),
+            'enabled'                => true,
+            'type'                   => 'fixed',
+            'base_threshold_type'    => 'qty',
+            'qty2_amount'            => 990.0,
+            'qty3_amount'            => 2480.0,
+            'base_amount2_threshold' => 10000.0,
+            'base_amount3_threshold' => 20000.0,
+            'campaigns'              => array(),
         );
 
-        $wc_categories = self::get_wc_categories_flat();
-        $mg_types      = self::get_mg_types();
-        $campaigns     = isset( $settings['campaigns'] ) ? $settings['campaigns'] : array();
+        $wc_categories      = self::get_wc_categories_flat();
+        $mg_types           = self::get_mg_types();
+        $campaigns          = isset( $settings['campaigns'] ) ? $settings['campaigns'] : array();
+        $base_thr_type      = isset( $settings['base_threshold_type'] ) ? $settings['base_threshold_type'] : 'qty';
 
         ?>
         <div class="wrap">
             <h1><?php esc_html_e( '🏷️ Mennyiségi kedvezmény beállítások', 'mockup-generator' ); ?></h1>
             <p class="description">
-                <?php esc_html_e( 'Alap kosárszintű kedvezmény minden termékre, illetve egyedi kampányok meghatározott kategóriákra/típusokra.', 'mockup-generator' ); ?>
+                <?php esc_html_e( 'Alap kosárszintű kedvezmény minden termékre (darabszám vagy összeghatár alapján), illetve egyedi kampányok meghatározott kategóriákra/típusokra.', 'mockup-generator' ); ?>
             </p>
             <hr class="wp-header-end" />
 
@@ -91,6 +95,28 @@ class MG_Bundle_Discount_Page {
 
                     <tr>
                         <th scope="row">
+                            <label><?php esc_html_e( 'Küszöb típusa', 'mockup-generator' ); ?></label>
+                        </th>
+                        <td>
+                            <fieldset>
+                                <label>
+                                    <input type="radio" name="base_threshold_type" value="qty"
+                                        class="mg-base-thr-type"
+                                        <?php checked( $base_thr_type, 'qty' ); ?> />
+                                    <?php esc_html_e( 'Darabszám (db)', 'mockup-generator' ); ?>
+                                </label><br />
+                                <label>
+                                    <input type="radio" name="base_threshold_type" value="amount"
+                                        class="mg-base-thr-type"
+                                        <?php checked( $base_thr_type, 'amount' ); ?> />
+                                    <?php esc_html_e( 'Összeghatár (Ft)', 'mockup-generator' ); ?>
+                                </label>
+                            </fieldset>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row">
                             <label><?php esc_html_e( 'Kedvezmény típusa', 'mockup-generator' ); ?></label>
                         </th>
                         <td>
@@ -107,26 +133,64 @@ class MG_Bundle_Discount_Page {
                         </td>
                     </tr>
 
-                    <tr>
+                    <!-- === DARABSZÁM-ALAPÚ MEZŐK === -->
+                    <tr class="mg-base-qty-fields" <?php echo $base_thr_type === 'amount' ? 'style="display:none"' : ''; ?>>
                         <th scope="row">
                             <label for="mg-bd-qty2"><?php esc_html_e( 'Kedvezmény 2 db esetén', 'mockup-generator' ); ?></label>
                         </th>
                         <td>
                             <input type="number" id="mg-bd-qty2" name="qty2_amount"
                                    value="<?php echo esc_attr( $settings['qty2_amount'] ); ?>"
-                                   min="0" step="0.01" class="small-text" required />
+                                   min="0" step="0.01" class="small-text" />
                             <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
                         </td>
                     </tr>
 
-                    <tr>
+                    <tr class="mg-base-qty-fields" <?php echo $base_thr_type === 'amount' ? 'style="display:none"' : ''; ?>>
                         <th scope="row">
                             <label for="mg-bd-qty3"><?php esc_html_e( 'Kedvezmény 3+ db esetén', 'mockup-generator' ); ?></label>
                         </th>
                         <td>
                             <input type="number" id="mg-bd-qty3" name="qty3_amount"
                                    value="<?php echo esc_attr( $settings['qty3_amount'] ); ?>"
-                                   min="0" step="0.01" class="small-text" required />
+                                   min="0" step="0.01" class="small-text" />
+                            <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
+                        </td>
+                    </tr>
+
+                    <!-- === ÖSSZEGHATÁR-ALAPÚ MEZŐK === -->
+                    <tr class="mg-base-amount-fields" <?php echo $base_thr_type !== 'amount' ? 'style="display:none"' : ''; ?>>
+                        <th scope="row">
+                            <?php esc_html_e( '1. összeg-sáv', 'mockup-generator' ); ?>
+                        </th>
+                        <td>
+                            <?php esc_html_e( 'Ha a kosár összege eléri:', 'mockup-generator' ); ?>
+                            <input type="number" name="base_amount2_threshold"
+                                   value="<?php echo esc_attr( $settings['base_amount2_threshold'] ); ?>"
+                                   min="0" step="1" class="small-text" />
+                            Ft &nbsp;→&nbsp;
+                            <?php esc_html_e( 'kedvezmény:', 'mockup-generator' ); ?>
+                            <input type="number" name="qty2_amount"
+                                   value="<?php echo esc_attr( $settings['qty2_amount'] ); ?>"
+                                   min="0" step="0.01" class="small-text" />
+                            <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
+                        </td>
+                    </tr>
+
+                    <tr class="mg-base-amount-fields" <?php echo $base_thr_type !== 'amount' ? 'style="display:none"' : ''; ?>>
+                        <th scope="row">
+                            <?php esc_html_e( '2. összeg-sáv', 'mockup-generator' ); ?>
+                        </th>
+                        <td>
+                            <?php esc_html_e( 'Ha a kosár összege eléri:', 'mockup-generator' ); ?>
+                            <input type="number" name="base_amount3_threshold"
+                                   value="<?php echo esc_attr( $settings['base_amount3_threshold'] ); ?>"
+                                   min="0" step="1" class="small-text" />
+                            Ft &nbsp;→&nbsp;
+                            <?php esc_html_e( 'kedvezmény:', 'mockup-generator' ); ?>
+                            <input type="number" name="qty3_amount"
+                                   value="<?php echo esc_attr( $settings['qty3_amount'] ); ?>"
+                                   min="0" step="0.01" class="small-text" />
                             <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
                         </td>
                     </tr>
@@ -140,7 +204,7 @@ class MG_Bundle_Discount_Page {
                 <!-- ============================================================ -->
                 <h2><?php esc_html_e( '🎯 Kampányok', 'mockup-generator' ); ?></h2>
                 <p class="description">
-                    <?php esc_html_e( 'Egyedi mennyiségi kedvezmény meghatározott kategóriájú / típusú termékekre. Ha egy termék lefedett kampánnyal, az alap kedvezmény nem vonatkozik rá.', 'mockup-generator' ); ?>
+                    <?php esc_html_e( 'Egyedi kedvezmény meghatározott kategóriájú / típusú termékekre. Ha egy termék lefedett kampánnyal, az alap kedvezmény nem vonatkozik rá.', 'mockup-generator' ); ?>
                 </p>
 
                 <div id="mg-campaigns-list">
@@ -164,18 +228,24 @@ class MG_Bundle_Discount_Page {
         <!-- Kampány sor sablon (hidden) -->
         <script type="text/html" id="mg-campaign-template">
             <?php self::render_campaign_row( '__IDX__', array(
-                'id'         => '',
-                'name'       => '',
-                'enabled'    => true,
-                'categories' => array(),
-                'mg_types'   => array(),
-                'tiers'      => array(),
+                'id'             => '',
+                'name'           => '',
+                'enabled'        => true,
+                'threshold_type' => 'qty',
+                'categories'     => array(),
+                'mg_types'       => array(),
+                'tiers'          => array(),
             ), $wc_categories, $mg_types, true ); ?>
         </script>
 
-        <!-- Sáv sor sablon (hidden) -->
-        <script type="text/html" id="mg-tier-template">
-            <?php self::render_tier_row( '__IDX__', '__TIDX__', array( 'min_qty' => '', 'amount' => '' ), true ); ?>
+        <!-- Sáv sor sablon – qty (hidden) -->
+        <script type="text/html" id="mg-tier-template-qty">
+            <?php self::render_tier_row( '__IDX__', '__TIDX__', 'qty', array( 'min_qty' => '', 'amount' => '' ), true ); ?>
+        </script>
+
+        <!-- Sáv sor sablon – amount (hidden) -->
+        <script type="text/html" id="mg-tier-template-amount">
+            <?php self::render_tier_row( '__IDX__', '__TIDX__', 'amount', array( 'min_amount' => '', 'amount' => '' ), true ); ?>
         </script>
 
         <style>
@@ -239,11 +309,26 @@ class MG_Bundle_Discount_Page {
         .mg-campaign-delete {
             color: #b32d2e;
         }
+        .mg-tiers-table th.col-min-qty  { min-width: 120px; }
+        .mg-tiers-table th.col-amount   { min-width: 120px; }
         </style>
 
         <script>
         (function($) {
-            // ---- Alap kedvezmény típus váltás ----
+            // ---- Alap kedvezmény: küszöb típus váltás ----
+            function updateBaseThresholdFields() {
+                var val = $('input[name="base_threshold_type"]:checked').val();
+                if (val === 'amount') {
+                    $('.mg-base-qty-fields').hide();
+                    $('.mg-base-amount-fields').show();
+                } else {
+                    $('.mg-base-qty-fields').show();
+                    $('.mg-base-amount-fields').hide();
+                }
+            }
+            $('input[name="base_threshold_type"]').on('change', updateBaseThresholdFields);
+
+            // ---- Alap kedvezmény típus váltás (Ft/%) ----
             var radios = $('input[name="type"]');
             var units  = $('.mg-bd-unit');
             function updateUnit() {
@@ -281,14 +366,40 @@ class MG_Bundle_Discount_Page {
                 $('#mg-campaigns-list').append($box);
             });
 
+            // ---- Kampány küszöb típus váltás ----
+            $(document).on('change', '.mg-campaign-thr-type', function() {
+                updateCampaignTierHeaders($(this).closest('.mg-campaign-box'));
+            });
+
+            function updateCampaignTierHeaders($box) {
+                var type = $box.find('.mg-campaign-thr-type:checked').val();
+                if (type === 'amount') {
+                    $box.find('.mg-thr-col-qty').hide();
+                    $box.find('.mg-thr-col-amount').show();
+                    $box.find('.mg-tier-hint').text('<?php echo esc_js(__('Pl.: 10 000 Ft felett → 500 Ft levonás', 'mockup-generator')); ?>');
+                } else {
+                    $box.find('.mg-thr-col-qty').show();
+                    $box.find('.mg-thr-col-amount').hide();
+                    $box.find('.mg-tier-hint').text('<?php echo esc_js(__('Pl.: 5 db → 5 000 Ft levonás, 10 db → 15 000 Ft levonás', 'mockup-generator')); ?>');
+                }
+            }
+
+            // Init meglévő kampányok fejlécei
+            $('.mg-campaign-box').each(function() {
+                updateCampaignTierHeaders($(this));
+            });
+
             // ---- Sáv hozzáadása ----
             $(document).on('click', '.mg-add-tier', function() {
                 var $box  = $(this).closest('.mg-campaign-box');
                 var idx   = $box.data('idx');
                 var tidx  = $box.find('.mg-tier-row').length;
-                var html  = $('#mg-tier-template').html();
+                var type  = $box.find('.mg-campaign-thr-type:checked').val();
+                var tplId = type === 'amount' ? '#mg-tier-template-amount' : '#mg-tier-template-qty';
+                var html  = $(tplId).html();
                 html = html.replace(/__IDX__/g, idx).replace(/__TIDX__/g, tidx);
                 $box.find('.mg-tiers-tbody').append(html);
+                updateCampaignTierHeaders($box);
             });
 
             // ---- Sáv törlése ----
@@ -315,19 +426,17 @@ class MG_Bundle_Discount_Page {
         <?php
     }
 
-    /**
-     * Egy kampány sor kirendrelése.
-     */
     private static function render_campaign_row( $idx, $campaign, $wc_categories, $mg_types, $is_template = false ) {
-        $name       = isset( $campaign['name'] ) ? $campaign['name'] : '';
-        $enabled    = isset( $campaign['enabled'] ) ? (bool) $campaign['enabled'] : true;
-        $categories = isset( $campaign['categories'] ) ? $campaign['categories'] : array();
-        $types      = isset( $campaign['mg_types'] ) ? $campaign['mg_types'] : array();
-        $tiers      = isset( $campaign['tiers'] ) ? $campaign['tiers'] : array();
-        $id         = isset( $campaign['id'] ) ? $campaign['id'] : '';
-        $title      = $name !== '' ? $name : __( 'Névtelen kampány', 'mockup-generator' );
-        $prefix     = "campaigns[{$idx}]";
-        $open_class = $is_template ? ' mg-campaign-body--open' : '';
+        $name           = isset( $campaign['name'] ) ? $campaign['name'] : '';
+        $enabled        = isset( $campaign['enabled'] ) ? (bool) $campaign['enabled'] : true;
+        $threshold_type = isset( $campaign['threshold_type'] ) ? $campaign['threshold_type'] : 'qty';
+        $categories     = isset( $campaign['categories'] ) ? $campaign['categories'] : array();
+        $types          = isset( $campaign['mg_types'] ) ? $campaign['mg_types'] : array();
+        $tiers          = isset( $campaign['tiers'] ) ? $campaign['tiers'] : array();
+        $id             = isset( $campaign['id'] ) ? $campaign['id'] : '';
+        $title          = $name !== '' ? $name : __( 'Névtelen kampány', 'mockup-generator' );
+        $prefix         = "campaigns[{$idx}]";
+        $open_class     = $is_template ? ' mg-campaign-body--open' : '';
         ?>
         <div class="mg-campaign-box" data-idx="<?php echo esc_attr( $idx ); ?>">
             <div class="mg-campaign-header">
@@ -358,6 +467,31 @@ class MG_Bundle_Discount_Page {
                                        <?php checked( $enabled, true ); ?> />
                                 <?php esc_html_e( 'Bekapcsolva', 'mockup-generator' ); ?>
                             </label>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th><?php esc_html_e( 'Küszöb típusa', 'mockup-generator' ); ?></th>
+                        <td>
+                            <fieldset>
+                                <label>
+                                    <input type="radio"
+                                           name="<?php echo esc_attr( $prefix ); ?>[threshold_type]"
+                                           value="qty"
+                                           class="mg-campaign-thr-type"
+                                           <?php checked( $threshold_type, 'qty' ); ?> />
+                                    <?php esc_html_e( 'Darabszám (db)', 'mockup-generator' ); ?>
+                                </label>
+                                &nbsp;
+                                <label>
+                                    <input type="radio"
+                                           name="<?php echo esc_attr( $prefix ); ?>[threshold_type]"
+                                           value="amount"
+                                           class="mg-campaign-thr-type"
+                                           <?php checked( $threshold_type, 'amount' ); ?> />
+                                    <?php esc_html_e( 'Összeghatár (Ft)', 'mockup-generator' ); ?>
+                                </label>
+                            </fieldset>
                         </td>
                     </tr>
 
@@ -397,21 +531,27 @@ class MG_Bundle_Discount_Page {
                             <table class="mg-tiers-table">
                                 <thead>
                                     <tr>
-                                        <th><?php esc_html_e( 'Min. db', 'mockup-generator' ); ?></th>
-                                        <th><?php esc_html_e( 'Levonás (Ft)', 'mockup-generator' ); ?></th>
+                                        <th class="col-min-qty mg-thr-col-qty"><?php esc_html_e( 'Min. db', 'mockup-generator' ); ?></th>
+                                        <th class="col-min-qty mg-thr-col-amount" style="display:none"><?php esc_html_e( 'Min. összeg (Ft)', 'mockup-generator' ); ?></th>
+                                        <th class="col-amount"><?php esc_html_e( 'Levonás (Ft)', 'mockup-generator' ); ?></th>
                                         <th></th>
                                     </tr>
                                 </thead>
                                 <tbody class="mg-tiers-tbody">
                                     <?php foreach ( $tiers as $tidx => $tier ) :
-                                        self::render_tier_row( $idx, $tidx, $tier );
+                                        self::render_tier_row( $idx, $tidx, $threshold_type, $tier );
                                     endforeach; ?>
                                 </tbody>
                             </table>
                             <button type="button" class="button button-small mg-add-tier">
                                 ➕ <?php esc_html_e( 'Sáv hozzáadása', 'mockup-generator' ); ?>
                             </button>
-                            <p class="description"><?php esc_html_e( 'Pl.: 5 db → 5000 Ft levonás, 10 db → 15000 Ft levonás', 'mockup-generator' ); ?></p>
+                            <p class="description mg-tier-hint">
+                                <?php echo $threshold_type === 'amount'
+                                    ? esc_html__( 'Pl.: 10 000 Ft felett → 500 Ft levonás', 'mockup-generator' )
+                                    : esc_html__( 'Pl.: 5 db → 5 000 Ft levonás, 10 db → 15 000 Ft levonás', 'mockup-generator' );
+                                ?>
+                            </p>
                         </td>
                     </tr>
 
@@ -421,23 +561,29 @@ class MG_Bundle_Discount_Page {
         <?php
     }
 
-    /**
-     * Egy sáv sor kirendrelése.
-     */
-    private static function render_tier_row( $idx, $tidx, $tier, $is_template = false ) {
+    private static function render_tier_row( $idx, $tidx, $threshold_type, $tier, $is_template = false ) {
         $prefix = "campaigns[{$idx}][tiers][{$tidx}]";
         ?>
         <tr class="mg-tier-row">
-            <td>
+            <?php if ( $threshold_type === 'amount' ) : ?>
+            <td class="mg-thr-col-amount">
+                <input type="number" name="<?php echo esc_attr( $prefix ); ?>[min_amount]"
+                       value="<?php echo esc_attr( isset( $tier['min_amount'] ) ? $tier['min_amount'] : '' ); ?>"
+                       min="0" step="1" class="small-text" placeholder="10000" required />
+                Ft
+            </td>
+            <?php else : ?>
+            <td class="mg-thr-col-qty">
                 <input type="number" name="<?php echo esc_attr( $prefix ); ?>[min_qty]"
                        value="<?php echo esc_attr( isset( $tier['min_qty'] ) ? $tier['min_qty'] : '' ); ?>"
                        min="1" step="1" class="small-text" placeholder="5" required />
                 <?php esc_html_e( 'db', 'mockup-generator' ); ?>
             </td>
+            <?php endif; ?>
             <td>
                 <input type="number" name="<?php echo esc_attr( $prefix ); ?>[amount]"
                        value="<?php echo esc_attr( isset( $tier['amount'] ) ? $tier['amount'] : '' ); ?>"
-                       min="0" step="0.01" class="small-text" placeholder="5000" required />
+                       min="0" step="0.01" class="small-text" placeholder="500" required />
                 Ft
             </td>
             <td>
@@ -461,11 +607,14 @@ class MG_Bundle_Discount_Page {
         $campaigns_raw = isset( $_POST['campaigns'] ) ? wp_unslash( (array) $_POST['campaigns'] ) : array();
 
         $data = array(
-            'enabled'     => ! empty( $_POST['enabled'] ),
-            'type'        => isset( $_POST['type'] ) ? sanitize_key( wp_unslash( $_POST['type'] ) ) : 'fixed',
-            'qty2_amount' => isset( $_POST['qty2_amount'] ) ? floatval( wp_unslash( $_POST['qty2_amount'] ) ) : 0.0,
-            'qty3_amount' => isset( $_POST['qty3_amount'] ) ? floatval( wp_unslash( $_POST['qty3_amount'] ) ) : 0.0,
-            'campaigns'   => $campaigns_raw,
+            'enabled'                => ! empty( $_POST['enabled'] ),
+            'type'                   => isset( $_POST['type'] ) ? sanitize_key( wp_unslash( $_POST['type'] ) ) : 'fixed',
+            'base_threshold_type'    => isset( $_POST['base_threshold_type'] ) ? sanitize_key( wp_unslash( $_POST['base_threshold_type'] ) ) : 'qty',
+            'qty2_amount'            => isset( $_POST['qty2_amount'] ) ? floatval( wp_unslash( $_POST['qty2_amount'] ) ) : 0.0,
+            'qty3_amount'            => isset( $_POST['qty3_amount'] ) ? floatval( wp_unslash( $_POST['qty3_amount'] ) ) : 0.0,
+            'base_amount2_threshold' => isset( $_POST['base_amount2_threshold'] ) ? floatval( wp_unslash( $_POST['base_amount2_threshold'] ) ) : 0.0,
+            'base_amount3_threshold' => isset( $_POST['base_amount3_threshold'] ) ? floatval( wp_unslash( $_POST['base_amount3_threshold'] ) ) : 0.0,
+            'campaigns'              => $campaigns_raw,
         );
 
         if ( class_exists( 'MG_Bundle_Discount' ) ) {
@@ -484,9 +633,6 @@ class MG_Bundle_Discount_Page {
     // Segédfüggvények
     // -------------------------------------------------------------------------
 
-    /**
-     * WooCommerce kategóriák lapos listája (id + label + mélység).
-     */
     private static function get_wc_categories_flat() {
         $terms = get_terms( array(
             'taxonomy'   => 'product_cat',
@@ -498,7 +644,6 @@ class MG_Bundle_Discount_Page {
             return array();
         }
 
-        // Fa rendezés
         $tree   = array();
         $lookup = array();
         foreach ( $terms as $term ) {
@@ -537,9 +682,6 @@ class MG_Bundle_Discount_Page {
         }
     }
 
-    /**
-     * MG terméktípus slug → label párok a katalógusból.
-     */
     private static function get_mg_types() {
         $catalog = get_option( 'mg_product_catalog', array() );
         $types   = array();

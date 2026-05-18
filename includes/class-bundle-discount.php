@@ -6,15 +6,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * MG_Bundle_Discount
  *
- * Automatikus mennyiségi kedvezményt alkalmaz a WooCommerce kosárra.
- * Támogat több, egymástól független kampányt (kategória + mg_product_type szűrővel).
+ * Automatikus kedvezményt alkalmaz a WooCommerce kosárra.
+ * Kétféle küszöb-típus: darabszám (qty) vagy összeghatár (amount).
  *
  * Beállítások (mg_bundle_discount wp_option):
- *   enabled      bool    – alap kedvezmény be/ki
- *   type         string  – 'fixed' | 'percent'
- *   qty2_amount  float   – alap kedvezmény 2 db esetén
- *   qty3_amount  float   – alap kedvezmény 3+ db esetén
- *   campaigns    array   – kampány tömbök (lásd: sanitize_campaigns)
+ *   enabled                 bool    – alap kedvezmény be/ki
+ *   type                    string  – 'fixed' | 'percent'
+ *   base_threshold_type     string  – 'qty' | 'amount'
+ *   qty2_amount             float   – alap kedvezmény 2 db / 1. összeg-sáv esetén
+ *   qty3_amount             float   – alap kedvezmény 3+ db / 2. összeg-sáv esetén
+ *   base_amount2_threshold  float   – 1. összeg-küszöb (base, amount módban)
+ *   base_amount3_threshold  float   – 2. összeg-küszöb (base, amount módban)
+ *   campaigns               array   – kampány tömbök
  */
 class MG_Bundle_Discount {
 
@@ -36,18 +39,16 @@ class MG_Bundle_Discount {
     // Beállítások
     // -------------------------------------------------------------------------
 
-    /**
-     * Visszaadja a mentett beállításokat, hiányzó kulcsokra alapértékekkel egészítve ki.
-     *
-     * @return array
-     */
     public static function get_settings() {
         $defaults = array(
-            'enabled'     => true,
-            'type'        => 'fixed',
-            'qty2_amount' => 990.0,
-            'qty3_amount' => 2480.0,
-            'campaigns'   => array(),
+            'enabled'                => true,
+            'type'                   => 'fixed',
+            'base_threshold_type'    => 'qty',
+            'qty2_amount'            => 990.0,
+            'qty3_amount'            => 2480.0,
+            'base_amount2_threshold' => 10000.0,
+            'base_amount3_threshold' => 20000.0,
+            'campaigns'              => array(),
         );
 
         $saved = get_option( self::OPTION_KEY, array() );
@@ -58,25 +59,20 @@ class MG_Bundle_Discount {
         return wp_parse_args( $saved, $defaults );
     }
 
-    /**
-     * Elmenti a beállításokat.
-     *
-     * @param array $settings
-     */
     public static function save_settings( array $settings ) {
         $clean = array(
-            'enabled'     => ! empty( $settings['enabled'] ),
-            'type'        => ( isset( $settings['type'] ) && $settings['type'] === 'percent' ) ? 'percent' : 'fixed',
-            'qty2_amount' => isset( $settings['qty2_amount'] ) ? max( 0.0, floatval( $settings['qty2_amount'] ) ) : 0.0,
-            'qty3_amount' => isset( $settings['qty3_amount'] ) ? max( 0.0, floatval( $settings['qty3_amount'] ) ) : 0.0,
-            'campaigns'   => isset( $settings['campaigns'] ) ? self::sanitize_campaigns( $settings['campaigns'] ) : array(),
+            'enabled'                => ! empty( $settings['enabled'] ),
+            'type'                   => ( isset( $settings['type'] ) && $settings['type'] === 'percent' ) ? 'percent' : 'fixed',
+            'base_threshold_type'    => ( isset( $settings['base_threshold_type'] ) && $settings['base_threshold_type'] === 'amount' ) ? 'amount' : 'qty',
+            'qty2_amount'            => isset( $settings['qty2_amount'] ) ? max( 0.0, floatval( $settings['qty2_amount'] ) ) : 0.0,
+            'qty3_amount'            => isset( $settings['qty3_amount'] ) ? max( 0.0, floatval( $settings['qty3_amount'] ) ) : 0.0,
+            'base_amount2_threshold' => isset( $settings['base_amount2_threshold'] ) ? max( 0.0, floatval( $settings['base_amount2_threshold'] ) ) : 0.0,
+            'base_amount3_threshold' => isset( $settings['base_amount3_threshold'] ) ? max( 0.0, floatval( $settings['base_amount3_threshold'] ) ) : 0.0,
+            'campaigns'              => isset( $settings['campaigns'] ) ? self::sanitize_campaigns( $settings['campaigns'] ) : array(),
         );
         update_option( self::OPTION_KEY, $clean, false );
     }
 
-    /**
-     * Szanitálja a kampányok tömbjét.
-     */
     private static function sanitize_campaigns( $campaigns ) {
         if ( ! is_array( $campaigns ) ) {
             return array();
@@ -88,39 +84,49 @@ class MG_Bundle_Discount {
                 continue;
             }
 
-            // Sávok szanitálása
+            $threshold_type = ( isset( $campaign['threshold_type'] ) && $campaign['threshold_type'] === 'amount' ) ? 'amount' : 'qty';
+
             $tiers = array();
             if ( ! empty( $campaign['tiers'] ) && is_array( $campaign['tiers'] ) ) {
                 foreach ( $campaign['tiers'] as $tier ) {
-                    $min_qty = isset( $tier['min_qty'] ) ? max( 1, intval( $tier['min_qty'] ) ) : 1;
-                    $amount  = isset( $tier['amount'] )  ? max( 0.0, floatval( $tier['amount'] ) ) : 0.0;
-                    if ( $min_qty >= 1 && $amount > 0 ) {
-                        $tiers[] = array( 'min_qty' => $min_qty, 'amount' => $amount );
+                    $amount = isset( $tier['amount'] ) ? max( 0.0, floatval( $tier['amount'] ) ) : 0.0;
+                    if ( $threshold_type === 'amount' ) {
+                        $min_amount = isset( $tier['min_amount'] ) ? max( 0.0, floatval( $tier['min_amount'] ) ) : 0.0;
+                        if ( $min_amount >= 0 && $amount > 0 ) {
+                            $tiers[] = array( 'min_amount' => $min_amount, 'amount' => $amount );
+                        }
+                    } else {
+                        $min_qty = isset( $tier['min_qty'] ) ? max( 1, intval( $tier['min_qty'] ) ) : 1;
+                        if ( $min_qty >= 1 && $amount > 0 ) {
+                            $tiers[] = array( 'min_qty' => $min_qty, 'amount' => $amount );
+                        }
                     }
                 }
-                // Növekvő sorrendbe rendezés
-                usort( $tiers, function( $a, $b ) { return $a['min_qty'] - $b['min_qty']; } );
+                if ( $threshold_type === 'amount' ) {
+                    usort( $tiers, function( $a, $b ) { return $a['min_amount'] <=> $b['min_amount']; } );
+                } else {
+                    usort( $tiers, function( $a, $b ) { return $a['min_qty'] - $b['min_qty']; } );
+                }
             }
 
-            // Kategóriák szanitálása
             $categories = array();
             if ( ! empty( $campaign['categories'] ) && is_array( $campaign['categories'] ) ) {
                 $categories = array_values( array_filter( array_map( 'intval', $campaign['categories'] ) ) );
             }
 
-            // mg_product_type slug-ok szanitálása
             $mg_types = array();
             if ( ! empty( $campaign['mg_types'] ) && is_array( $campaign['mg_types'] ) ) {
                 $mg_types = array_values( array_filter( array_map( 'sanitize_key', $campaign['mg_types'] ) ) );
             }
 
             $clean[] = array(
-                'id'         => sanitize_key( isset( $campaign['id'] ) && $campaign['id'] !== '' ? $campaign['id'] : uniqid( 'campaign_' ) ),
-                'name'       => sanitize_text_field( isset( $campaign['name'] ) ? $campaign['name'] : '' ),
-                'enabled'    => ! empty( $campaign['enabled'] ),
-                'categories' => $categories,
-                'mg_types'   => $mg_types,
-                'tiers'      => $tiers,
+                'id'             => sanitize_key( isset( $campaign['id'] ) && $campaign['id'] !== '' ? $campaign['id'] : uniqid( 'campaign_' ) ),
+                'name'           => sanitize_text_field( isset( $campaign['name'] ) ? $campaign['name'] : '' ),
+                'enabled'        => ! empty( $campaign['enabled'] ),
+                'threshold_type' => $threshold_type,
+                'categories'     => $categories,
+                'mg_types'       => $mg_types,
+                'tiers'          => $tiers,
             );
         }
 
@@ -131,11 +137,6 @@ class MG_Bundle_Discount {
     // Kampány logika
     // -------------------------------------------------------------------------
 
-    /**
-     * Visszaadja az összes aktív, érvényes kampányt.
-     *
-     * @return array
-     */
     public static function get_campaigns() {
         $settings = self::get_settings();
         return array_values( array_filter( $settings['campaigns'], function( $c ) {
@@ -143,18 +144,6 @@ class MG_Bundle_Discount {
         } ) );
     }
 
-    /**
-     * Visszaadja a cart_itemre illő kampányt (vagy null-t ha egyik sem).
-     * Ha több kampány is illene, a legmagasabb max. kedvezményű kampányt adja vissza.
-     *
-     * Illesztési logika:
-     * - Ha a kampányban van categories szűrő: a terméknek BENNE kell lennie
-     * - Ha a kampányban van mg_types szűrő: a termék mg_product_type-jának BENNE kell lennie
-     * - Ha mindkét szűrő üres: minden termékre vonatkozik (globális kampány)
-     *
-     * @param array $cart_item
-     * @return array|null
-     */
     public static function get_item_campaign( $cart_item ) {
         $campaigns = self::get_campaigns();
         if ( empty( $campaigns ) ) {
@@ -168,28 +157,24 @@ class MG_Bundle_Discount {
             return null;
         }
 
-        // Termék kategória ID-k (beleértve az összes szülő kategóriát)
         $product_cat_ids = wc_get_product_term_ids( $product_id, 'product_cat' );
 
         $best_campaign = null;
         $best_amount   = -1;
 
         foreach ( $campaigns as $campaign ) {
-            // Kategória szűrő ellenőrzése
             if ( ! empty( $campaign['categories'] ) ) {
                 if ( empty( $product_cat_ids ) || empty( array_intersect( $campaign['categories'], $product_cat_ids ) ) ) {
-                    continue; // Nem illeszkedik
+                    continue;
                 }
             }
 
-            // mg_product_type szűrő ellenőrzése
             if ( ! empty( $campaign['mg_types'] ) ) {
                 if ( empty( $mg_type ) || ! in_array( $mg_type, $campaign['mg_types'], true ) ) {
-                    continue; // Nem illeszkedik
+                    continue;
                 }
             }
 
-            // Illeszkedik – a legjobb (legmagasabb max. kedvezmény) kampányt tartjuk
             $max_amount = 0.0;
             foreach ( $campaign['tiers'] as $tier ) {
                 $max_amount = max( $max_amount, (float) $tier['amount'] );
@@ -204,14 +189,14 @@ class MG_Bundle_Discount {
         return $best_campaign;
     }
 
-    /**
-     * Kiszámítja egy adott kampány kedvezményét a kosár alapján.
-     *
-     * @param array    $campaign
-     * @param WC_Cart  $cart
-     * @return float
-     */
     public static function get_campaign_discount( $campaign, $cart ) {
+        $threshold_type = isset( $campaign['threshold_type'] ) ? $campaign['threshold_type'] : 'qty';
+
+        if ( $threshold_type === 'amount' ) {
+            $subtotal = self::get_campaign_amount_in_cart( $campaign['id'], $cart );
+            return self::get_discount_for_amount_tiers( $subtotal, $campaign['tiers'] );
+        }
+
         $qty = 0;
         foreach ( $cart->get_cart() as $cart_item ) {
             $item_campaign = self::get_item_campaign( $cart_item );
@@ -222,14 +207,6 @@ class MG_Bundle_Discount {
         return self::get_discount_for_tiers( $qty, $campaign['tiers'] );
     }
 
-    /**
-     * Sáv-alapú kedvezmény kiszámítása.
-     * A legmagasabb illeszkedő sáv összegét adja vissza.
-     *
-     * @param int   $qty
-     * @param array $tiers  [['min_qty'=>int,'amount'=>float],...]
-     * @return float
-     */
     private static function get_discount_for_tiers( $qty, $tiers ) {
         $amount = 0.0;
         foreach ( $tiers as $tier ) {
@@ -240,11 +217,16 @@ class MG_Bundle_Discount {
         return $amount;
     }
 
-    /**
-     * Visszaadja a kampány által NEM lefedett termékek darabszámát (alap kedvezményhez).
-     *
-     * @return int
-     */
+    private static function get_discount_for_amount_tiers( $cart_amount, $tiers ) {
+        $amount = 0.0;
+        foreach ( $tiers as $tier ) {
+            if ( $cart_amount >= (float) $tier['min_amount'] ) {
+                $amount = (float) $tier['amount'];
+            }
+        }
+        return $amount;
+    }
+
     public static function get_eligible_base_quantity() {
         if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
             return 0;
@@ -264,10 +246,29 @@ class MG_Bundle_Discount {
     }
 
     /**
-     * Visszaadja a kosárban lévő összes termék darabszámát (backward compat).
-     *
-     * @return int
+     * Kampány által nem lefedett tételek kosárösszege (alap, amount módhoz).
      */
+    public static function get_eligible_base_amount() {
+        if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
+            return 0.0;
+        }
+
+        $campaigns = self::get_campaigns();
+        $total     = 0.0;
+
+        foreach ( WC()->cart->get_cart() as $cart_item ) {
+            $item_campaign = ! empty( $campaigns ) ? self::get_item_campaign( $cart_item ) : null;
+            if ( ! $item_campaign ) {
+                $product  = isset( $cart_item['data'] ) ? $cart_item['data'] : null;
+                $price    = $product instanceof WC_Product ? (float) $product->get_price() : 0.0;
+                $qty      = isset( $cart_item['quantity'] ) ? intval( $cart_item['quantity'] ) : 0;
+                $total   += $price * $qty;
+            }
+        }
+
+        return $total;
+    }
+
     public static function get_cart_quantity() {
         if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
             return 0;
@@ -280,44 +281,72 @@ class MG_Bundle_Discount {
     }
 
     /**
-     * Kiszámítja az alap kedvezmény összegét.
-     *
-     * @param int   $qty
-     * @param float $cart_subtotal
-     * @return float
+     * Adott kampányhoz tartozó tételek kosárösszege (összeg-alapú kampányhoz).
      */
-    public static function get_discount_amount( $qty, $cart_subtotal = 0.0 ) {
-        if ( $qty < 2 ) {
-            return 0.0;
+    public static function get_campaign_amount_in_cart( $campaign_id, $cart = null ) {
+        if ( $cart === null ) {
+            if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
+                return 0.0;
+            }
+            $cart = WC()->cart;
         }
+        $total = 0.0;
+        foreach ( $cart->get_cart() as $cart_item ) {
+            $c = self::get_item_campaign( $cart_item );
+            if ( $c && $c['id'] === $campaign_id ) {
+                $product = isset( $cart_item['data'] ) ? $cart_item['data'] : null;
+                $price   = $product instanceof WC_Product ? (float) $product->get_price() : 0.0;
+                $qty     = isset( $cart_item['quantity'] ) ? intval( $cart_item['quantity'] ) : 0;
+                $total  += $price * $qty;
+            }
+        }
+        return $total;
+    }
 
+    public static function get_discount_amount( $qty, $cart_subtotal = 0.0 ) {
         $settings = self::get_settings();
         if ( ! $settings['enabled'] ) {
             return 0.0;
         }
 
+        $threshold_type = isset( $settings['base_threshold_type'] ) ? $settings['base_threshold_type'] : 'qty';
+
+        if ( $threshold_type === 'amount' ) {
+            $t2 = (float) $settings['base_amount2_threshold'];
+            $t3 = (float) $settings['base_amount3_threshold'];
+            $d2 = (float) $settings['qty2_amount'];
+            $d3 = (float) $settings['qty3_amount'];
+
+            if ( $t3 > 0 && $cart_subtotal >= $t3 ) {
+                $raw = $d3;
+            } elseif ( $t2 > 0 && $cart_subtotal >= $t2 ) {
+                $raw = $d2;
+            } else {
+                return 0.0;
+            }
+
+            if ( $settings['type'] === 'percent' ) {
+                return max( 0.0, $cart_subtotal * ( $raw / 100.0 ) );
+            }
+            return max( 0.0, $raw );
+        }
+
+        // qty mode
+        if ( $qty < 2 ) {
+            return 0.0;
+        }
         $raw = ( $qty >= 3 ) ? $settings['qty3_amount'] : $settings['qty2_amount'];
 
         if ( $settings['type'] === 'percent' ) {
-            $amount = $cart_subtotal * ( $raw / 100.0 );
-        } else {
-            $amount = $raw;
+            return max( 0.0, $cart_subtotal * ( $raw / 100.0 ) );
         }
-
-        return max( 0.0, $amount );
+        return max( 0.0, $raw );
     }
 
     // -------------------------------------------------------------------------
     // WooCommerce hookok
     // -------------------------------------------------------------------------
 
-    /**
-     * woocommerce_cart_calculate_fees – kedvezmények alkalmazása.
-     * 1. Kampány kedvezmények (kategória/típus szűrőre illő termékek)
-     * 2. Alap kedvezmény (kampány által nem lefedett termékekre)
-     *
-     * @param WC_Cart $cart
-     */
     public static function apply_discount( $cart ) {
         if ( is_admin() && ! defined( 'DOING_AJAX' ) ) {
             return;
@@ -333,7 +362,7 @@ class MG_Bundle_Discount {
                 $cart->add_fee(
                     sprintf( '🏷️ %s', esc_html( $campaign['name'] ) ),
                     -1 * $amount,
-                    false // taxable = false
+                    false
                 );
             }
         }
@@ -343,13 +372,20 @@ class MG_Bundle_Discount {
             return;
         }
 
-        $base_qty = self::get_eligible_base_quantity();
-        if ( $base_qty < 2 ) {
-            return;
-        }
+        $threshold_type = isset( $settings['base_threshold_type'] ) ? $settings['base_threshold_type'] : 'qty';
 
-        $subtotal = $cart->get_subtotal();
-        $amount   = self::get_discount_amount( $base_qty, $subtotal );
+        if ( $threshold_type === 'amount' ) {
+            $base_amount = self::get_eligible_base_amount();
+            $subtotal    = $cart->get_subtotal();
+            $amount      = self::get_discount_amount( 0, $base_amount );
+        } else {
+            $base_qty = self::get_eligible_base_quantity();
+            if ( $base_qty < 2 ) {
+                return;
+            }
+            $subtotal = $cart->get_subtotal();
+            $amount   = self::get_discount_amount( $base_qty, $subtotal );
+        }
 
         if ( $amount > 0 ) {
             $cart->add_fee(
@@ -360,54 +396,34 @@ class MG_Bundle_Discount {
         }
     }
 
-    /**
-     * woocommerce_before_calculate_totals – biztosítja az újraszámolást AJAX esetén.
-     */
     public static function maybe_recalculate( $cart ) {
-        // WC maga kezeli, ez csak hook regisztrálás helye – üres callback elegendő
+        // WC maga kezeli – hook regisztráció helye
     }
 
     // -------------------------------------------------------------------------
     // Megjelenítés
     // -------------------------------------------------------------------------
 
-    /**
-     * A WC fee-k automatikusan megjelennek a kosár totals táblájában.
-     * Ezek a metódusok visszafelé kompatibilitás miatt maradnak.
-     */
     public static function render_discount_row_cart() {
-        // WC fee-k natívan megjelennek – nincs szükség dupla sorra
+        // WC fee-k natívan megjelennek
     }
 
     public static function render_discount_row_checkout() {
-        // WC fee-k natívan megjelennek – nincs szükség dupla sorra
+        // WC fee-k natívan megjelennek
     }
 
     // -------------------------------------------------------------------------
-    // Segédfüggvények kampány bannerhöz (MG_Bundle_Discount_Banner használja)
+    // Segédfüggvények kampány bannerhöz
     // -------------------------------------------------------------------------
 
-    /**
-     * Visszaadja hogy egy termék (product_id, mg_type) melyik kampányba illik.
-     *
-     * @param int    $product_id
-     * @param string $mg_type
-     * @return array|null
-     */
     public static function get_product_campaign( $product_id, $mg_type = '' ) {
         $fake_cart_item = array(
-            'product_id'       => (int) $product_id,
-            'mg_product_type'  => sanitize_key( $mg_type ),
+            'product_id'      => (int) $product_id,
+            'mg_product_type' => sanitize_key( $mg_type ),
         );
         return self::get_item_campaign( $fake_cart_item );
     }
 
-    /**
-     * Visszaadja a kosárban lévő, adott kampányhoz tartozó termékek darabszámát.
-     *
-     * @param string $campaign_id
-     * @return int
-     */
     public static function get_campaign_qty_in_cart( $campaign_id ) {
         if ( ! function_exists( 'WC' ) || ! WC()->cart ) {
             return 0;
@@ -423,23 +439,36 @@ class MG_Bundle_Discount {
     }
 
     /**
-     * Visszaadja a következő sávhoz szükséges darabszámot (és annak összegét).
-     * Visszatér: ['needed' => int, 'amount' => float] vagy null ha nincs következő sáv.
-     *
-     * @param int   $current_qty
-     * @param array $tiers
-     * @return array|null
+     * Következő sáv db-alapú kampányhoz.
+     * Visszatér: ['needed'=>int,'min_qty'=>int,'amount'=>float] vagy null.
      */
     public static function get_next_tier( $current_qty, $tiers ) {
         foreach ( $tiers as $tier ) {
             if ( $current_qty < (int) $tier['min_qty'] ) {
                 return array(
-                    'needed' => (int) $tier['min_qty'] - $current_qty,
+                    'needed'  => (int) $tier['min_qty'] - $current_qty,
                     'min_qty' => (int) $tier['min_qty'],
-                    'amount' => (float) $tier['amount'],
+                    'amount'  => (float) $tier['amount'],
                 );
             }
         }
-        return null; // Már a legfelső sávban van
+        return null;
+    }
+
+    /**
+     * Következő sáv összeg-alapú kampányhoz.
+     * Visszatér: ['needed'=>float,'min_amount'=>float,'amount'=>float] vagy null.
+     */
+    public static function get_next_amount_tier( $current_amount, $tiers ) {
+        foreach ( $tiers as $tier ) {
+            if ( $current_amount < (float) $tier['min_amount'] ) {
+                return array(
+                    'needed'     => (float) $tier['min_amount'] - $current_amount,
+                    'min_amount' => (float) $tier['min_amount'],
+                    'amount'     => (float) $tier['amount'],
+                );
+            }
+        }
+        return null;
     }
 }
