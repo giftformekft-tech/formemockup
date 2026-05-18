@@ -138,6 +138,14 @@ class MG_Price_Override {
 
         self::$in_cart_override = true;
 
+        // If the name already carries an en-dash type suffix (e.g. set by the
+        // crosssell clone in MG_Crosssell_Frontend::restore_cart_item), do not
+        // append a second type — that would produce "X – TargetType - SourceType".
+        if (strpos($name, " \u{2013} ") !== false) {
+            self::$in_cart_override = false;
+            return $name;
+        }
+
         $product_id = $product->get_id();
         $cart_contents = WC()->cart->cart_contents;
 
@@ -146,8 +154,14 @@ class MG_Price_Override {
             $item_variation_id = isset($cart_item['variation_id']) ? $cart_item['variation_id'] : 0;
 
             if ($item_product_id == $product_id || $item_variation_id == $product_id) {
-                if (!empty($cart_item['mg_product_type'])) {
+                // Crosssell items must use the target type, never the source's mg_product_type.
+                $type_slug = '';
+                if (!empty($cart_item['mg_crosssell_rule_id']) && !empty($cart_item['mg_crosssell_target_type'])) {
+                    $type_slug = sanitize_title($cart_item['mg_crosssell_target_type']);
+                } elseif (empty($cart_item['mg_crosssell_rule_id']) && !empty($cart_item['mg_product_type'])) {
                     $type_slug = sanitize_title($cart_item['mg_product_type']);
+                }
+                if ($type_slug !== '') {
                     $type_label = self::get_type_label_from_catalog($type_slug);
                     if ($type_label && strpos($name, ' - ' . $type_label) === false) {
                         self::$in_cart_override = false;
