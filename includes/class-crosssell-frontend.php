@@ -487,6 +487,27 @@ class MG_Crosssell_Frontend {
                 $cart_item[ $field ] = $values[ $field ];
             }
         }
+
+        // For crosssell items, clone the WC_Product on this cart item and rewrite
+        // its display name to the target type. The WC Block cart React renders item
+        // titles via $product->get_name() (product-level), not from cart-item filters,
+        // so source and crosssell items sharing the same product_id would otherwise
+        // show identical names. Cloning ensures the source item's product is untouched.
+        if ( ! empty( $cart_item['mg_crosssell_rule_id'] )
+             && ! empty( $cart_item['mg_crosssell_target_type'] )
+             && ! empty( $cart_item['data'] )
+             && $cart_item['data'] instanceof WC_Product ) {
+
+            $type_label = self::resolve_type_label( $cart_item['mg_crosssell_target_type'] );
+            if ( $type_label !== '' ) {
+                $product       = clone $cart_item['data'];
+                $current_name  = $product->get_name( 'edit' );
+                $clean_name    = self::strip_name_type_suffix( $current_name );
+                $product->set_name( $clean_name . " \u{2013} " . $type_label );
+                $cart_item['data'] = $product;
+            }
+        }
+
         return $cart_item;
     }
 
