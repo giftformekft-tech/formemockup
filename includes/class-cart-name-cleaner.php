@@ -90,21 +90,39 @@ class MG_Cart_Name_Cleaner {
      * (including crosssell items that share a product_id with the source item).
      */
     public static function filter_store_api_cart_item_name($cart_item_data, $cart_item) {
-        if (empty($cart_item['mg_product_type'])) {
-            return $cart_item_data;
-        }
-
         $product = $cart_item['data'] ?? null;
         if (!($product instanceof WC_Product)) {
             return $cart_item_data;
         }
 
-        // Crosssell items: mg_product_type was already overwritten with the target type
-        // by fix_crosssell_cart_item_data, but mg_crosssell_target_type is the authoritative
-        // source for crosssell items. For regular items both fields agree (or only mg_product_type exists).
-        $type_key = !empty($cart_item['mg_crosssell_target_type'])
-            ? $cart_item['mg_crosssell_target_type']
-            : $cart_item['mg_product_type'];
+        // Resolve the per-item type. Crosssell items MUST use mg_crosssell_target_type —
+        // never fall back to mg_product_type (which may carry the source item's type if any
+        // upstream filter mutated $cart_item). For regular items, use mg_product_type.
+        $is_crosssell = !empty($cart_item['mg_crosssell_rule_id']);
+
+        $session_item = null;
+        if (!empty($cart_item['key']) && WC()->cart) {
+            $session_item = WC()->cart->get_cart_item($cart_item['key']);
+        }
+
+        if ($is_crosssell) {
+            $type_key = '';
+            if (!empty($cart_item['mg_crosssell_target_type'])) {
+                $type_key = $cart_item['mg_crosssell_target_type'];
+            } elseif (!empty($session_item['mg_crosssell_target_type'])) {
+                $type_key = $session_item['mg_crosssell_target_type'];
+            }
+            // If we cannot resolve the target type, leave the name untouched rather than
+            // risk re-appending the source type from mg_product_type.
+            if ($type_key === '') {
+                return $cart_item_data;
+            }
+        } else {
+            if (empty($cart_item['mg_product_type'])) {
+                return $cart_item_data;
+            }
+            $type_key = $cart_item['mg_product_type'];
+        }
 
         // 'edit' context returns the stored title without triggering woocommerce_product_get_name
         // filters, avoiding override_cart_item_name adding the wrong type for this item.
@@ -124,22 +142,37 @@ class MG_Cart_Name_Cleaner {
     }
 
     /**
-     * Get the type label from the cart item's mg_product_type field.
-     * For crosssell items, mg_crosssell_target_type takes precedence.
+     * Get the type label from the cart item.
+     *
+     * For crosssell items (detected via mg_crosssell_rule_id), the target type is
+     * authoritative — we never fall back to mg_product_type, which may carry the
+     * source item's type if any upstream filter mutated the array. If the target
+     * type is missing from $cart_item, look it up from WC()->cart directly.
      */
     private static function get_type_label_from_cart_item($cart_item) {
-        // Prefer crosssell target type when present (crosssell items)
-        $type_key = !empty($cart_item['mg_crosssell_target_type'])
-            ? $cart_item['mg_crosssell_target_type']
-            : ($cart_item['mg_product_type'] ?? '');
+        $is_crosssell = !empty($cart_item['mg_crosssell_rule_id']);
 
-        if (empty($type_key)) {
-            return '';
+        if ($is_crosssell) {
+            $type_key = '';
+            if (!empty($cart_item['mg_crosssell_target_type'])) {
+                $type_key = $cart_item['mg_crosssell_target_type'];
+            } elseif (!empty($cart_item['key']) && WC()->cart) {
+                $session_item = WC()->cart->get_cart_item($cart_item['key']);
+                if (!empty($session_item['mg_crosssell_target_type'])) {
+                    $type_key = $session_item['mg_crosssell_target_type'];
+                }
+            }
+            if ($type_key === '') {
+                return '';
+            }
+        } else {
+            $type_key = $cart_item['mg_product_type'] ?? '';
+            if ($type_key === '') {
+                return '';
+            }
         }
 
-        $type_slug = sanitize_title($type_key);
-
-        return self::get_type_label_from_slug($type_slug);
+        return self::get_type_label_from_slug(sanitize_title($type_key));
     }
 
     private static function get_type_label_from_slug($type_slug) {

@@ -581,7 +581,17 @@ class MG_Crosssell_Frontend {
             return $cart_item_data;
         }
 
-        $target_type = $cart_item['mg_crosssell_target_type'] ?? $cart_item['mg_product_type'] ?? '';
+        // Crosssell items MUST use the target type. Never fall back to mg_product_type
+        // because upstream filters may have left it carrying the source item's type.
+        $target_type = '';
+        if ( ! empty( $cart_item['mg_crosssell_target_type'] ) ) {
+            $target_type = $cart_item['mg_crosssell_target_type'];
+        } elseif ( ! empty( $cart_item['key'] ) && WC()->cart ) {
+            $session_item = WC()->cart->get_cart_item( $cart_item['key'] );
+            if ( ! empty( $session_item['mg_crosssell_target_type'] ) ) {
+                $target_type = $session_item['mg_crosssell_target_type'];
+            }
+        }
         if ( ! $target_type ) {
             return $cart_item_data;
         }
@@ -591,8 +601,9 @@ class MG_Crosssell_Frontend {
             return $cart_item_data;
         }
 
-        // Forrás típus utótagot levágjuk a WC terméknévből
-        $original_name = $product->get_name();
+        // 'edit' context bypasses woocommerce_product_get_name filters so we strip
+        // from the raw stored title (not from a filter-modified version).
+        $original_name = $product->get_name( 'edit' );
         $clean_name    = self::strip_name_type_suffix( $original_name );
 
         // Cél típus neve
