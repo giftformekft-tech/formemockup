@@ -168,7 +168,7 @@ class MG_Dedup_Products_Page {
                 <span id="mg-dedup-status" style="color:#666;font-style:italic;"></span>
             </div>
 
-            <div id="mg-dedup-actions" style="display:none;margin-bottom:16px;display:none;gap:10px;align-items:center;">
+            <div id="mg-dedup-actions" style="margin-bottom:16px;gap:10px;align-items:center;">
                 <button id="mg-dedup-select-all" class="button">
                     ☑ <?php esc_html_e( 'Összes kijelölése', 'mockup-generator' ); ?>
                 </button>
