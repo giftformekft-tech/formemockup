@@ -87,16 +87,32 @@ class MG_Price_Override {
         self::$in_cart_override = true;
 
         $product_id = $product->get_id();
-        
-        // Access cart_contents directly to avoid triggering get_cart() hooks
         $cart_contents = WC()->cart->cart_contents;
-        
+
+        // Prefer exact WC_Product instance match: each cart item carries its own
+        // ['data'] object (crosssell items use a clone — see
+        // MG_Crosssell_Frontend::restore_cart_item), so identity matching
+        // resolves the correct per-item stored price even when source and
+        // crosssell items share the same product_id.
+        foreach ($cart_contents as $cart_item) {
+            if (isset($cart_item['data']) && $cart_item['data'] === $product) {
+                if (isset($cart_item['mg_custom_fields_base_price']) && is_numeric($cart_item['mg_custom_fields_base_price'])) {
+                    $stored_price = floatval($cart_item['mg_custom_fields_base_price']);
+                    if ($stored_price > 0) {
+                        self::$in_cart_override = false;
+                        return $stored_price;
+                    }
+                }
+            }
+        }
+
+        // Fallback: product_id match (legacy path, used when $product is not
+        // the cart item's own data object — e.g. external GLA feed lookups).
         foreach ($cart_contents as $cart_item) {
             $item_product_id = isset($cart_item['product_id']) ? $cart_item['product_id'] : 0;
             $item_variation_id = isset($cart_item['variation_id']) ? $cart_item['variation_id'] : 0;
-            
+
             if ($item_product_id == $product_id || $item_variation_id == $product_id) {
-                // Read the stored price directly (no filter call, just array access)
                 if (isset($cart_item['mg_custom_fields_base_price']) && is_numeric($cart_item['mg_custom_fields_base_price'])) {
                     $stored_price = floatval($cart_item['mg_custom_fields_base_price']);
                     if ($stored_price > 0) {
