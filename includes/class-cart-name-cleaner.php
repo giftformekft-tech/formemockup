@@ -16,19 +16,27 @@ class MG_Cart_Name_Cleaner {
     }
 
     public static function filter_cart_item_name($product_name, $cart_item, $cart_item_key) {
-        // Always look up the live session item by key so we get the correct mg_product_type
-        // for every item, even when woocommerce_blocks_cart_item_name passes a WC_Product
-        // object or the wrong array as $cart_item.
+        // Prefer the direct $cart_item argument: it is always the item being rendered.
+        // Key lookup is a fallback for when $cart_item is a WC_Product object (older Blocks
+        // versions) and is also used to supply the WC_Product 'data' object when missing.
         $item_data = null;
-        if ($cart_item_key && WC()->cart) {
-            $item_data = WC()->cart->get_cart_item($cart_item_key);
-        }
-        // Fallback: use the passed $cart_item if the key lookup returned nothing
-        if (!$item_data && is_array($cart_item)) {
+        if (is_array($cart_item) && !empty($cart_item['product_id'])) {
             $item_data = $cart_item;
+        }
+        if (!$item_data && $cart_item_key && WC()->cart) {
+            $item_data = WC()->cart->get_cart_item($cart_item_key);
         }
         if (!$item_data) {
             return $product_name;
+        }
+
+        // If $item_data is missing the WC_Product object (can happen when $cart_item was
+        // used directly and 'data' was not yet attached), pull it from the session lookup.
+        if (empty($item_data['data']) && $cart_item_key && WC()->cart) {
+            $session_item = WC()->cart->get_cart_item($cart_item_key);
+            if (!empty($session_item['data'])) {
+                $item_data['data'] = $session_item['data'];
+            }
         }
 
         $product = $item_data['data'] ?? null;
