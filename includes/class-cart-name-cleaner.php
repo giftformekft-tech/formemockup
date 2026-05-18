@@ -9,7 +9,6 @@ class MG_Cart_Name_Cleaner {
 
     public static function init() {
         add_filter('woocommerce_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
-        add_filter('woocommerce_blocks_cart_item_name', [__CLASS__, 'filter_cart_item_name'], PHP_INT_MAX, 3);
         // Block cart (Store API): set the correct per-item name in the REST JSON response.
         // Runs at PHP_INT_MAX so it has final say over any earlier name overrides.
         add_filter('woocommerce_store_api_cart_item', [__CLASS__, 'filter_store_api_cart_item_name'], PHP_INT_MAX, 2);
