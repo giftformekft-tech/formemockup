@@ -1493,8 +1493,13 @@ class MG_Virtual_Variant_Manager {
                 console.log('MG: Running fixCartThumbnails...');
                 var replaced = 0;
                 
-                // Find all images in cart (in DOM order)
-                var $images = $('img[src*="/mg_mockups/"]');
+                // Find all mockup images that belong to the actual cart, NOT the
+                // crosssell offer block — that block renders SKU-based mockups too,
+                // and matching them by DOM index would overwrite offer card images
+                // with cart-item URLs as items get added.
+                var $images = $('img[src*="/mg_mockups/"]').filter(function () {
+                    return $(this).closest('.mg-crosssell-wrapper').length === 0;
+                });
                 console.log('MG: Found ' + $images.length + ' mockup images');
                 console.log('MG: Have ' + variantMapping.length + ' cart items');
                 
