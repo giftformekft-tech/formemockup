@@ -146,7 +146,7 @@ class MG_Temu_Export_Page {
                                 <th scope="row" class="check-column">
                                     <input type="checkbox" class="mg-temu-prod-cb" value="${p.id}" ${isChecked}>
                                 </th>
-                                <td><img src="${p.image}" width="40" height="40" style="border-radius:4px;object-fit:cover;"></td>
+                                <td><img src="${p.image}" width="80" height="80" style="border-radius:4px;object-fit:cover;"></td>
                                 <td><strong>${p.name}</strong></td>
                                 <td>${p.sku}</td>
                                 <td>${p.category}</td>
