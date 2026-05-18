@@ -45,6 +45,7 @@ add_action('plugins_loaded', function(){
         'admin/class-surcharge-options-page.php',
         'admin/class-migration-page.php',
         'admin/migrate-design-paths.php',
+        'admin/class-dedup-products-page.php',
 
 
         'admin/class-maintenance-tools.php', // Bulk Delete Tools
@@ -118,7 +119,14 @@ add_action('plugins_loaded', function(){
         if (class_exists('MG_Crosssell_Page')) {
             MG_Crosssell_Page::add_submenu_page();
         }
+        if (class_exists('MG_Dedup_Products_Page')) {
+            MG_Dedup_Products_Page::add_submenu_page();
+        }
         });
+
+    if (class_exists('MG_Dedup_Products_Page')) {
+        MG_Dedup_Products_Page::register_ajax();
+    }
 
     add_action('add_meta_boxes', function($post_type) {
         if ($post_type !== 'product') {
