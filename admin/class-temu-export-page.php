@@ -24,8 +24,8 @@ class MG_Temu_Export_Page {
                 <div id="mg-temu-app" class="mg-temu-app">
                     <!-- Step 1: Product Selection -->
                     <div id="mg-temu-step-1" class="mg-temu-step">
-                        <div class="mg-temu-toolbar">
-                            <div class="mg-temu-pagination" style="display:flex;align-items:center;gap:16px;">
+                        <div class="mg-temu-toolbar" style="flex-wrap:wrap;gap:10px;">
+                            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
                                 <label><?php esc_html_e('Termékek oldalanként:', 'mockup-generator'); ?>
                                     <select id="mg-temu-per-page">
                                         <option value="25">25</option>
@@ -36,6 +36,22 @@ class MG_Temu_Export_Page {
                                 <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:#1a7a35;cursor:pointer;">
                                     <input type="checkbox" id="mg-temu-filter-unexported">
                                     <?php esc_html_e('Csak nem exportált', 'mockup-generator'); ?>
+                                </label>
+                                <label><?php esc_html_e('Főkategória:', 'mockup-generator'); ?>
+                                    <select id="mg-temu-filter-parent-cat">
+                                        <option value=""><?php esc_html_e('— mind —', 'mockup-generator'); ?></option>
+                                        <?php
+                                        $parent_cats = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false, 'parent' => 0, 'orderby' => 'name']);
+                                        foreach ($parent_cats as $cat) {
+                                            echo '<option value="' . esc_attr($cat->term_id) . '">' . esc_html($cat->name) . '</option>';
+                                        }
+                                        ?>
+                                    </select>
+                                </label>
+                                <label id="mg-temu-subcat-wrap" style="display:none;"><?php esc_html_e('Alkategória:', 'mockup-generator'); ?>
+                                    <select id="mg-temu-filter-child-cat">
+                                        <option value=""><?php esc_html_e('— mind —', 'mockup-generator'); ?></option>
+                                    </select>
                                 </label>
                             </div>
                             <div class="mg-temu-actions">
@@ -102,15 +118,20 @@ class MG_Temu_Export_Page {
     public static function render_scripts() {
         ?>
         <script>
+        // Alkategóriák PHP-ból
+        var mgTemuChildCats = <?php
+            $all_children = [];
+            $child_terms = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false, 'parent__not_in' => [0]]);
+            foreach ((array)$child_terms as $ct) {
+                $all_children[$ct->parent][] = ['id' => $ct->term_id, 'name' => $ct->name];
+            }
+            echo wp_json_encode($all_children);
+        ?>;
+
         jQuery(document).ready(function($) {
             let currentPage = 1;
             let productsPerPage = 25;
-            let selectedProducts = {}; 
-            // { productId: { checked: true } }
-            // Note: For variants, we will just pass product IDs to backend and let backend generate based on virtual config,
-            // OR we fetch structure and let user deselect.
-            // Requirement says: "ki tudjam jelölni... mely variánsai".
-            // So we need to fetch virtual variants structure.
+            let selectedProducts = {};
 
             // --- Step 1: Product List ---
 
@@ -122,8 +143,11 @@ class MG_Temu_Export_Page {
                 currentPage = page;
                 productsPerPage = $('#mg-temu-per-page').val();
                 const onlyUnexported = $('#mg-temu-filter-unexported').is(':checked') ? 1 : 0;
+                const childCat  = $('#mg-temu-filter-child-cat').val();
+                const parentCat = $('#mg-temu-filter-parent-cat').val();
+                const categoryId = childCat || parentCat || '';
 
-                $('#mg-temu-product-list').html('<tr><td colspan="5">Betöltés...</td></tr>');
+                $('#mg-temu-product-list').html('<tr><td colspan="6">Betöltés...</td></tr>');
 
                 $.ajax({
                     url: ajaxurl,
@@ -133,6 +157,7 @@ class MG_Temu_Export_Page {
                         page: currentPage,
                         per_page: productsPerPage,
                         only_unexported: onlyUnexported,
+                        category_id: categoryId,
                         nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                     },
                     success: function(response) {
@@ -197,9 +222,19 @@ class MG_Temu_Export_Page {
 
             // --- Events Step 1 ---
 
-            $('#mg-temu-per-page').on('change', function() {
+            $('#mg-temu-per-page').on('change', function() { loadProducts(1); });
+
+            $('#mg-temu-filter-parent-cat').on('change', function() {
+                const parentId = $(this).val();
+                const children = parentId && mgTemuChildCats[parentId] ? mgTemuChildCats[parentId] : [];
+                let opts = '<option value=""><?php echo esc_js(__('— mind —', 'mockup-generator')); ?></option>';
+                children.forEach(c => { opts += `<option value="${c.id}">${c.name}</option>`; });
+                $('#mg-temu-filter-child-cat').html(opts);
+                $('#mg-temu-subcat-wrap').toggle(children.length > 0);
                 loadProducts(1);
             });
+
+            $('#mg-temu-filter-child-cat').on('change', function() { loadProducts(1); });
 
             $(document).on('click', '.mg-temu-page-btn', function() {
                 loadProducts($(this).data('page'));
@@ -486,9 +521,10 @@ class MG_Temu_Export_Page {
     public static function ajax_get_products() {
         check_ajax_referer('mg_temu_nonce', 'nonce');
         
-        $page           = isset($_POST['page']) ? intval($_POST['page']) : 1;
-        $per_page       = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
+        $page            = isset($_POST['page']) ? intval($_POST['page']) : 1;
+        $per_page        = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
         $only_unexported = ! empty($_POST['only_unexported']);
+        $category_id     = isset($_POST['category_id']) ? intval($_POST['category_id']) : 0;
 
         $args = [
             'status'   => 'publish',
@@ -502,6 +538,10 @@ class MG_Temu_Export_Page {
                 'key'     => '_mg_temu_exported',
                 'compare' => 'NOT EXISTS',
             ]];
+        }
+
+        if ($category_id > 0) {
+            $args['category'] = [get_term($category_id, 'product_cat')->slug ?? ''];
         }
         
         $results = wc_get_products($args);
