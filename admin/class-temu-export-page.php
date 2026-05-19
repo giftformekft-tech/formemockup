@@ -46,10 +46,11 @@ class MG_Temu_Export_Page {
                                         <td id="cb" class="manage-column column-cb check-column">
                                             <input id="cb-select-all-1" type="checkbox">
                                         </td>
-                                        <th><?php esc_html_e('Kép', 'mockup-generator'); ?></th>
+                                                        <th><?php esc_html_e('Kép', 'mockup-generator'); ?></th>
                                         <th><?php esc_html_e('Terméknév', 'mockup-generator'); ?></th>
                                         <th><?php esc_html_e('Base SKU', 'mockup-generator'); ?></th>
                                         <th><?php esc_html_e('Kategória', 'mockup-generator'); ?></th>
+                                        <th><?php esc_html_e('Temu export', 'mockup-generator'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody id="mg-temu-product-list">
@@ -86,6 +87,7 @@ class MG_Temu_Export_Page {
             .mg-temu-pagination-controls { display: flex; justify-content: center; gap: 5px; margin-top: 15px; }
             .mg-temu-pagination-controls button { min-width: 30px; }
             .mg-chip { display: inline-block; padding: 2px 6px; background: #eee; border-radius: 4px; font-size: 11px; margin-right: 4px; }
+            .mg-temu-exported-badge { display: inline-block; padding: 2px 7px; background: #d7f5de; color: #1a7a35; border: 1px solid #a8d5b5; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         </style>
         <?php
@@ -141,6 +143,9 @@ class MG_Temu_Export_Page {
                 } else {
                     products.forEach(p => {
                         const isChecked = selectedProducts[p.id] ? 'checked' : '';
+                        const exportedBadge = p.exported_at
+                            ? `<span class="mg-temu-exported-badge" title="Utoljára exportálva: ${p.exported_at}">✓ ${p.exported_at}</span>`
+                            : '<span style="color:#aaa;font-size:11px;">—</span>';
                         html += `
                             <tr>
                                 <th scope="row" class="check-column">
@@ -150,6 +155,7 @@ class MG_Temu_Export_Page {
                                 <td><strong>${p.name}</strong></td>
                                 <td>${p.sku}</td>
                                 <td>${p.category}</td>
+                                <td>${exportedBadge}</td>
                             </tr>
                         `;
                     });
@@ -471,12 +477,15 @@ class MG_Temu_Export_Page {
                 if ($term && !is_wp_error($term)) $cat_name = $term->name;
             }
 
+            $exported_at = get_post_meta($product->get_id(), '_mg_temu_exported', true);
+
             $products[] = [
                 'id' => $product->get_id(),
                 'name' => $product->get_name(),
                 'sku' => $product->get_sku(),
                 'category' => $cat_name,
-                'image' => $image_url
+                'image' => $image_url,
+                'exported_at' => $exported_at ?: ''
             ];
         }
 
@@ -685,6 +694,13 @@ class MG_Temu_Export_Page {
                     $img_url              // Img URL (A 12-es méreté hasznosítva)
                 ];
             }
+        }
+
+        // Exportált termékek megjelölése
+        $exported_pids = array_unique(array_column($selection, 'pid'));
+        $now = current_time('Y-m-d H:i');
+        foreach ($exported_pids as $pid) {
+            update_post_meta((int) $pid, '_mg_temu_exported', $now);
         }
 
         // Export
