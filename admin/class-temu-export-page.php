@@ -24,13 +24,17 @@ class MG_Temu_Export_Page {
                     <!-- Step 1: Product Selection -->
                     <div id="mg-temu-step-1" class="mg-temu-step">
                         <div class="mg-temu-toolbar">
-                            <div class="mg-temu-pagination">
+                            <div class="mg-temu-pagination" style="display:flex;align-items:center;gap:16px;">
                                 <label><?php esc_html_e('Termékek oldalanként:', 'mockup-generator'); ?>
                                     <select id="mg-temu-per-page">
                                         <option value="25">25</option>
                                         <option value="50">50</option>
                                         <option value="100">100</option>
                                     </select>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:#1a7a35;cursor:pointer;">
+                                    <input type="checkbox" id="mg-temu-filter-unexported">
+                                    <?php esc_html_e('Csak nem exportált', 'mockup-generator'); ?>
                                 </label>
                             </div>
                             <div class="mg-temu-actions">
@@ -108,12 +112,17 @@ class MG_Temu_Export_Page {
 
             // --- Step 1: Product List ---
 
+            $('#mg-temu-filter-unexported').on('change', function() {
+                loadProducts(1);
+            });
+
             function loadProducts(page) {
                 currentPage = page;
                 productsPerPage = $('#mg-temu-per-page').val();
-                
+                const onlyUnexported = $('#mg-temu-filter-unexported').is(':checked') ? 1 : 0;
+
                 $('#mg-temu-product-list').html('<tr><td colspan="5">Betöltés...</td></tr>');
-                
+
                 $.ajax({
                     url: ajaxurl,
                     type: 'POST',
@@ -121,6 +130,7 @@ class MG_Temu_Export_Page {
                         action: 'mg_temu_get_products',
                         page: currentPage,
                         per_page: productsPerPage,
+                        only_unexported: onlyUnexported,
                         nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                     },
                     success: function(response) {
@@ -447,20 +457,23 @@ class MG_Temu_Export_Page {
     public static function ajax_get_products() {
         check_ajax_referer('mg_temu_nonce', 'nonce');
         
-        $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
-        $per_page = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
+        $page           = isset($_POST['page']) ? intval($_POST['page']) : 1;
+        $per_page       = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
+        $only_unexported = ! empty($_POST['only_unexported']);
 
-        // Query only Simple products, since our system treats simple products as base for virtual variants
-        // But some users might attach it to variable products? The Virtual Manager supports 'simple' primarily.
-        // Let's filter for supported products efficiently.
-        // Actually, let's just list all products, the user knows which ones are configured.
-        
         $args = [
-            'status' => 'publish',
-            'limit' => $per_page,
-            'page' => $page,
+            'status'   => 'publish',
+            'limit'    => $per_page,
+            'page'     => $page,
             'paginate' => true,
         ];
+
+        if ($only_unexported) {
+            $args['meta_query'] = [[
+                'key'     => '_mg_temu_exported',
+                'compare' => 'NOT EXISTS',
+            ]];
+        }
         
         $results = wc_get_products($args);
         $products = [];
