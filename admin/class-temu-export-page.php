@@ -9,6 +9,7 @@ class MG_Temu_Export_Page {
         add_action('wp_ajax_mg_temu_get_products', [self::class, 'ajax_get_products']);
         add_action('wp_ajax_mg_temu_get_variants', [self::class, 'ajax_get_variants']);
         add_action('wp_ajax_mg_temu_generate_export', [self::class, 'ajax_generate_export']);
+        add_action('wp_ajax_mg_temu_mark_exported', [self::class, 'ajax_mark_exported']);
     }
 
     public static function render_page() {
@@ -39,6 +40,7 @@ class MG_Temu_Export_Page {
                             </div>
                             <div class="mg-temu-actions">
                                 <button type="button" class="button" id="mg-temu-select-all-page"><?php esc_html_e('Összes kijelölése az oldalon', 'mockup-generator'); ?></button>
+                                <button type="button" class="button" id="mg-temu-mark-exported" style="display:none;"><?php esc_html_e('✔ Megjelölés: exportálva', 'mockup-generator'); ?></button>
                                 <button type="button" class="button button-primary" id="mg-temu-next-step"><?php esc_html_e('Tovább a variációkhoz', 'mockup-generator'); ?></button>
                             </div>
                         </div>
@@ -210,6 +212,8 @@ class MG_Temu_Export_Page {
                 } else {
                     delete selectedProducts[pid];
                 }
+                const count = Object.keys(selectedProducts).length;
+                $('#mg-temu-mark-exported').toggle(count > 0).text(`✔ Megjelölés: exportálva (${count})`);
             });
             
              $('#mg-temu-select-all-page').on('click', function() {
@@ -221,6 +225,31 @@ class MG_Temu_Export_Page {
                 $('.mg-temu-prod-cb').prop('checked', checked).trigger('change');
             });
 
+
+            // --- Manuális exportálva jelölés ---
+
+            $('#mg-temu-mark-exported').on('click', function() {
+                const ids = Object.keys(selectedProducts);
+                if (ids.length === 0) return;
+                if (!confirm(ids.length + ' terméket exportáltként jelölsz meg. Folytatod?')) return;
+
+                const $btn = $(this).prop('disabled', true).text('Mentés...');
+
+                $.post(ajaxurl, {
+                    action: 'mg_temu_mark_exported',
+                    ids: ids,
+                    nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
+                }, function(resp) {
+                    $btn.prop('disabled', false);
+                    if (!resp.success) { alert('Hiba: ' + (resp.data || 'ismeretlen')); return; }
+                    selectedProducts = {};
+                    $btn.hide();
+                    loadProducts(currentPage);
+                }).fail(function() {
+                    $btn.prop('disabled', false).text('✔ Megjelölés: exportálva');
+                    alert('Kommunikációs hiba.');
+                });
+            });
 
             // --- Step 2: Variant Selection ---
 
@@ -737,5 +766,26 @@ class MG_Temu_Export_Page {
             'url' => $fileurl,
             'filename' => $filename
         ]);
+    }
+
+    public static function ajax_mark_exported() {
+        check_ajax_referer('mg_temu_nonce', 'nonce');
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Nincs jogosultság.');
+        }
+
+        $ids = isset($_POST['ids']) ? array_map('intval', (array) $_POST['ids']) : [];
+        $now = current_time('Y-m-d H:i');
+        $updated = 0;
+
+        foreach ($ids as $id) {
+            if ($id <= 0) continue;
+            $post = get_post($id);
+            if (!$post || $post->post_type !== 'product') continue;
+            update_post_meta($id, '_mg_temu_exported', $now);
+            $updated++;
+        }
+
+        wp_send_json_success(['updated' => $updated]);
     }
 }
