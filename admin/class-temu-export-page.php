@@ -534,10 +534,11 @@ class MG_Temu_Export_Page {
         ];
 
         if ($only_unexported) {
-            $args['meta_query'] = [[
-                'key'     => '_mg_temu_exported',
-                'compare' => 'NOT EXISTS',
-            ]];
+            global $wpdb;
+            $exported_ids = $wpdb->get_col(
+                "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_mg_temu_exported' AND meta_value != ''"
+            );
+            $args['exclude'] = !empty($exported_ids) ? $exported_ids : [-1];
         }
 
         if ($category_id > 0) {
