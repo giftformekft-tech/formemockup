@@ -10,6 +10,7 @@ class MG_Temu_Export_Page {
         add_action('wp_ajax_mg_temu_get_variants', [self::class, 'ajax_get_variants']);
         add_action('wp_ajax_mg_temu_generate_export', [self::class, 'ajax_generate_export']);
         add_action('wp_ajax_mg_temu_mark_exported', [self::class, 'ajax_mark_exported']);
+        add_action('wp_ajax_mg_temu_save_name_suffix', [self::class, 'ajax_save_name_suffix']);
     }
 
     public static function render_page() {
@@ -19,6 +20,14 @@ class MG_Temu_Export_Page {
                 <div class="mg-panel-section__header">
                     <h2><?php esc_html_e('Temu Export (CSV)', 'mockup-generator'); ?></h2>
                     <p><?php esc_html_e('Generálj Temu-kompatibilis CSV fájlt a termékeidből két egyszerű lépésben.', 'mockup-generator'); ?></p>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                    <label style="font-weight:600;white-space:nowrap;"><?php esc_html_e('Névhez hozzáfűzendő egyedi mező:', 'mockup-generator'); ?></label>
+                    <input type="text" id="mg-temu-name-suffix" value="<?php echo esc_attr(get_option('mg_temu_name_suffix', '')); ?>" style="flex:1;max-width:400px;" placeholder="pl. Hungary" />
+                    <button type="button" class="button" id="mg-temu-save-suffix"><?php esc_html_e('Mentés', 'mockup-generator'); ?></button>
+                    <span id="mg-temu-suffix-status" style="font-style:italic;color:#666;font-size:12px;"></span>
+                    <span style="color:#888;font-size:12px;"><?php esc_html_e('Exportban: Terméknév + típus + ez a mező', 'mockup-generator'); ?></span>
                 </div>
 
                 <div id="mg-temu-app" class="mg-temu-app">
@@ -132,6 +141,29 @@ class MG_Temu_Export_Page {
             let currentPage = 1;
             let productsPerPage = 25;
             let selectedProducts = {};
+
+            // --- Egyedi névmező mentése ---
+            $('#mg-temu-save-suffix').on('click', function() {
+                const val = $('#mg-temu-name-suffix').val();
+                const $btn = $(this).prop('disabled', true).text('Mentés...');
+                $('#mg-temu-suffix-status').text('');
+                $.post(ajaxurl, {
+                    action: 'mg_temu_save_name_suffix',
+                    value: val,
+                    nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
+                }, function(resp) {
+                    $btn.prop('disabled', false).text('Mentés');
+                    if (resp.success) {
+                        $('#mg-temu-suffix-status').text('✓ Elmentve').css('color', '#1a7a35');
+                        setTimeout(() => $('#mg-temu-suffix-status').text(''), 3000);
+                    } else {
+                        $('#mg-temu-suffix-status').text('Hiba!').css('color', '#d63638');
+                    }
+                }).fail(function() {
+                    $btn.prop('disabled', false).text('Mentés');
+                    $('#mg-temu-suffix-status').text('Kommunikációs hiba.').css('color', '#d63638');
+                });
+            });
 
             // --- Step 1: Product List ---
 
@@ -751,10 +783,13 @@ class MG_Temu_Export_Page {
                 $export_description = $product->get_description(); // Fallback ha egyáltalán nincs SEO leírás
             }
 
+            $name_suffix = get_option('mg_temu_name_suffix', '');
+            $export_name = trim($product->get_name() . ' ' . $type_label . ' ' . $name_suffix);
+
             $rows[] = [
-                $product->get_name(), // Termék név
-                $sku_generated,       // SKU
-                $sub_sku,             // Sub SKU
+                $export_name,   // Termék név + típus + egyedi mező
+                $sku_generated, // SKU
+                $sub_sku,       // Sub SKU
                 $color_label,         // Szín
                 $size,                // Méret
                 $export_description,  // Leírás
@@ -768,9 +803,9 @@ class MG_Temu_Export_Page {
                 $sub_sku_14y = $sku_generated . $letters_14y . $numbers_14y;
 
                 $rows[] = [
-                    $product->get_name(), // Termék név
-                    $sku_generated,       // SKU
-                    $sub_sku_14y,         // Kamu méret új Sub SKU-ja
+                    $export_name,   // Termék név + típus + egyedi mező
+                    $sku_generated, // SKU
+                    $sub_sku_14y,   // Kamu méret új Sub SKU-ja
                     $color_label,         // Szín
                     '14Y',                // Kamu méret
                     $export_description,  // Leírás
@@ -828,5 +863,15 @@ class MG_Temu_Export_Page {
         }
 
         wp_send_json_success(['updated' => $updated]);
+    }
+
+    public static function ajax_save_name_suffix() {
+        check_ajax_referer('mg_temu_nonce', 'nonce');
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error('Nincs jogosultság.');
+        }
+        $value = isset($_POST['value']) ? sanitize_text_field(wp_unslash($_POST['value'])) : '';
+        update_option('mg_temu_name_suffix', $value);
+        wp_send_json_success();
     }
 }
