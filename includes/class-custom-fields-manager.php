@@ -163,6 +163,10 @@ class MG_Custom_Fields_Manager {
         update_option(self::OPTION_KEY, $data, false);
     }
 
+    public static function get_all_presets_public() {
+        return self::get_all_presets();
+    }
+
     protected static function get_all_presets() {
         if (is_array(self::$cached_presets)) {
             return self::$cached_presets;

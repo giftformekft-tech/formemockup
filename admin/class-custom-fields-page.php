@@ -673,6 +673,17 @@ class MG_Custom_Fields_Page {
         echo '<input type="hidden" name="mg_custom_fields_action" value="save_product_assignments" />';
         echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
 
+        // Termék → más presetek térképe
+        $all_presets = MG_Custom_Fields_Manager::get_all_presets_public();
+        $product_other_presets = array();
+        foreach ($all_presets as $pid => $pdata) {
+            if ($pid === $preset_id) continue;
+            $pname = isset($pdata['name']) ? $pdata['name'] : $pid;
+            foreach ((array)(isset($pdata['product_ids']) ? $pdata['product_ids'] : array()) as $prod_id) {
+                $product_other_presets[intval($prod_id)][] = $pname;
+            }
+        }
+
         echo '<div class="mgcf-table-wrap">';
         echo '<table class="widefat striped mgcf-table">';
         echo '<thead><tr>';
@@ -680,25 +691,36 @@ class MG_Custom_Fields_Page {
         echo '<th class="mgcf-table__image">' . esc_html__('Kép', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Termék', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mgcf') . '</th>';
+        echo '<th>' . esc_html__('Más preset', 'mgcf') . '</th>';
         echo '</tr></thead>';
         echo '<tbody>';
         foreach ($products as $product) {
-            $is_assigned = in_array($product->ID, $assigned_product_ids, true);
-            $status = get_post_status_object($product->post_status);
+            $is_assigned  = in_array($product->ID, $assigned_product_ids, true);
+            $status       = get_post_status_object($product->post_status);
             $status_label = $status ? $status->label : $product->post_status;
-            $thumbnail = get_the_post_thumbnail($product->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
+            $thumbnail    = get_the_post_thumbnail($product->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
             if (empty($thumbnail)) {
                 $thumbnail = '<span class="mgcf-no-image">—</span>';
             }
+            $other_presets = isset($product_other_presets[$product->ID]) ? $product_other_presets[$product->ID] : array();
 
-            // Track which product IDs are visible on this page
             echo '<input type="hidden" name="visible_product_ids[]" value="' . esc_attr($product->ID) . '" />';
 
-            echo '<tr>';
+            $row_class = !empty($other_presets) ? ' class="mgcf-row--other-preset"' : '';
+            echo '<tr' . $row_class . '>';
             echo '<td class="mgcf-table__check"><input type="checkbox" name="product_ids[]" value="' . esc_attr($product->ID) . '"' . checked($is_assigned, true, false) . ' /></td>';
             echo '<td class="mgcf-table__image">' . $thumbnail . '</td>';
             echo '<td>' . esc_html(get_the_title($product)) . '</td>';
             echo '<td>' . esc_html($status_label) . '</td>';
+            echo '<td>';
+            if (!empty($other_presets)) {
+                foreach ($other_presets as $oname) {
+                    echo '<span class="mgcf-other-preset-badge" title="' . esc_attr(__('Már hozzárendelve ehhez a presethez', 'mgcf')) . '">' . esc_html($oname) . '</span> ';
+                }
+            } else {
+                echo '<span style="color:#aaa;">—</span>';
+            }
+            echo '</td>';
             echo '</tr>';
         }
         echo '</tbody></table>';
