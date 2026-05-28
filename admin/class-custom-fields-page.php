@@ -586,16 +586,41 @@ class MG_Custom_Fields_Page {
     }
 
     protected static function render_product_assignment_section($preset_id, $assigned_product_ids) {
-        $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
-        $per_page = isset($_GET['per_page']) ? intval($_GET['per_page']) : 25;
+        $page         = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+        $per_page     = isset($_GET['per_page']) ? intval($_GET['per_page']) : 25;
+        $only_assigned = !empty($_GET['only_assigned']);
         if (!in_array($per_page, array(25, 50, 100), true)) {
             $per_page = 25;
         }
 
-        $data = MG_Custom_Fields_Manager::get_custom_products_paginated($page, $per_page);
-        $products = $data['products'];
-        $total = $data['total'];
-        $pages = $data['pages'];
+        $base_url = add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php'));
+
+        if ($only_assigned) {
+            // Csak a hozzárendelt termékek
+            if (empty($assigned_product_ids)) {
+                $products = array();
+                $total    = 0;
+                $pages    = 1;
+            } else {
+                $offset = ($page - 1) * $per_page;
+                $slice  = array_slice($assigned_product_ids, $offset, $per_page);
+                $posts  = get_posts(array(
+                    'post_type'      => 'product',
+                    'post__in'       => $slice,
+                    'orderby'        => 'post__in',
+                    'posts_per_page' => $per_page,
+                    'post_status'    => 'any',
+                ));
+                $products = $posts;
+                $total    = count($assigned_product_ids);
+                $pages    = max(1, ceil($total / $per_page));
+            }
+        } else {
+            $data     = MG_Custom_Fields_Manager::get_custom_products_paginated($page, $per_page);
+            $products = $data['products'];
+            $total    = $data['total'];
+            $pages    = $data['pages'];
+        }
 
         echo '<section class="mgcf-section">';
         echo '<div class="mgcf-section__header">';
@@ -603,7 +628,7 @@ class MG_Custom_Fields_Page {
         echo '<p>' . esc_html__('Jelöld be azokat a termékeket, amelyekre ez a preset vonatkozzon.', 'mgcf') . '</p>';
         echo '</div>';
 
-        if (empty($products) && $total === 0) {
+        if (!$only_assigned && empty($products) && $total === 0) {
             echo '<div class="mgcf-empty">';
             echo '<p>' . esc_html__('Nincsenek egyedi termékek. Először jelölj ki termékeket egyediként a bulk feltöltő oldalon.', 'mgcf') . '</p>';
             echo '</div>';
@@ -611,12 +636,14 @@ class MG_Custom_Fields_Page {
             return;
         }
 
-        // Per-page selector
-        $base_url = add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php'));
+        // Per-page + toggle szűrő
         echo '<div class="mgcf-pagination-controls">';
         echo '<form method="get" class="mgcf-per-page-form">';
         echo '<input type="hidden" name="page" value="mockup-generator-custom-fields" />';
         echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
+        if ($only_assigned) {
+            echo '<input type="hidden" name="only_assigned" value="1" />';
+        }
         echo '<label>' . esc_html__('Elemek oldalanként:', 'mgcf') . ' ';
         echo '<select name="per_page" onchange="this.form.submit()">';
         foreach (array(25, 50, 100) as $opt) {
@@ -624,6 +651,19 @@ class MG_Custom_Fields_Page {
         }
         echo '</select></label>';
         echo '</form>';
+
+        // Toggle gomb
+        if ($only_assigned) {
+            $toggle_url   = add_query_arg(array('paged' => 1, 'per_page' => $per_page, 'only_assigned' => 0), $base_url);
+            $toggle_label = __('Összes mutatása', 'mgcf');
+            $toggle_class = 'button button-primary';
+        } else {
+            $toggle_url   = add_query_arg(array('paged' => 1, 'per_page' => $per_page, 'only_assigned' => 1), $base_url);
+            $toggle_label = sprintf(__('Csak hozzárendeltek (%d)', 'mgcf'), count($assigned_product_ids));
+            $toggle_class = 'button';
+        }
+        echo '<a href="' . esc_url($toggle_url) . '" class="' . esc_attr($toggle_class) . '">' . esc_html($toggle_label) . '</a>';
+
         echo '<span class="mgcf-total">' . esc_html(sprintf(__('Összesen: %d termék', 'mgcf'), $total)) . '</span>';
         echo '</div>';
 
@@ -633,6 +673,17 @@ class MG_Custom_Fields_Page {
         echo '<input type="hidden" name="mg_custom_fields_action" value="save_product_assignments" />';
         echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
 
+        // Termék → más presetek térképe
+        $all_presets = MG_Custom_Fields_Manager::get_all_presets_public();
+        $product_other_presets = array();
+        foreach ($all_presets as $pid => $pdata) {
+            if ($pid === $preset_id) continue;
+            $pname = isset($pdata['name']) ? $pdata['name'] : $pid;
+            foreach ((array)(isset($pdata['product_ids']) ? $pdata['product_ids'] : array()) as $prod_id) {
+                $product_other_presets[intval($prod_id)][] = $pname;
+            }
+        }
+
         echo '<div class="mgcf-table-wrap">';
         echo '<table class="widefat striped mgcf-table">';
         echo '<thead><tr>';
@@ -640,25 +691,36 @@ class MG_Custom_Fields_Page {
         echo '<th class="mgcf-table__image">' . esc_html__('Kép', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Termék', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Állapot', 'mgcf') . '</th>';
+        echo '<th>' . esc_html__('Más preset', 'mgcf') . '</th>';
         echo '</tr></thead>';
         echo '<tbody>';
         foreach ($products as $product) {
-            $is_assigned = in_array($product->ID, $assigned_product_ids, true);
-            $status = get_post_status_object($product->post_status);
+            $is_assigned  = in_array($product->ID, $assigned_product_ids, true);
+            $status       = get_post_status_object($product->post_status);
             $status_label = $status ? $status->label : $product->post_status;
-            $thumbnail = get_the_post_thumbnail($product->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
+            $thumbnail    = get_the_post_thumbnail($product->ID, array(80, 80), array('class' => 'mgcf-product-thumb'));
             if (empty($thumbnail)) {
                 $thumbnail = '<span class="mgcf-no-image">—</span>';
             }
+            $other_presets = isset($product_other_presets[$product->ID]) ? $product_other_presets[$product->ID] : array();
 
-            // Track which product IDs are visible on this page
             echo '<input type="hidden" name="visible_product_ids[]" value="' . esc_attr($product->ID) . '" />';
 
-            echo '<tr>';
+            $row_class = !empty($other_presets) ? ' class="mgcf-row--other-preset"' : '';
+            echo '<tr' . $row_class . '>';
             echo '<td class="mgcf-table__check"><input type="checkbox" name="product_ids[]" value="' . esc_attr($product->ID) . '"' . checked($is_assigned, true, false) . ' /></td>';
             echo '<td class="mgcf-table__image">' . $thumbnail . '</td>';
             echo '<td>' . esc_html(get_the_title($product)) . '</td>';
             echo '<td>' . esc_html($status_label) . '</td>';
+            echo '<td>';
+            if (!empty($other_presets)) {
+                foreach ($other_presets as $oname) {
+                    echo '<span class="mgcf-other-preset-badge" title="' . esc_attr(__('Már hozzárendelve ehhez a presethez', 'mgcf')) . '">' . esc_html($oname) . '</span> ';
+                }
+            } else {
+                echo '<span style="color:#aaa;">—</span>';
+            }
+            echo '</td>';
             echo '</tr>';
         }
         echo '</tbody></table>';
@@ -668,7 +730,7 @@ class MG_Custom_Fields_Page {
         if ($pages > 1) {
             echo '<div class="mgcf-pagination">';
             for ($i = 1; $i <= $pages; $i++) {
-                $url = add_query_arg(array('paged' => $i, 'per_page' => $per_page), $base_url);
+                $url = add_query_arg(array('paged' => $i, 'per_page' => $per_page, 'only_assigned' => $only_assigned ? 1 : 0), $base_url);
                 $class = $i === $page ? 'button button-primary' : 'button';
                 echo '<a href="' . esc_url($url) . '" class="' . $class . '">' . $i . '</a> ';
             }

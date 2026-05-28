@@ -76,6 +76,8 @@ add_action('plugins_loaded', function(){
         'includes/class-google-customer-reviews.php',
         'includes/class-google-ads-tracking.php',
         'includes/class-google-ads-settings.php',
+        'includes/class-facebook-pixel.php',
+        'includes/class-facebook-pixel-settings.php',
 
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
@@ -243,6 +245,12 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Google_Ads_Settings')) {
         MG_Google_Ads_Settings::init();
+    }
+    if (class_exists('MG_Facebook_Pixel')) {
+        MG_Facebook_Pixel::init();
+    }
+    if (class_exists('MG_Facebook_Pixel_Settings')) {
+        MG_Facebook_Pixel_Settings::init();
     }
     if (class_exists('MG_Email_Footer')) {
         MG_Email_Footer::init();

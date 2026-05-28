@@ -163,6 +163,10 @@ class MG_Custom_Fields_Manager {
         update_option(self::OPTION_KEY, $data, false);
     }
 
+    public static function get_all_presets_public() {
+        return self::get_all_presets();
+    }
+
     protected static function get_all_presets() {
         if (is_array(self::$cached_presets)) {
             return self::$cached_presets;
@@ -512,11 +516,11 @@ class MG_Custom_Fields_Manager {
         if (!$preset) {
             return false;
         }
+
         $fields = isset($preset['fields']) && is_array($preset['fields']) ? $preset['fields'] : array();
-        if (empty($fields)) {
-            return false;
+        if (!empty($fields)) {
+            self::save_fields_for_product($product_id, $fields);
         }
-        self::save_fields_for_product($product_id, $fields);
         self::set_custom_product($product_id, true);
 
         // Register the product in the preset's product_ids list so it
