@@ -35,6 +35,12 @@ class MG_Facebook_Pixel_Settings {
         if (isset($input['pixel_id'])) {
             $sanitized['pixel_id'] = sanitize_text_field($input['pixel_id']);
         }
+        if (isset($input['access_token'])) {
+            $sanitized['access_token'] = sanitize_text_field($input['access_token']);
+        }
+        if (isset($input['test_event_code'])) {
+            $sanitized['test_event_code'] = sanitize_text_field($input['test_event_code']);
+        }
         return $sanitized;
     }
 
@@ -43,7 +49,7 @@ class MG_Facebook_Pixel_Settings {
             return;
         }
 
-        $settings = get_option('mg_fb_pixel_settings', array('pixel_id' => ''));
+        $settings = get_option('mg_fb_pixel_settings', array('pixel_id' => '', 'access_token' => '', 'test_event_code' => ''));
         ?>
         <div class="wrap">
             <h1>Meta (Facebook) Pixel (Mockup Generator)</h1>
@@ -57,7 +63,21 @@ class MG_Facebook_Pixel_Settings {
                         <th scope="row"><label for="pixel_id">Pixel ID (Pl.: 123456789012345)</label></th>
                         <td>
                             <input type="text" id="pixel_id" name="mg_fb_pixel_settings[pixel_id]" value="<?php echo esc_attr($settings['pixel_id'] ?? ''); ?>" class="regular-text" placeholder="123456789012345" />
-                            <p class="description">A Meta Business Suite → Eseménykezelő → Adatforrások alatt találod. Csak a számokat add meg.</p>
+                            <p class="description">Meta Business Suite → Eseménykezelő → Adatforrások. Csak a számokat add meg.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="access_token">Conversions API Access Token</label></th>
+                        <td>
+                            <input type="text" id="access_token" name="mg_fb_pixel_settings[access_token]" value="<?php echo esc_attr($settings['access_token'] ?? ''); ?>" class="large-text" placeholder="EAAxxxxxxxx..." />
+                            <p class="description">Meta Business Suite → Eseménykezelő → <strong>Beállítások → Conversions API → Token generálása</strong>. Ha üres, a CAPI ki van kapcsolva.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="test_event_code">Test Event Code <em>(opcionális)</em></label></th>
+                        <td>
+                            <input type="text" id="test_event_code" name="mg_fb_pixel_settings[test_event_code]" value="<?php echo esc_attr($settings['test_event_code'] ?? ''); ?>" class="regular-text" placeholder="TEST12345" />
+                            <p class="description">Eseménykezelő → Test Events alatt találod. Csak tesztelés alatt töltsd ki – éles üzemben hagyd üresen!</p>
                         </td>
                     </tr>
                 </table>
@@ -100,7 +120,7 @@ class MG_Facebook_Pixel_Settings {
                     <tr>
                         <td><strong>Purchase</strong></td>
                         <td>Köszönöm oldalon (sikeres rendelés)</td>
-                        <td>content_ids, value, currency, num_items + Advanced Matching</td>
+                        <td>content_ids, value, currency, num_items + Advanced Matching<br><em>+ CAPI (szerver-oldali) – ha Access Token meg van adva</em></td>
                     </tr>
                 </tbody>
             </table>

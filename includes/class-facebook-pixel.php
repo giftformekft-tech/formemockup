@@ -27,6 +27,16 @@ class MG_Facebook_Pixel {
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
         add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_initiate_checkout_event'), 5);
         add_action('woocommerce_after_add_to_cart_button', array(__CLASS__, 'output_add_to_cart_script'), 10);
+
+        // CAPI (Conversions API) – szerver-oldali eseményküldés
+        $settings = get_option('mg_fb_pixel_settings', array());
+        if (!empty($settings['access_token'])) {
+            // FB cookie-k mentése rendelés metába (thankyou oldalon már lehet, hogy nincs cookie)
+            add_action('woocommerce_checkout_order_processed', array(__CLASS__, 'save_fb_cookies_to_order'), 10, 1);
+            add_action('woocommerce_store_api_checkout_order_processed', array(__CLASS__, 'save_fb_cookies_to_order'), 10, 1);
+            // Purchase CAPI – 20-as prioritás, a pixel (10) után fut
+            add_action('woocommerce_thankyou', array(__CLASS__, 'send_capi_purchase'), 20, 1);
+        }
     }
 
     private static function get_pixel_id() {
@@ -344,6 +354,190 @@ class MG_Facebook_Pixel {
         })();
         </script>
         <?php
+    }
+
+    // -------------------------------------------------------------------------
+    // CAPI – Conversions API (szerver-oldali eseményküldés)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Elmenti az _fbp és _fbc cookie-kat a rendelés metaadatai közé.
+     * A thankyou oldalon esetleg már nincs cookie (redirect, cache), ezért
+     * a checkout feldolgozásakor menti el.
+     */
+    public static function save_fb_cookies_to_order($order_or_id) {
+        $order_id = is_object($order_or_id) ? $order_or_id->get_id() : (int) $order_or_id;
+        $order    = wc_get_order($order_id);
+        if (!$order) return;
+
+        if (!empty($_COOKIE['_fbp'])) {
+            $order->update_meta_data('_mg_fbp', sanitize_text_field($_COOKIE['_fbp']));
+        }
+        if (!empty($_COOKIE['_fbc'])) {
+            $order->update_meta_data('_mg_fbc', sanitize_text_field($_COOKIE['_fbc']));
+        }
+        $order->save();
+    }
+
+    /**
+     * Felépíti a CAPI user_data tömböt: hashelt vásárlóadatok + IP + UA + FB cookie-k.
+     */
+    private static function build_capi_user_data($order) {
+        $ud = array(
+            'client_ip_address' => self::get_client_ip(),
+            'client_user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '',
+        );
+
+        // _fbp és _fbc: előnyben a rendelés metaadata (checkout alatt mentve)
+        $fbp = $order->get_meta('_mg_fbp') ?: (isset($_COOKIE['_fbp']) ? sanitize_text_field($_COOKIE['_fbp']) : '');
+        $fbc = $order->get_meta('_mg_fbc') ?: (isset($_COOKIE['_fbc']) ? sanitize_text_field($_COOKIE['_fbc']) : '');
+        if (!empty($fbp)) $ud['fbp'] = $fbp;
+        if (!empty($fbc)) $ud['fbc'] = $fbc;
+
+        // Hashelt vásárlóadatok (SHA-256, normalizált)
+        $email = strtolower(trim($order->get_billing_email()));
+        $phone = preg_replace('/[^0-9]/', '', $order->get_billing_phone());
+        if (strlen($phone) === 11 && substr($phone, 0, 2) === '06') {
+            $phone = '36' . substr($phone, 2);
+        }
+        $fn      = strtolower(preg_replace('/\s+/', '', $order->get_billing_first_name()));
+        $ln      = strtolower(preg_replace('/\s+/', '', $order->get_billing_last_name()));
+        $city    = strtolower(preg_replace('/\s+/', '', $order->get_billing_city()));
+        $zip     = strtolower(preg_replace('/\s+/', '', $order->get_billing_postcode()));
+        $country = strtolower($order->get_billing_country());
+
+        if (!empty($email))   $ud['em']      = hash('sha256', $email);
+        if (!empty($phone))   $ud['ph']      = hash('sha256', $phone);
+        if (!empty($fn))      $ud['fn']      = hash('sha256', $fn);
+        if (!empty($ln))      $ud['ln']      = hash('sha256', $ln);
+        if (!empty($city))    $ud['ct']      = hash('sha256', $city);
+        if (!empty($zip))     $ud['zp']      = hash('sha256', $zip);
+        if (!empty($country)) $ud['country'] = hash('sha256', $country);
+
+        return $ud;
+    }
+
+    /**
+     * Visszaadja a látogató valódi IP-jét (proxy-tudatos).
+     */
+    private static function get_client_ip() {
+        foreach (array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR') as $key) {
+            if (!empty($_SERVER[$key])) {
+                return trim(explode(',', $_SERVER[$key])[0]);
+            }
+        }
+        return '';
+    }
+
+    /**
+     * Elküldi az eseményt a Meta Graph API-ra (szerver → szerver).
+     * Non-blocking: nem lassítja az oldal betöltést.
+     */
+    private static function send_capi_event($event_name, $custom_data, $user_data, $event_id = '', $source_url = '') {
+        $settings     = get_option('mg_fb_pixel_settings', array());
+        $pixel_id     = $settings['pixel_id'] ?? '';
+        $access_token = $settings['access_token'] ?? '';
+
+        if (empty($pixel_id) || empty($access_token)) {
+            return false;
+        }
+
+        $event = array(
+            'event_name'       => $event_name,
+            'event_time'       => time(),
+            'action_source'    => 'website',
+            'event_source_url' => $source_url ?: (is_ssl() ? 'https' : 'http') . '://' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '') . (isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/'),
+            'user_data'        => $user_data,
+            'custom_data'      => $custom_data,
+        );
+
+        if (!empty($event_id)) {
+            $event['event_id'] = (string) $event_id;
+        }
+
+        $payload = array(
+            'data'         => array($event),
+            'access_token' => $access_token,
+        );
+
+        $test_code = $settings['test_event_code'] ?? '';
+        if (!empty($test_code)) {
+            $payload['test_event_code'] = $test_code;
+        }
+
+        wp_remote_post(
+            'https://graph.facebook.com/v21.0/' . rawurlencode($pixel_id) . '/events',
+            array(
+                'body'     => wp_json_encode($payload),
+                'headers'  => array('Content-Type' => 'application/json'),
+                'timeout'  => 8,
+                'blocking' => false,
+            )
+        );
+
+        return true;
+    }
+
+    /**
+     * CAPI Purchase esemény – a köszönöm oldalon fut, a pixel event után (prio 20).
+     * Az event_id = rendelésszám, megegyezik a pixel eventID-jával → deduplication.
+     */
+    public static function send_capi_purchase($order_id) {
+        if (!$order_id) return;
+
+        $order = wc_get_order($order_id);
+        if (!$order) return;
+
+        // Duplikáció-védelem: oldal-frissítésre sem küld kétszer
+        if ($order->get_meta('_mg_fb_capi_purchase_sent')) return;
+        $order->update_meta_data('_mg_fb_capi_purchase_sent', time());
+        $order->save();
+
+        $content_ids = array();
+        $num_items   = 0;
+
+        foreach ($order->get_items() as $item) {
+            $product = $item->get_product();
+            if (!$product) continue;
+
+            $type_slug   = '';
+            $direct_slug = $item->get_meta('mg_product_type');
+            if (!empty($direct_slug)) {
+                $type_slug = sanitize_title($direct_slug);
+            }
+            if (empty($type_slug)) {
+                $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
+                if (!$type_label) $type_label = $item->get_meta('Terméktípus');
+                if ($type_label) {
+                    $catalog_flat = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
+                    foreach ($catalog_flat as $raw_slug => $data) {
+                        if (isset($data['label']) && $data['label'] === $type_label) {
+                            $type_slug = sanitize_title($raw_slug);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            $content_ids[] = self::get_virtual_item_id($product, $type_slug, false);
+            $num_items    += $item->get_quantity();
+        }
+
+        $custom_data = array(
+            'value'        => (float) $order->get_total(),
+            'currency'     => $order->get_currency(),
+            'content_ids'  => $content_ids,
+            'content_type' => 'product',
+            'num_items'    => $num_items,
+        );
+
+        self::send_capi_event(
+            'Purchase',
+            $custom_data,
+            self::build_capi_user_data($order),
+            $order->get_order_number(),
+            $order->get_checkout_order_received_url()
+        );
     }
 
     /**
