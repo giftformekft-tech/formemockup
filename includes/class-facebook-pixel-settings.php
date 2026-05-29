@@ -12,7 +12,7 @@ class MG_Facebook_Pixel_Settings {
 
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_settings_page'));
-        add_action('admin_init', array(__CLASS__, 'register_settings'));
+        add_action('admin_post_mg_fb_pixel_save', array(__CLASS__, 'handle_save'));
     }
 
     public static function add_settings_page() {
@@ -26,22 +26,24 @@ class MG_Facebook_Pixel_Settings {
         );
     }
 
-    public static function register_settings() {
-        register_setting('mg_fb_pixel_settings_group', 'mg_fb_pixel_settings', array(__CLASS__, 'sanitize_settings'));
-    }
+    public static function handle_save() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_fb_pixel_save_action');
 
-    public static function sanitize_settings($input) {
-        $sanitized = array();
-        if (isset($input['pixel_id'])) {
-            $sanitized['pixel_id'] = sanitize_text_field($input['pixel_id']);
-        }
-        if (isset($input['access_token'])) {
-            $sanitized['access_token'] = sanitize_text_field($input['access_token']);
-        }
-        if (isset($input['test_event_code'])) {
-            $sanitized['test_event_code'] = sanitize_text_field($input['test_event_code']);
-        }
-        return $sanitized;
+        $input = isset($_POST['mg_fb_pixel_settings']) ? $_POST['mg_fb_pixel_settings'] : array();
+
+        $saved = array(
+            'pixel_id'        => isset($input['pixel_id'])        ? trim(wp_strip_all_tags($input['pixel_id']))        : '',
+            'access_token'    => isset($input['access_token'])    ? trim(wp_strip_all_tags($input['access_token']))    : '',
+            'test_event_code' => isset($input['test_event_code']) ? trim(wp_strip_all_tags($input['test_event_code'])) : '',
+        );
+
+        update_option('mg_fb_pixel_settings', $saved);
+
+        wp_redirect(admin_url('admin.php?page=mg-fb-pixel-settings&updated=1'));
+        exit;
     }
 
     public static function render_settings_page() {
@@ -53,10 +55,16 @@ class MG_Facebook_Pixel_Settings {
         ?>
         <div class="wrap">
             <h1>Meta (Facebook) Pixel (Mockup Generator)</h1>
+
+            <?php if (isset($_GET['updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong></p></div>
+            <?php endif; ?>
+
             <p>A Meta Pixel automatikusan beküldi az összes fontos vásárlói eseményt (PageView, ViewContent, AddToCart, InitiateCheckout, Purchase) a virtuális variáns ID-kkal. Advanced Matching (hashelt vásárlóadatok) automatikusan működik a Purchase eseménynél.</p>
 
-            <form method="post" action="options.php">
-                <?php settings_fields('mg_fb_pixel_settings_group'); ?>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="mg_fb_pixel_save">
+                <?php wp_nonce_field('mg_fb_pixel_save_action'); ?>
 
                 <table class="form-table">
                     <tr>
