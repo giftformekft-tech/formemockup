@@ -5,6 +5,12 @@ if (!defined('ABSPATH')) {
 
 class MG_Facebook_Catalog_Feed {
 
+    /**
+     * Feed-en belüli egyediség biztosításához: már kiadott g:id-k.
+     * Reset minden feed generáláskor.
+     */
+    private static $seen_ids = array();
+
     public static function init() {
         add_action('init', array(__CLASS__, 'add_rewrite_rules'));
         add_action('init', array(__CLASS__, 'check_feed_request'));
@@ -131,6 +137,9 @@ class MG_Facebook_Catalog_Feed {
 
         $product_ids = get_posts($args);
 
+        // Egyediség-tracker reset a teljes feedre
+        self::$seen_ids = array();
+
         foreach ($product_ids as $product_id) {
             $xml_chunk = self::get_product_xml($product_id);
             if ($xml_chunk) {
@@ -187,9 +196,18 @@ class MG_Facebook_Catalog_Feed {
             
             // Unique ID for this Variant Type
             $g_id = $base_sku . '_' . $type_slug;
-            
-            // Title: Product Name + Type Label
-            $g_title = $product->get_name() . ' - ' . $type_label;
+
+            // Garantált egyediség a feeden belül: ha ütközik (pl. két termék
+            // azonos SKU-val), a product_id-val tesszük egyedivé. Ez megegyezik
+            // a pixel content_ids logikájával minden olyan terméknél, ahol a
+            // SKU egyedi – csak a valós SKU-ütközéseknél tér el.
+            if (isset(self::$seen_ids[$g_id])) {
+                $g_id = $base_sku . '_' . $product_id . '_' . $type_slug;
+            }
+            self::$seen_ids[$g_id] = true;
+
+            // Title: Product Name + Type Label (Facebook ajánlott max ~150 karakter)
+            $g_title = self::truncate_title($product->get_name() . ' - ' . $type_label);
             
             // Description
             $g_description = $product->get_short_description();
@@ -344,6 +362,36 @@ class MG_Facebook_Catalog_Feed {
             $output .= '</item>' . PHP_EOL;
         }
         return $output;
+    }
+
+    /**
+     * Levágja a címet a Facebook által javasolt hosszra, szóhatáron.
+     * A Facebook hard limit 200 karakter, az ajánlott ~150 alatt.
+     */
+    private static function truncate_title($title, $max = 150) {
+        $title = trim(preg_replace('/\s+/', ' ', $title));
+        if (function_exists('mb_strlen')) {
+            if (mb_strlen($title) <= $max) {
+                return $title;
+            }
+            $truncated = mb_substr($title, 0, $max);
+            $last_space = mb_strrpos($truncated, ' ');
+            // Csak akkor vágunk szóhatáron, ha nem dobjuk el a cím nagy részét
+            if ($last_space !== false && $last_space > $max * 0.6) {
+                $truncated = mb_substr($truncated, 0, $last_space);
+            }
+            return trim($truncated);
+        }
+        // Fallback mbstring nélkül
+        if (strlen($title) <= $max) {
+            return $title;
+        }
+        $truncated = substr($title, 0, $max);
+        $last_space = strrpos($truncated, ' ');
+        if ($last_space !== false && $last_space > $max * 0.6) {
+            $truncated = substr($truncated, 0, $last_space);
+        }
+        return trim($truncated);
     }
 
     private static function xml_sanitize($text) {
