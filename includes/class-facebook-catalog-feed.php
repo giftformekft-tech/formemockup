@@ -388,20 +388,16 @@ class MG_Facebook_Catalog_Feed {
             return mb_substr($type_label, 0, $max);
         }
 
-        // A budgetig levágott rész utolsó szóköze adja a vágási pontot,
-        // így az utolsó szó sosem marad félbevágva.
-        $last_space = mb_strrpos(mb_substr($product_name, 0, $budget), ' ');
+        // A budget utáni első szóközéig megy – így az utolsó szó nem esik ki.
+        // (150 karakter ajánlott, nem kötelező – a Facebook hard limitje 200.)
+        $next_space = mb_strpos($product_name, ' ', $budget);
 
-        if ($last_space !== false && $last_space > 0) {
-            $truncated = mb_substr($product_name, 0, $last_space);
+        if ($next_space !== false) {
+            $truncated = mb_substr($product_name, 0, $next_space);
         } else {
-            // Nincs használható szóköz a budgeten belül (az első szó hosszabb,
-            // mint a rendelkezésre álló hely). Ilyenkor inkább az első egész
-            // szót tartjuk meg, mintsem félbevágjuk – kicsivel túlléphet a limiten.
-            $first_space = mb_strpos($product_name, ' ');
-            $truncated = ($first_space === false)
-                ? $product_name                          // a név egyetlen szó
-                : mb_substr($product_name, 0, $first_space);
+            // Nincs szóköz a budget után: a terméknév rövidebb mint a budget,
+            // vagy egyetlen hosszú szó – teljes egészében megtartjuk.
+            $truncated = $product_name;
         }
 
         return trim($truncated) . $separator . $type_label;
