@@ -5,14 +5,14 @@ if (!defined('ABSPATH')) {
 
 /**
  * Class MG_Google_Ads_Settings
- * 
+ *
  * Regisztrálja a beállítási felületet a Google Ads követéshez.
  */
 class MG_Google_Ads_Settings {
 
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_settings_page'));
-        add_action('admin_init', array(__CLASS__, 'register_settings'));
+        add_action('admin_post_mg_gads_save', array(__CLASS__, 'handle_save'));
     }
 
     public static function add_settings_page() {
@@ -26,19 +26,23 @@ class MG_Google_Ads_Settings {
         );
     }
 
-    public static function register_settings() {
-        register_setting('mg_gads_settings_group', 'mg_gads_settings', array(__CLASS__, 'sanitize_settings'));
-    }
+    public static function handle_save() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_gads_save_action');
 
-    public static function sanitize_settings($input) {
-        $sanitized = array();
-        if (isset($input['conversion_id'])) {
-            $sanitized['conversion_id'] = sanitize_text_field($input['conversion_id']);
-        }
-        if (isset($input['purchase_label'])) {
-            $sanitized['purchase_label'] = sanitize_text_field($input['purchase_label']);
-        }
-        return $sanitized;
+        $input = isset($_POST['mg_gads_settings']) ? $_POST['mg_gads_settings'] : array();
+
+        $saved = array(
+            'conversion_id'  => isset($input['conversion_id'])  ? trim(wp_strip_all_tags($input['conversion_id']))  : '',
+            'purchase_label' => isset($input['purchase_label']) ? trim(wp_strip_all_tags($input['purchase_label'])) : '',
+        );
+
+        update_option('mg_gads_settings', $saved);
+
+        wp_redirect(admin_url('admin.php?page=mg-gads-settings&updated=1'));
+        exit;
     }
 
     public static function render_settings_page() {
@@ -50,11 +54,17 @@ class MG_Google_Ads_Settings {
         ?>
         <div class="wrap">
             <h1>Google Ads Konverziókövetés (Mockup Generator)</h1>
+
+            <?php if (isset($_GET['updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong></p></div>
+            <?php endif; ?>
+
             <p>Itt állíthatod be a Google Ads konverziókövetés (gtag.js) azonosítóit. Ha ezeket kitöltöd, a rendszer automatikusan beküldi a megfelelő virtuális variáns ID-kat és árakat a Google felé.</p>
-            
-            <form method="post" action="options.php">
-                <?php settings_fields('mg_gads_settings_group'); ?>
-                
+
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="mg_gads_save">
+                <?php wp_nonce_field('mg_gads_save_action'); ?>
+
                 <table class="form-table">
                     <tr>
                         <th scope="row"><label for="conversion_id">Conversion ID (Pl.: AW-678723674)</label></th>
@@ -71,7 +81,7 @@ class MG_Google_Ads_Settings {
                         </td>
                     </tr>
                 </table>
-                
+
                 <?php submit_button('Beállítások mentése'); ?>
             </form>
 
