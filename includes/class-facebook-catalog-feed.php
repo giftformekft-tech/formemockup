@@ -206,8 +206,8 @@ class MG_Facebook_Catalog_Feed {
             }
             self::$seen_ids[$g_id] = true;
 
-            // Title: Product Name + Type Label (Facebook ajánlott max ~150 karakter)
-            $g_title = self::truncate_title($product->get_name() . ' - ' . $type_label);
+            // Title: terméknév levágva + típus label teljes egészben (max 150 karakter)
+            $g_title = self::build_title($product->get_name(), $type_label);
             
             // Description
             $g_description = $product->get_short_description();
@@ -365,33 +365,36 @@ class MG_Facebook_Catalog_Feed {
     }
 
     /**
-     * Levágja a címet a Facebook által javasolt hosszra, szóhatáron.
-     * A Facebook hard limit 200 karakter, az ajánlott ~150 alatt.
+     * Cím összerakása: a típus label mindig teljes marad,
+     * a terméknév kap levágást ha a kettő együtt meghaladja a limitet.
+     *
+     * Eredmény pl.: "Vicces macskás póló névnapra - Prémium kerek nyakú férfi póló"
      */
-    private static function truncate_title($title, $max = 150) {
-        $title = trim(preg_replace('/\s+/', ' ', $title));
-        if (function_exists('mb_strlen')) {
-            if (mb_strlen($title) <= $max) {
-                return $title;
-            }
-            $truncated = mb_substr($title, 0, $max);
-            $last_space = mb_strrpos($truncated, ' ');
-            // Csak akkor vágunk szóhatáron, ha nem dobjuk el a cím nagy részét
-            if ($last_space !== false && $last_space > $max * 0.6) {
-                $truncated = mb_substr($truncated, 0, $last_space);
-            }
-            return trim($truncated);
+    private static function build_title($product_name, $type_label, $max = 150) {
+        $product_name = trim(preg_replace('/\s+/', ' ', $product_name));
+        $type_label   = trim(preg_replace('/\s+/', ' ', $type_label));
+        $separator    = ' - ';
+        $full         = $product_name . $separator . $type_label;
+
+        if (mb_strlen($full) <= $max) {
+            return $full;
         }
-        // Fallback mbstring nélkül
-        if (strlen($title) <= $max) {
-            return $title;
+
+        // Mennyi hely marad a terméknévnek a típus label + elválasztó után
+        $budget = $max - mb_strlen($separator . $type_label);
+
+        if ($budget <= 0) {
+            // Szélsőséges eset: a típus label maga is hosszabb mint a limit
+            return mb_substr($type_label, 0, $max);
         }
-        $truncated = substr($title, 0, $max);
-        $last_space = strrpos($truncated, ' ');
-        if ($last_space !== false && $last_space > $max * 0.6) {
-            $truncated = substr($truncated, 0, $last_space);
+
+        $truncated  = mb_substr($product_name, 0, $budget);
+        $last_space = mb_strrpos($truncated, ' ');
+        if ($last_space !== false && $last_space > $budget * 0.6) {
+            $truncated = mb_substr($truncated, 0, $last_space);
         }
-        return trim($truncated);
+
+        return trim($truncated) . $separator . $type_label;
     }
 
     private static function xml_sanitize($text) {
