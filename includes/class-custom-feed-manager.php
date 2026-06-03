@@ -62,17 +62,23 @@ class MG_Custom_Feed_Manager {
                                         <td><strong><?php echo esc_html($feed['name']); ?></strong></td>
                                         <td><?php echo esc_html(ucfirst($feed['format'])); ?></td>
                                         <td>
-                                            <?php 
+                                            <?php
                                             if (!empty($feed['product_type'])) {
                                                 echo 'Típus: ' . esc_html($feed['product_type']) . '<br>';
                                             }
                                             if (!empty($feed['category_id'])) {
                                                 $term = get_term($feed['category_id'], 'product_cat');
                                                 if ($term && !is_wp_error($term)) {
-                                                    echo 'Kategória: ' . esc_html($term->name);
+                                                    echo 'Kat: ' . esc_html($term->name) . '<br>';
                                                 } else {
-                                                    echo 'Kategória ID: ' . esc_html($feed['category_id']);
+                                                    echo 'Kat ID: ' . esc_html($feed['category_id']) . '<br>';
                                                 }
+                                            }
+                                            if (!empty($feed['force_gender'])) {
+                                                echo 'Gender: ' . esc_html($feed['force_gender']) . '<br>';
+                                            }
+                                            if (!empty($feed['force_age_group'])) {
+                                                echo 'Age: ' . esc_html($feed['force_age_group']);
                                             }
                                             ?>
                                         </td>
@@ -130,6 +136,28 @@ class MG_Custom_Feed_Manager {
                         </p>
 
                         <p>
+                            <label><strong>Gender (g:gender)</strong> (Opcionális)</label><br>
+                            <select name="force_gender" class="widefat">
+                                <option value="">-- Auto-detect (cím alapján) --</option>
+                                <option value="male">male – Férfi</option>
+                                <option value="female">female – Női</option>
+                                <option value="unisex">unisex – Unisex</option>
+                            </select>
+                            <span class="description">Ha beállítod, minden termékre ezt az értéket használja a feed.</span>
+                        </p>
+
+                        <p>
+                            <label><strong>Age Group (g:age_group)</strong> (Opcionális)</label><br>
+                            <select name="force_age_group" class="widefat">
+                                <option value="">-- Auto-detect (cím alapján) --</option>
+                                <option value="adult">adult – Felnőtt</option>
+                                <option value="kids">kids – Gyerek</option>
+                                <option value="infant">infant – Baba</option>
+                            </select>
+                            <span class="description">Ha beállítod, minden termékre ezt az értéket használja a feed.</span>
+                        </p>
+
+                        <p>
                             <button type="submit" class="button button-primary">Feed Létrehozása</button>
                         </p>
                     </form>
@@ -159,18 +187,25 @@ class MG_Custom_Feed_Manager {
         $product_type = sanitize_text_field($_POST['product_type']);
         $category_id = intval($_POST['category_id']);
 
+        $allowed_genders = array('', 'male', 'female', 'unisex');
+        $allowed_age_groups = array('', 'adult', 'kids', 'infant');
+        $force_gender = in_array($_POST['force_gender'], $allowed_genders, true) ? $_POST['force_gender'] : '';
+        $force_age_group = in_array($_POST['force_age_group'], $allowed_age_groups, true) ? $_POST['force_age_group'] : '';
+
         if (!$name) {
             wp_die('Hiányzó név.');
         }
 
         $slug = sanitize_title($name) . '-' . substr(md5(time()), 0, 6);
-        
+
         $feeds = get_option('mg_custom_feeds', array());
         $feeds[$slug] = array(
             'name' => $name,
             'format' => $format,
             'product_type' => $product_type,
             'category_id' => $category_id,
+            'force_gender' => $force_gender,
+            'force_age_group' => $force_age_group,
             'created_at' => time()
         );
 
@@ -447,24 +482,31 @@ class MG_Custom_Feed_Manager {
             $output .= '<g:identifier_exists>no</g:identifier_exists>' . PHP_EOL;
             $output .= '<g:google_product_category>212</g:google_product_category>' . PHP_EOL;
             
-            // Age Group Logic
-            $age_group = 'adult';
-            $concat_name_check = $g_title . ' ' . $type_slug;
-            if (stripos($concat_name_check, 'baba') !== false) {
-                $age_group = 'infant'; // infant or toddler
-            } elseif (stripos($concat_name_check, 'gyerek') !== false) {
-                $age_group = 'kids';
+            // Age Group – override if set in feed config, otherwise auto-detect
+            if (!empty($feed_config['force_age_group'])) {
+                $age_group = $feed_config['force_age_group'];
+            } else {
+                $age_group = 'adult';
+                $concat_name_check = $g_title . ' ' . $type_slug;
+                if (stripos($concat_name_check, 'baba') !== false) {
+                    $age_group = 'infant';
+                } elseif (stripos($concat_name_check, 'gyerek') !== false) {
+                    $age_group = 'kids';
+                }
             }
             $output .= '<g:age_group>' . $age_group . '</g:age_group>' . PHP_EOL;
-            
-            // Gender logic
-            $gender = 'unisex';
-            // Simple check in title or type
-            $concat_name = $g_title . ' ' . $type_slug;
-            if (stripos($concat_name, 'férfi') !== false || stripos($concat_name, 'ferfi') !== false) {
-                $gender = 'male';
-            } elseif (stripos($concat_name, 'női') !== false || stripos($concat_name, 'noi') !== false) {
-                $gender = 'female';
+
+            // Gender – override if set in feed config, otherwise auto-detect
+            if (!empty($feed_config['force_gender'])) {
+                $gender = $feed_config['force_gender'];
+            } else {
+                $gender = 'unisex';
+                $concat_name = $g_title . ' ' . $type_slug;
+                if (stripos($concat_name, 'férfi') !== false || stripos($concat_name, 'ferfi') !== false) {
+                    $gender = 'male';
+                } elseif (stripos($concat_name, 'női') !== false || stripos($concat_name, 'noi') !== false) {
+                    $gender = 'female';
+                }
             }
             $output .= '<g:gender>' . $gender . '</g:gender>' . PHP_EOL;
 
