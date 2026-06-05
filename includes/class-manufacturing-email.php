@@ -44,20 +44,14 @@ class MG_Manufacturing_Email extends WC_Email {
         $this->send($this->get_recipient(), $this->get_subject(), $this->get_content(), $this->get_headers(), $this->get_attachments());
     }
 
-    public function get_subject() {
-        return $this->format_string(parent::get_subject());
-    }
-
-    public function get_heading() {
-        return $this->format_string(parent::get_heading());
-    }
-
     public function get_content_html() {
-        $order   = $this->object;
-        $heading = $this->get_heading();
+        $order = $this->object;
+        if (!$order instanceof WC_Order) {
+            return '';
+        }
 
         ob_start();
-        do_action('woocommerce_email_header', $heading, $this);
+        do_action('woocommerce_email_header', $this->get_heading(), $this);
         ?>
         <p>Kedves <?php echo esc_html($order->get_billing_first_name()); ?>!</p>
         <p>Örömmel értesítünk, hogy <strong>#<?php echo esc_html($order->get_order_number()); ?></strong> számú rendelésedet megkaptuk és a gyártás megkezdődött.</p>
@@ -70,6 +64,9 @@ class MG_Manufacturing_Email extends WC_Email {
 
     public function get_content_plain() {
         $order = $this->object;
+        if (!$order instanceof WC_Order) {
+            return '';
+        }
         $text  = 'Kedves ' . $order->get_billing_first_name() . '!' . "\n\n";
         $text .= 'Rendelésedet (#' . $order->get_order_number() . ') megkaptuk, a gyártás megkezdődött.' . "\n\n";
         $text .= 'Amint elkészül, értesítünk a szállítás megindításáról.' . "\n\n";

@@ -256,15 +256,17 @@ add_action('plugins_loaded', function(){
         MG_Email_Footer::init();
     }
 
-    // Manufacturing email – register with WooCommerce email system
-    $manufacturing_email_file = plugin_dir_path(__FILE__) . 'includes/class-manufacturing-email.php';
-    if (file_exists($manufacturing_email_file)) {
-        require_once $manufacturing_email_file;
-        add_filter('woocommerce_email_classes', function($email_classes) {
+    // Manufacturing email – registered inside the filter so WC_Email is guaranteed to be loaded
+    add_filter('woocommerce_email_classes', function($email_classes) {
+        $file = plugin_dir_path(__FILE__) . 'includes/class-manufacturing-email.php';
+        if (file_exists($file) && !class_exists('MG_Manufacturing_Email')) {
+            require_once $file;
+        }
+        if (class_exists('MG_Manufacturing_Email')) {
             $email_classes['MG_Manufacturing_Email'] = new MG_Manufacturing_Email();
-            return $email_classes;
-        });
-    }
+        }
+        return $email_classes;
+    });
     if (class_exists('MG_Catalog_Integration')) {
         MG_Catalog_Integration::init();
     }
