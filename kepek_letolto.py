@@ -48,6 +48,7 @@ THUMB_SIZE = (116, 116)
 GRID_COLS  = 5
 
 SORT_OPTIONS = ["Legnépszerűbb", "Legújabb"]
+TAB_OPTIONS  = ["Összes minta", "Pólómánia", "Felfedezés"]
 
 
 class KepParser(HTMLParser):
@@ -80,15 +81,38 @@ class KepParser(HTMLParser):
             self.urls.append(abs_url)
 
 
-def playwright_get(url, sort_label=None):
+def playwright_get(url, sort_label=None, tab_label=None):
     """Teljes JS renderelés Playwrighttel – virtuális lista kezeléssel.
     Lassan görget és menet közben gyűjti az img src-eket mielőtt a Vue eltüntetné őket.
-    sort_label: ha meg van adva (pl. 'Legújabb'), a keresés előtt átállítja a rendezést."""
+    sort_label: ha meg van adva (pl. 'Legújabb'), a keresés előtt átállítja a rendezést.
+    tab_label: ha meg van adva (pl. 'Összes minta'), a megfelelő fület kattintja."""
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         page = browser.new_page(user_agent=HEADERS["User-Agent"],
                                 extra_http_headers={"Accept-Language": HEADERS["Accept-Language"]})
         page.goto(url, wait_until="networkidle", timeout=30000)
+
+        # Fül (tab) átállítása ha kérték
+        if tab_label:
+            try:
+                clicked = page.evaluate(f"""
+                    () => {{
+                        const btns = document.querySelectorAll('button[aria-controls="shop-collections-grid"]');
+                        for (const b of btns) {{
+                            const span = b.querySelector('[data-tab-label]');
+                            if (span && span.textContent.trim() === '{tab_label}') {{
+                                b.click();
+                                return true;
+                            }}
+                        }}
+                        return false;
+                    }}
+                """)
+                if clicked:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                    page.wait_for_timeout(800)
+            except Exception:
+                pass
 
         # Rendezés átállítása ha kérték
         if sort_label:
@@ -292,8 +316,27 @@ class App(ctk.CTk):
                                       text_color="#555", font=ctk.CTkFont(size=11))
         self.sort_note.pack(side="left", padx=(8,0))
 
+        # fül sor (polomania-specifikus)
+        self.tab_row = ctk.CTkFrame(cfg, fg_color="transparent")
+        self.tab_row.pack(fill="x", padx=14, pady=(0,6))
+        ctk.CTkLabel(self.tab_row, text="Fül", width=130,
+                     text_color="#888", font=ctk.CTkFont(size=11)).pack(side="left")
+
+        self.tab_var = tk.StringVar(value="Pólómánia")
+        tab_frame = ctk.CTkFrame(self.tab_row, fg_color="transparent")
+        tab_frame.pack(side="left")
+        for opt in TAB_OPTIONS:
+            ctk.CTkRadioButton(tab_frame, text=opt, variable=self.tab_var, value=opt,
+                               font=ctk.CTkFont(size=12), text_color="#aaa",
+                               fg_color="#5b6af0", hover_color="#4a58e0",
+                               border_color="#555").pack(side="left", padx=10)
+
+        ctk.CTkLabel(self.tab_row, text="(csak Playwright módban érvényes)",
+                     text_color="#555", font=ctk.CTkFont(size=11)).pack(side="left", padx=(8,0))
+
         # alapból elrejtjük, csak polomania.hu-nál mutatjuk
         self.sort_row.pack_forget()
+        self.tab_row.pack_forget()
 
         # keresés gomb
         self.fetch_btn = ctk.CTkButton(cfg, text="🔍  Képek keresése",
@@ -388,10 +431,13 @@ class App(ctk.CTk):
                 self.v_playwright.set(True)
             self.sort_row.pack(fill="x", padx=14, pady=(0,6),
                                before=self.fetch_btn)
+            self.tab_row.pack(fill="x", padx=14, pady=(0,6),
+                              before=self.fetch_btn)
         else:
             if self.url_filter_var.get() == "/media/design/":
                 self.url_filter_var.set("")
             self.sort_row.pack_forget()
+            self.tab_row.pack_forget()
 
     # ── keresés ─────────────────────────────────────────────────────────────
     def _start_fetch(self):
@@ -408,13 +454,15 @@ class App(ctk.CTk):
         try:
             use_pw = self.v_playwright.get() and PLAYWRIGHT_OK
             sort_label = self.sort_var.get() if use_pw else None
+            tab_label  = self.tab_var.get()  if use_pw else None
             self.after(0, self._status, "Oldal letöltése (Playwright)..." if use_pw else "Oldal letöltése...")
             self.after(0, self._progress, 0.08)
             if use_pw:
                 try:
-                    html = playwright_get(url, sort_label=sort_label)
-                    applied = sort_label if sort_label else "alapértelmezett"
-                    self.after(0, self._log, f"✅ Playwright renderelés sikeres (rendezés: {applied})")
+                    html = playwright_get(url, sort_label=sort_label, tab_label=tab_label)
+                    applied_sort = sort_label or "alapértelmezett"
+                    applied_tab  = tab_label  or "alapértelmezett"
+                    self.after(0, self._log, f"✅ Playwright renderelés sikeres (fül: {applied_tab}, rendezés: {applied_sort})")
                 except Exception as e:
                     self.after(0, self._log, f"⚠️ Playwright hiba, fallback requests-re: {e}")
                     html = http_get(url).text
