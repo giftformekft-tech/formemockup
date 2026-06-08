@@ -93,14 +93,32 @@ def playwright_get(url, sort_label=None):
         # Rendezés átállítása ha kérték
         if sort_label:
             try:
-                # Kattintunk a custom-select-re hogy kinyíljon a dropdown
-                page.click(".custom-select .selected", timeout=5000)
-                page.wait_for_timeout(400)
-                # Megkeressük a megfelelő opciót szöveg alapján és rákattintunk
-                page.locator(".custom-select .items div").filter(has_text=sort_label).first.click(timeout=5000)
-                page.wait_for_load_state("networkidle", timeout=15000)
-                page.wait_for_timeout(800)
-            except Exception as e:
+                # Először JS-sel kattintunk a selected-re (kinyitja a dropdownt)
+                page.evaluate("""
+                    () => {
+                        const sel = document.querySelector('.custom-select .selected');
+                        if (sel) sel.click();
+                    }
+                """)
+                page.wait_for_timeout(500)
+                # JS click-kel keressük meg a szöveg szerinti opciót –
+                # a .selectHide osztály miatt Playwright nem kattint láthatatlnra
+                clicked = page.evaluate(f"""
+                    () => {{
+                        const divs = document.querySelectorAll('.custom-select .items div');
+                        for (const d of divs) {{
+                            if (d.textContent.trim() === '{sort_label}') {{
+                                d.click();
+                                return true;
+                            }}
+                        }}
+                        return false;
+                    }}
+                """)
+                if clicked:
+                    page.wait_for_load_state("networkidle", timeout=15000)
+                    page.wait_for_timeout(1000)
+            except Exception:
                 pass  # ha nem sikerül, folytatjuk az alapértelmezett rendezéssel
 
         collected_srcs = set()
