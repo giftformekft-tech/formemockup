@@ -167,6 +167,12 @@ class MG_Surcharge_Frontend {
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
         }
+
+        // Aggregate amounts by fee name first — WooCommerce uses sanitize_title(name)
+        // as the array key in add_fee(), so identical names overwrite each other.
+        // Multiple cart items with the same product+surcharge must be summed before adding.
+        $fee_totals = array();
+
         foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
             if (empty($cart_item['mg_surcharge_data'])) {
                 continue;
@@ -179,10 +185,20 @@ class MG_Surcharge_Frontend {
                 if ($amount <= 0) {
                     continue;
                 }
-                $product_name = isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product ? $cart_item['data']->get_name() : wc_get_product($cart_item['product_id'])->get_name();
+                $product_name = isset($cart_item['data']) && $cart_item['data'] instanceof WC_Product
+                    ? $cart_item['data']->get_name()
+                    : wc_get_product($cart_item['product_id'])->get_name();
                 $name = sprintf('%s (%s)', $surcharge['name'], $product_name);
-                $cart->add_fee($name, $amount, true);
+
+                if (!isset($fee_totals[$name])) {
+                    $fee_totals[$name] = 0.0;
+                }
+                $fee_totals[$name] += $amount;
             }
+        }
+
+        foreach ($fee_totals as $name => $total) {
+            $cart->add_fee($name, $total, true);
         }
     }
 
