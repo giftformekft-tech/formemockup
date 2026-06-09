@@ -818,3 +818,159 @@ body.mgcf-modal-open {
 .mgcf-row--other-preset td {
     background-color: #fffbf0 !important;
 }
+
+/* ============================================================
+   Cart Confirm Popup (Frontend)
+   ============================================================ */
+.mgcc-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(3px);
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.mgcc-box {
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 32px 64px rgba(15, 23, 42, 0.22);
+    max-width: 480px;
+    width: 100%;
+    padding: 32px 28px 24px;
+    box-sizing: border-box;
+    animation: mgccFadeIn 0.18s ease;
+}
+
+@keyframes mgccFadeIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.mgcc-title {
+    margin: 0 0 10px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.mgcc-intro {
+    margin: 0 0 18px;
+    font-size: 14px;
+    color: #475569;
+    line-height: 1.5;
+}
+
+.mgcc-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+}
+
+.mgcc-table th,
+.mgcc-table td {
+    padding: 8px 10px;
+    font-size: 14px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+}
+
+.mgcc-table th {
+    font-weight: 600;
+    color: #334155;
+    width: 45%;
+}
+
+.mgcc-table td {
+    color: #0f172a;
+    word-break: break-word;
+}
+
+.mgcc-table tr:last-child th,
+.mgcc-table tr:last-child td {
+    border-bottom: none;
+}
+
+.mgcc-color-swatch {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(0,0,0,0.15);
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.mgcc-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.mgcc-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 24px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    line-height: 1.2;
+}
+
+.mgcc-btn--ok {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+}
+
+.mgcc-btn--ok:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+.mgcc-btn--cancel {
+    background: #ffffff;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.mgcc-btn--cancel:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+body.mgcc-open {
+    overflow: hidden;
+}
+
+@media (max-width: 480px) {
+    .mgcc-box {
+        padding: 24px 18px 18px;
+        border-radius: 14px;
+    }
+
+    .mgcc-title {
+        font-size: 17px;
+    }
+
+    .mgcc-actions {
+        flex-direction: column-reverse;
+    }
+
+    .mgcc-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

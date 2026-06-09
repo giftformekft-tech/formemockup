@@ -84,6 +84,28 @@ class MG_Custom_Fields_Frontend {
             defined('MG_VERSION') ? MG_VERSION : '2.0.1',
             true
         );
+
+        $confirm_script_path = dirname(__DIR__) . '/assets/js/custom-fields-cart-confirm.js';
+        $confirm_script_url  = plugins_url('assets/js/custom-fields-cart-confirm.js', $base_file);
+        wp_enqueue_script(
+            'mg-custom-fields-cart-confirm',
+            $confirm_script_url,
+            array('mg-custom-fields-frontend'),
+            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
+            true
+        );
+        wp_localize_script(
+            'mg-custom-fields-cart-confirm',
+            'mgCartConfirm',
+            array(
+                'i18n' => array(
+                    'title'  => __('Egyedi termék megerősítése', 'mgcf'),
+                    'intro'  => __('Ez a termék a következő egyedi adatokkal fog elkészülni:', 'mgcf'),
+                    'ok'     => __('Rendben', 'mgcf'),
+                    'cancel' => __('Mégse', 'mgcf'),
+                ),
+            )
+        );
     }
 
     protected static function ensure_fields_loaded($product_id) {
