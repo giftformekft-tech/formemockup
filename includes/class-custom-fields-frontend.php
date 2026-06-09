@@ -71,27 +71,30 @@ class MG_Custom_Fields_Frontend {
         $style_url = plugins_url('assets/css/custom-fields.css', $base_file);
         $script_path = dirname(__DIR__) . '/assets/js/custom-fields-frontend.js';
         $script_url = plugins_url('assets/js/custom-fields-frontend.js', $base_file);
+        $style_ver = file_exists($style_path) ? filemtime($style_path) : (defined('MG_VERSION') ? MG_VERSION : '2.0.1');
+        $script_ver = file_exists($script_path) ? filemtime($script_path) : (defined('MG_VERSION') ? MG_VERSION : '2.0.1');
         wp_enqueue_style(
             'mg-custom-fields-v2',
             $style_url,
             array(),
-            defined('MG_VERSION') ? MG_VERSION : '2.0.1'
+            $style_ver
         );
         wp_enqueue_script(
             'mg-custom-fields-frontend',
             $script_url,
             array(),
-            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
+            $script_ver,
             true
         );
 
         $confirm_script_path = dirname(__DIR__) . '/assets/js/custom-fields-cart-confirm.js';
         $confirm_script_url  = plugins_url('assets/js/custom-fields-cart-confirm.js', $base_file);
+        $confirm_script_ver  = file_exists($confirm_script_path) ? filemtime($confirm_script_path) : (defined('MG_VERSION') ? MG_VERSION : '2.0.1');
         wp_enqueue_script(
             'mg-custom-fields-cart-confirm',
             $confirm_script_url,
             array('mg-custom-fields-frontend'),
-            defined('MG_VERSION') ? MG_VERSION : '2.0.1',
+            $confirm_script_ver,
             true
         );
         wp_localize_script(
