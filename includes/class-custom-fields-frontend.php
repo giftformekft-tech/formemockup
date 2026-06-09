@@ -90,13 +90,29 @@ class MG_Custom_Fields_Frontend {
         $confirm_script_path = dirname(__DIR__) . '/assets/js/custom-fields-cart-confirm.js';
         $confirm_script_url  = plugins_url('assets/js/custom-fields-cart-confirm.js', $base_file);
         $confirm_script_ver  = file_exists($confirm_script_path) ? filemtime($confirm_script_path) : (defined('MG_VERSION') ? MG_VERSION : '2.0.1');
-        wp_enqueue_script(
-            'mg-custom-fields-cart-confirm',
-            $confirm_script_url,
-            array('mg-custom-fields-frontend'),
-            $confirm_script_ver,
-            true
-        );
+
+        // Inline the confirm script directly into the page so no file-level
+        // cache (page cache, CDN, browser) can serve a stale version.
+        $inline_js = file_exists($confirm_script_path) ? file_get_contents($confirm_script_path) : '';
+        if ($inline_js) {
+            wp_register_script(
+                'mg-custom-fields-cart-confirm',
+                '',
+                array('mg-custom-fields-frontend'),
+                false,
+                true
+            );
+            wp_enqueue_script('mg-custom-fields-cart-confirm');
+            wp_add_inline_script('mg-custom-fields-cart-confirm', $inline_js);
+        } else {
+            wp_enqueue_script(
+                'mg-custom-fields-cart-confirm',
+                $confirm_script_url,
+                array('mg-custom-fields-frontend'),
+                $confirm_script_ver,
+                true
+            );
+        }
         wp_localize_script(
             'mg-custom-fields-cart-confirm',
             'mgCartConfirm',
