@@ -68,6 +68,22 @@
         overlay.setAttribute('role', 'dialog');
         overlay.setAttribute('aria-modal', 'true');
         overlay.setAttribute('aria-labelledby', 'mgcc-title');
+        // Force fixed positioning inline so theme transforms cannot break it
+        var ov = overlay.style;
+        ov.position = 'fixed';
+        ov.top = '0';
+        ov.left = '0';
+        ov.right = '0';
+        ov.bottom = '0';
+        ov.width = '100%';
+        ov.height = '100%';
+        ov.zIndex = '999999';
+        ov.display = 'flex';
+        ov.alignItems = 'center';
+        ov.justifyContent = 'center';
+        ov.background = 'rgba(15,23,42,0.55)';
+        ov.boxSizing = 'border-box';
+        ov.padding = '16px';
 
         var box = document.createElement('div');
         box.className = 'mgcc-box';
