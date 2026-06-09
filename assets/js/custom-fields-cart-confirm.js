@@ -63,27 +63,12 @@
         var ok       = strings.ok       || 'Rendben';
         var cancel   = strings.cancel   || 'Mégse';
 
-        var overlay = document.createElement('div');
-        overlay.className = 'mgcc-overlay';
-        overlay.setAttribute('role', 'dialog');
-        overlay.setAttribute('aria-modal', 'true');
-        overlay.setAttribute('aria-labelledby', 'mgcc-title');
-        // Force fixed positioning inline so theme transforms cannot break it
-        var ov = overlay.style;
-        ov.position = 'fixed';
-        ov.top = '0';
-        ov.left = '0';
-        ov.right = '0';
-        ov.bottom = '0';
-        ov.width = '100%';
-        ov.height = '100%';
-        ov.zIndex = '999999';
-        ov.display = 'flex';
-        ov.alignItems = 'center';
-        ov.justifyContent = 'center';
-        ov.background = 'rgba(15,23,42,0.55)';
-        ov.boxSizing = 'border-box';
-        ov.padding = '16px';
+        // Native <dialog> renders in the browser top layer, which escapes any
+        // ancestor transform/filter/overflow – so the popup always centers on
+        // the viewport regardless of theme CSS.
+        var dialog = document.createElement('dialog');
+        dialog.className = 'mgcc-dialog';
+        dialog.setAttribute('aria-labelledby', 'mgcc-title');
 
         var box = document.createElement('div');
         box.className = 'mgcc-box';
@@ -137,23 +122,26 @@
         actions.appendChild(btnOk);
         actions.appendChild(btnCancel);
         box.appendChild(actions);
-        overlay.appendChild(box);
+        dialog.appendChild(box);
 
-        return { overlay: overlay, btnOk: btnOk, btnCancel: btnCancel };
+        return { dialog: dialog, btnOk: btnOk, btnCancel: btnCancel };
     }
 
     function showConfirm(form, rows, onConfirm) {
         var modal = buildModal(rows);
-        var overlay = modal.overlay;
+        var dialog = modal.dialog;
+        var supportsModal = typeof dialog.showModal === 'function';
 
-        document.body.appendChild(overlay);
+        document.body.appendChild(dialog);
         document.body.classList.add('mgcc-open');
 
-        // Trap focus on OK by default
-        modal.btnOk.focus();
-
         function close() {
-            document.body.removeChild(overlay);
+            if (dialog.open && typeof dialog.close === 'function') {
+                try { dialog.close(); } catch (err) {}
+            }
+            if (dialog.parentNode) {
+                dialog.parentNode.removeChild(dialog);
+            }
             document.body.classList.remove('mgcc-open');
         }
 
@@ -166,18 +154,38 @@
             close();
         });
 
-        overlay.addEventListener('click', function (e) {
-            if (e.target === overlay) {
+        // Click on the backdrop (outside the box) closes the dialog
+        dialog.addEventListener('click', function (e) {
+            if (e.target === dialog) {
                 close();
             }
         });
 
-        document.addEventListener('keydown', function escHandler(e) {
-            if (e.key === 'Escape' || e.keyCode === 27) {
-                document.removeEventListener('keydown', escHandler);
-                close();
-            }
+        // Native ESC / cancel handling for <dialog>
+        dialog.addEventListener('cancel', function (e) {
+            e.preventDefault();
+            close();
         });
+
+        if (supportsModal) {
+            dialog.showModal();
+        } else {
+            // Fallback for very old browsers without <dialog> support
+            dialog.setAttribute('open', '');
+            dialog.style.position = 'fixed';
+            dialog.style.top = '50%';
+            dialog.style.left = '50%';
+            dialog.style.transform = 'translate(-50%, -50%)';
+            dialog.style.zIndex = '999999';
+            document.addEventListener('keydown', function escHandler(e) {
+                if (e.key === 'Escape' || e.keyCode === 27) {
+                    document.removeEventListener('keydown', escHandler);
+                    close();
+                }
+            });
+        }
+
+        modal.btnOk.focus();
     }
 
     function onFormSubmit(e) {
