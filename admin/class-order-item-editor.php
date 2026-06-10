@@ -44,19 +44,25 @@ class MG_Order_Item_Editor {
         }
 
         $plugin_url = plugin_dir_url(dirname(__FILE__));
+        $plugin_dir = plugin_dir_path(dirname(__FILE__));
+
+        $css_path = $plugin_dir . 'assets/css/order-item-editor.css';
+        $js_path  = $plugin_dir . 'assets/js/order-item-editor.js';
+        $css_ver  = file_exists($css_path) ? filemtime($css_path) : '1.0.0';
+        $js_ver   = file_exists($js_path) ? filemtime($js_path) : '1.0.0';
 
         wp_enqueue_style(
             'mg-order-item-editor',
             $plugin_url . 'assets/css/order-item-editor.css',
             array(),
-            '1.0.0'
+            $css_ver
         );
 
         wp_enqueue_script(
             'mg-order-item-editor',
             $plugin_url . 'assets/js/order-item-editor.js',
             array('jquery'),
-            '1.0.0',
+            $js_ver,
             true
         );
 
@@ -71,12 +77,15 @@ class MG_Order_Item_Editor {
                 'error'          => __('Hiba történt, próbáld újra.', 'mgdtp'),
                 'select_color'   => __('— Szín kiválasztása —', 'mgdtp'),
                 'select_size'    => __('— Méret kiválasztása —', 'mgdtp'),
+                'select_type'    => __('— Terméktípus kiválasztása —', 'mgdtp'),
                 'no_options'     => __('Nincs elérhető opció ehhez a terméktípushoz.', 'mgdtp'),
-                'title'          => __('Szín / Méret módosítása', 'mgdtp'),
+                'title'          => __('Típus / Szín / Méret módosítása', 'mgdtp'),
                 'color_label'    => __('Szín:', 'mgdtp'),
                 'size_label'     => __('Méret:', 'mgdtp'),
+                'type_label'     => __('Terméktípus:', 'mgdtp'),
                 'current_color'  => __('Jelenlegi szín:', 'mgdtp'),
                 'current_size'   => __('Jelenlegi méret:', 'mgdtp'),
+                'current_type'   => __('Jelenlegi terméktípus:', 'mgdtp'),
             ),
         ));
     }
@@ -93,8 +102,8 @@ class MG_Order_Item_Editor {
         $size  = $item->get_meta('mg_size');
         $type  = $item->get_meta('mg_product_type');
 
-        // Only show button if we have at least color or size meta
-        if (empty($color) && empty($size)) {
+        // Only show button if we have at least color, size or type meta
+        if (empty($color) && empty($size) && empty($type)) {
             return;
         }
 
@@ -117,7 +126,7 @@ class MG_Order_Item_Editor {
             esc_attr($type),
             esc_attr($color),
             esc_attr($size),
-            esc_html__('Szín/Méret módosítás', 'mgdtp')
+            esc_html__('Típus/Szín/Méret módosítás', 'mgdtp')
         );
     }
 
@@ -141,7 +150,7 @@ class MG_Order_Item_Editor {
         <div id="mg-item-editor-overlay" class="mg-item-editor-overlay" style="display:none;">
             <div class="mg-item-editor-modal">
                 <div class="mg-item-editor-header">
-                    <h3 id="mg-item-editor-title"><?php esc_html_e('Szín / Méret módosítása', 'mgdtp'); ?></h3>
+                    <h3 id="mg-item-editor-title"><?php esc_html_e('Típus / Szín / Méret módosítása', 'mgdtp'); ?></h3>
                     <button type="button" class="mg-item-editor-close" aria-label="<?php esc_attr_e('Bezárás', 'mgdtp'); ?>">&times;</button>
                 </div>
                 <div class="mg-item-editor-body">
@@ -151,12 +160,24 @@ class MG_Order_Item_Editor {
                     <div id="mg-item-editor-content" style="display:none;">
                         <table class="form-table mg-item-editor-table">
                             <tr>
+                                <th><?php esc_html_e('Jelenlegi terméktípus:', 'mgdtp'); ?></th>
+                                <td><strong id="mg-current-type">—</strong></td>
+                            </tr>
+                            <tr>
                                 <th><?php esc_html_e('Jelenlegi szín:', 'mgdtp'); ?></th>
                                 <td><strong id="mg-current-color">—</strong></td>
                             </tr>
                             <tr>
                                 <th><?php esc_html_e('Jelenlegi méret:', 'mgdtp'); ?></th>
                                 <td><strong id="mg-current-size">—</strong></td>
+                            </tr>
+                            <tr id="mg-type-row">
+                                <th><label for="mg-new-type"><?php esc_html_e('Új terméktípus:', 'mgdtp'); ?></label></th>
+                                <td>
+                                    <select id="mg-new-type" class="regular-text">
+                                        <option value=""><?php esc_html_e('— Terméktípus kiválasztása —', 'mgdtp'); ?></option>
+                                    </select>
+                                </td>
                             </tr>
                             <tr id="mg-color-row">
                                 <th><label for="mg-new-color"><?php esc_html_e('Új szín:', 'mgdtp'); ?></label></th>
@@ -216,6 +237,16 @@ class MG_Order_Item_Editor {
 
         $colors = array();
         $sizes  = array();
+        $types  = array();
+
+        // Always return the full list of product types so the admin can switch
+        // the virtual product type.
+        foreach ($catalog as $t_slug => $t_meta) {
+            $types[] = array(
+                'slug'  => $t_slug,
+                'label' => isset($t_meta['label']) ? $t_meta['label'] : $t_slug,
+            );
+        }
 
         if (!empty($type_slug) && isset($catalog[$type_slug])) {
             $type_meta = $catalog[$type_slug];
@@ -262,6 +293,7 @@ class MG_Order_Item_Editor {
         wp_send_json_success(array(
             'colors' => $colors,
             'sizes'  => $sizes,
+            'types'  => $types,
         ));
     }
 
@@ -278,6 +310,7 @@ class MG_Order_Item_Editor {
         $item_id   = absint($_POST['item_id'] ?? 0);
         $new_color = sanitize_text_field($_POST['new_color'] ?? '');
         $new_size  = sanitize_text_field($_POST['new_size'] ?? '');
+        $new_type  = sanitize_title($_POST['new_type'] ?? '');
 
         if (!$item_id) {
             wp_send_json_error(array('message' => __('Hiányzó tétel azonosító.', 'mgdtp')));
@@ -289,6 +322,21 @@ class MG_Order_Item_Editor {
         }
 
         $updated = false;
+        $new_type_label = '';
+
+        if ($new_type !== '') {
+            $item->update_meta_data('mg_product_type', $new_type);
+            // Update the human-readable meta with the type label from the catalog.
+            $new_type_label = $new_type;
+            if (class_exists('MG_Variant_Display_Manager')) {
+                $catalog = MG_Variant_Display_Manager::get_catalog_index();
+                if (isset($catalog[$new_type]['label'])) {
+                    $new_type_label = $catalog[$new_type]['label'];
+                }
+            }
+            $item->update_meta_data('Terméktípus', $new_type_label);
+            $updated = true;
+        }
 
         if ($new_color !== '') {
             $item->update_meta_data('mg_color', $new_color);
@@ -314,6 +362,9 @@ class MG_Order_Item_Editor {
         $order = $item->get_order();
         if ($order) {
             $note_parts = array();
+            if ($new_type !== '') {
+                $note_parts[] = sprintf(__('Terméktípus: %s', 'mgdtp'), $new_type_label !== '' ? $new_type_label : $new_type);
+            }
             if ($new_color !== '') {
                 $note_parts[] = sprintf(__('Szín: %s', 'mgdtp'), $new_color);
             }
@@ -331,6 +382,8 @@ class MG_Order_Item_Editor {
 
         wp_send_json_success(array(
             'message'    => __('Módosítás mentve!', 'mgdtp'),
+            'new_type'   => $new_type,
+            'new_type_label' => $new_type_label,
             'new_color'  => $new_color,
             'new_size'   => $new_size,
         ));

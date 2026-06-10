@@ -6,13 +6,15 @@
     var currentOrderId = 0;
 
     // Cache modal elements
-    var $overlay, $loading, $content, $saveBtn, $colorSelect, $sizeSelect, $message;
+    var $overlay, $loading, $content, $saveBtn, $typeSelect, $colorSelect, $sizeSelect, $message;
+    var currentTypeSlug = '';
 
     function init() {
         $overlay = $('#mg-item-editor-overlay');
         $loading = $('#mg-item-editor-loading');
         $content = $('#mg-item-editor-content');
         $saveBtn = $('#mg-item-editor-save');
+        $typeSelect = $('#mg-new-type');
         $colorSelect = $('#mg-new-color');
         $sizeSelect = $('#mg-new-size');
         $message = $('#mg-item-editor-message');
@@ -22,7 +24,7 @@
             var $btn = $(this);
             currentItemId = $btn.data('item-id');
             currentOrderId = $btn.data('order-id');
-            var typeSlug = $btn.data('type') || '';
+            currentTypeSlug = ($btn.data('type') || '').toString();
             var curColor = $btn.data('color') || '—';
             var curSize = $btn.data('size') || '—';
 
@@ -32,30 +34,14 @@
             $('#mg-current-size').text(curSize);
             $overlay.fadeIn(150);
 
-            // Fetch options
-            $.post(cfg.ajax_url, {
-                action: 'mg_get_item_options',
-                nonce: cfg.nonce,
-                item_id: currentItemId,
-                type_slug: typeSlug
-            }, function (response) {
-                $loading.hide();
+            loadOptions(currentTypeSlug, curColor, curSize, true);
+        });
 
-                if (!response.success) {
-                    showMessage(response.data.message || cfg.i18n.error, 'error');
-                    return;
-                }
-
-                var data = response.data;
-                populateColors(data.colors || [], curColor);
-                populateSizes(data.sizes || [], curSize);
-
-                $content.show();
-                $saveBtn.show();
-            }).fail(function () {
-                $loading.hide();
-                showMessage(cfg.i18n.error, 'error');
-            });
+        // Reload colors/sizes when the type changes
+        $(document).on('change', '#mg-new-type', function () {
+            var newType = $(this).val();
+            if (!newType) { return; }
+            loadOptions(newType, '', '', false);
         });
 
         // Close modal
@@ -78,10 +64,77 @@
         $content.hide();
         $saveBtn.hide();
         $message.hide().removeClass('notice-success notice-error');
+        $typeSelect.html('<option value="">' + (cfg.i18n.select_type || '') + '</option>');
         $colorSelect.html('<option value="">' + cfg.i18n.select_color + '</option>');
         $sizeSelect.html('<option value="">' + cfg.i18n.select_size + '</option>');
+        $('#mg-current-type').text('—');
         $('#mg-current-color').text('—');
         $('#mg-current-size').text('—');
+    }
+
+    /**
+     * Fetch type/color/size options for a given type slug.
+     *
+     * @param {string}  typeSlug         Type to load colors/sizes for.
+     * @param {string}  curColor         Color to preselect (empty = none).
+     * @param {string}  curSize          Size to preselect (empty = none).
+     * @param {boolean} populateTypeList Whether to (re)build the type dropdown.
+     */
+    function loadOptions(typeSlug, curColor, curSize, populateTypeList) {
+        $loading.show();
+        if (!populateTypeList) {
+            $content.hide();
+        }
+
+        $.post(cfg.ajax_url, {
+            action: 'mg_get_item_options',
+            nonce: cfg.nonce,
+            item_id: currentItemId,
+            type_slug: typeSlug
+        }, function (response) {
+            $loading.hide();
+
+            if (!response.success) {
+                showMessage((response.data && response.data.message) || cfg.i18n.error, 'error');
+                return;
+            }
+
+            var data = response.data;
+
+            if (populateTypeList) {
+                populateTypes(data.types || [], currentTypeSlug);
+            }
+
+            populateColors(data.colors || [], curColor);
+            populateSizes(data.sizes || [], curSize);
+
+            $content.show();
+            $saveBtn.show();
+        }).fail(function () {
+            $loading.hide();
+            showMessage(cfg.i18n.error, 'error');
+        });
+    }
+
+    function populateTypes(types, currentSlug) {
+        $typeSelect.html('<option value="">' + (cfg.i18n.select_type || '') + '</option>');
+        if (!types.length) {
+            $('#mg-type-row').hide();
+            $('#mg-current-type').text(currentSlug || '—');
+            return;
+        }
+        $('#mg-type-row').show();
+        var currentLabel = currentSlug || '—';
+        $.each(types, function (i, t) {
+            var label = t.label || t.slug;
+            var $opt = $('<option>').val(t.slug).text(label);
+            if (t.slug === currentSlug) {
+                $opt.prop('selected', true);
+                currentLabel = label;
+            }
+            $typeSelect.append($opt);
+        });
+        $('#mg-current-type').text(currentLabel);
     }
 
     function populateColors(colors, currentSlug) {
@@ -126,8 +179,11 @@
     function saveChanges() {
         var newColor = $colorSelect.val();
         var newSize = $sizeSelect.val();
+        // Only send a type change if the admin actually picked a different type.
+        var selectedType = $typeSelect.val();
+        var newType = (selectedType && selectedType !== currentTypeSlug) ? selectedType : '';
 
-        if (!newColor && !newSize) {
+        if (!newColor && !newSize && !newType) {
             showMessage(cfg.i18n.error, 'error');
             return;
         }
@@ -139,6 +195,7 @@
             action: 'mg_update_item_color_size',
             nonce: cfg.nonce,
             item_id: currentItemId,
+            new_type: newType,
             new_color: newColor,
             new_size: newSize
         }, function (response) {
@@ -153,6 +210,10 @@
 
             // Update the button's data attributes for next open
             var $btn = $('.mg-edit-item-btn[data-item-id="' + currentItemId + '"]');
+            if (newType) {
+                $btn.data('type', newType);
+                currentTypeSlug = newType;
+            }
             if (newColor) { $btn.data('color', newColor); }
             if (newSize) { $btn.data('size', newSize); }
 
