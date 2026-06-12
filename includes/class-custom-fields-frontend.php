@@ -1102,6 +1102,10 @@ class MG_Custom_Fields_Frontend {
      * Enforce download rate limits per client fingerprint and shorten token lifetimes on suspicious patterns.
      */
     protected static function enforce_download_rate_limit() {
+        if (function_exists('current_user_can') && current_user_can('manage_woocommerce')) {
+            return;
+        }
+
         $fingerprint = self::get_download_client_fingerprint();
         if ($fingerprint === '') {
             return;
