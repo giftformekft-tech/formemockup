@@ -629,10 +629,6 @@ class MG_Order_Design_Download {
             $temp_files[]      = $temp_path;
             return $temp_path;
         } catch (Throwable $e) {
-            // Falls back to the unprocessed original on any failure, but log
-            // it — otherwise a broken trim/rotate/strip-black/resize step on
-            // one specific design is invisible to the admin.
-            error_log(sprintf('[MG export] prepare_export_png failed for %s: %s', $design_path, $e->getMessage()));
             $cache[$cache_key] = $design_path;
             return $design_path;
         }
