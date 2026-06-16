@@ -65,15 +65,19 @@ if (!function_exists('mgsc_get_size_surcharge')) {
     }
 }
 
-if (!function_exists('mgsc_get_print_width_cm')) {
+if (!function_exists('mgsc_get_print_height_cm')) {
     /**
-     * Returns the configured production-print width (cm) for a given
+     * Returns the configured production-print height (cm) for a given
      * product type + size, or 0.0 if not configured. Reads directly from
      * the live mg_products option (the same source the product settings
      * page edits), independent of the (currently unused) global catalog
      * file, so it always reflects what's saved in the admin UI.
+     *
+     * Stored under the 'print_width_cm' option key for historical reasons
+     * (kept as-is to avoid losing already-saved admin values) — the value
+     * has always meant the pattern's printed height, not its width.
      */
-    function mgsc_get_print_width_cm($type_key, $size){
+    function mgsc_get_print_height_cm($type_key, $size){
         $type_key = sanitize_title($type_key);
         $size = (string)$size;
         if ($type_key === '' || $size === '') return 0.0;

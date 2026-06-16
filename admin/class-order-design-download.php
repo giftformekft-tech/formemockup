@@ -306,14 +306,14 @@ class MG_Order_Design_Download {
             }
             MG_Image_Utils::trim_transparent_bounds($image);
 
-            $print_width_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_width_cm'))
-                ? floatval(mgsc_get_print_width_cm($type_slug, $size_label))
+            $print_height_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_height_cm'))
+                ? floatval(mgsc_get_print_height_cm($type_slug, $size_label))
                 : 0.0;
 
-            if ($print_width_cm > 0) {
-                $target_width_px = (int) round($print_width_cm * self::EXPORT_DPI / 2.54);
-                if ($target_width_px > 0 && method_exists($image, 'thumbnailImage')) {
-                    $image->thumbnailImage($target_width_px, 0);
+            if ($print_height_cm > 0) {
+                $target_height_px = (int) round($print_height_cm * self::EXPORT_DPI / 2.54);
+                if ($target_height_px > 0 && method_exists($image, 'thumbnailImage')) {
+                    $image->thumbnailImage(0, $target_height_px);
                 }
             }
 

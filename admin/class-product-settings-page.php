@@ -937,9 +937,9 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
 </table>
 
 <h2>Nyomtatási méret (cm)</h2>
-<p class="description">A nyomtatott minta kívánt szélessége centiméterben (300 DPI-vel kerül exportálásra). Ha egy mérethez nincs megadva érték, a rendelés-export csak körbevágja a minta üres margóját, de nem méretezi át.</p>
+<p class="description">A nyomtatott minta kívánt magassága centiméterben (300 DPI-vel kerül exportálásra). Ha egy mérethez nincs megadva érték, a rendelés-export csak körbevágja a minta üres margóját, de nem méretezi át.</p>
 <table class="widefat striped">
-    <thead><tr><th>Méret</th><th>Szélesség (cm)</th></tr></thead>
+    <thead><tr><th>Méret</th><th>Magasság (cm)</th></tr></thead>
     <tbody>
     <?php
     $saved_pw = isset($prod['print_width_cm']) && is_array($prod['print_width_cm']) ? $prod['print_width_cm'] : array();
