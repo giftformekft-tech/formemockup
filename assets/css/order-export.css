@@ -25,6 +25,18 @@
     font-size: 18px;
 }
 
+.mg-order-export-choice-text {
+    margin: 0 0 14px;
+    color: #1d2327;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.mg-order-export-choice-actions {
+    display: flex;
+    gap: 8px;
+}
+
 .mg-order-export-progress-bar {
     background: #edf0f3;
     height: 14px;

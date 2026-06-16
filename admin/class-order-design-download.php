@@ -165,12 +165,15 @@ class MG_Order_Design_Download {
             'nonce'     => wp_create_nonce('mg_design_export_nonce'),
             'order_ids' => self::$pending_export_order_ids,
             'i18n'      => array(
-                'title'      => __('Minták exportálása', 'mg'),
-                'processing' => __('Feldolgozás…', 'mg'),
-                'done'       => __('Kész!', 'mg'),
-                'download'   => __('ZIP letöltése', 'mg'),
-                'error'      => __('Hiba történt az export közben.', 'mg'),
-                'close'      => __('Bezárás', 'mg'),
+                'title'           => __('Minták exportálása', 'mg'),
+                'choice_question' => __('Fekete szín kivételével exportáljon (átlátszóvá tesz minden fekete részt), vagy normál módon?', 'mg'),
+                'choice_strip'    => __('Fekete nélkül', 'mg'),
+                'choice_normal'   => __('Normál export', 'mg'),
+                'processing'      => __('Feldolgozás…', 'mg'),
+                'done'            => __('Kész!', 'mg'),
+                'download'        => __('ZIP letöltése', 'mg'),
+                'error'           => __('Hiba történt az export közben.', 'mg'),
+                'close'           => __('Bezárás', 'mg'),
             ),
         ));
     }
@@ -264,6 +267,8 @@ class MG_Order_Design_Download {
                 wp_send_json_error(array('message' => __('Nem találhatók minta PNG fájlok a kijelölt rendelésekhez.', 'mg')), 404);
             }
 
+            $strip_black = !empty($_POST['strip_black']) && $_POST['strip_black'] === '1';
+
             $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
             $zip      = new ZipArchive();
             if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
@@ -273,15 +278,16 @@ class MG_Order_Design_Download {
 
             $job_id = 'mgexp_' . wp_generate_uuid4();
             $job    = array(
-                'tasks'      => $tasks,
-                'next_index' => 0,
-                'total'      => count($tasks),
-                'completed'  => 0,
-                'zip_path'   => $zip_path,
-                'cache'      => array(),
-                'temp_files' => array(),
-                'status'     => 'processing',
-                'user_id'    => get_current_user_id(),
+                'tasks'       => $tasks,
+                'next_index'  => 0,
+                'total'       => count($tasks),
+                'completed'   => 0,
+                'zip_path'    => $zip_path,
+                'strip_black' => $strip_black,
+                'cache'       => array(),
+                'temp_files'  => array(),
+                'status'      => 'processing',
+                'user_id'     => get_current_user_id(),
             );
             set_transient(self::JOB_TRANSIENT_PREFIX . $job_id, $job, self::JOB_TTL);
 
@@ -338,7 +344,7 @@ class MG_Order_Design_Download {
 
             while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
                 $task        = $job['tasks'][$job['next_index']];
-                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']));
+                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']), !empty($job['strip_black']));
                 $zip->addFile($export_path, $task['zip_name']);
                 $job['next_index']++;
                 $job['completed']++;
@@ -547,10 +553,13 @@ class MG_Order_Design_Download {
      *     per-type/size print height is ignored entirely: the design is
      *     always forced landscape and sized so its shorter side is exactly
      *     self::LARGE_PRINT_SHORT_SIDE_CM.
+     * @param bool $strip_black Admin's per-export choice (asked before the
+     *     bulk ZIP job starts): if true, black pixels in the design are
+     *     made transparent so they don't get printed on black garments.
      * @return string Path to the file to add to the ZIP.
      */
-    protected static function prepare_export_png($design_path, $type_slug, $size_label, array &$cache, array &$temp_files, $large_size_png = false) {
-        $cache_key = $design_path . '|' . $type_slug . '|' . $size_label . '|' . ($large_size_png ? 'large' : 'normal');
+    protected static function prepare_export_png($design_path, $type_slug, $size_label, array &$cache, array &$temp_files, $large_size_png = false, $strip_black = false) {
+        $cache_key = $design_path . '|' . $type_slug . '|' . $size_label . '|' . ($large_size_png ? 'large' : 'normal') . '|' . ($strip_black ? 'noblack' : 'asis');
         if (isset($cache[$cache_key])) {
             return $cache[$cache_key];
         }
@@ -564,6 +573,9 @@ class MG_Order_Design_Download {
             $image = new Imagick($design_path);
             if (method_exists($image, 'stripImage')) {
                 $image->stripImage();
+            }
+            if ($strip_black) {
+                MG_Image_Utils::strip_color_to_transparent($image, 'black');
             }
             MG_Image_Utils::trim_transparent_bounds($image);
 

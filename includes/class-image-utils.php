@@ -91,6 +91,26 @@ class MG_Image_Utils {
     }
 
     /**
+     * Makes pixels matching the given color transparent, with a fuzz
+     * tolerance so anti-aliased edges (slightly off-target shades at the
+     * border of a shape) are caught too. Used by the optional "fekete
+     * kivétel" export choice, so black design elements don't get printed
+     * on black garments.
+     */
+    public static function strip_color_to_transparent($image, $color = 'black', $fuzz_percent = 12.0) {
+        if (!($image instanceof Imagick) || !method_exists($image, 'transparentPaintImage')) {
+            return;
+        }
+        try {
+            $range         = Imagick::getQuantumRange();
+            $quantum_range = isset($range['quantumRangeLong']) ? $range['quantumRangeLong'] : 255;
+            $fuzz          = ($fuzz_percent / 100) * $quantum_range;
+            $image->transparentPaintImage(new ImagickPixel($color), 0, $fuzz, false);
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    /**
      * Stamps an exact DPI into a PNG file's pHYs chunk by editing the raw
      * bytes directly, bypassing Imagick's setImageResolution()/setImageUnits()
      * entirely. Those calls don't reliably survive to the written file across
