@@ -336,6 +336,12 @@ class MG_Order_Design_Download {
             $image->clear();
             $image->destroy();
 
+            // Belt-and-suspenders: setImageResolution()/setImageUnits() above
+            // don't reliably survive into the written file across all
+            // Imagick/libpng builds, so stamp the pHYs chunk directly on the
+            // final file too — this is what guarantees the embedded DPI.
+            MG_Image_Utils::force_png_dpi($temp_path, self::EXPORT_DPI);
+
             $cache[$cache_key] = $temp_path;
             $temp_files[]      = $temp_path;
             return $temp_path;
