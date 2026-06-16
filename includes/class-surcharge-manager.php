@@ -83,6 +83,7 @@ class MG_Surcharge_Manager {
             'is_express' => false,
             'is_premium_material' => false,
             'is_large_print' => false,
+            'is_large_size_png' => false,
             'conditions' => [
                 'product_types' => [],
                 'colors' => [],
@@ -107,6 +108,7 @@ class MG_Surcharge_Manager {
         $surcharge['is_express'] = !empty($surcharge['is_express']);
         $surcharge['is_premium_material'] = !empty($surcharge['is_premium_material']);
         $surcharge['is_large_print'] = !empty($surcharge['is_large_print']);
+        $surcharge['is_large_size_png'] = !empty($surcharge['is_large_size_png']);
         $allowed_display = ['product', 'cart', 'both'];
         $surcharge['frontend_display'] = in_array($surcharge['frontend_display'], $allowed_display, true) ? $surcharge['frontend_display'] : 'product';
         $conditions = is_array($surcharge['conditions']) ? $surcharge['conditions'] : [];

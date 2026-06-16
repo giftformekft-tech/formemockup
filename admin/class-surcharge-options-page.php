@@ -59,6 +59,7 @@ class MG_Surcharge_Options_Page {
             'is_express' => !empty($_POST['is_express']),
             'is_premium_material' => !empty($_POST['is_premium_material']),
             'is_large_print' => !empty($_POST['is_large_print']),
+            'is_large_size_png' => !empty($_POST['is_large_size_png']),
             'frontend_display' => isset($_POST['frontend_display']) ? sanitize_text_field(wp_unslash($_POST['frontend_display'])) : 'product',
             'conditions' => [
                 'product_types' => isset($_POST['conditions']['product_types']) ? array_map('sanitize_text_field', wp_unslash((array)$_POST['conditions']['product_types'])) : [],
@@ -164,6 +165,7 @@ class MG_Surcharge_Options_Page {
         self::render_input_row(__('Express gyártás jelzés', 'mockup-generator'), '<label><input type="checkbox" name="is_express" value="1" ' . checked($surcharge['is_express'], true, false) . ' /> ' . esc_html__('⚡ Express gyártás – megjelenik a rendeléslistán.', 'mockup-generator') . '</label>');
         self::render_input_row(__('Prémium anyag jelzés', 'mockup-generator'), '<label><input type="checkbox" name="is_premium_material" value="1" ' . checked($surcharge['is_premium_material'], true, false) . ' /> ' . esc_html__('★ Prémium anyag – megjelenik a rendeléslistán.', 'mockup-generator') . '</label>');
         self::render_input_row(__('Nagy nyomat jelzés', 'mockup-generator'), '<label><input type="checkbox" name="is_large_print" value="1" ' . checked($surcharge['is_large_print'], true, false) . ' /> ' . esc_html__('◈ Nagy nyomat – megjelenik a rendeléslistán.', 'mockup-generator') . '</label>');
+        self::render_input_row(__('Minta letöltésnél nagy méret PNG', 'mockup-generator'), '<label><input type="checkbox" name="is_large_size_png" value="1" ' . checked($surcharge['is_large_size_png'], true, false) . ' /> ' . esc_html__('Ha ez az opció be van kapcsolva a rendelésnél, a minta export mindig fekvő (landscape) tájolású lesz, a rövidebbik oldala fixen 30 cm.', 'mockup-generator') . '</label>');
         self::render_input_row(__('Frontend megjelenítés', 'mockup-generator'), self::render_display_select($surcharge['frontend_display']));
         self::render_input_row(__('Prioritás', 'mockup-generator'), '<input type="number" name="priority" value="' . esc_attr($surcharge['priority']) . '" />');
         self::render_conditions_section($surcharge['conditions'], $terms);

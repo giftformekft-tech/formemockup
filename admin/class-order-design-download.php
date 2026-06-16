@@ -33,6 +33,14 @@ class MG_Order_Design_Download {
     const EXPORT_DPI = 300;
 
     /**
+     * Fixed shorter-side print size (cm) used for designs whose order item
+     * has the "nagy méret PNG" surcharge option enabled. Such designs are
+     * always exported landscape, regardless of the source orientation or
+     * any per-type/size configured print height.
+     */
+    const LARGE_PRINT_SHORT_SIDE_CM = 30;
+
+    /**
      * Tasks (one PNG copy each) processed per AJAX step. Kept small so a
      * single request never approaches the ~100s proxy timeout (e.g.
      * Cloudflare's 524), no matter how many orders are selected.
@@ -200,7 +208,8 @@ class MG_Order_Design_Download {
                     continue;
                 }
 
-                $context = self::resolve_item_context($item);
+                $context    = self::resolve_item_context($item);
+                $large_size = self::item_has_large_size_png_option($item);
 
                 $product_name = sanitize_file_name(get_the_title($product_id));
                 if ($product_name === '') {
@@ -214,6 +223,7 @@ class MG_Order_Design_Download {
                         'design_path' => $design_path,
                         'type'        => $context['type'],
                         'size'        => $context['size'],
+                        'large_size'  => $large_size,
                         'zip_name'    => sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment),
                     );
                 }
@@ -328,7 +338,7 @@ class MG_Order_Design_Download {
 
             while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
                 $task        = $job['tasks'][$job['next_index']];
-                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files);
+                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']));
                 $zip->addFile($export_path, $task['zip_name']);
                 $job['next_index']++;
                 $job['completed']++;
@@ -475,6 +485,48 @@ class MG_Order_Design_Download {
     /* ------------------------------------------------------------------ */
 
     /**
+     * Whether the given order line item has a "nagy méret PNG" surcharge
+     * option enabled. Mirrors MG_Express_Order_Flag's name-matching
+     * approach: enabled surcharges are stored as order item meta keyed by
+     * the surcharge's name (see MG_Surcharge_Frontend::add_order_item_meta()).
+     */
+    protected static function item_has_large_size_png_option($item) {
+        if (!($item instanceof WC_Order_Item_Product)) {
+            return false;
+        }
+        $names = self::get_large_size_png_surcharge_names();
+        if (empty($names)) {
+            return false;
+        }
+        foreach ($item->get_meta_data() as $meta) {
+            $data = $meta->get_data();
+            if (in_array(mb_strtolower(trim((string) $data['key'])), $names, true)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected static function get_large_size_png_surcharge_names() {
+        static $names = null;
+        if ($names !== null) {
+            return $names;
+        }
+        $names = array();
+        if (!class_exists('MG_Surcharge_Manager')) {
+            return $names;
+        }
+        foreach (MG_Surcharge_Manager::get_surcharges(false) as $surcharge) {
+            if (!empty($surcharge['is_large_size_png']) && !empty($surcharge['name'])) {
+                $names[] = mb_strtolower(trim($surcharge['name']));
+            }
+        }
+        return $names;
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
      * Produces the production-ready PNG for a design: always trims the
      * transparent margins, and resizes to the configured print width (cm,
      * at self::EXPORT_DPI) for the given type+size, if one is set in the
@@ -486,14 +538,19 @@ class MG_Order_Design_Download {
      * Imagick processing isn't available or fails, so a single broken
      * design never aborts the whole batch.
      *
-     * Results are cached per (design path, type, size) so repeated items
-     * (multiple quantities, or identical designs across orders) are only
-     * processed once.
+     * Results are cached per (design path, type, size, large-size flag) so
+     * repeated items (multiple quantities, or identical designs across
+     * orders) are only processed once.
      *
+     * @param bool $large_size_png Whether the order item has the "nagy
+     *     méret PNG" surcharge option enabled. When true, the configured
+     *     per-type/size print height is ignored entirely: the design is
+     *     always forced landscape and sized so its shorter side is exactly
+     *     self::LARGE_PRINT_SHORT_SIDE_CM.
      * @return string Path to the file to add to the ZIP.
      */
-    protected static function prepare_export_png($design_path, $type_slug, $size_label, array &$cache, array &$temp_files) {
-        $cache_key = $design_path . '|' . $type_slug . '|' . $size_label;
+    protected static function prepare_export_png($design_path, $type_slug, $size_label, array &$cache, array &$temp_files, $large_size_png = false) {
+        $cache_key = $design_path . '|' . $type_slug . '|' . $size_label . '|' . ($large_size_png ? 'large' : 'normal');
         if (isset($cache[$cache_key])) {
             return $cache[$cache_key];
         }
@@ -509,16 +566,25 @@ class MG_Order_Design_Download {
                 $image->stripImage();
             }
             MG_Image_Utils::trim_transparent_bounds($image);
-            MG_Image_Utils::rotate_landscape_to_portrait($image);
 
-            $print_height_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_height_cm'))
-                ? floatval(mgsc_get_print_height_cm($type_slug, $size_label))
-                : 0.0;
-
-            if ($print_height_cm > 0) {
-                $target_height_px = (int) round($print_height_cm * self::EXPORT_DPI / 2.54);
+            if ($large_size_png) {
+                MG_Image_Utils::rotate_portrait_to_landscape($image);
+                $target_height_px = (int) round(self::LARGE_PRINT_SHORT_SIDE_CM * self::EXPORT_DPI / 2.54);
                 if ($target_height_px > 0 && method_exists($image, 'thumbnailImage')) {
                     $image->thumbnailImage(0, $target_height_px);
+                }
+            } else {
+                MG_Image_Utils::rotate_landscape_to_portrait($image);
+
+                $print_height_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_height_cm'))
+                    ? floatval(mgsc_get_print_height_cm($type_slug, $size_label))
+                    : 0.0;
+
+                if ($print_height_cm > 0) {
+                    $target_height_px = (int) round($print_height_cm * self::EXPORT_DPI / 2.54);
+                    if ($target_height_px > 0 && method_exists($image, 'thumbnailImage')) {
+                        $image->thumbnailImage(0, $target_height_px);
+                    }
                 }
             }
 
@@ -583,7 +649,8 @@ class MG_Order_Design_Download {
             return $product_html; // no design – nothing to add
         }
 
-        $context = self::resolve_item_context($item);
+        $context    = self::resolve_item_context($item);
+        $large_size = self::item_has_large_size_png_option($item);
 
         $nonce = wp_create_nonce('mg_dl_design_' . $product_id);
         $url   = add_query_arg(array(
@@ -591,6 +658,7 @@ class MG_Order_Design_Download {
             'product_id' => $product_id,
             'type'       => $context['type'],
             'size'       => $context['size'],
+            'large_size' => $large_size ? '1' : '0',
             '_wpnonce'   => $nonce,
         ), admin_url('admin-ajax.php'));
 
@@ -630,10 +698,11 @@ class MG_Order_Design_Download {
 
         $type_slug  = isset($_GET['type']) ? sanitize_title(wp_unslash($_GET['type'])) : '';
         $size_label = isset($_GET['size']) ? sanitize_text_field(wp_unslash($_GET['size'])) : '';
+        $large_size = isset($_GET['large_size']) && $_GET['large_size'] === '1';
 
         $cache       = array();
         $temp_files  = array();
-        $export_path = self::prepare_export_png($design_path, $type_slug, $size_label, $cache, $temp_files);
+        $export_path = self::prepare_export_png($design_path, $type_slug, $size_label, $cache, $temp_files, $large_size);
 
         $filename = sanitize_file_name(get_the_title($product_id));
         if ($size_label !== '') {
