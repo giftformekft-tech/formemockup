@@ -102,6 +102,13 @@ class MG_Image_Utils {
             return;
         }
         try {
+            // Source files without an existing alpha channel (flattened JPEGs,
+            // RGB-only PNGs) can silently no-op transparentPaintImage() on some
+            // ImageMagick builds unless the alpha channel is explicitly
+            // activated first.
+            if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_ACTIVATE')) {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+            }
             $range         = Imagick::getQuantumRange();
             $quantum_range = isset($range['quantumRangeLong']) ? $range['quantumRangeLong'] : 255;
             $fuzz          = ($fuzz_percent / 100) * $quantum_range;
