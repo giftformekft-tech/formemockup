@@ -317,6 +317,18 @@ class MG_Order_Design_Download {
                 }
             }
 
+            // stripImage() above removes the original upload's resolution tag
+            // (often 96 DPI), which RIP software like CADlink can rely on to
+            // compute physical print size instead of just the pixel count.
+            // Always stamp 300 DPI explicitly so pixel dimensions and embedded
+            // metadata agree, regardless of whether a cm-based resize ran.
+            if (method_exists($image, 'setImageResolution')) {
+                $image->setImageResolution(self::EXPORT_DPI, self::EXPORT_DPI);
+            }
+            if (method_exists($image, 'setImageUnits')) {
+                $image->setImageUnits(Imagick::RESOLUTION_PIXELSPERINCH);
+            }
+
             $image->setImageFormat('png');
 
             $temp_path = tempnam(sys_get_temp_dir(), 'mg_design_export_');
