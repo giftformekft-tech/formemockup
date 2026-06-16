@@ -116,6 +116,14 @@ class MG_Order_Design_Download {
             wp_die(__('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg'));
         }
 
+        // Each unique design now also gets trimmed/resized via Imagick, which
+        // is slower than the previous plain file copy — large batches need
+        // more headroom than the server's default execution time/memory.
+        // Same limits used by the other large bulk exports in this plugin
+        // (Google/Facebook feed generation).
+        @set_time_limit(1200);
+        @ini_set('memory_limit', '1024M');
+
         $orders = self::sort_orders_by_date($order_ids);
 
         $tmp_file = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
