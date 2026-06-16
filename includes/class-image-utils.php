@@ -42,6 +42,30 @@ class MG_Image_Utils {
     }
 
     /**
+     * Rotates an Imagick image 90 degrees if it's wider than it is tall,
+     * so landscape-oriented patterns become portrait before being sized
+     * to a target print height. Does nothing to already-portrait/square
+     * images.
+     */
+    public static function rotate_landscape_to_portrait($image) {
+        if (!($image instanceof Imagick) || !method_exists($image, 'rotateImage')) {
+            return;
+        }
+        try {
+            $width  = $image->getImageWidth();
+            $height = $image->getImageHeight();
+            if ($width <= $height) {
+                return;
+            }
+            $image->rotateImage(new ImagickPixel('transparent'), 90);
+            if (method_exists($image, 'setImagePage')) {
+                $image->setImagePage(0, 0, 0, 0);
+            }
+        } catch (Throwable $ignored) {
+        }
+    }
+
+    /**
      * Stamps an exact DPI into a PNG file's pHYs chunk by editing the raw
      * bytes directly, bypassing Imagick's setImageResolution()/setImageUnits()
      * entirely. Those calls don't reliably survive to the written file across

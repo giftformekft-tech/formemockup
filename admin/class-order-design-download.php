@@ -305,6 +305,7 @@ class MG_Order_Design_Download {
                 $image->stripImage();
             }
             MG_Image_Utils::trim_transparent_bounds($image);
+            MG_Image_Utils::rotate_landscape_to_portrait($image);
 
             $print_height_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_height_cm'))
                 ? floatval(mgsc_get_print_height_cm($type_slug, $size_label))
