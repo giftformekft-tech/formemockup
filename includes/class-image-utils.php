@@ -97,18 +97,11 @@ class MG_Image_Utils {
      * kivétel" export choice, so black design elements don't get printed
      * on black garments.
      */
-    public static function strip_color_to_transparent($image, $color = 'black', $fuzz_percent = 12.0) {
+    public static function strip_color_to_transparent($image, $color = 'black', $fuzz_percent = 25.0) {
         if (!($image instanceof Imagick) || !method_exists($image, 'transparentPaintImage')) {
             return;
         }
         try {
-            // Source files without an existing alpha channel (flattened JPEGs,
-            // RGB-only PNGs) can silently no-op transparentPaintImage() on some
-            // ImageMagick builds unless the alpha channel is explicitly
-            // activated first.
-            if (method_exists($image, 'setImageAlphaChannel') && defined('Imagick::ALPHACHANNEL_ACTIVATE')) {
-                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
-            }
             $range         = Imagick::getQuantumRange();
             $quantum_range = isset($range['quantumRangeLong']) ? $range['quantumRangeLong'] : 255;
             $fuzz          = ($fuzz_percent / 100) * $quantum_range;
