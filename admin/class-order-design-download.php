@@ -17,6 +17,11 @@ if (!defined('ABSPATH')) {
  * get the lowest numbers) so the printer can process the batch in the
  * order the orders came in.
  *
+ * The export itself runs as a chunked background job driven by AJAX
+ * polling (see ajax_export_start/step/download below) instead of a single
+ * synchronous request, so large batches don't hit reverse-proxy timeouts
+ * (e.g. Cloudflare's 524) — the admin sees a progress-bar popup instead.
+ *
  * Supports both legacy orders (CPT) and HPOS.
  */
 class MG_Order_Design_Download {
@@ -26,6 +31,25 @@ class MG_Order_Design_Download {
      * (cm) into a target pixel width for the production PNG.
      */
     const EXPORT_DPI = 300;
+
+    /**
+     * Tasks (one PNG copy each) processed per AJAX step. Kept small so a
+     * single request never approaches the ~100s proxy timeout (e.g.
+     * Cloudflare's 524), no matter how many orders are selected.
+     */
+    const EXPORT_BATCH_SIZE = 3;
+
+    const JOB_TRANSIENT_PREFIX = 'mg_design_export_job_';
+    const JOB_TTL = HOUR_IN_SECONDS;
+
+    /**
+     * Order IDs pending export, set by maybe_prepare_export_modal() during
+     * admin_init so maybe_enqueue_export_assets() can pick them up later in
+     * the same request.
+     *
+     * @var int[]|null
+     */
+    protected static $pending_export_order_ids = null;
 
     public static function init() {
         // Register bulk action – HPOS list table
@@ -38,8 +62,17 @@ class MG_Order_Design_Download {
         // Handle the action – legacy
         add_filter('handle_bulk_actions-edit-shop_order', array(__CLASS__, 'handle_bulk_action'), 10, 3);
 
-        // Early intercept: the ZIP download must be streamed before any output
-        add_action('admin_init', array(__CLASS__, 'maybe_stream_zip'));
+        // Picks up the pending order IDs so the progress-bar modal's assets
+        // can be enqueued further down in the same request.
+        add_action('admin_init', array(__CLASS__, 'maybe_prepare_export_modal'));
+        add_action('admin_enqueue_scripts', array(__CLASS__, 'maybe_enqueue_export_assets'));
+
+        // Chunked export AJAX endpoints (start a job, process a small batch,
+        // stream the finished ZIP) – this is what avoids the request-timeout
+        // a single synchronous export hit on larger order batches.
+        add_action('wp_ajax_mg_design_export_start', array(__CLASS__, 'ajax_export_start'));
+        add_action('wp_ajax_mg_design_export_step', array(__CLASS__, 'ajax_export_step'));
+        add_action('wp_ajax_mg_design_export_download', array(__CLASS__, 'ajax_export_download'));
 
         // Order quick-view: add a download link per line item
         add_action('woocommerce_admin_order_preview_line_item_html', array(__CLASS__, 'preview_line_item_download_btn'), 10, 3);
@@ -58,9 +91,11 @@ class MG_Order_Design_Download {
     /* ------------------------------------------------------------------ */
 
     /**
-     * Called by WooCommerce after the bulk action.  We store the order IDs in a
-     * transient and redirect back; the ZIP is then streamed on the next load via
-     * maybe_stream_zip() so we can set headers cleanly before WordPress outputs anything.
+     * Called by WooCommerce after the bulk action. We store the order IDs in
+     * a transient and redirect back; maybe_prepare_export_modal() picks them
+     * up on the next page load and hands them to the frontend, which then
+     * drives the export through the chunked AJAX endpoints below (instead of
+     * a single long-running synchronous request).
      */
     public static function handle_bulk_action($redirect_to, $action, $order_ids) {
         if ($action !== 'mg_download_designs') {
@@ -71,21 +106,23 @@ class MG_Order_Design_Download {
             return $redirect_to;
         }
 
-        $transient_key = 'mg_design_download_' . get_current_user_id();
+        $transient_key = 'mg_design_export_pending_' . get_current_user_id();
         set_transient($transient_key, array_map('intval', $order_ids), 120);
 
-        $redirect_to = add_query_arg('mg_design_download', '1', $redirect_to);
+        $redirect_to = add_query_arg('mg_design_export', '1', $redirect_to);
         return $redirect_to;
     }
 
     /* ------------------------------------------------------------------ */
 
     /**
-     * Runs early on admin_init.  If the trigger query arg is present and a valid
-     * transient exists we build and stream the ZIP.
+     * Runs early on admin_init. If the trigger query arg is present and a
+     * valid transient exists, stashes the order IDs for
+     * maybe_enqueue_export_assets() to localize into the progress-bar modal
+     * script later in the same request.
      */
-    public static function maybe_stream_zip() {
-        if (empty($_GET['mg_design_download'])) {
+    public static function maybe_prepare_export_modal() {
+        if (empty($_GET['mg_design_export'])) {
             return;
         }
 
@@ -93,50 +130,59 @@ class MG_Order_Design_Download {
             return;
         }
 
-        $transient_key = 'mg_design_download_' . get_current_user_id();
+        $transient_key = 'mg_design_export_pending_' . get_current_user_id();
         $order_ids     = get_transient($transient_key);
         if (!is_array($order_ids) || empty($order_ids)) {
             return;
         }
         delete_transient($transient_key);
 
-        self::stream_zip($order_ids);
-        exit;
+        self::$pending_export_order_ids = array_values(array_map('intval', $order_ids));
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    public static function maybe_enqueue_export_assets() {
+        if (empty(self::$pending_export_order_ids)) {
+            return;
+        }
+
+        $base_file = dirname(__DIR__) . '/mockup-generator.php';
+
+        wp_enqueue_style('mg-order-export', plugins_url('assets/css/order-export.css', $base_file), array(), MG_VERSION);
+        wp_enqueue_script('mg-order-export', plugins_url('assets/js/order-export.js', $base_file), array(), MG_VERSION, true);
+
+        wp_localize_script('mg-order-export', 'MG_ORDER_EXPORT', array(
+            'ajax_url'  => admin_url('admin-ajax.php'),
+            'nonce'     => wp_create_nonce('mg_design_export_nonce'),
+            'order_ids' => self::$pending_export_order_ids,
+            'i18n'      => array(
+                'title'      => __('Minták exportálása', 'mg'),
+                'processing' => __('Feldolgozás…', 'mg'),
+                'done'       => __('Kész!', 'mg'),
+                'download'   => __('ZIP letöltése', 'mg'),
+                'error'      => __('Hiba történt az export közben.', 'mg'),
+                'close'      => __('Bezárás', 'mg'),
+            ),
+        ));
     }
 
     /* ------------------------------------------------------------------ */
 
     /**
-     * Builds the ZIP and streams it to the browser.
+     * Builds the full, sequence-numbered list of PNG export tasks (one per
+     * ordered quantity copy) for the given orders. Cheap metadata-only work
+     * (no Imagick involved) so it can run in a single request even for
+     * large batches; the actual image processing happens later, a few tasks
+     * at a time, in ajax_export_step().
      *
      * @param int[] $order_ids
+     * @return array<int, array{design_path:string,type:string,size:string,zip_name:string}>
      */
-    protected static function stream_zip(array $order_ids) {
-        if (!class_exists('ZipArchive')) {
-            wp_die(__('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg'));
-        }
-
-        // Each unique design now also gets trimmed/resized via Imagick, which
-        // is slower than the previous plain file copy — large batches need
-        // more headroom than the server's default execution time/memory.
-        // Same limits used by the other large bulk exports in this plugin
-        // (Google/Facebook feed generation).
-        @set_time_limit(1200);
-        @ini_set('memory_limit', '1024M');
-
-        $orders = self::sort_orders_by_date($order_ids);
-
-        $tmp_file = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
-
-        $zip = new ZipArchive();
-        if ($zip->open($tmp_file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            wp_die(__('Nem sikerült létrehozni a ZIP fájlt.', 'mg'));
-        }
-
-        $added       = 0;
-        $sequence    = 0;
-        $export_cache = array();
-        $temp_files   = array();
+    protected static function build_export_tasks(array $order_ids) {
+        $orders   = self::sort_orders_by_date($order_ids);
+        $tasks    = array();
+        $sequence = 0;
 
         foreach ($orders as $order) {
             $order_id = $order->get_id();
@@ -154,8 +200,7 @@ class MG_Order_Design_Download {
                     continue;
                 }
 
-                $context     = self::resolve_item_context($item);
-                $export_path = self::prepare_export_png($design_path, $context['type'], $context['size'], $export_cache, $temp_files);
+                $context = self::resolve_item_context($item);
 
                 $product_name = sanitize_file_name(get_the_title($product_id));
                 if ($product_name === '') {
@@ -165,36 +210,195 @@ class MG_Order_Design_Download {
 
                 for ($i = 1; $i <= $quantity; $i++) {
                     $sequence++;
-                    $zip_name = sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment);
-                    $zip->addFile($export_path, $zip_name);
-                    $added++;
+                    $tasks[] = array(
+                        'design_path' => $design_path,
+                        'type'        => $context['type'],
+                        'size'        => $context['size'],
+                        'zip_name'    => sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment),
+                    );
                 }
             }
         }
 
-        $zip->close();
+        return $tasks;
+    }
 
-        foreach ($temp_files as $temp_file) {
-            @unlink($temp_file);
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * AJAX: starts an export job for the given orders. Builds the task list,
+     * creates an empty ZIP on disk, and stores both in a transient keyed by
+     * a generated job ID. Returns the job ID and total task count so the
+     * frontend can start polling ajax_export_step().
+     */
+    public static function ajax_export_start() {
+        try {
+            if (!current_user_can('edit_shop_orders')) {
+                wp_send_json_error(array('message' => __('Jogosultság hiányzik.', 'mg')), 403);
+            }
+            if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+                wp_send_json_error(array('message' => __('Érvénytelen kérés (nonce).', 'mg')), 401);
+            }
+            if (!class_exists('ZipArchive')) {
+                wp_send_json_error(array('message' => __('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg')), 500);
+            }
+
+            $order_ids = isset($_POST['order_ids']) ? array_map('intval', (array) $_POST['order_ids']) : array();
+            $order_ids = array_values(array_filter($order_ids));
+            if (empty($order_ids)) {
+                wp_send_json_error(array('message' => __('Nincsenek kiválasztott rendelések.', 'mg')), 400);
+            }
+
+            $tasks = self::build_export_tasks($order_ids);
+            if (empty($tasks)) {
+                wp_send_json_error(array('message' => __('Nem találhatók minta PNG fájlok a kijelölt rendelésekhez.', 'mg')), 404);
+            }
+
+            $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
+            $zip      = new ZipArchive();
+            if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+                wp_send_json_error(array('message' => __('Nem sikerült létrehozni a ZIP fájlt.', 'mg')), 500);
+            }
+            $zip->close();
+
+            $job_id = 'mgexp_' . wp_generate_uuid4();
+            $job    = array(
+                'tasks'      => $tasks,
+                'next_index' => 0,
+                'total'      => count($tasks),
+                'completed'  => 0,
+                'zip_path'   => $zip_path,
+                'cache'      => array(),
+                'temp_files' => array(),
+                'status'     => 'processing',
+                'user_id'    => get_current_user_id(),
+            );
+            set_transient(self::JOB_TRANSIENT_PREFIX . $job_id, $job, self::JOB_TTL);
+
+            wp_send_json_success(array('job_id' => $job_id, 'total' => $job['total']));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * AJAX: processes the next small batch of tasks (self::EXPORT_BATCH_SIZE)
+     * for a job, appending each finished PNG into the job's ZIP. Designed to
+     * be called repeatedly until the response reports done=true, so no
+     * single request ever has to process the whole batch.
+     */
+    public static function ajax_export_step() {
+        try {
+            if (!current_user_can('edit_shop_orders')) {
+                wp_send_json_error(array('message' => __('Jogosultság hiányzik.', 'mg')), 403);
+            }
+            if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+                wp_send_json_error(array('message' => __('Érvénytelen kérés (nonce).', 'mg')), 401);
+            }
+
+            @set_time_limit(120);
+            @ini_set('memory_limit', '512M');
+
+            $job_id        = isset($_POST['job_id']) ? sanitize_text_field($_POST['job_id']) : '';
+            $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
+            $job           = $job_id !== '' ? get_transient($transient_key) : false;
+            if (!is_array($job)) {
+                wp_send_json_error(array('message' => __('A feladat lejárt vagy nem található.', 'mg')), 404);
+            }
+
+            if ($job['status'] === 'completed') {
+                wp_send_json_success(array(
+                    'completed' => $job['completed'],
+                    'total'     => $job['total'],
+                    'percent'   => 100,
+                    'done'      => true,
+                ));
+            }
+
+            $zip = new ZipArchive();
+            if ($zip->open($job['zip_path'], ZipArchive::CREATE) !== true) {
+                wp_send_json_error(array('message' => __('Nem sikerült megnyitni a ZIP fájlt.', 'mg')), 500);
+            }
+
+            $cache      = $job['cache'];
+            $temp_files = $job['temp_files'];
+            $in_batch   = 0;
+
+            while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
+                $task        = $job['tasks'][$job['next_index']];
+                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files);
+                $zip->addFile($export_path, $task['zip_name']);
+                $job['next_index']++;
+                $job['completed']++;
+                $in_batch++;
+            }
+
+            $zip->close();
+
+            $job['cache']      = $cache;
+            $job['temp_files'] = $temp_files;
+
+            $done = $job['next_index'] >= $job['total'];
+            if ($done) {
+                $job['status'] = 'completed';
+                foreach ($job['temp_files'] as $temp_file) {
+                    @unlink($temp_file);
+                }
+                $job['temp_files'] = array();
+            }
+
+            set_transient($transient_key, $job, self::JOB_TTL);
+
+            $percent = $job['total'] > 0 ? (int) round(($job['completed'] / $job['total']) * 100) : 100;
+
+            wp_send_json_success(array(
+                'completed' => $job['completed'],
+                'total'     => $job['total'],
+                'percent'   => $percent,
+                'done'      => $done,
+            ));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Streams the finished ZIP for a completed job, then deletes the job and
+     * its temp file. URL: admin-ajax.php?action=mg_design_export_download&job_id=...&nonce=...
+     */
+    public static function ajax_export_download() {
+        if (!current_user_can('edit_shop_orders')) {
+            wp_die(__('Jogosultság hiányzik.', 'mg'), '', array('response' => 403));
+        }
+        if (!isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'mg_design_export_nonce')) {
+            wp_die(__('Érvénytelen biztonsági token.', 'mg'), '', array('response' => 403));
         }
 
-        if ($added === 0 || !file_exists($tmp_file)) {
-            @unlink($tmp_file);
-            wp_die(__('Nem találhatók minta PNG fájlok a kijelölt rendelésekhez.', 'mg'));
+        $job_id        = isset($_GET['job_id']) ? sanitize_text_field($_GET['job_id']) : '';
+        $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
+        $job           = $job_id !== '' ? get_transient($transient_key) : false;
+        if (!is_array($job) || $job['status'] !== 'completed' || !file_exists($job['zip_path'])) {
+            wp_die(__('A ZIP fájl nem található vagy lejárt.', 'mg'), '', array('response' => 404));
         }
+
+        $zip_path = $job['zip_path'];
+        delete_transient($transient_key);
 
         $filename = 'mintak_' . date('Ymd_His') . '.zip';
 
-        // Stream the file
         status_header(200);
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($tmp_file));
+        header('Content-Length: ' . filesize($zip_path));
         header('Cache-Control: no-cache, must-revalidate');
         header('Pragma: no-cache');
 
-        readfile($tmp_file);
-        @unlink($tmp_file);
+        readfile($zip_path);
+        @unlink($zip_path);
         exit;
     }
 
