@@ -32,6 +32,7 @@ add_action('plugins_loaded', function(){
         'includes/class-crosssell-manager.php',
         'includes/class-crosssell-frontend.php',
         'includes/global-catalog.php',
+        'includes/class-image-utils.php',
         'includes/class-category-toggle.php',
         'admin/class-admin-page.php',
         'admin/class-settings-page.php',

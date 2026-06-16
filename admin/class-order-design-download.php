@@ -8,12 +8,24 @@ if (!defined('ABSPATH')) {
  *
  * Adds a "Minták letöltése" bulk action to the WooCommerce orders list.
  * For each selected order it finds the base design PNG for every line item
- * (stored in _mg_last_design_path on the parent product) and packs them into
- * a ZIP file, repeating each file as many times as the ordered quantity.
+ * (stored in _mg_last_design_path on the parent product), trims its
+ * transparent margins, optionally resizes it to the configured production
+ * print width (cm, per product type + size), and packs the result into a
+ * ZIP file, repeating each file as many times as the ordered quantity.
+ *
+ * Files are numbered sequentially in order-age order (oldest order's items
+ * get the lowest numbers) so the printer can process the batch in the
+ * order the orders came in.
  *
  * Supports both legacy orders (CPT) and HPOS.
  */
 class MG_Order_Design_Download {
+
+    /**
+     * Fixed export resolution used to convert a configured print width
+     * (cm) into a target pixel width for the production PNG.
+     */
+    const EXPORT_DPI = 300;
 
     public static function init() {
         // Register bulk action – HPOS list table
@@ -104,6 +116,8 @@ class MG_Order_Design_Download {
             wp_die(__('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg'));
         }
 
+        $orders = self::sort_orders_by_date($order_ids);
+
         $tmp_file = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
 
         $zip = new ZipArchive();
@@ -111,13 +125,13 @@ class MG_Order_Design_Download {
             wp_die(__('Nem sikerült létrehozni a ZIP fájlt.', 'mg'));
         }
 
-        $added = 0;
+        $added       = 0;
+        $sequence    = 0;
+        $export_cache = array();
+        $temp_files   = array();
 
-        foreach ($order_ids as $order_id) {
-            $order = wc_get_order($order_id);
-            if (!$order) {
-                continue;
-            }
+        foreach ($orders as $order) {
+            $order_id = $order->get_id();
 
             foreach ($order->get_items() as $item) {
                 /** @var WC_Order_Item_Product $item */
@@ -132,20 +146,29 @@ class MG_Order_Design_Download {
                     continue;
                 }
 
+                $context     = self::resolve_item_context($item);
+                $export_path = self::prepare_export_png($design_path, $context['type'], $context['size'], $export_cache, $temp_files);
+
                 $product_name = sanitize_file_name(get_the_title($product_id));
                 if ($product_name === '') {
                     $product_name = 'product_' . $product_id;
                 }
+                $size_segment = $context['size'] !== '' ? sanitize_file_name($context['size']) : 'na';
 
                 for ($i = 1; $i <= $quantity; $i++) {
-                    $zip_name = sprintf('%d_%s_%d.png', $order_id, $product_name, $i);
-                    $zip->addFile($design_path, $zip_name);
+                    $sequence++;
+                    $zip_name = sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment);
+                    $zip->addFile($export_path, $zip_name);
                     $added++;
                 }
             }
         }
 
         $zip->close();
+
+        foreach ($temp_files as $temp_file) {
+            @unlink($temp_file);
+        }
 
         if ($added === 0 || !file_exists($tmp_file)) {
             @unlink($tmp_file);
@@ -165,6 +188,141 @@ class MG_Order_Design_Download {
         readfile($tmp_file);
         @unlink($tmp_file);
         exit;
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Loads each order and sorts them oldest-first, so a global per-file
+     * sequence number assigned while iterating reflects order age.
+     *
+     * @param int[] $order_ids
+     * @return WC_Order[]
+     */
+    protected static function sort_orders_by_date(array $order_ids) {
+        $orders = array();
+        foreach ($order_ids as $order_id) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $orders[] = $order;
+            }
+        }
+
+        usort($orders, function($a, $b) {
+            $a_date = $a->get_date_created();
+            $b_date = $b->get_date_created();
+            $a_time = $a_date ? $a_date->getTimestamp() : 0;
+            $b_time = $b_date ? $b_date->getTimestamp() : 0;
+            if ($a_time === $b_time) {
+                return $a->get_id() <=> $b->get_id();
+            }
+            return $a_time <=> $b_time;
+        });
+
+        return $orders;
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Resolves the product type (slug) and size (label, as configured in
+     * the product type's "sizes" list) for an order line item, trying the
+     * order item meta first and falling back to the variation/product
+     * attributes — same fallback chain used by the supplier CSV export.
+     *
+     * @return array{type:string,size:string}
+     */
+    protected static function resolve_item_context($item) {
+        if (!($item instanceof WC_Order_Item_Product)) {
+            return array('type' => '', 'size' => '');
+        }
+
+        $type_slug  = $item->get_meta('mg_product_type') ?: $item->get_meta('product_type') ?: $item->get_meta('termektipus') ?: $item->get_meta('pa_termektipus');
+        $size_label = $item->get_meta('mg_size') ?: $item->get_meta('Méret') ?: $item->get_meta('size') ?: $item->get_meta('meret');
+
+        if (empty($type_slug) || empty($size_label)) {
+            $variation_id = $item->get_variation_id();
+            $wc_product   = $variation_id > 0 ? wc_get_product($variation_id) : wc_get_product($item->get_product_id());
+            if ($wc_product) {
+                $attributes = $wc_product->get_attributes();
+                if (empty($type_slug)) {
+                    $type_slug = $attributes['pa_termektipus'] ?? ($attributes['pa_product_type'] ?? '');
+                }
+                if (empty($size_label)) {
+                    $size_label = $attributes['pa_meret'] ?? ($attributes['pa_size'] ?? ($attributes['meret'] ?? ''));
+                }
+            }
+        }
+
+        return array(
+            'type' => sanitize_title((string) $type_slug),
+            'size' => sanitize_text_field((string) $size_label),
+        );
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Produces the production-ready PNG for a design: always trims the
+     * transparent margins, and resizes to the configured print width (cm,
+     * at self::EXPORT_DPI) for the given type+size, if one is set in the
+     * product type settings. If no print width is configured, only the
+     * trim is applied.
+     *
+     * The original file on disk is never modified — a temporary copy is
+     * written and returned instead. Falls back to the original path if
+     * Imagick processing isn't available or fails, so a single broken
+     * design never aborts the whole batch.
+     *
+     * Results are cached per (design path, type, size) so repeated items
+     * (multiple quantities, or identical designs across orders) are only
+     * processed once.
+     *
+     * @return string Path to the file to add to the ZIP.
+     */
+    protected static function prepare_export_png($design_path, $type_slug, $size_label, array &$cache, array &$temp_files) {
+        $cache_key = $design_path . '|' . $type_slug . '|' . $size_label;
+        if (isset($cache[$cache_key])) {
+            return $cache[$cache_key];
+        }
+
+        if (!class_exists('Imagick')) {
+            $cache[$cache_key] = $design_path;
+            return $design_path;
+        }
+
+        try {
+            $image = new Imagick($design_path);
+            if (method_exists($image, 'stripImage')) {
+                $image->stripImage();
+            }
+            MG_Image_Utils::trim_transparent_bounds($image);
+
+            $print_width_cm = ($type_slug !== '' && $size_label !== '' && function_exists('mgsc_get_print_width_cm'))
+                ? floatval(mgsc_get_print_width_cm($type_slug, $size_label))
+                : 0.0;
+
+            if ($print_width_cm > 0) {
+                $target_width_px = (int) round($print_width_cm * self::EXPORT_DPI / 2.54);
+                if ($target_width_px > 0 && method_exists($image, 'thumbnailImage')) {
+                    $image->thumbnailImage($target_width_px, 0);
+                }
+            }
+
+            $image->setImageFormat('png');
+
+            $temp_path = tempnam(sys_get_temp_dir(), 'mg_design_export_');
+            $image->writeImage($temp_path);
+            $image->clear();
+            $image->destroy();
+
+            $cache[$cache_key] = $temp_path;
+            $temp_files[]      = $temp_path;
+            return $temp_path;
+        } catch (Throwable $e) {
+            $cache[$cache_key] = $design_path;
+            return $design_path;
+        }
     }
 
     /* ------------------------------------------------------------------ */
@@ -194,10 +352,14 @@ class MG_Order_Design_Download {
             return $product_html; // no design – nothing to add
         }
 
+        $context = self::resolve_item_context($item);
+
         $nonce = wp_create_nonce('mg_dl_design_' . $product_id);
         $url   = add_query_arg(array(
             'action'     => 'mg_download_design_single',
             'product_id' => $product_id,
+            'type'       => $context['type'],
+            'size'       => $context['size'],
             '_wpnonce'   => $nonce,
         ), admin_url('admin-ajax.php'));
 
@@ -235,15 +397,30 @@ class MG_Order_Design_Download {
             wp_die(__('A mintafájl nem található.', 'mg'), '', array('response' => 404));
         }
 
-        $filename = sanitize_file_name(get_the_title($product_id)) . '.png';
+        $type_slug  = isset($_GET['type']) ? sanitize_title(wp_unslash($_GET['type'])) : '';
+        $size_label = isset($_GET['size']) ? sanitize_text_field(wp_unslash($_GET['size'])) : '';
+
+        $cache       = array();
+        $temp_files  = array();
+        $export_path = self::prepare_export_png($design_path, $type_slug, $size_label, $cache, $temp_files);
+
+        $filename = sanitize_file_name(get_the_title($product_id));
+        if ($size_label !== '') {
+            $filename .= '_' . sanitize_file_name($size_label);
+        }
+        $filename .= '.png';
 
         status_header(200);
         header('Content-Type: image/png');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($design_path));
+        header('Content-Length: ' . filesize($export_path));
         header('Cache-Control: no-cache');
 
-        readfile($design_path);
+        readfile($export_path);
+
+        foreach ($temp_files as $temp_file) {
+            @unlink($temp_file);
+        }
         exit;
     }
 
@@ -277,4 +454,3 @@ class MG_Order_Design_Download {
         return '';
     }
 }
-

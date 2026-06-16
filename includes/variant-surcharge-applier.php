@@ -65,6 +65,35 @@ if (!function_exists('mgsc_get_size_surcharge')) {
     }
 }
 
+if (!function_exists('mgsc_get_print_width_cm')) {
+    /**
+     * Returns the configured production-print width (cm) for a given
+     * product type + size, or 0.0 if not configured. Reads directly from
+     * the live mg_products option (the same source the product settings
+     * page edits), independent of the (currently unused) global catalog
+     * file, so it always reflects what's saved in the admin UI.
+     */
+    function mgsc_get_print_width_cm($type_key, $size){
+        $type_key = sanitize_title($type_key);
+        $size = (string)$size;
+        if ($type_key === '' || $size === '') return 0.0;
+
+        $products = get_option('mg_products', array());
+        if (!is_array($products)) return 0.0;
+
+        foreach ($products as $p) {
+            if (!is_array($p) || !isset($p['key'])) continue;
+            if (sanitize_title($p['key']) !== $type_key) continue;
+            if (!isset($p['print_width_cm']) || !is_array($p['print_width_cm'])) {
+                return 0.0;
+            }
+            return floatval($p['print_width_cm'][$size] ?? 0);
+        }
+
+        return 0.0;
+    }
+}
+
 /**
  * 1) Ha a saját variáns payload-ot szűritek, használjátok ezt:
  *    $payload = apply_filters('mg_variant_payload', $payload, $type_key, $color_slug);

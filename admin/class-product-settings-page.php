@@ -560,6 +560,16 @@ if (isset($_POST['size_surcharges']) && is_array($_POST['size_surcharges'])) {
     }
     $prod['size_surcharges'] = $ss;
 }
+// -- ÚJ: nyomtatási méret (cm) mentése --
+if (isset($_POST['print_width_cm']) && is_array($_POST['print_width_cm'])) {
+    $pw = array();
+    foreach ($_POST['print_width_cm'] as $size => $val) {
+        $size_key = sanitize_text_field($size);
+        $cm = floatval($val);
+        if ($size_key !== '' && $cm > 0) { $pw[$size_key] = $cm; }
+    }
+    $prod['print_width_cm'] = $pw;
+}
 // -- ÚJ: UTT (Nagykereskedés) cikkszámok mentése színenként --
 if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
     $utt = array();
@@ -921,6 +931,24 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
         <tr>
             <td><code><?php echo esc_html($s); ?></code></td>
             <td><input type="number" name="size_surcharges[<?php echo esc_attr($s); ?>]" class="small-text" step="1" value="<?php echo esc_attr($val); ?>" /></td>
+        </tr>
+    <?php endforeach; ?>
+    </tbody>
+</table>
+
+<h2>Nyomtatási méret (cm)</h2>
+<p class="description">A nyomtatott minta kívánt szélessége centiméterben (300 DPI-vel kerül exportálásra). Ha egy mérethez nincs megadva érték, a rendelés-export csak körbevágja a minta üres margóját, de nem méretezi át.</p>
+<table class="widefat striped">
+    <thead><tr><th>Méret</th><th>Szélesség (cm)</th></tr></thead>
+    <tbody>
+    <?php
+    $saved_pw = isset($prod['print_width_cm']) && is_array($prod['print_width_cm']) ? $prod['print_width_cm'] : array();
+    foreach ($sizes_list as $s):
+        $pw_val = isset($saved_pw[$s]) ? floatval($saved_pw[$s]) : '';
+    ?>
+        <tr>
+            <td><code><?php echo esc_html($s); ?></code></td>
+            <td><input type="number" name="print_width_cm[<?php echo esc_attr($s); ?>]" class="small-text" step="0.1" min="0" value="<?php echo esc_attr($pw_val); ?>" /></td>
         </tr>
     <?php endforeach; ?>
     </tbody>
