@@ -211,8 +211,9 @@ class MG_Order_Design_Download {
                     continue;
                 }
 
-                $context    = self::resolve_item_context($item);
-                $large_size = self::item_has_large_size_png_option($item);
+                $context          = self::resolve_item_context($item);
+                $large_size       = self::item_has_large_size_png_option($item);
+                $is_black_garment = ($context['color'] === 'fekete');
 
                 $product_name = sanitize_file_name(get_the_title($product_id));
                 if ($product_name === '') {
@@ -223,11 +224,12 @@ class MG_Order_Design_Download {
                 for ($i = 1; $i <= $quantity; $i++) {
                     $sequence++;
                     $tasks[] = array(
-                        'design_path' => $design_path,
-                        'type'        => $context['type'],
-                        'size'        => $context['size'],
-                        'large_size'  => $large_size,
-                        'zip_name'    => sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment),
+                        'design_path'      => $design_path,
+                        'type'             => $context['type'],
+                        'size'             => $context['size'],
+                        'large_size'       => $large_size,
+                        'is_black_garment' => $is_black_garment,
+                        'zip_name'         => sprintf('%04d_%d_%s_%s.png', $sequence, $order_id, $product_name, $size_segment),
                     );
                 }
             }
@@ -344,7 +346,8 @@ class MG_Order_Design_Download {
 
             while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
                 $task        = $job['tasks'][$job['next_index']];
-                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']), !empty($job['strip_black']));
+                $strip_black = !empty($job['strip_black']) && !empty($task['is_black_garment']);
+                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']), $strip_black);
                 $zip->addFile($export_path, $task['zip_name']);
                 $job['next_index']++;
                 $job['completed']++;
@@ -453,10 +456,11 @@ class MG_Order_Design_Download {
     /* ------------------------------------------------------------------ */
 
     /**
-     * Resolves the product type (slug) and size (label, as configured in
-     * the product type's "sizes" list) for an order line item, trying the
-     * order item meta first and falling back to the variation/product
-     * attributes — same fallback chain used by the supplier CSV export.
+     * Resolves the product type (slug), size (label, as configured in the
+     * product type's "sizes" list), and garment color (slug) for an order
+     * line item, trying the order item meta first and falling back to the
+     * variation/product attributes — same fallback chain used by the
+     * supplier CSV export.
      *
      * @return array{type:string,size:string}
      */
@@ -467,8 +471,9 @@ class MG_Order_Design_Download {
 
         $type_slug  = $item->get_meta('mg_product_type') ?: $item->get_meta('product_type') ?: $item->get_meta('termektipus') ?: $item->get_meta('pa_termektipus');
         $size_label = $item->get_meta('mg_size') ?: $item->get_meta('Méret') ?: $item->get_meta('size') ?: $item->get_meta('meret');
+        $color_slug = $item->get_meta('mg_color') ?: $item->get_meta('color') ?: $item->get_meta('Szín') ?: $item->get_meta('pa_szin');
 
-        if (empty($type_slug) || empty($size_label)) {
+        if (empty($type_slug) || empty($size_label) || empty($color_slug)) {
             $variation_id = $item->get_variation_id();
             $wc_product   = $variation_id > 0 ? wc_get_product($variation_id) : wc_get_product($item->get_product_id());
             if ($wc_product) {
@@ -479,12 +484,16 @@ class MG_Order_Design_Download {
                 if (empty($size_label)) {
                     $size_label = $attributes['pa_meret'] ?? ($attributes['pa_size'] ?? ($attributes['meret'] ?? ''));
                 }
+                if (empty($color_slug)) {
+                    $color_slug = $attributes['pa_szin'] ?? ($attributes['pa_color'] ?? '');
+                }
             }
         }
 
         return array(
-            'type' => sanitize_title((string) $type_slug),
-            'size' => sanitize_text_field((string) $size_label),
+            'type'  => sanitize_title((string) $type_slug),
+            'size'  => sanitize_text_field((string) $size_label),
+            'color' => sanitize_title((string) $color_slug),
         );
     }
 
