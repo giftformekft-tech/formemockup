@@ -21,6 +21,31 @@ class MG_Manufacturing_Email extends WC_Email {
         parent::__construct();
     }
 
+    public function init_form_fields() {
+        $this->form_fields = array(
+            'enabled' => array(
+                'title'   => 'Engedélyezve',
+                'type'    => 'checkbox',
+                'label'   => 'Email engedélyezése',
+                'default' => 'yes',
+            ),
+            'subject' => array(
+                'title'       => 'Tárgy',
+                'type'        => 'text',
+                'desc_tip'    => true,
+                'placeholder' => $this->subject,
+                'default'     => '',
+            ),
+            'heading' => array(
+                'title'       => 'Fejléc',
+                'type'        => 'text',
+                'desc_tip'    => true,
+                'placeholder' => $this->heading,
+                'default'     => '',
+            ),
+        );
+    }
+
     public function trigger($order_id, $order = null) {
         if (!$order_id) {
             return;
