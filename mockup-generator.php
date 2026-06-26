@@ -63,6 +63,7 @@ add_action('plugins_loaded', function(){
         'includes/variant-surcharge-applier.php',
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
+        'includes/class-designer-button.php',
         'admin/class-temu-export-page.php',
         'admin/class-order-design-download.php',
         'admin/class-order-item-editor.php',
@@ -198,6 +199,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Design_Gallery')) {
         MG_Design_Gallery::init();
+    }
+    if (class_exists('MG_Designer_Button')) {
+        MG_Designer_Button::init();
     }
     if (class_exists('MG_Bulk_Queue')) {
         MG_Bulk_Queue::init();

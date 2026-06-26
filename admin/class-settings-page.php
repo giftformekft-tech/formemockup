@@ -155,7 +155,14 @@ class MG_Settings_Page {
                 MG_Design_Gallery::sanitize_settings($input);
                 echo '<div class="notice notice-success is-dismissible"><p>Mintagalléria beállítások elmentve.</p></div>';
             }
-            
+
+            // Designer Edit Button
+            if (class_exists('MG_Designer_Button') && isset($_POST['mg_designer_button_nonce']) && wp_verify_nonce($_POST['mg_designer_button_nonce'], 'mg_designer_button_save')) {
+                $input = isset($_POST['mg_designer_button']) ? wp_unslash($_POST['mg_designer_button']) : array();
+                MG_Designer_Button::sanitize_settings($input);
+                echo '<div class="notice notice-success is-dismissible"><p>Designer szerkesztés gomb beállítások elmentve.</p></div>';
+            }
+
             // Description Variables
             if (isset($_POST['mg_description_variables_nonce']) && wp_verify_nonce($_POST['mg_description_variables_nonce'], 'mg_description_variables_save')) {
                 $input = isset($_POST['mg_description_variables_input']) ? wp_unslash($_POST['mg_description_variables_input']) : '';
@@ -462,6 +469,7 @@ class MG_Settings_Page {
             wp_enqueue_media();
         }
         $gallery_settings = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_settings() : array('enabled' => false, 'position' => 'after_summary', 'max_items' => 6, 'layout' => 'grid', 'title' => '', 'show_title' => true);
+        $designer_button_settings = class_exists('MG_Designer_Button') ? MG_Designer_Button::get_settings() : array('enabled' => true);
         $position_choices = class_exists('MG_Design_Gallery') ? MG_Design_Gallery::get_position_choices() : array();
         $description_variables = function_exists('mgtd__get_description_variables') ? mgtd__get_description_variables() : array();
         $description_variables_lines = array();
@@ -544,6 +552,22 @@ class MG_Settings_Page {
                 </tr>
             </table>
             <?php submit_button('Mintagalléria mentése'); ?>
+        </form>
+        <hr/>
+        <?php endif; ?>
+
+        <?php if (class_exists('MG_Designer_Button')): ?>
+        <h2>"Szerkesztés a designerben" gomb</h2>
+        <p>A kosár gomb alatt megjelenő gomb, amely a Nano Banana Terméktervezőbe vezet, és betölti a termékhez mentett alap minta PNG-t. Csak azoknál a termékeknél jelenik meg, amelyekhez már mentve van minta.</p>
+        <form method="post">
+            <?php wp_nonce_field('mg_designer_button_save', 'mg_designer_button_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row">Megjelenítés</th>
+                    <td><label><input type="checkbox" name="mg_designer_button[enabled]" value="1" <?php checked(!empty($designer_button_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                </tr>
+            </table>
+            <?php submit_button('Designer gomb mentése'); ?>
         </form>
         <hr/>
         <?php endif; ?>
