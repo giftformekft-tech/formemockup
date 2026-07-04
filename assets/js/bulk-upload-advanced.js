@@ -63,7 +63,8 @@
       fields: {
         main: $('#mg-ai-field-main').is(':checked'),
         sub: $('#mg-ai-field-sub').is(':checked'),
-        tags: $('#mg-ai-field-tags').is(':checked')
+        tags: $('#mg-ai-field-tags').is(':checked'),
+        seo: $('#mg-ai-field-seo').is(':checked')
       }
     };
   }
@@ -143,6 +144,13 @@
       }
       if (tagList.length) {
         $row.find('.mg-tags-input').val(tagList.join(', '));
+      }
+    }
+
+    if (config.fields.seo) {
+      var description = (typeof payload.description === 'string') ? payload.description.trim() : '';
+      if (description) {
+        $row.data('mgSampleSeo', description);
       }
     }
   }
@@ -1047,6 +1055,7 @@
       var initialTags = ($row.find('.mg-tags-input').val() || '').trim();
       var isCustomProduct = $row.find('.mg-custom-flag').is(':checked');
       var presetId = isCustomProduct ? ($row.find('.mg-preset-select').val() || '') : '';
+      var sampleSeo = $row.data('mgSampleSeo') || '';
       var form = new FormData();
       form.append('action', 'mg_bulk_queue_enqueue');
       form.append('nonce', MG_BULK_ADV.nonce);
@@ -1062,6 +1071,7 @@
       form.append('primary_type', defaultsSnapshot.type || '');
       form.append('primary_color', defaultsSnapshot.color || '');
       form.append('primary_size', defaultsSnapshot.size || '');
+      form.append('sample_seo', sampleSeo);
 
       $.ajax({
         url: MG_BULK_ADV.ajax_url,
@@ -1237,6 +1247,7 @@
       form.append('primary_type', defaultsSnapshot.type || '');
       form.append('primary_color', defaultsSnapshot.color || '');
       form.append('primary_size', defaultsSnapshot.size || '');
+      form.append('sample_seo', $row.data('mgSampleSeo') || '');
 
       ajaxWithRetry({
         url: MG_BULK_ADV.ajax_url,

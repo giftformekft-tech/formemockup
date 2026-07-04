@@ -162,8 +162,19 @@ if (!function_exists('mgtd__normalize_category_ids')) {
     }
 }
 
+if (!function_exists('mgtd__get_sample_seo')) {
+    function mgtd__get_sample_seo($product_id) {
+        $product_id = (int) $product_id;
+        if ($product_id <= 0) {
+            return '';
+        }
+        $value = get_post_meta($product_id, '_mg_sample_seo', true);
+        return is_string($value) ? wp_kses_post($value) : '';
+    }
+}
+
 if (!function_exists('mgtd__build_description_context')) {
-    function mgtd__build_description_context($product = null, $category_ids = array(), $product_name = '') {
+    function mgtd__build_description_context($product = null, $category_ids = array(), $product_name = '', $sample_seo = '') {
         $context = array(
             'product_name' => '',
             'product_category' => '',
@@ -171,6 +182,7 @@ if (!function_exists('mgtd__build_description_context')) {
             'category_seo' => '',
             'category_seos' => '',
             'category_seo_map' => array(),
+            'sample_seo' => is_string($sample_seo) ? wp_kses_post($sample_seo) : '',
         );
 
         if ($product_name !== '') {
@@ -181,6 +193,9 @@ if (!function_exists('mgtd__build_description_context')) {
             $context['product_name'] = sanitize_text_field($product->get_name());
             if (method_exists($product, 'get_category_ids')) {
                 $category_ids = $product->get_category_ids();
+            }
+            if ($context['sample_seo'] === '' && method_exists($product, 'get_id')) {
+                $context['sample_seo'] = mgtd__get_sample_seo($product->get_id());
             }
         }
 
@@ -279,6 +294,7 @@ if (!function_exists('mgtd__replace_placeholders')) {
             '{product_categories}' => $context['product_categories'] ?? '',
             '{category_seo}' => $context['category_seo'] ?? '',
             '{category_seos}' => $context['category_seos'] ?? '',
+            '{sample_seo}' => $context['sample_seo'] ?? '',
         );
         $content = strtr($content, $replacements);
 

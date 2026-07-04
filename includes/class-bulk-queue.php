@@ -436,6 +436,7 @@ class MG_Bulk_Queue {
                 'subs' => isset($cats['subs']) ? array_map('intval', (array)$cats['subs']) : array(),
             );
             $context_trigger = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
+            $sample_seo = isset($payload['sample_seo']) ? (string) $payload['sample_seo'] : '';
 
             $creator = new MG_Product_Creator();
             $result_product_id = 0;
@@ -467,8 +468,9 @@ class MG_Bulk_Queue {
                 $generation_context = array(
                     'design_path' => $design_path,
                     'trigger' => $context_trigger,
+                    'sample_seo' => $sample_seo,
                 );
-                
+
                 $res = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
                 if (is_wp_error($res)) {
                     throw new RuntimeException($res->get_error_message());
@@ -482,6 +484,7 @@ class MG_Bulk_Queue {
                 $generation_context_phase1 = array(
                     'design_path' => $design_path,
                     'trigger' => $context_trigger,
+                    'sample_seo' => $sample_seo,
                     'skip_register_maintenance' => true,  // Don't register mockups yet
                 );
                 
@@ -803,6 +806,7 @@ class MG_Bulk_Queue {
         $tags = isset($payload['tags']) ? (array)$payload['tags'] : array();
         $tags = array_map('sanitize_text_field', array_filter(array_map('trim', $tags)));
         $clean['tags'] = array_values(array_filter(array_unique($tags)));
+        $clean['sample_seo'] = isset($payload['sample_seo']) ? wp_kses_post($payload['sample_seo']) : '';
         return $clean;
     }
 

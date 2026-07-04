@@ -492,8 +492,12 @@ class MG_Admin_Page {
         echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-tags" checked /> ';
         echo '<span>' . esc_html__('Tag-ek', 'mockup-generator') . '</span>';
         echo '</label>';
+        echo '<label class="mg-type">';
+        echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-seo" checked /> ';
+        echo '<span>' . esc_html__('Minta SEO leírás', 'mockup-generator') . '</span>';
+        echo '</label>';
         echo '</div>';
-        echo '<p class="description">' . esc_html__('A JSON fájl neve legyen a képfájl neve + .json. Az AI mód csak a bejelölt mezőket tölti: categories.main, categories.sub és tags tömb. Hiányzó vagy hibás JSON esetén marad a kézi kitöltés.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('A JSON fájl neve legyen a képfájl neve + .json. Az AI mód csak a bejelölt mezőket tölti: categories.main, categories.sub, tags tömb és description (a minta egyedi SEO leírása, a termékleírás sablonban {sample_seo} változóként érhető el). Hiányzó vagy hibás JSON esetén marad a kézi kitöltés.', 'mockup-generator') . '</p>';
         echo '</div>';
 
         echo '</div>'; // .card
