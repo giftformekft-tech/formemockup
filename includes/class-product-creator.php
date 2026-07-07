@@ -581,12 +581,13 @@ class MG_Product_Creator {
         foreach ($selected_products as $p) {
             if (!empty($p['type_description'])) { $desc = wp_kses_post($p['type_description']); break; }
         }
+        $sample_seo = isset($generation_context['sample_seo']) ? wp_kses_post($generation_context['sample_seo']) : '';
         if ($desc) {
             if (function_exists('mgtd__replace_placeholders')) {
                 $category_ids = function_exists('mgtd__normalize_category_ids') ? mgtd__normalize_category_ids($cats) : array();
                 $context = function_exists('mgtd__build_description_context')
-                    ? mgtd__build_description_context(null, $category_ids, $parent_name)
-                    : array('product_name' => sanitize_text_field($parent_name));
+                    ? mgtd__build_description_context(null, $category_ids, $parent_name, $sample_seo)
+                    : array('product_name' => sanitize_text_field($parent_name), 'sample_seo' => $sample_seo);
                 $desc = mgtd__replace_placeholders($desc, $context);
             }
             if (method_exists($product, 'set_description')) {
@@ -601,32 +602,32 @@ class MG_Product_Creator {
                 $product->set_props(['short_description' => $short]);
             }
         }
-        
+
         // Don't set manual SKU - will be auto-generated after save!
         // OLD CODE (REMOVED):
         // $parent_sku_base = strtoupper(sanitize_title($parent_name));
         // $product->set_sku($parent_sku_base);
-        
+
         $price_candidates = array_values(array_filter(array_map('floatval', $price_map), function($value){ return $value >= 0; }));
         $min_price = !empty($price_candidates) ? min($price_candidates) : 0;
         if ($min_price > 0) {
             $product->set_regular_price((string) $min_price);
         }
         $parent_id=$product->save();
-        
+
         // Generate SKU if not exists
         $sku = self::generate_product_sku($parent_id, $parent_name);
         if ($sku) {
             $product->set_sku($sku);
             $product->save();
         }
-        
+
         // Save design file reference for download functionality
         if (!empty($generation_context['design_path'])) {
             $design_path = wp_normalize_path($generation_context['design_path']);
             if ($design_path !== '' && file_exists($design_path)) {
                 update_post_meta($parent_id, '_mg_last_design_path', $design_path);
-                
+
                 // Also try to get attachment ID if exists
                 $attachment_id = $this->find_existing_attachment_id($design_path);
                 if ($attachment_id > 0) {
@@ -634,7 +635,11 @@ class MG_Product_Creator {
                 }
             }
         }
-        
+
+        if ($sample_seo !== '') {
+            update_post_meta($parent_id, '_mg_sample_seo', $sample_seo);
+        }
+
         $this->assign_categories($parent_id,$cats);
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         // REMOVED: MG_Mockup_Maintenance::register_generation(...)
@@ -674,7 +679,7 @@ class MG_Product_Creator {
             $design_path = wp_normalize_path($generation_context['design_path']);
             if ($design_path !== '' && file_exists($design_path)) {
                 update_post_meta($parent_id, '_mg_last_design_path', $design_path);
-                
+
                 // Also try to get attachment ID if exists
                 $attachment_id = $this->find_existing_attachment_id($design_path);
                 if ($attachment_id > 0) {
@@ -682,7 +687,11 @@ class MG_Product_Creator {
                 }
             }
         }
-        
+
+        if (!empty($generation_context['sample_seo'])) {
+            update_post_meta($parent_id, '_mg_sample_seo', wp_kses_post($generation_context['sample_seo']));
+        }
+
         // assign categories merge
         $this->assign_categories($product->get_id(), $cats);
 

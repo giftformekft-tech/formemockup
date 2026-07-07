@@ -80,6 +80,8 @@ add_action('plugins_loaded', function(){
         'includes/class-google-ads-settings.php',
         'includes/class-facebook-pixel.php',
         'includes/class-facebook-pixel-settings.php',
+        'includes/class-ai-seo-generator.php',
+        'admin/class-ai-seo-page.php',
 
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
@@ -125,6 +127,9 @@ add_action('plugins_loaded', function(){
         }
         if (class_exists('MG_Dedup_Products_Page')) {
             MG_Dedup_Products_Page::add_submenu_page();
+        }
+        if (class_exists('MG_AI_SEO_Page')) {
+            MG_AI_SEO_Page::add_submenu_page();
         }
         });
 
@@ -256,6 +261,12 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Facebook_Pixel_Settings')) {
         MG_Facebook_Pixel_Settings::init();
+    }
+    if (class_exists('MG_AI_SEO_Generator')) {
+        MG_AI_SEO_Generator::init();
+    }
+    if (class_exists('MG_AI_SEO_Page')) {
+        MG_AI_SEO_Page::init();
     }
     if (class_exists('MG_Email_Footer')) {
         MG_Email_Footer::init();

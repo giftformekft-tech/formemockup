@@ -154,6 +154,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
         $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+        $sample_seo = isset($_POST['sample_seo']) ? wp_kses_post(wp_unslash($_POST['sample_seo'])) : '';
         if (taxonomy_exists('product_cat')) {
             if ($main_cat > 0) {
                 $main_term = get_term($main_cat, 'product_cat');
@@ -192,17 +193,17 @@ add_action('wp_ajax_mg_bulk_process', function(){
 
         $gen = new MG_Generator();
         $images_by_type_color = array();
-        
+
         // NEW: Pre-create product to get ID and SKU for correct file naming
         $pre_created_id = 0;
         $pre_created_sku = '';
-        
+
         if ($parent_id <= 0) {
             $temp_product = new WC_Product_Simple();
             $temp_product->set_name($parent_name);
-            $temp_product->set_status('publish'); 
+            $temp_product->set_status('publish');
             $pre_created_id = $temp_product->save();
-            
+
             if ($pre_created_id > 0 && class_exists('MG_Product_Creator')) {
                 $pre_created_sku = MG_Product_Creator::generate_product_sku($pre_created_id, $parent_name);
                 if ($pre_created_sku) {
@@ -239,7 +240,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         $defaults = mg_bulk_resolve_defaults($selected, $primary_type, $primary_color_input, $primary_size_input);
 
         $creator = new MG_Product_Creator();
-        $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk');
+        $generation_context = array('design_path' => $design_path, 'trigger' => 'ajax_bulk', 'sample_seo' => $sample_seo);
         $cats = array('main'=>$main_cat, 'subs'=>$sub_cats);
         
         if ($parent_id > 0) {
@@ -341,6 +342,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
 
         $tags_raw = isset($_POST['tags']) ? (string) $_POST['tags'] : '';
         $tags = array_values(array_unique(array_filter(array_map('trim', explode(',', $tags_raw)))));
+        $sample_seo = isset($_POST['sample_seo']) ? wp_kses_post(wp_unslash($_POST['sample_seo'])) : '';
         $payload = array(
             'design_path' => $design_path,
             'product_keys' => $keys,
@@ -351,6 +353,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             'tags' => $tags,
             'custom_product' => $is_custom_product ? 1 : 0,
             'preset_id' => $preset_id,
+            'sample_seo' => $sample_seo,
             'trigger' => 'bulk_queue',
         );
 
