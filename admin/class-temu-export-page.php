@@ -42,6 +42,14 @@ class MG_Temu_Export_Page {
                                         <option value="100">100</option>
                                     </select>
                                 </label>
+                                <label><?php esc_html_e('Terméktípus:', 'mockup-generator'); ?>
+                                    <select id="mg-temu-filter-type">
+                                        <option value=""><?php esc_html_e('— mind —', 'mockup-generator'); ?></option>
+                                        <?php foreach (self::get_all_types() as $type_slug => $type_label): ?>
+                                            <option value="<?php echo esc_attr($type_slug); ?>"><?php echo esc_html($type_label); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </label>
                                 <label style="display:flex;align-items:center;gap:6px;font-weight:600;color:#1a7a35;cursor:pointer;">
                                     <input type="checkbox" id="mg-temu-filter-unexported">
                                     <?php esc_html_e('Csak nem exportált', 'mockup-generator'); ?>
@@ -81,7 +89,7 @@ class MG_Temu_Export_Page {
                                         <th><?php esc_html_e('Terméknév', 'mockup-generator'); ?></th>
                                         <th><?php esc_html_e('Base SKU', 'mockup-generator'); ?></th>
                                         <th><?php esc_html_e('Kategória', 'mockup-generator'); ?></th>
-                                        <th><?php esc_html_e('Temu export', 'mockup-generator'); ?></th>
+                                        <th><?php esc_html_e('Temu export (típusonként)', 'mockup-generator'); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody id="mg-temu-product-list">
@@ -119,6 +127,8 @@ class MG_Temu_Export_Page {
             .mg-temu-pagination-controls button { min-width: 30px; }
             .mg-chip { display: inline-block; padding: 2px 6px; background: #eee; border-radius: 4px; font-size: 11px; margin-right: 4px; }
             .mg-temu-exported-badge { display: inline-block; padding: 2px 7px; background: #d7f5de; color: #1a7a35; border: 1px solid #a8d5b5; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+            .mg-temu-type-chip { display: inline-block; padding: 2px 7px; margin: 0 2px 3px 0; background: #f1f1f1; color: #777; border: 1px solid #ddd; border-radius: 3px; font-size: 11px; white-space: nowrap; }
+            .mg-temu-type-chip.is-exported { background: #d7f5de; color: #1a7a35; border-color: #a8d5b5; font-weight: 600; }
             @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         </style>
         <?php
@@ -171,10 +181,15 @@ class MG_Temu_Export_Page {
                 loadProducts(1);
             });
 
+            $('#mg-temu-filter-type').on('change', function() {
+                loadProducts(1);
+            });
+
             function loadProducts(page) {
                 currentPage = page;
                 productsPerPage = $('#mg-temu-per-page').val();
                 const onlyUnexported = $('#mg-temu-filter-unexported').is(':checked') ? 1 : 0;
+                const typeFilter = $('#mg-temu-filter-type').val() || '';
                 const childCat  = $('#mg-temu-filter-child-cat').val();
                 const parentCat = $('#mg-temu-filter-parent-cat').val();
                 const categoryId = childCat || parentCat || '';
@@ -189,6 +204,7 @@ class MG_Temu_Export_Page {
                         page: currentPage,
                         per_page: productsPerPage,
                         only_unexported: onlyUnexported,
+                        type_filter: typeFilter,
                         category_id: categoryId,
                         nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                     },
@@ -212,9 +228,17 @@ class MG_Temu_Export_Page {
                 } else {
                     products.forEach(p => {
                         const isChecked = selectedProducts[p.id] ? 'checked' : '';
-                        const exportedBadge = p.exported_at
-                            ? `<span class="mg-temu-exported-badge" title="Utoljára exportálva: ${p.exported_at}">✓ ${p.exported_at}</span>`
-                            : '<span style="color:#aaa;font-size:11px;">—</span>';
+                        let typesHtml;
+                        if (p.types && p.types.length) {
+                            typesHtml = p.types.map(t => {
+                                if (t.exported_at) {
+                                    return `<span class="mg-temu-type-chip is-exported" title="Exportálva: ${t.exported_at}">${t.label} ✓</span>`;
+                                }
+                                return `<span class="mg-temu-type-chip">${t.label}</span>`;
+                            }).join(' ');
+                        } else {
+                            typesHtml = '<span style="color:#aaa;font-size:11px;">—</span>';
+                        }
                         html += `
                             <tr>
                                 <th scope="row" class="check-column">
@@ -224,7 +248,7 @@ class MG_Temu_Export_Page {
                                 <td><strong>${p.name}</strong></td>
                                 <td>${p.sku}</td>
                                 <td>${p.category}</td>
-                                <td>${exportedBadge}</td>
+                                <td>${typesHtml}</td>
                             </tr>
                         `;
                     });
@@ -556,6 +580,7 @@ class MG_Temu_Export_Page {
         $page            = isset($_POST['page']) ? intval($_POST['page']) : 1;
         $per_page        = isset($_POST['per_page']) ? intval($_POST['per_page']) : 25;
         $only_unexported = ! empty($_POST['only_unexported']);
+        $type_filter     = isset($_POST['type_filter']) ? sanitize_title(wp_unslash($_POST['type_filter'])) : '';
         $category_id     = isset($_POST['category_id']) ? intval($_POST['category_id']) : 0;
 
         $args = [
@@ -565,7 +590,18 @@ class MG_Temu_Export_Page {
             'paginate' => true,
         ];
 
-        if ($only_unexported) {
+        if ($type_filter !== '') {
+            // Type-scoped filtering: build the list of products already exported for THIS type.
+            $pids_with_type = self::get_pids_with_type_exported($type_filter);
+            if ($only_unexported) {
+                // Products where this type has NOT been exported yet.
+                $args['exclude'] = !empty($pids_with_type) ? $pids_with_type : [-1];
+            } else {
+                // Products where this type HAS already been exported.
+                $args['include'] = !empty($pids_with_type) ? $pids_with_type : [-1];
+            }
+        } elseif ($only_unexported) {
+            // No type selected: legacy whole-product filter (never exported at all).
             global $wpdb;
             $exported_ids = $wpdb->get_col(
                 "SELECT DISTINCT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_mg_temu_exported' AND meta_value != ''"
@@ -594,13 +630,25 @@ class MG_Temu_Export_Page {
 
             $exported_at = get_post_meta($product->get_id(), '_mg_temu_exported', true);
 
+            // Per-type export status for this product (types are global across all products).
+            $exported_types = self::get_exported_types($product->get_id());
+            $types_status = [];
+            foreach (self::get_all_types() as $t_slug => $t_label) {
+                $types_status[] = [
+                    'slug' => $t_slug,
+                    'label' => $t_label,
+                    'exported_at' => isset($exported_types[$t_slug]) ? $exported_types[$t_slug] : '',
+                ];
+            }
+
             $products[] = [
                 'id' => $product->get_id(),
                 'name' => $product->get_name(),
                 'sku' => $product->get_sku(),
                 'category' => $cat_name,
                 'image' => $image_url,
-                'exported_at' => $exported_at ?: ''
+                'exported_at' => $exported_at ?: '',
+                'types' => $types_status,
             ];
         }
 
@@ -814,11 +862,19 @@ class MG_Temu_Export_Page {
             }
         }
 
-        // Exportált termékek megjelölése
-        $exported_pids = array_unique(array_column($selection, 'pid'));
+        // Exportált termékek megjelölése – típusonként a selection alapján
         $now = current_time('Y-m-d H:i');
-        foreach ($exported_pids as $pid) {
-            update_post_meta((int) $pid, '_mg_temu_exported', $now);
+        $types_by_pid = [];
+        foreach ($selection as $item) {
+            $pid = isset($item['pid']) ? (int) $item['pid'] : 0;
+            $tslug = isset($item['type']) ? sanitize_title($item['type']) : '';
+            if ($pid <= 0 || $tslug === '') {
+                continue;
+            }
+            $types_by_pid[$pid][$tslug] = true;
+        }
+        foreach ($types_by_pid as $pid => $slug_map) {
+            self::mark_types_exported($pid, array_keys($slug_map), $now);
         }
 
         // Export
@@ -854,11 +910,14 @@ class MG_Temu_Export_Page {
         $now = current_time('Y-m-d H:i');
         $updated = 0;
 
+        // Manuális jelölés: a termék MINDEN típusát exportáltnak jelöljük.
+        $all_type_slugs = array_keys(self::get_all_types());
+
         foreach ($ids as $id) {
             if ($id <= 0) continue;
             $post = get_post($id);
             if (!$post || $post->post_type !== 'product') continue;
-            update_post_meta($id, '_mg_temu_exported', $now);
+            self::mark_types_exported($id, $all_type_slugs, $now);
             $updated++;
         }
 
@@ -873,5 +932,108 @@ class MG_Temu_Export_Page {
         $value = isset($_POST['value']) ? sanitize_text_field(wp_unslash($_POST['value'])) : '';
         update_option('mg_temu_name_suffix', $value);
         wp_send_json_success();
+    }
+
+    /**
+     * Global list of virtual product types: [ type_slug => label ].
+     * Types are shared across all products (see MG_Virtual_Variant_Manager),
+     * so this is fetched once and cached for the request.
+     *
+     * @return array<string,string>
+     */
+    private static function get_all_types() {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+        $cache = [];
+        if (class_exists('MG_Variant_Display_Manager')) {
+            $catalog = MG_Variant_Display_Manager::get_catalog_index();
+            if (is_array($catalog)) {
+                foreach ($catalog as $slug => $meta) {
+                    $slug = sanitize_title($slug);
+                    if ($slug === '') {
+                        continue;
+                    }
+                    $cache[$slug] = (is_array($meta) && isset($meta['label']) && $meta['label'] !== '') ? $meta['label'] : $slug;
+                }
+            }
+        }
+        return $cache;
+    }
+
+    /**
+     * Per-type export state for a product: [ type_slug => 'Y-m-d H:i' ].
+     *
+     * @param int $product_id
+     * @return array<string,string>
+     */
+    private static function get_exported_types($product_id) {
+        $raw = get_post_meta((int) $product_id, '_mg_temu_exported_types', true);
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $slug => $ts) {
+            $slug = sanitize_title($slug);
+            if ($slug === '') {
+                continue;
+            }
+            $out[$slug] = is_string($ts) ? $ts : '';
+        }
+        return $out;
+    }
+
+    /**
+     * Mark the given type slugs as exported for a product at the given timestamp.
+     * Merges with existing state and keeps the legacy whole-product flag in sync.
+     *
+     * @param int      $product_id
+     * @param string[] $type_slugs
+     * @param string   $timestamp
+     */
+    private static function mark_types_exported($product_id, array $type_slugs, $timestamp) {
+        $product_id = (int) $product_id;
+        if ($product_id <= 0) {
+            return;
+        }
+        $existing = self::get_exported_types($product_id);
+        foreach ($type_slugs as $slug) {
+            $slug = sanitize_title($slug);
+            if ($slug === '') {
+                continue;
+            }
+            $existing[$slug] = $timestamp;
+        }
+        update_post_meta($product_id, '_mg_temu_exported_types', $existing);
+        // Keep the legacy overall flag updated for backward compatibility.
+        update_post_meta($product_id, '_mg_temu_exported', $timestamp);
+    }
+
+    /**
+     * IDs of products that already have the given type marked as exported.
+     * Mirrors the existing whole-product exclude pattern, but reads the
+     * per-type serialized meta in PHP to avoid fragile LIKE queries.
+     *
+     * @param string $type_slug
+     * @return int[]
+     */
+    private static function get_pids_with_type_exported($type_slug) {
+        $type_slug = sanitize_title($type_slug);
+        if ($type_slug === '') {
+            return [];
+        }
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = '_mg_temu_exported_types'"
+        );
+        $pids = [];
+        foreach ((array) $rows as $row) {
+            $arr = maybe_unserialize($row->meta_value);
+            if (is_array($arr) && !empty($arr[$type_slug])) {
+                $pids[] = (int) $row->post_id;
+            }
+        }
+        return $pids;
     }
 }
