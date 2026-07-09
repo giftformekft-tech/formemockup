@@ -272,6 +272,14 @@ add_action('plugins_loaded', function(){
         MG_Email_Footer::init();
     }
 
+    // Ensure WooCommerce boots the email system when an order moves to "manufacturing".
+    // Without this, WC never instantiates WC_Emails on that status change, so the
+    // MG_Manufacturing_Email constructor (which hooks its trigger) never runs and no mail is sent.
+    add_filter('woocommerce_email_actions', function($actions) {
+        $actions[] = 'woocommerce_order_status_manufacturing';
+        return $actions;
+    });
+
     // Manufacturing email – registered inside the filter so WC_Email is guaranteed to be loaded
     add_filter('woocommerce_email_classes', function($email_classes) {
         $file = plugin_dir_path(__FILE__) . 'includes/class-manufacturing-email.php';

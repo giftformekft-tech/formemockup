@@ -16,7 +16,7 @@ class MG_Manufacturing_Email extends WC_Email {
         $this->template_html  = '';
         $this->template_plain = '';
 
-        add_action('woocommerce_order_status_manufacturing', array($this, 'trigger'), 10, 2);
+        add_action('woocommerce_order_status_manufacturing_notification', array($this, 'trigger'), 10, 2);
 
         parent::__construct();
     }
