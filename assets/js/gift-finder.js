@@ -82,6 +82,38 @@
                     finder.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
+            finder.addEventListener('change', function (event) {
+                if (!event.target.matches('.mg-gift-type-select')) return;
+                var type = event.target.value;
+                finder.querySelectorAll('.mg-gift-product-card').forEach(function (card) {
+                    var image = card.querySelector('img[data-type-previews]');
+                    var link = card.querySelector('a[data-default-url]');
+                    if (!image || !link) return;
+                    var previews = {};
+                    var typeUrls = {};
+                    try { previews = JSON.parse(image.dataset.typePreviews || '{}'); } catch (error) { previews = {}; }
+                    try { typeUrls = JSON.parse(link.dataset.typeUrls || '{}'); } catch (error) { typeUrls = {}; }
+                    var nextSrc = (type && previews[type]) ? previews[type] : image.dataset.defaultSrc;
+                    image.classList.add('is-loading');
+                    image.src = nextSrc;
+                    image.dataset.previewActive = type && previews[type] ? '1' : '0';
+                    if (type && typeUrls[type]) {
+                        link.href = typeUrls[type];
+                    } else {
+                        link.href = link.dataset.defaultUrl;
+                    }
+                });
+            });
+            finder.querySelectorAll('.mg-gift-product-card img[data-type-previews]').forEach(function (image) {
+                image.addEventListener('load', function () { image.classList.remove('is-loading'); });
+                image.addEventListener('error', function () {
+                    if (image.dataset.previewActive === '1') {
+                        image.dataset.previewActive = '0';
+                        image.src = image.dataset.defaultSrc;
+                    }
+                    image.classList.remove('is-loading');
+                });
+            });
             show(current);
             if (results) {
                 if (form) form.hidden = true;

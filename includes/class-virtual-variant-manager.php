@@ -1727,6 +1727,11 @@ class MG_Virtual_Variant_Manager {
         wp_send_json_success(array('preview_url' => esc_url_raw($preview)));
     }
 
+    public static function get_existing_preview_url($product_id, $type_slug, $color_slug) {
+        $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+        return is_wp_error($preview) ? '' : esc_url_raw($preview);
+    }
+
     public static function get_or_generate_preview_path($product_id, $type_slug, $color_slug, $design_path = '') {
         $product_id = absint($product_id);
         $type_slug = sanitize_title($type_slug);

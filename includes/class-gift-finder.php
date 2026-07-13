@@ -578,6 +578,7 @@ class MG_Gift_Finder {
         $ranked = array_slice( $ranked, 0, 50 );
         foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
         unset( $item );
+        $virtual_types = self::get_virtual_type_options();
         ?>
         <div class="mg-gift-results" id="mg-gift-results">
             <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2>Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
@@ -585,14 +586,24 @@ class MG_Gift_Finder {
                 <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>
             <?php else : ?>
-                <?php if ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) : ?>
-                    <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
+                <?php if ( ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) || ! empty( $virtual_types ) ) : ?>
+                    <div class="mg-gift-results-controls">
+                        <?php if ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) : ?>
+                            <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
+                        <?php endif; ?>
+                        <?php if ( ! empty( $virtual_types ) ) : ?>
+                            <label class="mg-gift-type-picker"><span>Előnézet terméktípusa</span><select class="mg-gift-type-select"><option value="">Alapértelmezett termék</option><?php foreach ( $virtual_types as $type_slug => $type ) : ?><option value="<?php echo esc_attr( $type_slug ); ?>"><?php echo esc_html( $type['label'] ); ?></option><?php endforeach; ?></select></label>
+                        <?php endif; ?>
+                    </div>
                 <?php endif; ?>
                 <div class="mg-gift-product-grid">
-                <?php foreach ( $ranked as $index => $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
+                <?php foreach ( $ranked as $index => $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue;
+                    $default_image = wp_get_attachment_image_url( $product->get_image_id(), 'woocommerce_thumbnail' ) ?: wc_placeholder_img_src( 'woocommerce_thumbnail' );
+                    $type_data = self::get_product_type_data( $product, $virtual_types );
+                    $product_url = $product->get_permalink(); ?>
                     <article class="mg-gift-product-card" <?php echo $index >= 20 ? 'hidden' : ''; ?>>
-                        <a href="<?php echo esc_url( $product->get_permalink() ); ?>">
-                            <?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail' ) ); ?>
+                        <a href="<?php echo esc_url( $product_url ); ?>" data-default-url="<?php echo esc_url( $product_url ); ?>" data-type-urls="<?php echo esc_attr( wp_json_encode( $type_data['urls'], JSON_UNESCAPED_SLASHES ) ); ?>">
+                            <img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-type-previews="<?php echo esc_attr( wp_json_encode( $type_data['previews'], JSON_UNESCAPED_SLASHES ) ); ?>" />
                             <?php if ( ( $item['tier'] ?? '' ) === 'related' ) : ?>
                                 <span class="mg-gift-match">Kapcsolódó ötlet</span>
                             <?php elseif ( $item['score'] > 1 ) : ?>
@@ -610,6 +621,46 @@ class MG_Gift_Finder {
         </div>
         <?php self::render_bundles( $term_ids, $settings ); ?>
         <?php wp_reset_postdata();
+    }
+
+    private static function get_virtual_type_options() {
+        if ( ! class_exists( 'MG_Variant_Display_Manager' ) ) return array();
+        $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        if ( ! is_array( $catalog ) ) return array();
+        $types = array();
+        foreach ( $catalog as $type_slug => $type ) {
+            $colors = array_keys( (array) ( $type['colors'] ?? array() ) );
+            if ( empty( $colors ) ) continue;
+            $types[ sanitize_title( $type_slug ) ] = array(
+                'label' => sanitize_text_field( $type['label'] ?? $type_slug ),
+                'color' => sanitize_title( reset( $colors ) ),
+            );
+        }
+        return $types;
+    }
+
+    private static function get_product_type_data( $product, $virtual_types ) {
+        $data = array( 'previews' => array(), 'urls' => array() );
+        if ( ! $product instanceof WC_Product || ! class_exists( 'MG_Virtual_Variant_Manager' ) ) return $data;
+        $config = MG_Virtual_Variant_Manager::get_frontend_config( $product );
+        $configured_urls = isset( $config['typeUrls'] ) && is_array( $config['typeUrls'] ) ? $config['typeUrls'] : array();
+        foreach ( $virtual_types as $type_slug => $type ) {
+            if ( empty( $config['types'][ $type_slug ] ) ) continue;
+            $type_config = $config['types'][ $type_slug ];
+            $colors = isset( $type_config['color_order'] ) ? (array) $type_config['color_order'] : array();
+            $color_slug = $colors ? sanitize_title( reset( $colors ) ) : $type['color'];
+            $preview_url = MG_Virtual_Variant_Manager::get_existing_preview_url( $product->get_id(), $type_slug, $color_slug );
+            if ( $preview_url !== '' ) $data['previews'][ $type_slug ] = $preview_url;
+
+            if ( ! empty( $configured_urls[ $type_slug ] ) ) {
+                $data['urls'][ $type_slug ] = esc_url_raw( $configured_urls[ $type_slug ] );
+            } elseif ( ! empty( $config['useVirtualPermalinks'] ) && class_exists( 'MG_GMC_SEO_Optimizer' ) ) {
+                $data['urls'][ $type_slug ] = esc_url_raw( MG_GMC_SEO_Optimizer::get_virtual_permalink( $product, $type_slug ) );
+            } else {
+                $data['urls'][ $type_slug ] = esc_url_raw( add_query_arg( 'mg_type', $type_slug, $product->get_permalink() ) );
+            }
+        }
+        return $data;
     }
 
     private static function compose_diverse_results( $all_items, $choices, $primary_limit, $related_limit ) {
