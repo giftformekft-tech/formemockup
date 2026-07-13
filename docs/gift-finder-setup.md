@@ -40,7 +40,7 @@ Az adminoldal tetején a **Menübe illeszthető link** mellett található máso
 
 ## Katalógus átadása besoroláshoz
 
-Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal készíthető elemzési fájl. Az export nem tartalmaz képeket, árakat vagy vásárlói adatokat. A visszakapott `mg-gift-finder-config` JSON ugyanitt importálható; előtte automatikus biztonsági mentés készül.
+Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal készíthető elemzési fájl. Az export nem tartalmaz termékneveket, SKU-kat, képeket, árakat, attribútumokat, készlet- vagy vásárlói adatokat. A visszakapott `mg-gift-finder-config` JSON ugyanitt importálható; előtte automatikus biztonsági mentés készül.
 
 ## Találati és cross-sell logika
 

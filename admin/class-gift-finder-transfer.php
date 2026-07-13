@@ -39,7 +39,7 @@ class MG_Gift_Finder_Transfer {
                     <input type="hidden" name="action" value="<?php echo esc_attr( self::EXPORT_ACTION ); ?>" />
                     <?php wp_nonce_field( self::EXPORT_ACTION, 'mg_gift_export_nonce' ); ?>
                     <h3>1. Katalógus exportálása</h3>
-                    <p>Kategóriahierarchia, címkék, terméknevek, leírások, attribútumok, terméktípusok és jelenlegi kérdéskapcsolatok. Képeket és árakat nem tartalmaz.</p>
+                    <p>Kategóriahierarchia, termék–kategória kapcsolatok, címkék, terméktípusok és jelenlegi kérdéskapcsolatok. Neveket, SKU-kat, képeket, árakat, attribútumokat és készletadatokat nem tartalmaz.</p>
                     <label><input type="checkbox" name="include_sales" value="1" /> Összesített 12 havi eladási darabszám hozzáadása</label>
                     <p class="description">Az eladási összesítés nagy katalógusnál tovább tarthat, de személyes adatot nem exportál.</p>
                     <?php submit_button( 'Katalógus JSON letöltése', 'secondary', 'submit', false ); ?>
@@ -123,35 +123,12 @@ class MG_Gift_Finder_Transfer {
             $tag_terms = wp_get_post_terms( $product_id, 'product_tag' );
             $cat_terms = is_wp_error( $cat_terms ) ? array() : $cat_terms;
             $tag_terms = is_wp_error( $tag_terms ) ? array() : $tag_terms;
-            $attributes = array();
-            foreach ( $product->get_attributes() as $attribute ) {
-                if ( ! is_object( $attribute ) ) continue;
-                $options = $attribute->is_taxonomy()
-                    ? wc_get_product_terms( $product_id, $attribute->get_name(), array( 'fields' => 'names' ) )
-                    : $attribute->get_options();
-                if ( is_wp_error( $options ) ) $options = array();
-                $attributes[] = array(
-                    'name'    => wc_attribute_label( $attribute->get_name() ),
-                    'slug'    => $attribute->get_name(),
-                    'options' => array_values( (array) $options ),
-                );
-            }
             $products[] = array(
                 'id'                => (int) $product_id,
-                'name'              => $product->get_name(),
-                'slug'              => $product->get_slug(),
-                'sku'               => $product->get_sku(),
-                'product_type'      => $product->get_type(),
-                'stock_status'      => $product->get_stock_status(),
-                'catalog_visibility'=> $product->get_catalog_visibility(),
                 'featured'          => $product->is_featured(),
                 'category_ids'      => array_map( 'intval', wp_list_pluck( $cat_terms, 'term_id' ) ),
                 'category_paths'    => array_map( array( __CLASS__, 'term_path' ), $cat_terms ),
                 'tags'              => array_map( function( $term ) { return array( 'id' => (int) $term->term_id, 'name' => $term->name, 'slug' => $term->slug ); }, $tag_terms ),
-                'attributes'        => $attributes,
-                'permalink'         => $product->get_permalink(),
-                'short_description' => self::short_text( $product->get_short_description(), 500 ),
-                'description'       => self::short_text( $product->get_description(), 1000 ),
                 'sales_12m_quantity'=> isset( $sales[ $product_id ] ) ? $sales[ $product_id ] : null,
             );
         }
@@ -187,11 +164,6 @@ class MG_Gift_Finder_Transfer {
         return implode( ' > ', $names );
     }
 
-    private static function short_text( $html, $length ) {
-        $text = trim( preg_replace( '/\s+/u', ' ', wp_strip_all_tags( (string) $html ) ) );
-        return function_exists( 'mb_substr' ) ? mb_substr( $text, 0, $length ) : substr( $text, 0, $length );
-    }
-
     private static function get_mockup_types() {
         $catalog = class_exists( 'MG_Variant_Display_Manager' ) ? MG_Variant_Display_Manager::get_catalog_index() : array();
         $rows = array();
@@ -199,8 +171,6 @@ class MG_Gift_Finder_Transfer {
             $rows[] = array(
                 'slug'          => sanitize_key( $slug ),
                 'label'         => wp_strip_all_tags( $data['label'] ?? $slug ),
-                'sizes'         => array_values( (array) ( $data['sizes'] ?? array() ) ),
-                'primary_color' => sanitize_key( $data['primary_color'] ?? '' ),
             );
         }
         return $rows;

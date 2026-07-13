@@ -8,13 +8,13 @@ Fő adatcsoportjai:
 
 - `categories`: teljes WooCommerce kategóriahierarchia;
 - `tags`: termékcímkék;
-- `products`: publikált termékek neve, kategóriái, címkéi, leírásai és attribútumai;
+- `products`: anonim technikai termék-ID-k, kategóriakapcsolatok, címkék, kiemeltség és opcionális összesített eladás;
 - `mockup_product_types`: a Mockup Generator elérhető terméktípusai;
 - `cross_sell_rules`: jelenlegi cross-sell szabályok;
 - `current_gift_finder_settings`: jelenlegi ajándékkereső-beállítások;
 - `sales_12m_quantity`: opcionális, termékenként összesített eladott darabszám.
 
-Az export szándékosan nem tartalmaz képeket vagy árakat. Az árak a virtuális terméktípus-katalógusban közösek, ezért a kategóriabesoroláshoz nincs rájuk szükség.
+Az export szándékosan nem tartalmaz terméknevet, slugot, SKU-t, képet, árat, leírást, attribútumot, készlet- vagy katalógusláthatósági adatot. Az árak a virtuális terméktípus-katalógusban közösek, ezért a kategóriabesoroláshoz nincs rájuk szükség.
 
 ## Importálható konfiguráció
 
