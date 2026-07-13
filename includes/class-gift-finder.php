@@ -604,7 +604,7 @@ class MG_Gift_Finder {
                     $product_url = $product->get_permalink(); ?>
                     <article class="mg-gift-product-card" <?php echo $index >= 20 ? 'hidden' : ''; ?>>
                         <a href="<?php echo esc_url( $product_url ); ?>" data-default-url="<?php echo esc_url( $product_url ); ?>" data-type-urls="<?php echo esc_attr( wp_json_encode( $type_data['urls'], JSON_UNESCAPED_SLASHES ) ); ?>">
-                            <img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-preview-base="<?php echo esc_url( $type_data['preview_base'] ); ?>" data-product-sku="<?php echo esc_attr( $type_data['sku'] ); ?>" />
+                            <span class="mg-gift-product-card__image"><img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-preview-base="<?php echo esc_url( $type_data['preview_base'] ); ?>" data-product-sku="<?php echo esc_attr( $type_data['sku'] ); ?>" /></span>
                             <?php if ( ( $item['tier'] ?? '' ) === 'related' ) : ?>
                                 <span class="mg-gift-match">Kapcsolódó ötlet</span>
                             <?php elseif ( $item['score'] > 1 ) : ?>
