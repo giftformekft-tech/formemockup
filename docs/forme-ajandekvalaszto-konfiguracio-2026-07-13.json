@@ -1,0 +1,206 @@
+{
+  "schema": "mg-gift-finder-config",
+  "version": 1,
+  "generated_at": "2026-07-13",
+  "source_schema": "mg-gift-catalog",
+  "source_version": 1,
+  "classification_basis": "Meglévő termékkategóriák, kategóriahierarchia és anonim 12 havi értékesítési darabszám.",
+  "settings": {
+    "cards": [
+      {
+        "category_id": 92,
+        "label": "Ajándék a családnak",
+        "description": "Anyának, apának, nagyszülőknek és a család többi tagjának.",
+        "image_mode": "product",
+        "product_id": 271998,
+        "season": "all"
+      },
+      {
+        "category_id": 93,
+        "label": "Születésnapi ajándékok",
+        "description": "Személyes és humoros meglepetések születésnapra.",
+        "image_mode": "product",
+        "product_id": 278561,
+        "season": "all"
+      },
+      {
+        "category_id": 107,
+        "label": "Ballagási ajándékok",
+        "description": "Ajándékok óvodai és iskolai ballagásra.",
+        "image_mode": "product",
+        "product_id": 271514,
+        "season": "all"
+      },
+      {
+        "category_id": 94,
+        "label": "Hobbi szerint",
+        "description": "Horgászat, zene, kertészkedés, sütés-főzés és más kedvencek.",
+        "image_mode": "product",
+        "product_id": 270868,
+        "season": "all"
+      },
+      {
+        "category_id": 100,
+        "label": "Gamereknek",
+        "description": "Játékos és videójátékos ajándékötletek.",
+        "image_mode": "product",
+        "product_id": 272441,
+        "season": "all"
+      },
+      {
+        "category_id": 102,
+        "label": "Vicces ajándékok",
+        "description": "Humoros feliratok, mémek és trendi poénok.",
+        "image_mode": "product",
+        "product_id": 273332,
+        "season": "all"
+      },
+      {
+        "category_id": 97,
+        "label": "Foglalkozás szerint",
+        "description": "Szakmákhoz és hivatásokhoz illő ajándékok.",
+        "image_mode": "product",
+        "product_id": 271156,
+        "season": "all"
+      },
+      {
+        "category_id": 96,
+        "label": "Sportrajongóknak",
+        "description": "Foci, Forma–1, kerékpár, darts és más sportok.",
+        "image_mode": "product",
+        "product_id": 272003,
+        "season": "all"
+      },
+      {
+        "category_id": 104,
+        "label": "Állatbarátoknak",
+        "description": "Kutyás, cicás, lovas és más állatos ajándékok.",
+        "image_mode": "product",
+        "product_id": 272639,
+        "season": "all"
+      },
+      {
+        "category_id": 106,
+        "label": "Járműrajongóknak",
+        "description": "Autós, motoros, kamionos és traktoros ötletek.",
+        "image_mode": "product",
+        "product_id": 277255,
+        "season": "all"
+      },
+      {
+        "category_id": 101,
+        "label": "Filmek és sorozatok",
+        "description": "Filmes, sorozatos és animés ajándékok.",
+        "image_mode": "product",
+        "product_id": 275542,
+        "season": "all"
+      },
+      {
+        "category_id": 265,
+        "label": "Nyári és nyaralós ajándékok",
+        "description": "Vidám ötletek nyaraláshoz és a nyári időszakra.",
+        "image_mode": "product",
+        "product_id": 268889,
+        "season": "summer"
+      },
+      {
+        "category_id": 120,
+        "label": "Halloweeni ajándékok",
+        "description": "Őszi, ijesztő és játékos meglepetések.",
+        "image_mode": "product",
+        "product_id": 269070,
+        "season": "autumn"
+      },
+      {
+        "category_id": 118,
+        "label": "Karácsonyi ajándékok",
+        "description": "Ünnepi meglepetések a fa alá.",
+        "image_mode": "product",
+        "product_id": 269844,
+        "season": "winter"
+      },
+      {
+        "category_id": 121,
+        "label": "Húsvéti ajándékok",
+        "description": "Tavaszi és húsvéti ajándékötletek.",
+        "image_mode": "product",
+        "product_id": 267876,
+        "season": "spring"
+      }
+    ],
+    "questions": {
+      "recipient": {
+        "title": "Kinek keresel ajándékot?",
+        "options": [
+          { "label": "Anyának", "category_id": 109, "parent_category_ids": [] },
+          { "label": "Apának", "category_id": 110, "parent_category_ids": [] },
+          { "label": "Mamának", "category_id": 112, "parent_category_ids": [] },
+          { "label": "Papának", "category_id": 111, "parent_category_ids": [] },
+          { "label": "Dédinek", "category_id": 113, "parent_category_ids": [] },
+          { "label": "Feleségnek", "category_id": 117, "parent_category_ids": [] },
+          { "label": "Férjnek", "category_id": 116, "parent_category_ids": [] },
+          { "label": "A szerelmemnek", "category_id": 243, "parent_category_ids": [] },
+          { "label": "Tesónak", "category_id": 114, "parent_category_ids": [] },
+          { "label": "Keresztszülőnek", "category_id": 115, "parent_category_ids": [] }
+        ]
+      },
+      "occasion": {
+        "title": "Milyen alkalomra?",
+        "options": [
+          {
+            "label": "Születésnapra",
+            "category_id": 93,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+          },
+          {
+            "label": "Karácsonyra",
+            "category_id": 118,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+          },
+          {
+            "label": "Húsvétra",
+            "category_id": 121,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+          },
+          {
+            "label": "Ballagásra",
+            "category_id": 107,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+          },
+          {
+            "label": "Valentin-napra",
+            "category_id": 119,
+            "parent_category_ids": [117, 116, 243]
+          }
+        ]
+      },
+      "season": {
+        "title": "Melyik évszakhoz illjen?",
+        "options": [
+          { "label": "Tavaszi / húsvéti", "category_id": 121, "parent_category_ids": [] },
+          { "label": "Nyári / nyaralós", "category_id": 265, "parent_category_ids": [] },
+          { "label": "Őszi / halloweeni", "category_id": 120, "parent_category_ids": [] },
+          { "label": "Téli / karácsonyi", "category_id": 118, "parent_category_ids": [] }
+        ]
+      },
+      "interest": {
+        "title": "Milyen a személyisége, mi érdekli?",
+        "options": [
+          { "label": "Humoros, szereti a poénokat", "category_id": 102, "parent_category_ids": [] },
+          { "label": "Gamer", "category_id": 100, "parent_category_ids": [] },
+          { "label": "Sportos", "category_id": 96, "parent_category_ids": [] },
+          { "label": "Horgászik", "category_id": 155, "parent_category_ids": [] },
+          { "label": "Állatbarát", "category_id": 104, "parent_category_ids": [] },
+          { "label": "Autó- vagy motorrajongó", "category_id": 106, "parent_category_ids": [] },
+          { "label": "Filmeket és sorozatokat szeret", "category_id": 101, "parent_category_ids": [] },
+          { "label": "Szereti a zenét", "category_id": 154, "parent_category_ids": [] },
+          { "label": "Kertészkedik", "category_id": 171, "parent_category_ids": [] },
+          { "label": "Szeret sütni, főzni vagy grillezni", "category_id": 156, "parent_category_ids": [] },
+          { "label": "A munkája a szenvedélye", "category_id": 97, "parent_category_ids": [] },
+          { "label": "Szeret utazni és kirándulni", "category_id": 103, "parent_category_ids": [] }
+        ]
+      }
+    },
+    "bundles": []
+  }
+}
