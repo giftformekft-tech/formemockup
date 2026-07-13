@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.1.1
+Version: 2.2.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.1.1');
+    define('MG_VERSION', '2.2.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -31,6 +31,7 @@ add_action('plugins_loaded', function(){
         'includes/class-bundle-discount-banner.php',
         'includes/class-crosssell-manager.php',
         'includes/class-crosssell-frontend.php',
+        'includes/class-gift-finder.php',
         'includes/global-catalog.php',
         'includes/class-image-utils.php',
         'includes/class-category-toggle.php',
@@ -40,6 +41,7 @@ add_action('plugins_loaded', function(){
         'admin/class-variant-display-page.php',
         'admin/class-bundle-discount-page.php',
         'admin/class-crosssell-page.php',
+        'admin/class-gift-finder-page.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
@@ -125,6 +127,9 @@ add_action('plugins_loaded', function(){
         if (class_exists('MG_Crosssell_Page')) {
             MG_Crosssell_Page::add_submenu_page();
         }
+        if (class_exists('MG_Gift_Finder_Page')) {
+            MG_Gift_Finder_Page::add_submenu_page();
+        }
         if (class_exists('MG_Dedup_Products_Page')) {
             MG_Dedup_Products_Page::add_submenu_page();
         }
@@ -189,6 +194,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Crosssell_Frontend')) {
         MG_Crosssell_Frontend::init();
+    }
+    if (class_exists('MG_Gift_Finder')) {
+        MG_Gift_Finder::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();
