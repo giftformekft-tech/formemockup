@@ -58,6 +58,13 @@
                 return 0;
             }
             finder.addEventListener('click', function (event) {
+                var loadMore = event.target.closest('.mg-gift-load-more');
+                if (loadMore) {
+                    var hiddenCards = Array.prototype.slice.call(results.querySelectorAll('.mg-gift-product-card[hidden]'));
+                    hiddenCards.slice(0, 12).forEach(function (card) { card.hidden = false; });
+                    if (hiddenCards.length <= 12) loadMore.hidden = true;
+                    return;
+                }
                 if (event.target.closest('.mg-gift-next')) {
                     var checked = steps[current].querySelector('input[type=radio]:checked');
                     if (!checked) { steps[current].classList.add('is-shaking'); setTimeout(function () { steps[current].classList.remove('is-shaking'); }, 350); return; }

@@ -46,8 +46,54 @@ class MG_Gift_Finder {
         foreach ( self::defaults()['questions'] as $key => $question ) {
             $settings['questions'][ $key ] = wp_parse_args( $saved_questions[ $key ] ?? array(), $question );
         }
+        $settings = self::add_work_recipient_routes( $settings );
         $settings['colors'] = wp_parse_args( is_array( $settings['colors'] ?? null ) ? $settings['colors'] : array(), self::defaults()['colors'] );
         $settings['budgets'] = array();
+        return $settings;
+    }
+
+    private static function add_work_recipient_routes( $settings ) {
+        $recipients = (array) ( $settings['questions']['recipient']['options'] ?? array() );
+        $routes = array(
+            array(
+                'label'               => 'Kollégának',
+                'category_id'         => 97,
+                'category_ids'        => array(),
+                'keywords'            => array( 'kolléga', 'kolléganő', 'munkatárs' ),
+                'option_id'           => 'colleague',
+                'parent_category_ids' => array(),
+            ),
+            array(
+                'label'               => 'Főnöknek',
+                'category_id'         => 333,
+                'category_ids'        => array(),
+                'keywords'            => array( 'főnök', 'főnökasszony' ),
+                'option_id'           => 'boss',
+                'parent_category_ids' => array(),
+            ),
+        );
+        $active_route_categories = array();
+        foreach ( $routes as $route ) {
+            if ( ! term_exists( $route['category_id'], 'product_cat' ) ) continue;
+            $active_route_categories[] = (int) $route['category_id'];
+            $exists = array_filter( $recipients, function( $option ) use ( $route ) {
+                return ( $option['option_id'] ?? '' ) === $route['option_id'];
+            } );
+            if ( empty( $exists ) ) $recipients[] = $route;
+        }
+        if ( empty( $active_route_categories ) ) return $settings;
+        $settings['questions']['recipient']['options'] = $recipients;
+
+        $general_occasion_ids = array( 15, 93, 99, 107, 118, 120, 121 );
+        foreach ( $settings['questions']['occasion']['options'] as &$option ) {
+            $category_id = (int) ( $option['category_id'] ?? 0 );
+            $is_retirement = ( $option['option_id'] ?? '' ) === 'retirement';
+            if ( ! $is_retirement && ! in_array( $category_id, $general_occasion_ids, true ) ) continue;
+            $parents = array_values( array_unique( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
+            $parents = array_values( array_unique( array_merge( $parents, $active_route_categories ) ) );
+            $option['parent_category_ids'] = $parents;
+        }
+        unset( $option );
         return $settings;
     }
 
@@ -473,7 +519,7 @@ class MG_Gift_Finder {
             if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
             return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
         } );
-        $ranked = array_slice( $ranked, 0, 12 );
+        $ranked = array_slice( $ranked, 0, 48 );
         foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
         unset( $item );
         ?>
@@ -487,17 +533,20 @@ class MG_Gift_Finder {
                     <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
                 <?php endif; ?>
                 <div class="mg-gift-product-grid">
-                <?php foreach ( $ranked as $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
-                    <article class="mg-gift-product-card">
+                <?php foreach ( $ranked as $index => $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
+                    <article class="mg-gift-product-card" <?php echo $index >= 12 ? 'hidden' : ''; ?>>
                         <a href="<?php echo esc_url( $product->get_permalink() ); ?>">
                             <?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail' ) ); ?>
                             <?php if ( $item['score'] > 1 ) : ?><span class="mg-gift-match"><?php echo esc_html( $item['score'] ); ?> válaszodhoz is illik</span><?php endif; ?>
                             <h3><?php echo esc_html( $product->get_name() ); ?></h3>
-                            <span class="price"><?php echo wp_kses_post( $product->get_price_html() ); ?></span>
                         </a>
                     </article>
                 <?php endforeach; ?>
-            </div><?php endif; ?>
+                </div>
+                <?php if ( count( $ranked ) > 12 ) : ?>
+                    <div class="mg-gift-load-more-wrap"><button type="button" class="mg-gift-primary-button mg-gift-load-more">Mutass még ötleteket</button></div>
+                <?php endif; ?>
+            <?php endif; ?>
         </div>
         <?php self::render_bundles( $term_ids, $settings ); ?>
         <?php wp_reset_postdata();
@@ -516,14 +565,13 @@ class MG_Gift_Finder {
                 <?php foreach ( array_slice( $matches, 0, 4 ) as $bundle ) :
                     $products = array_filter( array_map( 'wc_get_product', array_map( 'intval', $bundle['product_ids'] ?? array() ) ) );
                     if ( empty( $products ) ) continue;
-                    $total = array_sum( array_map( function( $product ) { return (float) $product->get_price(); }, $products ) ); ?>
+                    ?>
                     <article class="mg-gift-bundle-card">
                         <?php if ( ! empty( $bundle['badge'] ) ) : ?><span class="mg-gift-bundle-card__badge"><?php echo esc_html( $bundle['badge'] ); ?></span><?php endif; ?>
                         <h3><?php echo esc_html( $bundle['title'] ); ?></h3>
                         <div class="mg-gift-bundle-card__products">
                             <?php foreach ( $products as $product ) : ?><a href="<?php echo esc_url( $product->get_permalink() ); ?>"><?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail' ) ); ?><span><?php echo esc_html( $product->get_name() ); ?></span></a><?php endforeach; ?>
                         </div>
-                        <strong class="mg-gift-bundle-card__price"><?php echo wp_kses_post( wc_price( $total ) ); ?> összérték</strong>
                     </article>
                 <?php endforeach; ?>
             </div>
