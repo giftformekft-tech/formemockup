@@ -610,7 +610,7 @@ class MG_Gift_Finder {
                             <?php elseif ( $item['score'] > 1 ) : ?>
                                 <span class="mg-gift-match"><?php echo esc_html( $item['score'] ); ?> válaszodhoz is illik</span>
                             <?php endif; ?>
-                            <h3><?php echo esc_html( $product->get_name() ); ?></h3>
+                            <h3><?php echo esc_html( wp_trim_words( $product->get_name(), 5, '…' ) ); ?></h3>
                         </a>
                     </article>
                 <?php endforeach; ?>
