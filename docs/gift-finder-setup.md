@@ -9,8 +9,10 @@
 5. Add meg a főoldalon megjeleníthető kategóriakártyákat. Kártyánként választható:
    - a WooCommerce kategória képe (mockup), vagy
    - egy kijelölt hero termék kiemelt képe.
-6. A három kérdéshez add hozzá a válaszokat, és minden választ kapcsolj egy WooCommerce termékkategóriához.
+6. A kérdésekhez add hozzá a válaszokat, és minden választ kapcsolj egy WooCommerce termékkategóriához.
 7. Mentsd a beállításokat.
+
+Az érdeklődési kör ugyanúgy WooCommerce-kategóriák alapján pontoz. Az árkeretek külön szerkeszthetők. A szezonális kártyák automatikusan csak a kiválasztott évszak hónapjaiban jelennek meg (tél: december–február, tavasz: március–május, nyár: június–augusztus, ősz: szeptember–november).
 
 ## Főoldali blokk
 
@@ -35,3 +37,5 @@ Az adminoldal tetején a **Menübe illeszthető link** mellett található máso
 ## Találati és cross-sell logika
 
 A kereső minden válaszhoz egy WooCommerce kategóriát rendel. Azok a termékek kerülnek előre, amelyek több kiválasztott kategóriához is tartoznak. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
+
+Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. Az eredménytelen kereséseket a rendszer összesítve tárolja; ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja.
