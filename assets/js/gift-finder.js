@@ -5,6 +5,7 @@
             var steps = Array.prototype.slice.call(finder.querySelectorAll('.mg-gift-step'));
             var progress = finder.querySelectorAll('.mg-gift-progress span');
             var results = finder.querySelector('.mg-gift-results');
+            var form = finder.querySelector('.mg-gift-wizard');
             var requestedInitial = parseInt(finder.dataset.initialStep || '0', 10);
             var current = results ? steps.length - 1 : Math.max(0, Math.min(requestedInitial, steps.length - 1));
 
@@ -75,13 +76,17 @@
                 if (event.target.closest('.mg-gift-back')) show(previousRelevantIndex(current - 1));
                 if (event.target.closest('.mg-gift-restart')) {
                     if (results) results.hidden = true;
+                    if (form) form.hidden = false;
                     finder.querySelectorAll('input[type=radio]').forEach(function (input) { input.checked = false; });
                     show(0);
                     finder.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
             show(current);
-            if (results) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (results) {
+                if (form) form.hidden = true;
+                results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         });
     });
 })();

@@ -492,6 +492,8 @@ class MG_Gift_Finder {
             $match_count = 0;
             $tie_score = 0;
             $name_score = 0;
+            $category_matches = array();
+            $keyword_matches = array();
             $normalized_title = mb_strtolower( remove_accents( get_the_title( $product_id ) ) );
             foreach ( $scoring_choices as $index => $choice ) {
                 $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
@@ -508,8 +510,33 @@ class MG_Gift_Finder {
                     $tie_score += 1 << min( $index, 20 );
                 }
                 if ( $keyword_match_count > 0 ) $name_score += $keyword_match_count;
+                $category_matches[ $index ] = $category_match;
+                $keyword_matches[ $index ] = $keyword_match_count > 0;
             }
-            $ranked[] = array( 'product_id' => $product_id, 'score' => $match_count, 'name_score' => $name_score, 'tie' => $tie_score );
+            $ranked[] = array(
+                'product_id'               => $product_id,
+                'score'                    => $match_count,
+                'name_score'               => $name_score,
+                'tie'                      => $tie_score,
+                'category_matches'         => $category_matches,
+                'keyword_matches'          => $keyword_matches,
+            );
+        }
+
+        // A korábbi válasz mindig elsőbbséget élvez: pontos kategória, majd névkulcsszó.
+        // Ha az aktuális feltétel az addigi halmazban nem ad találatot, megtartjuk a korábbi releváns halmazt.
+        foreach ( array_keys( $scoring_choices ) as $choice_index ) {
+            $category_results = array_values( array_filter( $ranked, function( $item ) use ( $choice_index ) {
+                return ! empty( $item['category_matches'][ $choice_index ] );
+            } ) );
+            if ( ! empty( $category_results ) ) {
+                $ranked = $category_results;
+                continue;
+            }
+            $keyword_results = array_values( array_filter( $ranked, function( $item ) use ( $choice_index ) {
+                return ! empty( $item['keyword_matches'][ $choice_index ] );
+            } ) );
+            if ( ! empty( $keyword_results ) ) $ranked = $keyword_results;
         }
         $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
         $ranked = array_values( array_filter( $ranked, function( $item ) use ( $max_score ) { return $item['score'] === $max_score; } ) );
