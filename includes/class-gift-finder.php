@@ -16,6 +16,7 @@ class MG_Gift_Finder {
     public static function defaults() {
         return array(
             'page_id'   => 0,
+            'mascot_image_id' => 0,
             'cards'     => array(),
             'budgets'   => array(),
             'bundles'   => array(),
@@ -186,12 +187,18 @@ class MG_Gift_Finder {
         $heading_id = wp_unique_id( 'mg-gift-teaser-title-' );
         $align = isset( $attributes['align'] ) ? sanitize_key( $attributes['align'] ) : '';
         $class = 'mg-gift-teaser' . ( $align ? ' align' . $align : '' );
+        $mascot_image_id = absint( $settings['mascot_image_id'] ?? 0 );
+        $mascot_html = $mascot_image_id ? wp_get_attachment_image( $mascot_image_id, 'large', false, array( 'loading' => 'eager', 'decoding' => 'async', 'alt' => '' ) ) : '';
+        if ( $mascot_html ) $class .= ' mg-gift-teaser--has-mascot';
         $seasonal_cards = array_filter( $settings['cards'], function( $card ) {
             return ( $card['season'] ?? 'all' ) !== 'all' && self::is_card_in_season( $card );
         } );
 
         ob_start(); ?>
         <section class="<?php echo esc_attr( $class ); ?>" aria-labelledby="<?php echo esc_attr( $heading_id ); ?>">
+            <?php if ( $mascot_html ) : ?>
+                <div class="mg-gift-teaser__mascot" aria-hidden="true"><?php echo wp_kses_post( $mascot_html ); ?></div>
+            <?php endif; ?>
             <div class="mg-gift-teaser__heading">
                 <span class="mg-gift-eyebrow">Ajándékötletek személyre szabva</span>
                 <h2 id="<?php echo esc_attr( $heading_id ); ?>"><?php echo esc_html( $title ); ?></h2>

@@ -255,6 +255,8 @@ class MG_Gift_Finder_Transfer {
         $current = MG_Gift_Finder::get_settings();
         $page_id = absint( $raw['page_id'] ?? 0 );
         $clean['page_id'] = $page_id && get_post( $page_id ) ? $page_id : (int) $current['page_id'];
+        $mascot_id = absint( $raw['mascot_image_id'] ?? ( $current['mascot_image_id'] ?? 0 ) );
+        $clean['mascot_image_id'] = $mascot_id && get_post_mime_type( $mascot_id ) === 'image/png' ? $mascot_id : 0;
         $source_colors = is_array( $raw['colors'] ?? null ) ? $raw['colors'] : $current['colors'];
         foreach ( $clean['colors'] as $key => $fallback ) {
             $clean['colors'][ $key ] = sanitize_hex_color( $source_colors[ $key ] ?? '' ) ?: $fallback;

@@ -31,6 +31,7 @@ class MG_Gift_Finder_Page {
         }
         wp_enqueue_style( 'woocommerce_admin_styles' );
         wp_enqueue_script( 'wc-enhanced-select' );
+        wp_enqueue_media();
         $settings = MG_Gift_Finder::get_settings();
         $categories = self::get_categories();
         $pages = get_pages( array( 'sort_column' => 'post_title', 'post_status' => array( 'publish', 'draft' ) ) );
@@ -74,14 +75,32 @@ class MG_Gift_Finder_Page {
                     <?php endforeach; ?>
                 </div>
 
-                <h2>3. Szezonális kategóriakártyák</h2>
+                <h2>3. Forme kabala</h2>
+                <p class="description">A kiválasztott átlátszó PNG a főoldali ajándékkereső blokk jobb felső sarkában jelenik meg.</p>
+                <?php
+                $mascot_id = absint( $settings['mascot_image_id'] ?? 0 );
+                $mascot_url = $mascot_id ? wp_get_attachment_image_url( $mascot_id, 'medium' ) : '';
+                ?>
+                <div class="mg-gift-mascot-setting">
+                    <input type="hidden" id="mg-gift-mascot-id" name="settings[mascot_image_id]" value="<?php echo esc_attr( $mascot_id ); ?>" />
+                    <div id="mg-gift-mascot-preview" class="mg-gift-mascot-preview" <?php echo $mascot_url ? '' : 'hidden'; ?>>
+                        <img src="<?php echo esc_url( $mascot_url ); ?>" alt="Forme kabala előnézete" />
+                    </div>
+                    <div>
+                        <button type="button" class="button button-secondary" id="mg-gift-mascot-select">Kabala PNG kiválasztása</button>
+                        <button type="button" class="button-link-delete" id="mg-gift-mascot-remove" <?php echo $mascot_url ? '' : 'hidden'; ?>>Eltávolítás</button>
+                        <p class="description">Átlátszó hátterű PNG ajánlott. A kép méretét és elhelyezését a blokk automatikusan kezeli.</p>
+                    </div>
+                </div>
+
+                <h2>4. Szezonális kategóriakártyák</h2>
                 <p class="description">Az évszakhoz kötött kártyák rövid hivatkozásként jelennek meg a főoldali címzettválasztó alatt. A „Mindig látszik” kártyák megmaradnak korábbi közvetlen linkekhez, de nem terhelik a kezdőblokkot.</p>
                 <div class="mg-gift-admin-list" id="mg-gift-cards">
                     <?php foreach ( $settings['cards'] as $index => $card ) self::card_row( $index, $card, $categories ); ?>
                 </div>
                 <button type="button" class="button mg-add-row" data-template="mg-gift-card-template" data-target="mg-gift-cards">+ Kategóriakártya</button>
 
-                <h2>4. A kereső kérdései</h2>
+                <h2>5. A kereső kérdései</h2>
                 <p class="description">Egy válaszhoz megadhatsz egy elsődleges és több további WooCommerce-kategóriát. Így saját alkalomcsoport készíthető, például az „Apák napja” alá bevonható az Apának, Papának és Férjnek kategória. A termékek annyi pontot kapnak, ahány választott kategóriacsoportnak megfelelnek; termékcímkéket a kereső nem használ.</p>
                 <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
@@ -94,7 +113,7 @@ class MG_Gift_Finder_Page {
                     </section>
                 <?php endforeach; ?>
 
-                <h2>5. Ajándékcsomag-ajánlások</h2>
+                <h2>6. Ajándékcsomag-ajánlások</h2>
                 <p class="description">A csomag akkor jelenik meg, ha legalább egy hozzárendelt kategória egyezik a vevő válaszaival. Kategória nélkül minden találatnál megjelenik.</p>
                 <div class="mg-gift-admin-list" id="mg-gift-bundles">
                     <?php foreach ( $settings['bundles'] as $index => $bundle ) self::bundle_row( $index, $bundle, $categories ); ?>
@@ -113,15 +132,34 @@ class MG_Gift_Finder_Page {
         <?php endforeach; ?>
         <script type="text/html" id="mg-bundle-template"><?php self::bundle_row( '__INDEX__', array(), $categories ); ?></script>
         <style>
-            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}.mg-gift-color-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;max-width:1000px;margin:12px 0}.mg-gift-color-grid label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px}.mg-gift-color-grid input[type=color]{width:52px;height:36px;padding:2px;cursor:pointer}
+            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}.mg-gift-color-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;max-width:1000px;margin:12px 0}.mg-gift-color-grid label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px}.mg-gift-color-grid input[type=color]{width:52px;height:36px;padding:2px;cursor:pointer}.mg-gift-mascot-setting{display:flex;align-items:center;gap:18px;max-width:720px;margin:12px 0;padding:16px;background:#fff;border:1px solid #c3c4c7;border-radius:8px}.mg-gift-mascot-preview{display:flex;align-items:center;justify-content:center;width:150px;height:150px;padding:8px;background:#f0f0f1;border:1px dashed #a7aaad;border-radius:8px}.mg-gift-mascot-preview[hidden]{display:none}.mg-gift-mascot-preview img{max-width:100%;max-height:100%;object-fit:contain}.mg-gift-mascot-setting .button-link-delete{margin-left:10px}
         </style>
         <script>
         (function(){
+            var mascotFrame;
             document.addEventListener('click',function(event){
                 var add=event.target.closest('.mg-add-row');
                 if(add){var target=document.getElementById(add.dataset.target),template=document.getElementById(add.dataset.template);var index=Date.now();target.insertAdjacentHTML('beforeend',template.innerHTML.replace(/__INDEX__/g,index));if(window.jQuery){window.jQuery(document.body).trigger('wc-enhanced-select-init');}}
                 var remove=event.target.closest('.mg-row-remove');if(remove){remove.closest('.mg-gift-admin-row').remove();}
                 var copy=event.target.closest('[data-copy-target]');if(copy){navigator.clipboard.writeText(document.getElementById(copy.dataset.copyTarget).textContent);copy.textContent='Kimásolva ✓';}
+                if(event.target.closest('#mg-gift-mascot-select')){
+                    event.preventDefault();
+                    if(!mascotFrame){
+                        mascotFrame=wp.media({title:'Forme kabala PNG kiválasztása',button:{text:'Ezt a képet használom'},library:{type:'image'},multiple:false});
+                        mascotFrame.on('select',function(){
+                            var attachment=mascotFrame.state().get('selection').first().toJSON();
+                            if(attachment.mime!=='image/png'){window.alert('Kérlek, PNG formátumú kabala képet válassz.');return;}
+                            document.getElementById('mg-gift-mascot-id').value=attachment.id;
+                            document.querySelector('#mg-gift-mascot-preview img').src=(attachment.sizes&&attachment.sizes.medium?attachment.sizes.medium.url:attachment.url);
+                            document.getElementById('mg-gift-mascot-preview').hidden=false;
+                            document.getElementById('mg-gift-mascot-remove').hidden=false;
+                        });
+                    }
+                    mascotFrame.open();
+                }
+                if(event.target.closest('#mg-gift-mascot-remove')){
+                    event.preventDefault();document.getElementById('mg-gift-mascot-id').value='';document.getElementById('mg-gift-mascot-preview').hidden=true;event.target.hidden=true;
+                }
             });
         })();
         </script>
@@ -160,7 +198,7 @@ class MG_Gift_Finder_Page {
     private static function render_stats() {
         $stats = MG_Gift_Finder::get_no_result_stats(); ?>
         <section class="mg-gift-stats">
-            <h2>6. Eredménytelen keresések</h2>
+            <h2>7. Eredménytelen keresések</h2>
             <p class="description">Egy látogató azonos keresését 30 percenként legfeljebb egyszer számoljuk.</p>
             <?php if ( empty( $stats ) ) : ?><p>Még nincs eredménytelen keresés.</p><?php else : ?>
                 <table class="widefat striped"><thead><tr><th>Választott kategóriák</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
@@ -226,6 +264,12 @@ class MG_Gift_Finder_Page {
         $raw = isset( $_POST['settings'] ) ? wp_unslash( (array) $_POST['settings'] ) : array();
         $clean = MG_Gift_Finder::defaults();
         $clean['page_id'] = absint( $raw['page_id'] ?? 0 );
+        $mascot_id = absint( $raw['mascot_image_id'] ?? 0 );
+        if ( $mascot_id && get_post_mime_type( $mascot_id ) !== 'image/png' ) {
+            $mascot_id = 0;
+            add_settings_error( 'mg_gift_finder', 'mascot-format', 'A kabala kép csak PNG formátumú lehet.', 'error' );
+        }
+        $clean['mascot_image_id'] = $mascot_id;
         foreach ( $clean['colors'] as $key => $fallback ) {
             $clean['colors'][ $key ] = sanitize_hex_color( $raw['colors'][ $key ] ?? '' ) ?: $fallback;
         }
