@@ -26,11 +26,19 @@ Az importfájl gyökérstruktúrája:
   "version": 1,
   "settings": {
     "page_id": 123,
+    "colors": {
+      "accent": "#c6503e",
+      "accent_dark": "#9d392b",
+      "ink": "#24211d",
+      "muted": "#6d675f",
+      "background": "#faf6ef",
+      "panel": "#f7f2e9",
+      "card": "#ffffff"
+    },
     "cards": [],
     "questions": {
       "recipient": { "title": "Kinek keresel ajándékot?", "options": [] },
       "occasion": { "title": "Milyen alkalomra?", "options": [] },
-      "season": { "title": "Melyik évszakhoz illjen?", "options": [] },
       "interest": { "title": "Milyen a személyisége, mi érdekli?", "options": [] }
     },
     "bundles": []
@@ -38,7 +46,7 @@ Az importfájl gyökérstruktúrája:
 }
 ```
 
-A `budgets` mező opcionális. Ha kimarad, az import nem módosítja a webhely jelenlegi árkeret-beállításait.
+A `colors` mező opcionális. Ha kimarad, az import megőrzi a webhely jelenlegi ajándékkereső-színeit. Árkeret nincs a keresőben.
 
 Egy függő válasz formátuma:
 

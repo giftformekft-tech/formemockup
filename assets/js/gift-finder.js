@@ -5,7 +5,8 @@
             var steps = Array.prototype.slice.call(finder.querySelectorAll('.mg-gift-step'));
             var progress = finder.querySelectorAll('.mg-gift-progress span');
             var results = finder.querySelector('.mg-gift-results');
-            var current = results ? steps.length - 1 : 0;
+            var requestedInitial = parseInt(finder.dataset.initialStep || '0', 10);
+            var current = results ? steps.length - 1 : Math.max(0, Math.min(requestedInitial, steps.length - 1));
 
             function filterOptions(index) {
                 var selected = [];

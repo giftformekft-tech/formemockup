@@ -16,6 +16,7 @@
 5. A főoldali kártyák hero terméke az adott kategória legnagyobb 12 havi anonim darabszámú terméke. Ha a kategóriában nem volt értékesítés, egy kategóriába tartozó érvényes termékazonosító került be.
 6. Évszak- és árkeretkérdés nincs a keresőben.
 7. Ajándékcsomag nem került automatikusan létrehozásra. Terméknevek és terméktípus-kapcsolatok nélkül nem állítható össze megbízható, tartalmilag összetartozó csomag. A meglévő póló → sapka/párna/vászontáska cross-sell szabály változatlan marad.
+8. A főoldali Gutenberg blokk a címzettválasztással indul, majd a kiválasztott címzettel a teljes kereső alkalomlépésére visz. A blokk és a kereső hét közös színe az adminban módosítható.
 
 ## Adatminőségi megjegyzések
 

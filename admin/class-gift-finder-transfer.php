@@ -255,6 +255,10 @@ class MG_Gift_Finder_Transfer {
         $current = MG_Gift_Finder::get_settings();
         $page_id = absint( $raw['page_id'] ?? 0 );
         $clean['page_id'] = $page_id && get_post( $page_id ) ? $page_id : (int) $current['page_id'];
+        $source_colors = is_array( $raw['colors'] ?? null ) ? $raw['colors'] : $current['colors'];
+        foreach ( $clean['colors'] as $key => $fallback ) {
+            $clean['colors'][ $key ] = sanitize_hex_color( $source_colors[ $key ] ?? '' ) ?: $fallback;
+        }
 
         $clean['cards'] = array();
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {

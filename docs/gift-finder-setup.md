@@ -6,13 +6,14 @@
 2. Az oldal tartalmába illeszd be a `[mg_gift_finder]` shortcode-ot.
 3. Nyisd meg a **Mockup Generator → Ajándékkereső** adminoldalt.
 4. Válaszd ki az előbb létrehozott céloldalt.
-5. Add meg a főoldalon megjeleníthető kategóriakártyákat. Kártyánként választható:
+5. Állítsd be a kereső és a főoldali blokk hét közös színét.
+6. Add meg az automatikus szezonális ajánlókártyákat. Kártyánként választható:
    - a WooCommerce kategória képe (mockup), vagy
    - egy kijelölt hero termék kiemelt képe.
-6. A kérdésekhez add hozzá a válaszokat, és minden választ kapcsolj egy WooCommerce termékkategóriához.
-7. Mentsd a beállításokat.
+7. A kérdésekhez add hozzá a válaszokat, és minden választ kapcsolj egy WooCommerce termékkategóriához.
+8. Mentsd a beállításokat.
 
-Az érdeklődési kör ugyanúgy WooCommerce-kategóriák alapján pontoz. Az árkeretek külön szerkeszthetők. A szezonális kártyák automatikusan csak a kiválasztott évszak hónapjaiban jelennek meg (tél: december–február, tavasz: március–május, nyár: június–augusztus, ősz: szeptember–november).
+Az érdeklődési kör WooCommerce-kategóriák alapján szűr. Évszak- és árkeretkérdés nincs. A szezonális kártyák automatikusan csak a kiválasztott évszak hónapjaiban jelennek meg (tél: december–február, tavasz: március–május, nyár: június–augusztus, ősz: szeptember–november).
 
 ### Függő kérdések
 
@@ -20,7 +21,7 @@ A második és későbbi kérdések válaszainál a **Csak ezek után jelenjen m
 
 ## Főoldali blokk
 
-A Gutenberg szerkesztőben keresd az **Ajándékkereső** blokkot. Szabadon áthelyezhető, az oldalsávban pedig beállítható a főcím, a bevezető, a gombszöveg és a megjelenő kategóriák.
+A Gutenberg szerkesztőben keresd az **Ajándékkereső** blokkot. Szabadon áthelyezhető, az oldalsávban pedig beállítható a főcím, a bevezető, a gombszöveg és a megjelenő címzettek. A látogató itt a „Kinek keresel ajándékot?” kérdéssel indul; a választás után a teljes kereső az alkalomlépésen folytatódik.
 
 Shortcode tartalmakhoz alternatívaként használható:
 
@@ -28,10 +29,10 @@ Shortcode tartalmakhoz alternatívaként használható:
 [mg_gift_finder_teaser]
 ```
 
-Csak kiválasztott kategóriák megjelenítéséhez:
+Csak kiválasztott címzettek megjelenítéséhez:
 
 ```text
-[mg_gift_finder_teaser category_ids="12,34,56"]
+[mg_gift_finder_teaser recipient_ids="12,34,56"]
 ```
 
 ## Menülink
@@ -44,6 +45,6 @@ Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal kés
 
 ## Találati és cross-sell logika
 
-A kereső minden válaszhoz egy WooCommerce kategóriát rendel. Azok a termékek kerülnek előre, amelyek több kiválasztott kategóriához is tartoznak. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
+A kereső minden válaszhoz egy WooCommerce kategóriát rendel. A legutolsó, legpontosabb válasz az elsődleges szűrő: az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Ha ez a kategória üres, a kereső visszalép az előző válaszra. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
 
 Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. Az eredménytelen kereséseket a rendszer összesítve tárolja; ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja.

@@ -6,6 +6,15 @@
   "source_version": 1,
   "classification_basis": "Meglévő termékkategóriák, kategóriahierarchia és anonim 12 havi értékesítési darabszám.",
   "settings": {
+    "colors": {
+      "accent": "#c6503e",
+      "accent_dark": "#9d392b",
+      "ink": "#24211d",
+      "muted": "#6d675f",
+      "background": "#faf6ef",
+      "panel": "#f7f2e9",
+      "card": "#ffffff"
+    },
     "cards": [
       {
         "category_id": 92,

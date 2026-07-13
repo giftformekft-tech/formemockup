@@ -19,6 +19,15 @@ class MG_Gift_Finder {
             'cards'     => array(),
             'budgets'   => array(),
             'bundles'   => array(),
+            'colors'    => array(
+                'accent'      => '#c6503e',
+                'accent_dark' => '#9d392b',
+                'ink'         => '#24211d',
+                'muted'       => '#6d675f',
+                'background'  => '#faf6ef',
+                'panel'       => '#f7f2e9',
+                'card'        => '#ffffff',
+            ),
             'questions' => array(
                 'recipient' => array( 'title' => 'Kinek keresel ajándékot?', 'options' => array() ),
                 'occasion'  => array( 'title' => 'Milyen alkalomra?', 'options' => array() ),
@@ -35,6 +44,7 @@ class MG_Gift_Finder {
         foreach ( self::defaults()['questions'] as $key => $question ) {
             $settings['questions'][ $key ] = wp_parse_args( $saved_questions[ $key ] ?? array(), $question );
         }
+        $settings['colors'] = wp_parse_args( is_array( $settings['colors'] ?? null ) ? $settings['colors'] : array(), self::defaults()['colors'] );
         $settings['budgets'] = array();
         return $settings;
     }
@@ -49,6 +59,13 @@ class MG_Gift_Finder {
         $base = plugins_url( '', dirname( __DIR__ ) . '/mockup-generator.php' );
         wp_register_style( 'mg-gift-finder', $base . '/assets/css/gift-finder.css', array(), MG_VERSION );
         wp_register_script( 'mg-gift-finder', $base . '/assets/js/gift-finder.js', array(), MG_VERSION, true );
+        $colors = self::get_settings()['colors'];
+        $variables = array();
+        foreach ( self::defaults()['colors'] as $key => $fallback ) {
+            $value = sanitize_hex_color( $colors[ $key ] ?? '' ) ?: $fallback;
+            $variables[] = '--mg-gift-' . str_replace( '_', '-', $key ) . ':' . $value;
+        }
+        wp_add_inline_style( 'mg-gift-finder', ':root{' . implode( ';', $variables ) . '}' );
     }
 
     public static function register_block_and_shortcodes() {
@@ -63,14 +80,12 @@ class MG_Gift_Finder {
             true
         );
 
-        $cards = array();
-        foreach ( self::get_settings()['cards'] as $card ) {
-            $term = get_term( (int) ( $card['category_id'] ?? 0 ), 'product_cat' );
-            if ( $term && ! is_wp_error( $term ) ) {
-                $cards[] = array( 'id' => (int) $term->term_id, 'name' => $term->name );
-            }
+        $recipients = array();
+        foreach ( self::get_settings()['questions']['recipient']['options'] as $option ) {
+            $term_id = (int) ( $option['category_id'] ?? 0 );
+            if ( $term_id ) $recipients[] = array( 'id' => $term_id, 'name' => $option['label'] );
         }
-        wp_localize_script( 'mg-gift-finder-block', 'MG_GIFT_BLOCK', array( 'categories' => $cards ) );
+        wp_localize_script( 'mg-gift-finder-block', 'MG_GIFT_BLOCK', array( 'recipients' => $recipients ) );
 
         register_block_type( 'mockup-generator/gift-finder', array(
             'api_version'     => 2,
@@ -78,9 +93,10 @@ class MG_Gift_Finder {
             'style'           => 'mg-gift-finder',
             'attributes'      => array(
                 'title'       => array( 'type' => 'string', 'default' => 'Találd meg a tökéletes ajándékot' ),
-                'intro'       => array( 'type' => 'string', 'default' => 'Válassz egy kiindulópontot, és pár kérdés után személyre szabott ötleteket mutatunk.' ),
-                'buttonLabel' => array( 'type' => 'string', 'default' => 'Ajándékkereső indítása' ),
+                'intro'       => array( 'type' => 'string', 'default' => 'Először válaszd ki, kinek keresel ajándékot, és máris mutatjuk a hozzá illő alkalmakat.' ),
+                'buttonLabel' => array( 'type' => 'string', 'default' => 'Tovább az alkalomhoz' ),
                 'categoryIds' => array( 'type' => 'array', 'default' => array(), 'items' => array( 'type' => 'number' ) ),
+                'recipientIds'=> array( 'type' => 'array', 'default' => array(), 'items' => array( 'type' => 'number' ) ),
             ),
             'render_callback' => array( __CLASS__, 'render_teaser_block' ),
         ) );
@@ -90,31 +106,33 @@ class MG_Gift_Finder {
     }
 
     public static function teaser_shortcode( $atts ) {
-        $atts = shortcode_atts( array( 'title' => '', 'category_ids' => '' ), $atts, 'mg_gift_finder_teaser' );
-        $ids = array_values( array_filter( array_map( 'intval', explode( ',', $atts['category_ids'] ) ) ) );
-        return self::render_teaser_block( array( 'title' => $atts['title'], 'categoryIds' => $ids ) );
+        $atts = shortcode_atts( array( 'title' => '', 'recipient_ids' => '' ), $atts, 'mg_gift_finder_teaser' );
+        $ids = array_values( array_filter( array_map( 'intval', explode( ',', $atts['recipient_ids'] ) ) ) );
+        return self::render_teaser_block( array( 'title' => $atts['title'], 'recipientIds' => $ids ) );
     }
 
     public static function render_teaser_block( $attributes = array() ) {
         wp_enqueue_style( 'mg-gift-finder' );
         $settings = self::get_settings();
-        $selected = array_map( 'intval', $attributes['categoryIds'] ?? array() );
-        $cards = array_filter( $settings['cards'], function( $card ) use ( $selected ) {
-            $chosen = empty( $selected ) || in_array( (int) ( $card['category_id'] ?? 0 ), $selected, true );
-            return $chosen && self::is_card_in_season( $card );
+        $selected = array_map( 'intval', $attributes['recipientIds'] ?? array() );
+        $recipients = array_filter( $settings['questions']['recipient']['options'], function( $option ) use ( $selected ) {
+            return empty( $selected ) || in_array( (int) ( $option['category_id'] ?? 0 ), $selected, true );
         } );
-        if ( empty( $cards ) ) {
+        if ( empty( $recipients ) ) {
             return current_user_can( 'manage_woocommerce' )
-                ? '<div class="mg-gift-empty">Az Ajándékkereső beállításaiban még nincs megjeleníthető kategória.</div>' : '';
+                ? '<div class="mg-gift-empty">Az Ajándékkereső beállításaiban még nincs megjeleníthető címzett.</div>' : '';
         }
 
         $title  = trim( $attributes['title'] ?? '' ) ?: 'Találd meg a tökéletes ajándékot';
-        $intro  = trim( $attributes['intro'] ?? '' ) ?: 'Válassz egy kiindulópontot, és pár kérdés után személyre szabott ötleteket mutatunk.';
-        $button = trim( $attributes['buttonLabel'] ?? '' ) ?: 'Ajándékkereső indítása';
+        $intro  = trim( $attributes['intro'] ?? '' ) ?: 'Először válaszd ki, kinek keresel ajándékot, és máris mutatjuk a hozzá illő alkalmakat.';
+        $button = trim( $attributes['buttonLabel'] ?? '' ) ?: 'Tovább az alkalomhoz';
         $url = self::get_finder_url();
         $heading_id = wp_unique_id( 'mg-gift-teaser-title-' );
         $align = isset( $attributes['align'] ) ? sanitize_key( $attributes['align'] ) : '';
         $class = 'mg-gift-teaser' . ( $align ? ' align' . $align : '' );
+        $seasonal_cards = array_filter( $settings['cards'], function( $card ) {
+            return ( $card['season'] ?? 'all' ) !== 'all' && self::is_card_in_season( $card );
+        } );
 
         ob_start(); ?>
         <section class="<?php echo esc_attr( $class ); ?>" aria-labelledby="<?php echo esc_attr( $heading_id ); ?>">
@@ -123,25 +141,28 @@ class MG_Gift_Finder {
                 <h2 id="<?php echo esc_attr( $heading_id ); ?>"><?php echo esc_html( $title ); ?></h2>
                 <p><?php echo esc_html( $intro ); ?></p>
             </div>
-            <div class="mg-gift-teaser__cards">
-                <?php foreach ( $cards as $card ) :
-                    $term_id = (int) ( $card['category_id'] ?? 0 );
-                    $term = get_term( $term_id, 'product_cat' );
-                    if ( ! $term || is_wp_error( $term ) ) continue;
-                    $image = self::get_card_image( $card, $term_id );
-                    $card_url = add_query_arg( 'mg_gift_start', $term_id, $url ); ?>
-                    <a class="mg-gift-category-card" href="<?php echo esc_url( $card_url ); ?>">
-                        <span class="mg-gift-category-card__image">
-                            <?php if ( $image ) : ?><img src="<?php echo esc_url( $image ); ?>" alt="" loading="lazy" /><?php endif; ?>
-                        </span>
-                        <span class="mg-gift-category-card__content">
-                            <strong><?php echo esc_html( $card['label'] ?: $term->name ); ?></strong>
-                            <span><?php echo esc_html( $card['description'] ?? '' ); ?></span>
-                        </span>
-                    </a>
-                <?php endforeach; ?>
-            </div>
-            <a class="mg-gift-primary-button" href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $button ); ?> <span aria-hidden="true">→</span></a>
+            <form class="mg-gift-teaser__recipient-form" method="get" action="<?php echo esc_url( $url ); ?>">
+                <fieldset>
+                    <legend><?php echo esc_html( $settings['questions']['recipient']['title'] ); ?></legend>
+                    <div class="mg-gift-options mg-gift-teaser__recipients">
+                        <?php foreach ( $recipients as $option ) : $term_id = (int) ( $option['category_id'] ?? 0 ); if ( ! $term_id ) continue; ?>
+                            <label class="mg-gift-option">
+                                <input type="radio" name="mg_gift_recipient" value="<?php echo esc_attr( $term_id ); ?>" required />
+                                <span><?php echo esc_html( $option['label'] ); ?></span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </fieldset>
+                <button class="mg-gift-primary-button" type="submit"><?php echo esc_html( $button ); ?> <span aria-hidden="true">→</span></button>
+            </form>
+            <?php if ( ! empty( $seasonal_cards ) ) : ?>
+                <nav class="mg-gift-teaser__seasonal" aria-label="Aktuális ajándékötletek">
+                    <strong>Aktuális ötletek:</strong>
+                    <?php foreach ( $seasonal_cards as $card ) : $term_id = (int) ( $card['category_id'] ?? 0 ); if ( ! $term_id ) continue; ?>
+                        <a href="<?php echo esc_url( add_query_arg( 'mg_gift_start', $term_id, $url ) ); ?>"><?php echo esc_html( $card['label'] ); ?></a>
+                    <?php endforeach; ?>
+                </nav>
+            <?php endif; ?>
         </section>
         <?php return ob_get_clean();
     }
@@ -174,9 +195,15 @@ class MG_Gift_Finder {
         $selected = self::get_selected_terms( $settings );
         $is_submitted = isset( $_GET['mg_gift_submitted'] );
         $total_steps = count( $settings['questions'] );
+        $initial_step = 0;
+        if ( ! $is_submitted && ! empty( $_GET['mg_gift_recipient'] ) ) {
+            $requested_recipient = (int) $_GET['mg_gift_recipient'];
+            $recipient_ids = array_map( 'intval', wp_list_pluck( $settings['questions']['recipient']['options'], 'category_id' ) );
+            if ( in_array( $requested_recipient, $recipient_ids, true ) ) $initial_step = 1;
+        }
 
         ob_start(); ?>
-        <section class="mg-gift-finder" data-mg-gift-finder>
+        <section class="mg-gift-finder" data-mg-gift-finder data-initial-step="<?php echo esc_attr( $initial_step ); ?>">
             <header class="mg-gift-finder__header">
                 <span class="mg-gift-eyebrow">Forme ajándéksegéd</span>
                 <h1>Segítünk megtalálni az igazit</h1>

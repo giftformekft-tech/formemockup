@@ -56,14 +56,32 @@ class MG_Gift_Finder_Page {
                     <p class="description">Az oldal tartalmába tedd ezt a shortcode-ot: <code>[mg_gift_finder]</code></p>
                 </td></tr></table>
 
-                <h2>2. Főoldali kategóriakártyák</h2>
-                <p class="description">Ezekből válogathatsz a Gutenberg „Ajándékkereső” blokk oldalsávjában. A sorrend itt a megjelenési sorrend.</p>
+                <h2>2. Ajándékkereső színei</h2>
+                <p class="description">A színek a teljes ajándékkereső oldalon és a Gutenberg főoldali blokkon is érvényesek.</p>
+                <div class="mg-gift-color-grid">
+                    <?php
+                    $color_labels = array(
+                        'accent'      => 'Kiemelőszín és gombok',
+                        'accent_dark' => 'Gomb rámutatási színe',
+                        'ink'         => 'Fő szövegszín',
+                        'muted'       => 'Másodlagos szöveg',
+                        'background'  => 'Főoldali blokk háttere',
+                        'panel'       => 'Kérdésdoboz háttere',
+                        'card'        => 'Válaszkártyák háttere',
+                    );
+                    foreach ( $color_labels as $key => $label ) : ?>
+                        <label><span><?php echo esc_html( $label ); ?></span><input type="color" name="settings[colors][<?php echo esc_attr( $key ); ?>]" value="<?php echo esc_attr( $settings['colors'][ $key ] ); ?>" /></label>
+                    <?php endforeach; ?>
+                </div>
+
+                <h2>3. Szezonális kategóriakártyák</h2>
+                <p class="description">Az évszakhoz kötött kártyák rövid hivatkozásként jelennek meg a főoldali címzettválasztó alatt. A „Mindig látszik” kártyák megmaradnak korábbi közvetlen linkekhez, de nem terhelik a kezdőblokkot.</p>
                 <div class="mg-gift-admin-list" id="mg-gift-cards">
                     <?php foreach ( $settings['cards'] as $index => $card ) self::card_row( $index, $card, $categories ); ?>
                 </div>
                 <button type="button" class="button mg-add-row" data-template="mg-gift-card-template" data-target="mg-gift-cards">+ Kategóriakártya</button>
 
-                <h2>3. A kereső kérdései</h2>
+                <h2>4. A kereső kérdései</h2>
                 <p class="description">Minden válasz egy WooCommerce kategóriához kapcsolódik. A legutolsó, legpontosabb válasz az elsődleges szűrő: az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Üres kategória esetén a kereső visszalép az előző válaszra.</p>
                 <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
@@ -76,7 +94,7 @@ class MG_Gift_Finder_Page {
                     </section>
                 <?php endforeach; ?>
 
-                <h2>4. Ajándékcsomag-ajánlások</h2>
+                <h2>5. Ajándékcsomag-ajánlások</h2>
                 <p class="description">A csomag akkor jelenik meg, ha legalább egy hozzárendelt kategória egyezik a vevő válaszaival. Kategória nélkül minden találatnál megjelenik.</p>
                 <div class="mg-gift-admin-list" id="mg-gift-bundles">
                     <?php foreach ( $settings['bundles'] as $index => $bundle ) self::bundle_row( $index, $bundle, $categories ); ?>
@@ -95,7 +113,7 @@ class MG_Gift_Finder_Page {
         <?php endforeach; ?>
         <script type="text/html" id="mg-bundle-template"><?php self::bundle_row( '__INDEX__', array(), $categories ); ?></script>
         <style>
-            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}
+            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}.mg-gift-color-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;max-width:1000px;margin:12px 0}.mg-gift-color-grid label{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px}.mg-gift-color-grid input[type=color]{width:52px;height:36px;padding:2px;cursor:pointer}
         </style>
         <script>
         (function(){
@@ -142,7 +160,7 @@ class MG_Gift_Finder_Page {
     private static function render_stats() {
         $stats = MG_Gift_Finder::get_no_result_stats(); ?>
         <section class="mg-gift-stats">
-            <h2>5. Eredménytelen keresések</h2>
+            <h2>6. Eredménytelen keresések</h2>
             <p class="description">Egy látogató azonos keresését 30 percenként legfeljebb egyszer számoljuk.</p>
             <?php if ( empty( $stats ) ) : ?><p>Még nincs eredménytelen keresés.</p><?php else : ?>
                 <table class="widefat striped"><thead><tr><th>Választott kategóriák</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
@@ -195,6 +213,9 @@ class MG_Gift_Finder_Page {
         $raw = isset( $_POST['settings'] ) ? wp_unslash( (array) $_POST['settings'] ) : array();
         $clean = MG_Gift_Finder::defaults();
         $clean['page_id'] = absint( $raw['page_id'] ?? 0 );
+        foreach ( $clean['colors'] as $key => $fallback ) {
+            $clean['colors'][ $key ] = sanitize_hex_color( $raw['colors'][ $key ] ?? '' ) ?: $fallback;
+        }
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {
             $term_id = absint( $card['category_id'] ?? 0 );
             if ( ! $term_id || ! term_exists( $term_id, 'product_cat' ) ) continue;
