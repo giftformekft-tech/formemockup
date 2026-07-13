@@ -31,6 +31,7 @@ class MG_Gift_Finder {
             'questions' => array(
                 'recipient' => array( 'title' => 'Kinek keresel ajándékot?', 'options' => array() ),
                 'occasion'  => array( 'title' => 'Milyen alkalomra?', 'options' => array() ),
+                'wedding_type' => array( 'title' => 'Milyen házassághoz kapcsolódó eseményre?', 'options' => array() ),
                 'interest'  => array( 'title' => 'Milyen a személyisége, mi érdekli?', 'options' => array() ),
                 'occupation'=> array( 'title' => 'Mi a foglalkozása?', 'options' => array() ),
             ),

@@ -39,6 +39,7 @@ Az importfájl gyökérstruktúrája:
     "questions": {
       "recipient": { "title": "Kinek keresel ajándékot?", "options": [] },
       "occasion": { "title": "Milyen alkalomra?", "options": [] },
+      "wedding_type": { "title": "Milyen házassághoz kapcsolódó eseményre?", "options": [] },
       "interest": { "title": "Milyen a személyisége, mi érdekli?", "options": [] },
       "occupation": { "title": "Mi a foglalkozása?", "options": [] }
     },

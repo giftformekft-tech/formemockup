@@ -142,7 +142,8 @@
           { "label": "A szerelmemnek", "category_id": 243, "parent_category_ids": [] },
           { "label": "Tesónak", "category_id": 114, "parent_category_ids": [] },
           { "label": "Keresztszülőnek", "category_id": 115, "parent_category_ids": [] },
-          { "label": "Egy párnak / házasoknak", "category_id": 98, "parent_category_ids": [] }
+          { "label": "Egy párnak / házasoknak", "category_id": 98, "parent_category_ids": [] },
+          { "label": "Barátnak / barátnőnek", "category_id": 245, "parent_category_ids": [] }
         ]
       },
       "occasion": {
@@ -151,22 +152,22 @@
           {
             "label": "Születésnapra",
             "category_id": 93,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           },
           {
             "label": "Karácsonyra",
             "category_id": 118,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           },
           {
             "label": "Húsvétra",
             "category_id": 121,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           },
           {
             "label": "Ballagásra",
             "category_id": 107,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           },
           {
             "label": "Valentin-napra",
@@ -188,34 +189,37 @@
             "parent_category_ids": [110, 111, 116]
           },
           {
-            "label": "Évfordulóra vagy házassági alkalomra",
-            "category_id": 0,
-            "category_ids": [99, 249, 243],
-            "option_id": "anniversary",
-            "parent_category_ids": [117, 116, 243, 98]
+            "label": "Házassághoz kapcsolódó eseményre",
+            "category_id": 99,
+            "parent_category_ids": [117, 116, 243, 114, 98, 245]
           },
           {
             "label": "Nyugdíjazásra",
             "category_id": 0,
             "category_ids": [97],
             "option_id": "retirement",
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 245]
           },
           {
             "label": "Halloweenre",
             "category_id": 120,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
-          },
-          {
-            "label": "Tejfakasztóra",
-            "category_id": 248,
-            "parent_category_ids": [110, 116]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           },
           {
             "label": "Csak úgy / meglepetésként",
             "category_id": 15,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
           }
+        ]
+      },
+      "wedding_type": {
+        "title": "Milyen házassághoz kapcsolódó eseményre?",
+        "options": [
+          { "label": "Esküvőre / házasságkötésre", "category_id": 249, "parent_category_ids": [99] },
+          { "label": "Évfordulóra", "category_id": 0, "category_ids": [249, 243], "option_id": "anniversary", "parent_category_ids": [99] },
+          { "label": "Lánybúcsúra", "category_id": 247, "parent_category_ids": [99] },
+          { "label": "Legénybúcsúra", "category_id": 246, "parent_category_ids": [99] },
+          { "label": "Tejfakasztóra", "category_id": 248, "parent_category_ids": [99] }
         ]
       },
       "interest": {

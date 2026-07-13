@@ -17,6 +17,8 @@ Az érdeklődési kör WooCommerce-kategóriák alapján szűr. Évszak- és ár
 
 Az ajándékválasztó logikai kategóriái nem hoznak létre új WooCommerce-kategóriát. Például az „Apák napja” válasz alá közösen bevonható az `Apának`, `Papának` és `Férjnek` kategória. A keresés ezeket egyetlen alkalomcsoportként kezeli. Termékcímkéket a találati logika nem használ.
 
+A „Házassághoz kapcsolódó esemény” alkalom saját függő lépést nyit. Itt külön választható az esküvő/házasságkötés, évforduló, lánybúcsú, legénybúcsú és tejfakasztó. Más alkalomnál ez a lépés automatikusan kimarad.
+
 ### Függő kérdések
 
 A második és későbbi kérdések válaszainál a **Csak ezek után jelenjen meg** mezőben választhatók ki a korábbi válaszok kategóriái. Például az „Anyák napja” alkalomhoz válaszd ki az „Anyának” kategóriát. Ekkor ez az alkalom csak akkor látható, ha a vevő előtte az „Anyának” lehetőséget választotta. Több szülő megadásakor bármelyik egyezése elegendő; üres mező esetén a válasz mindig látható.
