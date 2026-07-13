@@ -4,6 +4,7 @@
   "generated_at": "2026-07-13",
   "source_schema": "mg-gift-catalog",
   "source_version": 1,
+  "target_plugin_version": "2.9.0",
   "classification_basis": "Meglévő termékkategóriák, kategóriahierarchia és anonim 12 havi értékesítési darabszám.",
   "settings": {
     "cards": [
@@ -144,7 +145,9 @@
           { "label": "Keresztanyának", "category_id": 115, "keywords": ["keresztanya"], "option_id": "godmother", "parent_category_ids": [] },
           { "label": "Keresztapának", "category_id": 115, "keywords": ["keresztapa"], "option_id": "godfather", "parent_category_ids": [] },
           { "label": "Egy párnak / házasoknak", "category_id": 98, "parent_category_ids": [] },
-          { "label": "Barátnak / barátnőnek", "category_id": 245, "parent_category_ids": [] }
+          { "label": "Barátnak / barátnőnek", "category_id": 245, "parent_category_ids": [] },
+          { "label": "Kollégának", "category_id": 97, "keywords": ["kolléga", "kolléganő", "munkatárs"], "option_id": "colleague", "parent_category_ids": [] },
+          { "label": "Főnöknek", "category_id": 333, "keywords": ["főnök", "főnökasszony"], "option_id": "boss", "parent_category_ids": [] }
         ]
       },
       "occasion": {
@@ -153,22 +156,22 @@
           {
             "label": "Születésnapra",
             "category_id": 93,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           },
           {
             "label": "Karácsonyra",
             "category_id": 118,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           },
           {
             "label": "Húsvétra",
             "category_id": 121,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           },
           {
             "label": "Ballagásra",
             "category_id": 107,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           },
           {
             "label": "Valentin-napra",
@@ -192,7 +195,7 @@
           {
             "label": "Házassághoz kapcsolódó eseményre",
             "category_id": 99,
-            "parent_category_ids": [117, 116, 243, 114, 98, 245]
+            "parent_category_ids": [117, 116, 243, 114, 98, 245, 97, 333]
           },
           {
             "label": "Nyugdíjazásra",
@@ -200,17 +203,17 @@
             "category_ids": [97],
             "keywords": ["nyugdíj"],
             "option_id": "retirement",
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 245, 97, 333]
           },
           {
             "label": "Halloweenre",
             "category_id": 120,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           },
           {
             "label": "Csak úgy / meglepetésként",
             "category_id": 15,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98, 245, 97, 333]
           }
         ]
       },
