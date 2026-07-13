@@ -14,6 +14,10 @@
 
 Az érdeklődési kör ugyanúgy WooCommerce-kategóriák alapján pontoz. Az árkeretek külön szerkeszthetők. A szezonális kártyák automatikusan csak a kiválasztott évszak hónapjaiban jelennek meg (tél: december–február, tavasz: március–május, nyár: június–augusztus, ősz: szeptember–november).
 
+### Függő kérdések
+
+A második és későbbi kérdések válaszainál a **Csak ezek után jelenjen meg** mezőben választhatók ki a korábbi válaszok kategóriái. Például az „Anyák napja” alkalomhoz válaszd ki az „Anyának” kategóriát. Ekkor ez az alkalom csak akkor látható, ha a vevő előtte az „Anyának” lehetőséget választotta. Több szülő megadásakor bármelyik egyezése elegendő; üres mező esetén a válasz mindig látható.
+
 ## Főoldali blokk
 
 A Gutenberg szerkesztőben keresd az **Ajándékkereső** blokkot. Szabadon áthelyezhető, az oldalsávban pedig beállítható a főcím, a bevezető, a gombszöveg és a megjelenő kategóriák.

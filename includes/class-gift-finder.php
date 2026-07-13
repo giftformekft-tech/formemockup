@@ -192,8 +192,9 @@ class MG_Gift_Finder {
                         <div class="mg-gift-options">
                             <?php foreach ( $question['options'] as $option ) :
                                 $term_id = (int) ( $option['category_id'] ?? 0 );
+                                $parent_ids = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
                                 if ( ! $term_id ) continue; ?>
-                                <label class="mg-gift-option">
+                                <label class="mg-gift-option"<?php if ( $parent_ids ) : ?> data-parent-ids="<?php echo esc_attr( implode( ',', $parent_ids ) ); ?>"<?php endif; ?>>
                                     <input type="radio" name="mg_gift_<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $term_id ); ?>" <?php checked( (int) wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? 0 ), $term_id ); ?> />
                                     <span><?php echo esc_html( $option['label'] ); ?></span>
                                 </label>
@@ -232,11 +233,19 @@ class MG_Gift_Finder {
 
     private static function get_selected_terms( $settings ) {
         $selected = array();
-        $allowed = array();
+        $prior = array();
         foreach ( $settings['questions'] as $key => $question ) {
-            $allowed[ $key ] = array_map( 'intval', wp_list_pluck( $question['options'], 'category_id' ) );
             $value = isset( $_GET[ 'mg_gift_' . $key ] ) ? (int) $_GET[ 'mg_gift_' . $key ] : 0;
-            if ( $value && in_array( $value, $allowed[ $key ], true ) ) $selected[] = $value;
+            if ( ! $value ) continue;
+            foreach ( $question['options'] as $option ) {
+                if ( (int) ( $option['category_id'] ?? 0 ) !== $value ) continue;
+                $parents = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
+                if ( empty( $parents ) || array_intersect( $parents, $prior ) ) {
+                    $selected[] = $value;
+                    $prior[] = $value;
+                }
+                break;
+            }
         }
         $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
         $card_ids = array_map( 'intval', wp_list_pluck( $settings['cards'], 'category_id' ) );

@@ -63,11 +63,12 @@ class MG_Gift_Finder_Page {
 
                 <h2>3. A kereső kérdései</h2>
                 <p class="description">Minden válasz egy WooCommerce kategóriához kapcsolódik. A termék annál előrébb kerül, minél több választott kategóriához tartozik.</p>
+                <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
                     <section class="mg-gift-admin-question">
                         <label><strong>Kérdés:</strong> <input type="text" class="regular-text" name="settings[questions][<?php echo esc_attr( $key ); ?>][title]" value="<?php echo esc_attr( $question['title'] ); ?>" /></label>
                         <div class="mg-gift-admin-list" id="mg-question-<?php echo esc_attr( $key ); ?>">
-                            <?php foreach ( $question['options'] as $index => $option ) self::option_row( $key, $index, $option, $categories ); ?>
+                            <?php $parent_categories = self::get_parent_categories( $settings, $key, $categories ); foreach ( $question['options'] as $index => $option ) self::option_row( $key, $index, $option, $categories, $parent_categories ); ?>
                         </div>
                         <button type="button" class="button mg-add-row" data-template="mg-option-template-<?php echo esc_attr( $key ); ?>" data-target="mg-question-<?php echo esc_attr( $key ); ?>">+ Válaszlehetőség</button>
                     </section>
@@ -95,12 +96,12 @@ class MG_Gift_Finder_Page {
 
         <script type="text/html" id="mg-gift-card-template"><?php self::card_row( '__INDEX__', array(), $categories ); ?></script>
         <?php foreach ( array_keys( $settings['questions'] ) as $key ) : ?>
-            <script type="text/html" id="mg-option-template-<?php echo esc_attr( $key ); ?>"><?php self::option_row( $key, '__INDEX__', array(), $categories ); ?></script>
+            <script type="text/html" id="mg-option-template-<?php echo esc_attr( $key ); ?>"><?php self::option_row( $key, '__INDEX__', array(), $categories, self::get_parent_categories( $settings, $key, $categories ) ); ?></script>
         <?php endforeach; ?>
         <script type="text/html" id="mg-budget-template"><?php self::budget_row( '__INDEX__', array() ); ?></script>
         <script type="text/html" id="mg-bundle-template"><?php self::bundle_row( '__INDEX__', array(), $categories ); ?></script>
         <style>
-            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}
+            .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}
         </style>
         <script>
         (function(){
@@ -170,12 +171,19 @@ class MG_Gift_Finder_Page {
         </section><?php
     }
 
-    private static function option_row( $key, $index, $option, $categories ) {
-        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0 ) );
+    private static function option_row( $key, $index, $option, $categories, $parent_categories = array() ) {
+        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'parent_category_ids' => array() ) );
         $prefix = 'settings[questions][' . $key . '][options][' . $index . ']'; ?>
         <div class="mg-gift-admin-row">
             <input type="text" name="<?php echo esc_attr( $prefix ); ?>[label]" value="<?php echo esc_attr( $option['label'] ); ?>" placeholder="pl. Anyukának" required />
             <?php self::category_select( $prefix . '[category_id]', $option['category_id'], $categories ); ?>
+            <?php if ( ! empty( $parent_categories ) ) : ?>
+                <label>Csak ezek után jelenjen meg
+                    <select multiple name="<?php echo esc_attr( $prefix ); ?>[parent_category_ids][]" size="4">
+                        <?php foreach ( $parent_categories as $term ) : ?><option value="<?php echo esc_attr( $term->term_id ); ?>" <?php echo in_array( (int) $term->term_id, array_map( 'intval', $option['parent_category_ids'] ), true ) ? 'selected' : ''; ?>><?php echo esc_html( $term->name ); ?></option><?php endforeach; ?>
+                    </select>
+                </label>
+            <?php endif; ?>
             <button type="button" class="button-link-delete mg-row-remove">Törlés</button>
         </div><?php
     }
@@ -187,6 +195,17 @@ class MG_Gift_Finder_Page {
     private static function get_categories() {
         $terms = get_terms( array( 'taxonomy' => 'product_cat', 'hide_empty' => false, 'orderby' => 'name' ) );
         return is_wp_error( $terms ) ? array() : $terms;
+    }
+
+    private static function get_parent_categories( $settings, $current_key, $categories ) {
+        $ids = array();
+        foreach ( $settings['questions'] as $key => $question ) {
+            if ( $key === $current_key ) break;
+            $ids = array_merge( $ids, array_map( 'intval', wp_list_pluck( $question['options'], 'category_id' ) ) );
+        }
+        return array_values( array_filter( $categories, function( $term ) use ( $ids ) {
+            return in_array( (int) $term->term_id, $ids, true );
+        } ) );
     }
 
     private static function save() {
@@ -213,7 +232,13 @@ class MG_Gift_Finder_Page {
             foreach ( (array) ( $source['options'] ?? array() ) as $option ) {
                 $term_id = absint( $option['category_id'] ?? 0 );
                 $label = sanitize_text_field( $option['label'] ?? '' );
-                if ( $term_id && $label && term_exists( $term_id, 'product_cat' ) ) $question['options'][] = array( 'label' => $label, 'category_id' => $term_id );
+                if ( $term_id && $label && term_exists( $term_id, 'product_cat' ) ) {
+                    $question['options'][] = array(
+                        'label'               => $label,
+                        'category_id'         => $term_id,
+                        'parent_category_ids' => array_values( array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),
+                    );
+                }
             }
         }
         unset( $question );
