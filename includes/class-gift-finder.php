@@ -57,7 +57,7 @@ class MG_Gift_Finder {
         $routes = array(
             array(
                 'label'               => 'Kollégának',
-                'category_id'         => 97,
+                'category_slug'       => 'foglalkozas-polok',
                 'category_ids'        => array(),
                 'keywords'            => array( 'kolléga', 'kolléganő', 'munkatárs' ),
                 'option_id'           => 'colleague',
@@ -65,7 +65,7 @@ class MG_Gift_Finder {
             ),
             array(
                 'label'               => 'Főnöknek',
-                'category_id'         => 333,
+                'category_slug'       => 'fonok',
                 'category_ids'        => array(),
                 'keywords'            => array( 'főnök', 'főnökasszony' ),
                 'option_id'           => 'boss',
@@ -74,12 +74,20 @@ class MG_Gift_Finder {
         );
         $active_route_categories = array();
         foreach ( $routes as $route ) {
-            if ( ! term_exists( $route['category_id'], 'product_cat' ) ) continue;
-            $active_route_categories[] = (int) $route['category_id'];
-            $exists = array_filter( $recipients, function( $option ) use ( $route ) {
-                return ( $option['option_id'] ?? '' ) === $route['option_id'];
-            } );
-            if ( empty( $exists ) ) $recipients[] = $route;
+            $term = get_term_by( 'slug', $route['category_slug'], 'product_cat' );
+            if ( ! $term || is_wp_error( $term ) ) continue;
+            $route['category_id'] = (int) $term->term_id;
+            unset( $route['category_slug'] );
+            $active_route_categories[] = $route['category_id'];
+            $route_updated = false;
+            foreach ( $recipients as &$recipient ) {
+                if ( ( $recipient['option_id'] ?? '' ) !== $route['option_id'] ) continue;
+                $recipient = array_merge( $recipient, $route );
+                $route_updated = true;
+                break;
+            }
+            unset( $recipient );
+            if ( ! $route_updated ) $recipients[] = $route;
         }
         if ( empty( $active_route_categories ) ) return $settings;
         $settings['questions']['recipient']['options'] = $recipients;

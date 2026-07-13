@@ -4,7 +4,7 @@
   "generated_at": "2026-07-13",
   "source_schema": "mg-gift-catalog",
   "source_version": 1,
-  "target_plugin_version": "2.9.2",
+  "target_plugin_version": "2.9.3",
   "classification_basis": "Meglévő termékkategóriák, kategóriahierarchia és anonim 12 havi értékesítési darabszám.",
   "settings": {
     "cards": [
