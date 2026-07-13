@@ -183,8 +183,9 @@ class MG_Gift_Finder_Page {
                 </select>
             </label>
             <input type="hidden" name="<?php echo esc_attr( $prefix ); ?>[option_id]" value="<?php echo esc_attr( $option['option_id'] ); ?>" />
-            <label>Terméknév-kulcsszavak
+            <label>További terméknév-kulcsszavak
                 <input type="text" name="<?php echo esc_attr( $prefix ); ?>[keywords]" value="<?php echo esc_attr( implode( ', ', (array) $option['keywords'] ) ); ?>" placeholder="pl. nyugdíj, nyugdíjas" />
+                <span class="description">A válasz és a kapcsolódó kategóriák neve automatikusan szerepel a keresésben. Ide csak szinonimák vagy további kifejezések kellenek.</span>
             </label>
             <?php if ( ! empty( $parent_categories ) ) : ?>
                 <label>Csak ezek után jelenjen meg

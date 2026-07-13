@@ -269,14 +269,43 @@ class MG_Gift_Finder {
     }
 
     private static function get_option_keywords( $option ) {
-        $keywords = is_string( $option['keywords'] ?? null )
+        $sources = is_string( $option['keywords'] ?? null )
             ? preg_split( '/[,;\r\n]+/', $option['keywords'] )
             : (array) ( $option['keywords'] ?? array() );
-        $keywords = array_map( 'sanitize_text_field', $keywords );
-        $keywords = array_filter( array_map( 'trim', $keywords ), function( $keyword ) {
-            return mb_strlen( $keyword ) >= 3;
-        } );
+        $sources[] = sanitize_text_field( $option['label'] ?? '' );
+        foreach ( self::get_option_category_ids( $option ) as $category_id ) {
+            $term = get_term( $category_id, 'product_cat' );
+            if ( $term && ! is_wp_error( $term ) ) $sources[] = $term->name;
+        }
+
+        $keywords = array();
+        foreach ( $sources as $source ) $keywords = array_merge( $keywords, self::keyword_variants( $source ) );
         return array_values( array_unique( $keywords ) );
+    }
+
+    private static function keyword_variants( $source ) {
+        $source = mb_strtolower( sanitize_text_field( $source ) );
+        $words = preg_split( '/[^\p{L}\p{N}]+/u', $source, -1, PREG_SPLIT_NO_EMPTY );
+        $stopwords = array( 'ajándék', 'ajándékok', 'ajandek', 'ajandekok', 'szeret', 'szereti', 'rajong', 'igazi', 'kapcsolódó', 'kapcsolodo', 'esemény', 'esemeny', 'alkalom', 'alkalmak', 'valaki', 'akinek', 'csak', 'meglepetésként', 'meglepeteskent', 'világa', 'vilaga', 'egy', 'és', 'es', 'vagy', 'nekik' );
+        $suffixes = array( 'atok', 'etek', 'otok', 'ötök', 'jának', 'jének', 'javal', 'jevel', 'ként', 'kent', 'tól', 'től', 'ról', 'ről', 'ból', 'ből', 'hoz', 'hez', 'höz', 'ban', 'ben', 'nak', 'nek', 'val', 'vel', 'ért', 'ert', 'kor', 'ra', 're', 'ni' );
+        $variants = array();
+        foreach ( $words as $word ) {
+            $normalized = mb_strtolower( remove_accents( $word ) );
+            if ( mb_strlen( $word ) < 3 || in_array( $normalized, array_map( 'remove_accents', $stopwords ), true ) ) continue;
+            $variants[] = $word;
+
+            $stem = $word;
+            foreach ( $suffixes as $suffix ) {
+                if ( mb_strlen( $stem ) - mb_strlen( $suffix ) >= 3 && mb_substr( $stem, -mb_strlen( $suffix ) ) === $suffix ) {
+                    $stem = mb_substr( $stem, 0, mb_strlen( $stem ) - mb_strlen( $suffix ) );
+                    break;
+                }
+            }
+            if ( preg_match( '/[aáeéiíoóöőuúüű]k$/u', $stem ) && mb_strlen( $stem ) > 3 ) $stem = mb_substr( $stem, 0, -1 );
+            if ( preg_match( '/(ászat|észet)$/u', $stem ) ) $stem = mb_substr( $stem, 0, -2 );
+            if ( mb_strlen( $stem ) >= 3 && $stem !== $word ) $variants[] = $stem;
+        }
+        return $variants;
     }
 
     private static function get_selected_choices( $settings ) {
@@ -401,8 +430,10 @@ class MG_Gift_Finder {
         }
 
         $choice_families = array();
+        $choice_keywords = array();
         foreach ( $scoring_choices as $index => $choice ) {
             $choice_families[ $index ] = array();
+            $choice_keywords[ $index ] = self::get_option_keywords( $choice );
             foreach ( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) as $category_id ) {
                 $children = get_term_children( $category_id, 'product_cat' );
                 $choice_families[ $index ] = array_merge( $choice_families[ $index ], array( $category_id ), is_wp_error( $children ) ? array() : array_map( 'intval', $children ) );
@@ -419,9 +450,12 @@ class MG_Gift_Finder {
             foreach ( $scoring_choices as $index => $choice ) {
                 $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
                 $keyword_match_count = 0;
-                foreach ( self::get_option_keywords( $choice ) as $keyword ) {
+                foreach ( $choice_keywords[ $index ] as $keyword ) {
                     $normalized_keyword = mb_strtolower( remove_accents( $keyword ) );
-                    if ( $normalized_keyword !== '' && mb_strpos( $normalized_title, $normalized_keyword ) !== false ) $keyword_match_count++;
+                    if ( $normalized_keyword !== '' && mb_strpos( $normalized_title, $normalized_keyword ) !== false ) {
+                        $keyword_match_count = 1;
+                        break;
+                    }
                 }
                 if ( $category_match || $keyword_match_count > 0 ) {
                     $match_count++;
