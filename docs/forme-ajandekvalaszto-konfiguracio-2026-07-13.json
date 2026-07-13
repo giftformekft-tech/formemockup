@@ -174,15 +174,6 @@
           }
         ]
       },
-      "season": {
-        "title": "Melyik évszakhoz illjen?",
-        "options": [
-          { "label": "Tavaszi / húsvéti", "category_id": 121, "parent_category_ids": [] },
-          { "label": "Nyári / nyaralós", "category_id": 265, "parent_category_ids": [] },
-          { "label": "Őszi / halloweeni", "category_id": 120, "parent_category_ids": [] },
-          { "label": "Téli / karácsonyi", "category_id": 118, "parent_category_ids": [] }
-        ]
-      },
       "interest": {
         "title": "Milyen a személyisége, mi érdekli?",
         "options": [

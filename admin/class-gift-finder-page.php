@@ -64,7 +64,7 @@ class MG_Gift_Finder_Page {
                 <button type="button" class="button mg-add-row" data-template="mg-gift-card-template" data-target="mg-gift-cards">+ Kategóriakártya</button>
 
                 <h2>3. A kereső kérdései</h2>
-                <p class="description">Minden válasz egy WooCommerce kategóriához kapcsolódik. A termék annál előrébb kerül, minél több választott kategóriához tartozik.</p>
+                <p class="description">Minden válasz egy WooCommerce kategóriához kapcsolódik. A legutolsó, legpontosabb válasz az elsődleges szűrő: az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Üres kategória esetén a kereső visszalép az előző válaszra.</p>
                 <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
                     <section class="mg-gift-admin-question">
@@ -76,14 +76,7 @@ class MG_Gift_Finder_Page {
                     </section>
                 <?php endforeach; ?>
 
-                <h2>4. Árkeretek</h2>
-                <p class="description">A felső határ 0 értéke azt jelenti, hogy nincs felső korlát.</p>
-                <div class="mg-gift-admin-list" id="mg-gift-budgets">
-                    <?php foreach ( $settings['budgets'] as $index => $budget ) self::budget_row( $index, $budget ); ?>
-                </div>
-                <button type="button" class="button mg-add-row" data-template="mg-budget-template" data-target="mg-gift-budgets">+ Árkeret</button>
-
-                <h2>5. Ajándékcsomag-ajánlások</h2>
+                <h2>4. Ajándékcsomag-ajánlások</h2>
                 <p class="description">A csomag akkor jelenik meg, ha legalább egy hozzárendelt kategória egyezik a vevő válaszaival. Kategória nélkül minden találatnál megjelenik.</p>
                 <div class="mg-gift-admin-list" id="mg-gift-bundles">
                     <?php foreach ( $settings['bundles'] as $index => $bundle ) self::bundle_row( $index, $bundle, $categories ); ?>
@@ -100,7 +93,6 @@ class MG_Gift_Finder_Page {
         <?php foreach ( array_keys( $settings['questions'] ) as $key ) : ?>
             <script type="text/html" id="mg-option-template-<?php echo esc_attr( $key ); ?>"><?php self::option_row( $key, '__INDEX__', array(), $categories, self::get_parent_categories( $settings, $key, $categories ) ); ?></script>
         <?php endforeach; ?>
-        <script type="text/html" id="mg-budget-template"><?php self::budget_row( '__INDEX__', array() ); ?></script>
         <script type="text/html" id="mg-bundle-template"><?php self::bundle_row( '__INDEX__', array(), $categories ); ?></script>
         <style>
             .mg-gift-admin h2{margin-top:32px}.mg-gift-admin-list{display:grid;gap:10px;margin:12px 0}.mg-gift-admin-row{display:flex;align-items:center;gap:10px;padding:12px;background:#fff;border:1px solid #c3c4c7;border-radius:6px;flex-wrap:wrap}.mg-gift-admin-row input[type=text]{min-width:180px}.mg-gift-admin-row select{max-width:300px}.mg-gift-admin-row>label{display:flex;align-items:center;gap:8px}.mg-gift-admin-row .mg-row-remove{margin-left:auto;color:#b32d2e}.mg-gift-admin-question{margin:16px 0;padding:18px;background:#f6f7f7;border-left:4px solid #2271b1}.mg-gift-admin-question>.mg-gift-admin-list{margin-left:0}.mg-gift-bundle-row{align-items:flex-start}.mg-gift-stats{margin-top:38px;padding-top:8px;border-top:1px solid #c3c4c7}
@@ -133,18 +125,6 @@ class MG_Gift_Finder_Page {
         </div><?php
     }
 
-    private static function budget_row( $index, $budget ) {
-        $budget = wp_parse_args( $budget, array( 'id' => '', 'label' => '', 'min' => 0, 'max' => 0 ) );
-        $prefix = 'settings[budgets][' . $index . ']'; ?>
-        <div class="mg-gift-admin-row">
-            <input type="text" name="<?php echo esc_attr( $prefix ); ?>[label]" value="<?php echo esc_attr( $budget['label'] ); ?>" placeholder="pl. 5 000 Ft alatt" required />
-            <label>Minimum <input type="number" name="<?php echo esc_attr( $prefix ); ?>[min]" value="<?php echo esc_attr( $budget['min'] ); ?>" min="0" step="100" class="small-text" /> Ft</label>
-            <label>Maximum <input type="number" name="<?php echo esc_attr( $prefix ); ?>[max]" value="<?php echo esc_attr( $budget['max'] ); ?>" min="0" step="100" class="small-text" /> Ft</label>
-            <input type="hidden" name="<?php echo esc_attr( $prefix ); ?>[id]" value="<?php echo esc_attr( $budget['id'] ); ?>" />
-            <button type="button" class="button-link-delete mg-row-remove">Törlés</button>
-        </div><?php
-    }
-
     private static function bundle_row( $index, $bundle, $categories ) {
         $bundle = wp_parse_args( $bundle, array( 'title' => '', 'badge' => '', 'category_ids' => array(), 'product_ids' => array() ) );
         $prefix = 'settings[bundles][' . $index . ']'; ?>
@@ -162,11 +142,11 @@ class MG_Gift_Finder_Page {
     private static function render_stats() {
         $stats = MG_Gift_Finder::get_no_result_stats(); ?>
         <section class="mg-gift-stats">
-            <h2>6. Eredménytelen keresések</h2>
+            <h2>5. Eredménytelen keresések</h2>
             <p class="description">Egy látogató azonos keresését 30 percenként legfeljebb egyszer számoljuk.</p>
             <?php if ( empty( $stats ) ) : ?><p>Még nincs eredménytelen keresés.</p><?php else : ?>
-                <table class="widefat striped"><thead><tr><th>Választott kategóriák</th><th>Árkeret</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
-                    <?php foreach ( $stats as $row ) : ?><tr><td><?php echo esc_html( ! empty( $row['terms'] ) ? implode( ', ', $row['terms'] ) : 'Nincs kategóriaszűrés' ); ?></td><td><?php echo esc_html( $row['budget'] ); ?></td><td><?php echo esc_html( (int) $row['count'] ); ?>×</td><td><?php echo esc_html( $row['last_seen'] ); ?></td></tr><?php endforeach; ?>
+                <table class="widefat striped"><thead><tr><th>Választott kategóriák</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
+                    <?php foreach ( $stats as $row ) : ?><tr><td><?php echo esc_html( ! empty( $row['terms'] ) ? implode( ', ', $row['terms'] ) : 'Nincs kategóriaszűrés' ); ?></td><td><?php echo esc_html( (int) $row['count'] ); ?>×</td><td><?php echo esc_html( $row['last_seen'] ); ?></td></tr><?php endforeach; ?>
                 </tbody></table>
                 <form method="post"><?php wp_nonce_field( 'mg_clear_gift_stats', 'mg_gift_stats_nonce' ); ?><?php submit_button( 'Statisztika törlése', 'delete', 'submit', false ); ?></form>
             <?php endif; ?>
@@ -244,26 +224,6 @@ class MG_Gift_Finder_Page {
             }
         }
         unset( $question );
-        $clean['budgets'] = array();
-        foreach ( (array) ( $raw['budgets'] ?? array() ) as $index => $budget ) {
-            $label = sanitize_text_field( $budget['label'] ?? '' );
-            if ( $label === '' ) continue;
-            $id = sanitize_key( $budget['id'] ?? '' );
-            if ( $id === '' ) $id = 'budget-' . absint( $index ) . '-' . substr( md5( $label ), 0, 6 );
-            $min = max( 0, absint( $budget['min'] ?? 0 ) );
-            $max = max( 0, absint( $budget['max'] ?? 0 ) );
-            if ( $max > 0 && $max < $min ) {
-                $swap = $min;
-                $min = $max;
-                $max = $swap;
-            }
-            $clean['budgets'][] = array(
-                'id'    => $id,
-                'label' => $label,
-                'min'   => $min,
-                'max'   => $max,
-            );
-        }
         $clean['bundles'] = array();
         foreach ( (array) ( $raw['bundles'] ?? array() ) as $bundle ) {
             $title = sanitize_text_field( $bundle['title'] ?? '' );

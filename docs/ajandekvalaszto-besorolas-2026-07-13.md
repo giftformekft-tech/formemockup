@@ -11,10 +11,10 @@
 
 1. A címzett-választás a `Család` alkategóriáira és a meglévő `Szerelmes` kategóriára épül.
 2. Az alkalmak csak az előző lépés releváns címzettjeinél jelennek meg. A Valentin-nap például csak feleség, férj vagy szerelmes választásakor látható.
-3. Az évszakok a meglévő szezonális kategóriákra mutatnak: Húsvét, Nyaralás, Halloween és Karácsony.
-4. Az érdeklődési körök a nagy, jól feltöltött kategóriákat használják. Ahol van értelmes, pontos alkategória, ott azt választottuk (például `Horgász`).
+3. Az érdeklődési körök a nagy, jól feltöltött kategóriákat használják. Ahol van értelmes, pontos alkategória, ott azt választottuk (például `Horgász`).
+4. A találatok elsődleges szűrője a legutolsó, legpontosabb válasz. Az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Ha az elsődleges kategória üres, a kereső az előző válaszra lép vissza. Így az `Apának → Születésnapra → Horgászik` útvonal kizárólag horgász kategóriás termékeket ad.
 5. A főoldali kártyák hero terméke az adott kategória legnagyobb 12 havi anonim darabszámú terméke. Ha a kategóriában nem volt értékesítés, egy kategóriába tartozó érvényes termékazonosító került be.
-6. Az árkeretek szándékosan nem szerepelnek az importban, ezért a webhely jelenlegi árkeret-beállítása megmarad.
+6. Évszak- és árkeretkérdés nincs a keresőben.
 7. Ajándékcsomag nem került automatikusan létrehozásra. Terméknevek és terméktípus-kapcsolatok nélkül nem állítható össze megbízható, tartalmilag összetartozó csomag. A meglévő póló → sapka/párna/vászontáska cross-sell szabály változatlan marad.
 
 ## Adatminőségi megjegyzések

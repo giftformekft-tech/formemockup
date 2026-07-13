@@ -17,17 +17,11 @@ class MG_Gift_Finder {
         return array(
             'page_id'   => 0,
             'cards'     => array(),
-            'budgets'   => array(
-                array( 'id' => 'under-5000', 'label' => '5 000 Ft alatt', 'min' => 0, 'max' => 5000 ),
-                array( 'id' => '5000-10000', 'label' => '5 000–10 000 Ft', 'min' => 5000, 'max' => 10000 ),
-                array( 'id' => '10000-20000', 'label' => '10 000–20 000 Ft', 'min' => 10000, 'max' => 20000 ),
-                array( 'id' => 'over-20000', 'label' => '20 000 Ft felett', 'min' => 20000, 'max' => 0 ),
-            ),
+            'budgets'   => array(),
             'bundles'   => array(),
             'questions' => array(
                 'recipient' => array( 'title' => 'Kinek keresel ajándékot?', 'options' => array() ),
                 'occasion'  => array( 'title' => 'Milyen alkalomra?', 'options' => array() ),
-                'season'    => array( 'title' => 'Melyik évszakhoz illjen?', 'options' => array() ),
                 'interest'  => array( 'title' => 'Milyen a személyisége, mi érdekli?', 'options' => array() ),
             ),
         );
@@ -36,7 +30,12 @@ class MG_Gift_Finder {
     public static function get_settings() {
         $saved = get_option( self::OPTION_KEY, array() );
         $settings = wp_parse_args( is_array( $saved ) ? $saved : array(), self::defaults() );
-        $settings['questions'] = wp_parse_args( $settings['questions'], self::defaults()['questions'] );
+        $saved_questions = is_array( $settings['questions'] ?? null ) ? $settings['questions'] : array();
+        $settings['questions'] = array();
+        foreach ( self::defaults()['questions'] as $key => $question ) {
+            $settings['questions'][ $key ] = wp_parse_args( $saved_questions[ $key ] ?? array(), $question );
+        }
+        $settings['budgets'] = array();
         return $settings;
     }
 
@@ -173,9 +172,8 @@ class MG_Gift_Finder {
         wp_enqueue_script( 'mg-gift-finder' );
         $settings = self::get_settings();
         $selected = self::get_selected_terms( $settings );
-        $budget = self::get_selected_budget( $settings );
-        $is_submitted = isset( $_GET['mg_gift_budget'] );
-        $total_steps = count( $settings['questions'] ) + 1;
+        $is_submitted = isset( $_GET['mg_gift_submitted'] );
+        $total_steps = count( $settings['questions'] );
 
         ob_start(); ?>
         <section class="mg-gift-finder" data-mg-gift-finder>
@@ -206,27 +204,18 @@ class MG_Gift_Finder {
                         </div>
                         <div class="mg-gift-step__actions">
                             <?php if ( $step > 1 ) : ?><button type="button" class="mg-gift-back">Vissza</button><?php endif; ?>
-                            <button type="button" class="mg-gift-next">Tovább</button>
+                            <?php if ( $step === $total_steps ) : ?>
+                                <button type="submit" class="mg-gift-primary-button">Mutasd az ötleteket</button>
+                            <?php else : ?>
+                                <button type="button" class="mg-gift-next">Tovább</button>
+                            <?php endif; ?>
                         </div>
                     </fieldset>
                 <?php endforeach; ?>
-                <?php $step++; ?>
-                <fieldset class="mg-gift-step mg-gift-budget-step" data-step="<?php echo esc_attr( $step ); ?>">
-                    <legend><small><?php echo esc_html( $step . '/' . $total_steps ); ?></small>Mekkora az árkeret?</legend>
-                    <div class="mg-gift-options">
-                        <?php foreach ( $settings['budgets'] as $range ) : ?>
-                            <label class="mg-gift-option">
-                                <input type="radio" name="mg_gift_budget" value="<?php echo esc_attr( $range['id'] ); ?>" <?php checked( sanitize_key( wp_unslash( $_GET['mg_gift_budget'] ?? '' ) ), $range['id'] ); ?> />
-                                <span><?php echo esc_html( $range['label'] ); ?></span>
-                            </label>
-                        <?php endforeach; ?>
-                        <label class="mg-gift-option mg-gift-option--skip"><input type="radio" name="mg_gift_budget" value="all" <?php checked( sanitize_key( wp_unslash( $_GET['mg_gift_budget'] ?? '' ) ), 'all' ); ?> /><span>Mindegy / nincs keret</span></label>
-                    </div>
-                    <div class="mg-gift-step__actions"><button type="button" class="mg-gift-back">Vissza</button><button type="submit" class="mg-gift-primary-button">Mutasd az ötleteket</button></div>
-                </fieldset>
+                <input type="hidden" name="mg_gift_submitted" value="1" />
                 <?php if ( ! empty( $_GET['mg_gift_start'] ) ) : ?><input type="hidden" name="mg_gift_start" value="<?php echo esc_attr( (int) $_GET['mg_gift_start'] ); ?>" /><?php endif; ?>
             </form>
-            <?php if ( $is_submitted ) self::render_results( $selected, $budget, $settings ); ?>
+            <?php if ( $is_submitted ) self::render_results( $selected, $settings ); ?>
         </section>
         <?php return ob_get_clean();
     }
@@ -234,6 +223,9 @@ class MG_Gift_Finder {
     private static function get_selected_terms( $settings ) {
         $selected = array();
         $prior = array();
+        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
+        $card_ids = array_map( 'intval', wp_list_pluck( $settings['cards'], 'category_id' ) );
+        if ( $start && in_array( $start, $card_ids, true ) ) $selected[] = $start;
         foreach ( $settings['questions'] as $key => $question ) {
             $value = isset( $_GET[ 'mg_gift_' . $key ] ) ? (int) $_GET[ 'mg_gift_' . $key ] : 0;
             if ( ! $value ) continue;
@@ -247,21 +239,10 @@ class MG_Gift_Finder {
                 break;
             }
         }
-        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
-        $card_ids = array_map( 'intval', wp_list_pluck( $settings['cards'], 'category_id' ) );
-        if ( $start && in_array( $start, $card_ids, true ) ) $selected[] = $start;
         return array_values( array_unique( $selected ) );
     }
 
-    private static function get_selected_budget( $settings ) {
-        $requested = sanitize_key( wp_unslash( $_GET['mg_gift_budget'] ?? '' ) );
-        foreach ( $settings['budgets'] as $range ) {
-            if ( $requested !== '' && $requested === $range['id'] ) return $range;
-        }
-        return null;
-    }
-
-    private static function render_results( $term_ids, $budget, $settings ) {
+    private static function render_results( $term_ids, $settings ) {
         $tax_query = array();
         if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
             $visibility = wc_get_product_visibility_term_ids();
@@ -282,35 +263,30 @@ class MG_Gift_Finder {
                 );
             }
         }
-        if ( ! empty( $term_ids ) ) {
-            $tax_query[] = array(
-                'taxonomy'         => 'product_cat',
-                'field'            => 'term_id',
-                'terms'            => $term_ids,
-                'operator'         => 'IN',
-                'include_children' => true,
-            );
-        }
-        if ( count( $tax_query ) > 1 ) $tax_query['relation'] = 'AND';
-
         $args = array(
             'post_type'      => 'product',
             'post_status'    => 'publish',
             'posts_per_page' => 48,
         );
-        if ( ! empty( $tax_query ) ) $args['tax_query'] = $tax_query;
-        if ( $budget ) {
-            $min = max( 0, (float) $budget['min'] );
-            $max = max( 0, (float) $budget['max'] );
-            if ( $min > 0 && $max > 0 ) {
-                $args['meta_query'] = array( array( 'key' => '_price', 'value' => array( $min, $max ), 'compare' => 'BETWEEN', 'type' => 'NUMERIC' ) );
-            } elseif ( $max > 0 ) {
-                $args['meta_query'] = array( array( 'key' => '_price', 'value' => $max, 'compare' => '<=', 'type' => 'NUMERIC' ) );
-            } elseif ( $min > 0 ) {
-                $args['meta_query'] = array( array( 'key' => '_price', 'value' => $min, 'compare' => '>=', 'type' => 'NUMERIC' ) );
+        $fallback_terms = ! empty( $term_ids ) ? array_reverse( $term_ids ) : array( 0 );
+        $query = null;
+        foreach ( $fallback_terms as $primary_term_id ) {
+            $query_tax = $tax_query;
+            if ( $primary_term_id ) {
+                $query_tax[] = array(
+                    'taxonomy'         => 'product_cat',
+                    'field'            => 'term_id',
+                    'terms'            => array( $primary_term_id ),
+                    'operator'         => 'IN',
+                    'include_children' => true,
+                );
             }
+            if ( count( $query_tax ) > 1 ) $query_tax['relation'] = 'AND';
+            if ( ! empty( $query_tax ) ) $args['tax_query'] = $query_tax;
+            $query = new WP_Query( $args );
+            if ( ! empty( $query->posts ) ) break;
         }
-        $query = new WP_Query( $args );
+        if ( ! $query ) $query = new WP_Query( $args );
         $ranked = array();
         foreach ( $query->posts as $post ) {
             $product_terms = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'ids' ) );
@@ -329,7 +305,7 @@ class MG_Gift_Finder {
         <div class="mg-gift-results" id="mg-gift-results">
             <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2>Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
             <?php if ( empty( $ranked ) ) : ?>
-                <?php self::log_no_results( $term_ids, $budget ); ?>
+                <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>
             <?php else : ?><div class="mg-gift-product-grid">
                 <?php foreach ( $ranked as $item ) : $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
@@ -375,10 +351,9 @@ class MG_Gift_Finder {
         </section><?php
     }
 
-    private static function log_no_results( $term_ids, $budget ) {
-        $budget_id = $budget ? $budget['id'] : 'all';
+    private static function log_no_results( $term_ids ) {
         sort( $term_ids );
-        $hash = md5( implode( ',', $term_ids ) . '|' . $budget_id );
+        $hash = md5( implode( ',', $term_ids ) );
         $remote = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
         $dedupe = 'mg_gift_no_result_' . md5( $hash . '|' . $remote );
         if ( get_transient( $dedupe ) ) return;
@@ -391,7 +366,7 @@ class MG_Gift_Finder {
             if ( $term && ! is_wp_error( $term ) ) $labels[] = $term->name;
         }
         if ( ! isset( $stats[ $hash ] ) ) {
-            $stats[ $hash ] = array( 'terms' => $labels, 'budget' => $budget ? $budget['label'] : 'Nincs árkeret', 'count' => 0, 'last_seen' => '' );
+            $stats[ $hash ] = array( 'terms' => $labels, 'budget' => '', 'count' => 0, 'last_seen' => '' );
         }
         $stats[ $hash ]['count']++;
         $stats[ $hash ]['last_seen'] = current_time( 'mysql' );

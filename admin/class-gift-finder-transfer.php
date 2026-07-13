@@ -284,17 +284,7 @@ class MG_Gift_Finder_Transfer {
         }
         unset( $question );
 
-        $clean['budgets'] = array_key_exists( 'budgets', $raw ) ? array() : (array) $current['budgets'];
-        if ( array_key_exists( 'budgets', $raw ) ) {
-            foreach ( (array) $raw['budgets'] as $budget ) {
-                $label = sanitize_text_field( $budget['label'] ?? '' );
-                if ( $label === '' ) continue;
-                $min = absint( $budget['min'] ?? 0 );
-                $max = absint( $budget['max'] ?? 0 );
-                if ( $max > 0 && $max < $min ) { $swap = $min; $min = $max; $max = $swap; }
-                $clean['budgets'][] = array( 'id' => sanitize_key( $budget['id'] ?? uniqid( 'budget-' ) ), 'label' => $label, 'min' => $min, 'max' => $max );
-            }
-        }
+        $clean['budgets'] = array();
 
         $clean['bundles'] = array();
         foreach ( (array) ( $raw['bundles'] ?? array() ) as $bundle ) {
