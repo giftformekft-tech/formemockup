@@ -6,15 +6,6 @@
   "source_version": 1,
   "classification_basis": "Meglévő termékkategóriák, kategóriahierarchia és anonim 12 havi értékesítési darabszám.",
   "settings": {
-    "colors": {
-      "accent": "#c6503e",
-      "accent_dark": "#9d392b",
-      "ink": "#24211d",
-      "muted": "#6d675f",
-      "background": "#faf6ef",
-      "panel": "#f7f2e9",
-      "card": "#ffffff"
-    },
     "cards": [
       {
         "category_id": 92,
@@ -150,7 +141,8 @@
           { "label": "Férjnek", "category_id": 116, "parent_category_ids": [] },
           { "label": "A szerelmemnek", "category_id": 243, "parent_category_ids": [] },
           { "label": "Tesónak", "category_id": 114, "parent_category_ids": [] },
-          { "label": "Keresztszülőnek", "category_id": 115, "parent_category_ids": [] }
+          { "label": "Keresztszülőnek", "category_id": 115, "parent_category_ids": [] },
+          { "label": "Egy párnak / házasoknak", "category_id": 98, "parent_category_ids": [] }
         ]
       },
       "occasion": {
@@ -159,45 +151,147 @@
           {
             "label": "Születésnapra",
             "category_id": 93,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
           },
           {
             "label": "Karácsonyra",
             "category_id": 118,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
           },
           {
             "label": "Húsvétra",
             "category_id": 121,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
           },
           {
             "label": "Ballagásra",
             "category_id": 107,
-            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
           },
           {
             "label": "Valentin-napra",
             "category_id": 119,
             "parent_category_ids": [117, 116, 243]
+          },
+          {
+            "label": "Anyák napjára",
+            "category_id": 0,
+            "category_ids": [109, 112, 113, 117],
+            "option_id": "mothers-day",
+            "parent_category_ids": [109, 112, 113, 117]
+          },
+          {
+            "label": "Apák napjára",
+            "category_id": 0,
+            "category_ids": [110, 111, 116],
+            "option_id": "fathers-day",
+            "parent_category_ids": [110, 111, 116]
+          },
+          {
+            "label": "Évfordulóra vagy házassági alkalomra",
+            "category_id": 0,
+            "category_ids": [99, 249, 243],
+            "option_id": "anniversary",
+            "parent_category_ids": [117, 116, 243, 98]
+          },
+          {
+            "label": "Nyugdíjazásra",
+            "category_id": 0,
+            "category_ids": [97],
+            "option_id": "retirement",
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115]
+          },
+          {
+            "label": "Halloweenre",
+            "category_id": 120,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
+          },
+          {
+            "label": "Tejfakasztóra",
+            "category_id": 248,
+            "parent_category_ids": [110, 116]
+          },
+          {
+            "label": "Csak úgy / meglepetésként",
+            "category_id": 15,
+            "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 98]
           }
         ]
       },
       "interest": {
         "title": "Milyen a személyisége, mi érdekli?",
         "options": [
-          { "label": "Humoros, szereti a poénokat", "category_id": 102, "parent_category_ids": [] },
-          { "label": "Gamer", "category_id": 100, "parent_category_ids": [] },
-          { "label": "Sportos", "category_id": 96, "parent_category_ids": [] },
-          { "label": "Horgászik", "category_id": 155, "parent_category_ids": [] },
-          { "label": "Állatbarát", "category_id": 104, "parent_category_ids": [] },
-          { "label": "Autó- vagy motorrajongó", "category_id": 106, "parent_category_ids": [] },
-          { "label": "Filmeket és sorozatokat szeret", "category_id": 101, "parent_category_ids": [] },
-          { "label": "Szereti a zenét", "category_id": 154, "parent_category_ids": [] },
-          { "label": "Kertészkedik", "category_id": 171, "parent_category_ids": [] },
-          { "label": "Szeret sütni, főzni vagy grillezni", "category_id": 156, "parent_category_ids": [] },
-          { "label": "A munkája a szenvedélye", "category_id": 97, "parent_category_ids": [] },
-          { "label": "Szeret utazni és kirándulni", "category_id": 103, "parent_category_ids": [] }
+          { "label": "Humoros, szereti a poénokat", "category_id": 102, "parent_category_ids": [93, 15] },
+          { "label": "Gamer", "category_id": 100, "parent_category_ids": [93, 15] },
+          { "label": "Sportos", "category_id": 96, "parent_category_ids": [93, 15] },
+          { "label": "Horgászik", "category_id": 155, "parent_category_ids": [93, 15] },
+          { "label": "Állatbarát", "category_id": 104, "parent_category_ids": [93, 15] },
+          { "label": "Autó- vagy motorrajongó", "category_id": 106, "parent_category_ids": [93, 15] },
+          { "label": "Filmeket és sorozatokat szeret", "category_id": 101, "parent_category_ids": [93, 15] },
+          { "label": "Szereti a zenét", "category_id": 154, "parent_category_ids": [93, 15] },
+          { "label": "Kertészkedik", "category_id": 171, "parent_category_ids": [93, 15] },
+          { "label": "Szeret sütni, főzni vagy grillezni", "category_id": 156, "parent_category_ids": [93, 15] },
+          { "label": "A munkája a szenvedélye", "category_id": 97, "parent_category_ids": [93, 15] },
+          { "label": "Szeret utazni és kirándulni", "category_id": 103, "parent_category_ids": [93, 15] }
+        ]
+      },
+      "occupation": {
+        "title": "Mi a foglalkozása?",
+        "options": [
+          { "label": "Ács", "category_id": 211, "parent_category_ids": [97] },
+          { "label": "Ápoló", "category_id": 237, "parent_category_ids": [97] },
+          { "label": "Asztalos", "category_id": 212, "parent_category_ids": [97] },
+          { "label": "Autószerelő", "category_id": 213, "parent_category_ids": [97] },
+          { "label": "Biztonsági őr", "category_id": 214, "parent_category_ids": [97] },
+          { "label": "Bölcsődei gondozó", "category_id": 195, "parent_category_ids": [97] },
+          { "label": "Buszsofőr", "category_id": 235, "parent_category_ids": [97] },
+          { "label": "Cukrász", "category_id": 215, "parent_category_ids": [97] },
+          { "label": "Edző", "category_id": 217, "parent_category_ids": [97] },
+          { "label": "Eladó", "category_id": 238, "parent_category_ids": [97] },
+          { "label": "Favágó", "category_id": 205, "parent_category_ids": [97] },
+          { "label": "Festő", "category_id": 209, "parent_category_ids": [97] },
+          { "label": "Fodrász", "category_id": 218, "parent_category_ids": [97] },
+          { "label": "Fogorvos", "category_id": 219, "parent_category_ids": [97] },
+          { "label": "Futár", "category_id": 220, "parent_category_ids": [97] },
+          { "label": "Fényképész", "category_id": 207, "parent_category_ids": [97] },
+          { "label": "Főnök", "category_id": 333, "parent_category_ids": [97] },
+          { "label": "Grafikus", "category_id": 223, "parent_category_ids": [97] },
+          { "label": "Gyógyszerész", "category_id": 221, "parent_category_ids": [97] },
+          { "label": "Gyógytornász", "category_id": 222, "parent_category_ids": [97] },
+          { "label": "Hegesztő", "category_id": 224, "parent_category_ids": [97] },
+          { "label": "HR-es", "category_id": 225, "parent_category_ids": [97] },
+          { "label": "Katona", "category_id": 226, "parent_category_ids": [97] },
+          { "label": "Kozmetikus", "category_id": 236, "parent_category_ids": [97] },
+          { "label": "Kutyakozmetikus", "category_id": 227, "parent_category_ids": [97] },
+          { "label": "Könyvelő", "category_id": 228, "parent_category_ids": [97] },
+          { "label": "Kőműves", "category_id": 187, "parent_category_ids": [97] },
+          { "label": "Marketinges", "category_id": 230, "parent_category_ids": [97] },
+          { "label": "Masszőr", "category_id": 229, "parent_category_ids": [97] },
+          { "label": "Mentős", "category_id": 233, "parent_category_ids": [97] },
+          { "label": "Méhész", "category_id": 231, "parent_category_ids": [97] },
+          { "label": "Mérnök", "category_id": 232, "parent_category_ids": [97] },
+          { "label": "Művész", "category_id": 208, "parent_category_ids": [97] },
+          { "label": "Orvos", "category_id": 188, "parent_category_ids": [97] },
+          { "label": "Pincér", "category_id": 240, "parent_category_ids": [97] },
+          { "label": "Postás", "category_id": 191, "parent_category_ids": [97] },
+          { "label": "Programozó", "category_id": 193, "parent_category_ids": [97] },
+          { "label": "Pultos", "category_id": 192, "parent_category_ids": [97] },
+          { "label": "Pék", "category_id": 190, "parent_category_ids": [97] },
+          { "label": "Pénztáros", "category_id": 189, "parent_category_ids": [97] },
+          { "label": "Rendőr", "category_id": 203, "parent_category_ids": [97] },
+          { "label": "Sofőr", "category_id": 234, "parent_category_ids": [97] },
+          { "label": "Szakács", "category_id": 239, "parent_category_ids": [97] },
+          { "label": "Szabó", "category_id": 197, "parent_category_ids": [97] },
+          { "label": "Szerelő", "category_id": 334, "parent_category_ids": [97] },
+          { "label": "Takarító", "category_id": 200, "parent_category_ids": [97] },
+          { "label": "Tanár", "category_id": 201, "parent_category_ids": [97] },
+          { "label": "Targoncás", "category_id": 202, "parent_category_ids": [97] },
+          { "label": "Taxi sofőr", "category_id": 199, "parent_category_ids": [97] },
+          { "label": "Táncos", "category_id": 210, "parent_category_ids": [97] },
+          { "label": "Tűzoltó", "category_id": 198, "parent_category_ids": [97] },
+          { "label": "Villanyszerelő", "category_id": 204, "parent_category_ids": [97] },
+          { "label": "Óvónő", "category_id": 194, "parent_category_ids": [97] },
+          { "label": "Ügyvéd", "category_id": 196, "parent_category_ids": [97] }
         ]
       }
     },

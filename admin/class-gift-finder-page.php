@@ -82,7 +82,7 @@ class MG_Gift_Finder_Page {
                 <button type="button" class="button mg-add-row" data-template="mg-gift-card-template" data-target="mg-gift-cards">+ Kategóriakártya</button>
 
                 <h2>4. A kereső kérdései</h2>
-                <p class="description">Minden válasz egy WooCommerce kategóriához kapcsolódik. A legutolsó, legpontosabb válasz az elsődleges szűrő: az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Üres kategória esetén a kereső visszalép az előző válaszra.</p>
+                <p class="description">Egy válaszhoz megadhatsz egy elsődleges és több további WooCommerce-kategóriát. Így saját alkalomcsoport készíthető, például az „Apák napja” alá bevonható az Apának, Papának és Férjnek kategória. A termékek annyi pontot kapnak, ahány választott kategóriacsoportnak megfelelnek; termékcímkéket a kereső nem használ.</p>
                 <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
                     <section class="mg-gift-admin-question">
@@ -172,11 +172,17 @@ class MG_Gift_Finder_Page {
     }
 
     private static function option_row( $key, $index, $option, $categories, $parent_categories = array() ) {
-        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'parent_category_ids' => array() ) );
+        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'category_ids' => array(), 'option_id' => '', 'parent_category_ids' => array() ) );
         $prefix = 'settings[questions][' . $key . '][options][' . $index . ']'; ?>
         <div class="mg-gift-admin-row">
             <input type="text" name="<?php echo esc_attr( $prefix ); ?>[label]" value="<?php echo esc_attr( $option['label'] ); ?>" placeholder="pl. Anyukának" required />
-            <?php self::category_select( $prefix . '[category_id]', $option['category_id'], $categories ); ?>
+            <?php self::category_select( $prefix . '[category_id]', $option['category_id'], $categories, false ); ?>
+            <label>Alá tartozó további kategóriák
+                <select multiple name="<?php echo esc_attr( $prefix ); ?>[category_ids][]" size="5">
+                    <?php foreach ( $categories as $term ) : ?><option value="<?php echo esc_attr( $term->term_id ); ?>" <?php echo in_array( (int) $term->term_id, array_map( 'intval', (array) $option['category_ids'] ), true ) ? 'selected' : ''; ?>><?php echo esc_html( $term->name ); ?></option><?php endforeach; ?>
+                </select>
+            </label>
+            <input type="hidden" name="<?php echo esc_attr( $prefix ); ?>[option_id]" value="<?php echo esc_attr( $option['option_id'] ); ?>" />
             <?php if ( ! empty( $parent_categories ) ) : ?>
                 <label>Csak ezek után jelenjen meg
                     <select multiple name="<?php echo esc_attr( $prefix ); ?>[parent_category_ids][]" size="4">
@@ -188,8 +194,8 @@ class MG_Gift_Finder_Page {
         </div><?php
     }
 
-    private static function category_select( $name, $selected, $categories ) { ?>
-        <select name="<?php echo esc_attr( $name ); ?>" required><option value="0">— Woo kategória —</option><?php foreach ( $categories as $term ) : ?><option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( (int) $selected, $term->term_id ); ?>><?php echo esc_html( $term->name ); ?></option><?php endforeach; ?></select><?php
+    private static function category_select( $name, $selected, $categories, $required = true ) { ?>
+        <select name="<?php echo esc_attr( $name ); ?>" <?php echo $required ? 'required' : ''; ?>><option value="0"><?php echo $required ? '— Woo kategória —' : '— Elsődleges kategória (opcionális) —'; ?></option><?php foreach ( $categories as $term ) : ?><option value="<?php echo esc_attr( $term->term_id ); ?>" <?php selected( (int) $selected, $term->term_id ); ?>><?php echo esc_html( $term->name ); ?></option><?php endforeach; ?></select><?php
     }
 
     private static function get_categories() {
@@ -201,7 +207,10 @@ class MG_Gift_Finder_Page {
         $ids = array();
         foreach ( $settings['questions'] as $key => $question ) {
             if ( $key === $current_key ) break;
-            $ids = array_merge( $ids, array_map( 'intval', wp_list_pluck( $question['options'], 'category_id' ) ) );
+            foreach ( $question['options'] as $option ) {
+                $ids[] = (int) ( $option['category_id'] ?? 0 );
+                $ids = array_merge( $ids, array_map( 'intval', (array) ( $option['category_ids'] ?? array() ) ) );
+            }
         }
         return array_values( array_filter( $categories, function( $term ) use ( $ids ) {
             return in_array( (int) $term->term_id, $ids, true );
@@ -235,10 +244,15 @@ class MG_Gift_Finder_Page {
             foreach ( (array) ( $source['options'] ?? array() ) as $option ) {
                 $term_id = absint( $option['category_id'] ?? 0 );
                 $label = sanitize_text_field( $option['label'] ?? '' );
-                if ( $term_id && $label && term_exists( $term_id, 'product_cat' ) ) {
+                if ( $term_id && ! term_exists( $term_id, 'product_cat' ) ) $term_id = 0;
+                $category_ids = self::parse_id_list( $option['category_ids'] ?? array() );
+                $category_ids = array_values( array_filter( $category_ids, function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } ) );
+                if ( $label && ( $term_id || ! empty( $category_ids ) ) ) {
                     $question['options'][] = array(
                         'label'               => $label,
                         'category_id'         => $term_id,
+                        'category_ids'        => $category_ids,
+                        'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
                         'parent_category_ids' => array_values( array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),
                     );
                 }
@@ -259,5 +273,10 @@ class MG_Gift_Finder_Page {
         }
         update_option( MG_Gift_Finder::OPTION_KEY, $clean, false );
         add_settings_error( 'mg_gift_finder', 'saved', 'Az ajándékkereső beállításai elmentve.', 'updated' );
+    }
+
+    private static function parse_id_list( $value ) {
+        if ( is_string( $value ) ) $value = preg_split( '/[\s,;]+/', $value );
+        return array_values( array_unique( array_filter( array_map( 'absint', (array) $value ) ) ) );
     }
 }

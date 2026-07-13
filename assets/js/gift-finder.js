@@ -12,7 +12,10 @@
                 var selected = [];
                 steps.slice(0, index).forEach(function (step) {
                     var checked = step.querySelector('input[type=radio]:checked');
-                    if (checked && checked.value !== '0' && checked.value !== 'all') selected.push(checked.value);
+                    if (checked && checked.value !== '0' && checked.value !== 'all') {
+                        var categoryIds = (checked.dataset.categoryIds || checked.value).split(',').filter(Boolean);
+                        selected = selected.concat(categoryIds);
+                    }
                 });
                 steps[index].querySelectorAll('.mg-gift-option[data-parent-ids]').forEach(function (option) {
                     var parents = option.dataset.parentIds.split(',').filter(Boolean);
@@ -31,13 +34,38 @@
                 steps.forEach(function (step, i) { step.hidden = i !== current; });
                 progress.forEach(function (dot, i) { dot.classList.toggle('is-active', i <= current); });
             }
+
+            function hasRelevantOptions(index) {
+                filterOptions(index);
+                return !!steps[index].querySelector('.mg-gift-option:not(.mg-gift-option--skip):not([hidden])');
+            }
+
+            function nextRelevantIndex(from) {
+                for (var i = from; i < steps.length; i++) {
+                    if (hasRelevantOptions(i)) {
+                        if (progress[i]) progress[i].hidden = false;
+                        return i;
+                    }
+                    if (progress[i]) progress[i].hidden = true;
+                }
+                return steps.length;
+            }
+
+            function previousRelevantIndex(from) {
+                for (var i = from; i >= 0; i--) {
+                    if (hasRelevantOptions(i)) return i;
+                }
+                return 0;
+            }
             finder.addEventListener('click', function (event) {
                 if (event.target.closest('.mg-gift-next')) {
                     var checked = steps[current].querySelector('input[type=radio]:checked');
                     if (!checked) { steps[current].classList.add('is-shaking'); setTimeout(function () { steps[current].classList.remove('is-shaking'); }, 350); return; }
-                    show(current + 1);
+                    var next = nextRelevantIndex(current + 1);
+                    if (next >= steps.length) finder.querySelector('form').requestSubmit();
+                    else show(next);
                 }
-                if (event.target.closest('.mg-gift-back')) show(current - 1);
+                if (event.target.closest('.mg-gift-back')) show(previousRelevantIndex(current - 1));
                 if (event.target.closest('.mg-gift-restart')) {
                     if (results) results.hidden = true;
                     finder.querySelectorAll('input[type=radio]').forEach(function (input) { input.checked = false; });

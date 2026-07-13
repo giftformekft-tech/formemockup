@@ -32,6 +32,7 @@ class MG_Gift_Finder {
                 'recipient' => array( 'title' => 'Kinek keresel ajándékot?', 'options' => array() ),
                 'occasion'  => array( 'title' => 'Milyen alkalomra?', 'options' => array() ),
                 'interest'  => array( 'title' => 'Milyen a személyisége, mi érdekli?', 'options' => array() ),
+                'occupation'=> array( 'title' => 'Mi a foglalkozása?', 'options' => array() ),
             ),
         );
     }
@@ -192,9 +193,11 @@ class MG_Gift_Finder {
         wp_enqueue_style( 'mg-gift-finder' );
         wp_enqueue_script( 'mg-gift-finder' );
         $settings = self::get_settings();
-        $selected = self::get_selected_terms( $settings );
+        $selected_choices = self::get_selected_choices( $settings );
+        $selected = self::get_selected_terms( $selected_choices, $settings );
         $is_submitted = isset( $_GET['mg_gift_submitted'] );
-        $total_steps = count( $settings['questions'] );
+        $questions = array_filter( $settings['questions'], function( $question ) { return ! empty( $question['options'] ); } );
+        $total_steps = count( $questions );
         $initial_step = 0;
         if ( ! $is_submitted && ! empty( $_GET['mg_gift_recipient'] ) ) {
             $requested_recipient = (int) $_GET['mg_gift_recipient'];
@@ -211,16 +214,18 @@ class MG_Gift_Finder {
                 <div class="mg-gift-progress" aria-hidden="true"><?php for ( $i = 0; $i < $total_steps; $i++ ) echo '<span></span>'; ?></div>
             </header>
             <form method="get" action="<?php echo esc_url( self::get_finder_url() ); ?>" class="mg-gift-wizard">
-                <?php $step = 0; foreach ( $settings['questions'] as $key => $question ) : $step++; ?>
+                <?php $step = 0; foreach ( $questions as $key => $question ) : $step++; ?>
                     <fieldset class="mg-gift-step" data-step="<?php echo esc_attr( $step ); ?>">
                         <legend><small><?php echo esc_html( $step . '/' . $total_steps ); ?></small><?php echo esc_html( $question['title'] ); ?></legend>
                         <div class="mg-gift-options">
                             <?php foreach ( $question['options'] as $option ) :
                                 $term_id = (int) ( $option['category_id'] ?? 0 );
                                 $parent_ids = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
-                                if ( ! $term_id ) continue; ?>
+                                $option_value = self::get_option_value( $option );
+                                $option_category_ids = self::get_option_category_ids( $option );
+                                if ( $option_value === '' ) continue; ?>
                                 <label class="mg-gift-option"<?php if ( $parent_ids ) : ?> data-parent-ids="<?php echo esc_attr( implode( ',', $parent_ids ) ); ?>"<?php endif; ?>>
-                                    <input type="radio" name="mg_gift_<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $term_id ); ?>" <?php checked( (int) wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? 0 ), $term_id ); ?> />
+                                    <input type="radio" name="mg_gift_<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $option_value ); ?>" data-category-ids="<?php echo esc_attr( implode( ',', $option_category_ids ) ); ?>" <?php checked( sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) ), $option_value ); ?> />
                                     <span><?php echo esc_html( $option['label'] ); ?></span>
                                 </label>
                             <?php endforeach; ?>
@@ -242,34 +247,61 @@ class MG_Gift_Finder {
                 <input type="hidden" name="mg_gift_submitted" value="1" />
                 <?php if ( ! empty( $_GET['mg_gift_start'] ) ) : ?><input type="hidden" name="mg_gift_start" value="<?php echo esc_attr( (int) $_GET['mg_gift_start'] ); ?>" /><?php endif; ?>
             </form>
-            <?php if ( $is_submitted ) self::render_results( $selected, $settings ); ?>
+            <?php if ( $is_submitted ) self::render_results( $selected_choices, $selected, $settings ); ?>
         </section>
         <?php return ob_get_clean();
     }
 
-    private static function get_selected_terms( $settings ) {
+    private static function get_option_value( $option ) {
+        $option_id = sanitize_key( $option['option_id'] ?? '' );
+        if ( $option_id !== '' ) return $option_id;
+        $category_ids = self::get_option_category_ids( $option );
+        if ( count( $category_ids ) === 1 ) return (string) $category_ids[0];
+        return ! empty( $category_ids ) ? 'group-' . substr( md5( implode( ',', $category_ids ) ), 0, 10 ) : '';
+    }
+
+    private static function get_option_category_ids( $option ) {
+        $category_ids = array_values( array_filter( array_map( 'intval', (array) ( $option['category_ids'] ?? array() ) ) ) );
+        $primary = (int) ( $option['category_id'] ?? 0 );
+        if ( $primary ) array_unshift( $category_ids, $primary );
+        return array_values( array_unique( $category_ids ) );
+    }
+
+    private static function get_selected_choices( $settings ) {
         $selected = array();
         $prior = array();
-        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
-        $card_ids = array_map( 'intval', wp_list_pluck( $settings['cards'], 'category_id' ) );
-        if ( $start && in_array( $start, $card_ids, true ) ) $selected[] = $start;
         foreach ( $settings['questions'] as $key => $question ) {
-            $value = isset( $_GET[ 'mg_gift_' . $key ] ) ? (int) $_GET[ 'mg_gift_' . $key ] : 0;
-            if ( ! $value ) continue;
+            $value = sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) );
+            if ( $value === '' || $value === '0' ) continue;
             foreach ( $question['options'] as $option ) {
-                if ( (int) ( $option['category_id'] ?? 0 ) !== $value ) continue;
+                if ( self::get_option_value( $option ) !== $value ) continue;
                 $parents = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
                 if ( empty( $parents ) || array_intersect( $parents, $prior ) ) {
-                    $selected[] = $value;
-                    $prior[] = $value;
+                    $category_ids = self::get_option_category_ids( $option );
+                    $selected[] = array(
+                        'question'   => $key,
+                        'label'      => sanitize_text_field( $option['label'] ?? '' ),
+                        'category_id'=> (int) ( $category_ids[0] ?? 0 ),
+                        'category_ids'=> $category_ids,
+                    );
+                    $prior = array_merge( $prior, $category_ids );
                 }
                 break;
             }
         }
+        return $selected;
+    }
+
+    private static function get_selected_terms( $choices, $settings ) {
+        $selected = array();
+        foreach ( $choices as $choice ) $selected = array_merge( $selected, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) );
+        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
+        $card_ids = array_map( 'intval', wp_list_pluck( $settings['cards'], 'category_id' ) );
+        if ( $start && in_array( $start, $card_ids, true ) ) $selected[] = $start;
         return array_values( array_unique( $selected ) );
     }
 
-    private static function render_results( $term_ids, $settings ) {
+    private static function render_results( $choices, $term_ids, $settings ) {
         $tax_query = array();
         if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
             $visibility = wc_get_product_visibility_term_ids();
@@ -290,52 +322,90 @@ class MG_Gift_Finder {
                 );
             }
         }
-        $args = array(
-            'post_type'      => 'product',
-            'post_status'    => 'publish',
-            'posts_per_page' => 48,
-        );
-        $fallback_terms = ! empty( $term_ids ) ? array_reverse( $term_ids ) : array( 0 );
-        $query = null;
-        foreach ( $fallback_terms as $primary_term_id ) {
+        $scoring_choices = $choices;
+        foreach ( $term_ids as $term_id ) {
+            $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
+            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ) );
+        }
+
+        $candidate_ids = array();
+        foreach ( $scoring_choices as $choice ) {
+            $choice_filter = array( 'relation' => 'OR' );
+            $category_ids = array_values( array_filter( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) ) );
+            if ( ! empty( $category_ids ) ) $choice_filter[] = array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category_ids, 'operator' => 'IN', 'include_children' => true );
+            if ( count( $choice_filter ) === 1 ) continue;
             $query_tax = $tax_query;
-            if ( $primary_term_id ) {
-                $query_tax[] = array(
-                    'taxonomy'         => 'product_cat',
-                    'field'            => 'term_id',
-                    'terms'            => array( $primary_term_id ),
-                    'operator'         => 'IN',
-                    'include_children' => true,
-                );
-            }
+            $query_tax[] = $choice_filter;
             if ( count( $query_tax ) > 1 ) $query_tax['relation'] = 'AND';
-            if ( ! empty( $query_tax ) ) $args['tax_query'] = $query_tax;
-            $query = new WP_Query( $args );
-            if ( ! empty( $query->posts ) ) break;
+            $query = new WP_Query( array(
+                'post_type'              => 'product',
+                'post_status'            => 'publish',
+                'posts_per_page'         => 500,
+                'fields'                 => 'ids',
+                'no_found_rows'          => true,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+                'tax_query'              => $query_tax,
+            ) );
+            $candidate_ids = array_merge( $candidate_ids, array_map( 'intval', $query->posts ) );
         }
-        if ( ! $query ) $query = new WP_Query( $args );
-        $ranked = array();
-        foreach ( $query->posts as $post ) {
-            $product_terms = wp_get_post_terms( $post->ID, 'product_cat', array( 'fields' => 'ids' ) );
-            if ( is_wp_error( $product_terms ) ) $product_terms = array();
-            $score = 0;
-            foreach ( $term_ids as $term_id ) {
-                $children = get_term_children( $term_id, 'product_cat' );
-                $family = array_merge( array( $term_id ), is_wp_error( $children ) ? array() : $children );
-                if ( array_intersect( $family, $product_terms ) ) $score++;
+        if ( empty( $candidate_ids ) && empty( $scoring_choices ) ) {
+            $query = new WP_Query( array( 'post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => 48, 'fields' => 'ids', 'no_found_rows' => true ) );
+            $candidate_ids = array_map( 'intval', $query->posts );
+        }
+        $candidate_ids = array_values( array_unique( $candidate_ids ) );
+
+        $product_categories = array_fill_keys( $candidate_ids, array() );
+        if ( ! empty( $candidate_ids ) ) {
+            $category_terms = wp_get_object_terms( $candidate_ids, 'product_cat', array( 'fields' => 'all_with_object_id' ) );
+            if ( ! is_wp_error( $category_terms ) ) foreach ( $category_terms as $term ) $product_categories[ (int) $term->object_id ][] = (int) $term->term_id;
+        }
+
+        $choice_families = array();
+        foreach ( $scoring_choices as $index => $choice ) {
+            $choice_families[ $index ] = array();
+            foreach ( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) as $category_id ) {
+                $children = get_term_children( $category_id, 'product_cat' );
+                $choice_families[ $index ] = array_merge( $choice_families[ $index ], array( $category_id ), is_wp_error( $children ) ? array() : array_map( 'intval', $children ) );
             }
-            $ranked[] = array( 'post' => $post, 'score' => $score );
+            $choice_families[ $index ] = array_values( array_unique( $choice_families[ $index ] ) );
         }
-        usort( $ranked, function( $a, $b ) { return $b['score'] <=> $a['score']; } );
+
+        $ranked = array();
+        foreach ( $candidate_ids as $product_id ) {
+            $match_count = 0;
+            $tie_score = 0;
+            foreach ( $scoring_choices as $index => $choice ) {
+                $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
+                if ( $category_match ) {
+                    $match_count++;
+                    $tie_score += 1 << min( $index, 20 );
+                }
+            }
+            $ranked[] = array( 'product_id' => $product_id, 'score' => $match_count, 'tie' => $tie_score );
+        }
+        $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
+        $ranked = array_values( array_filter( $ranked, function( $item ) use ( $max_score ) { return $item['score'] === $max_score; } ) );
+        if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
+        usort( $ranked, function( $a, $b ) {
+            if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
+            return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
+        } );
         $ranked = array_slice( $ranked, 0, 12 );
+        foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
+        unset( $item );
         ?>
         <div class="mg-gift-results" id="mg-gift-results">
             <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2>Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
             <?php if ( empty( $ranked ) ) : ?>
                 <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>
-            <?php else : ?><div class="mg-gift-product-grid">
-                <?php foreach ( $ranked as $item ) : $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
+            <?php else : ?>
+                <?php if ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) : ?>
+                    <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
+                <?php endif; ?>
+                <div class="mg-gift-product-grid">
+                <?php foreach ( $ranked as $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
                     <article class="mg-gift-product-card">
                         <a href="<?php echo esc_url( $product->get_permalink() ); ?>">
                             <?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail' ) ); ?>

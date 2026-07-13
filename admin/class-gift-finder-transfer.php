@@ -281,9 +281,17 @@ class MG_Gift_Finder_Transfer {
             foreach ( (array) ( $source['options'] ?? array() ) as $option ) {
                 $category_id = absint( $option['category_id'] ?? 0 );
                 $label = sanitize_text_field( $option['label'] ?? '' );
-                if ( ! $category_id || $label === '' || ! term_exists( $category_id, 'product_cat' ) ) continue;
+                if ( $category_id && ! term_exists( $category_id, 'product_cat' ) ) $category_id = 0;
+                $category_ids = array_filter( array_map( 'absint', (array) ( $option['category_ids'] ?? array() ) ), function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } );
+                if ( $label === '' || ( ! $category_id && empty( $category_ids ) ) ) continue;
                 $parents = array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ), function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } );
-                $question['options'][] = array( 'label' => $label, 'category_id' => $category_id, 'parent_category_ids' => array_values( $parents ) );
+                $question['options'][] = array(
+                    'label'               => $label,
+                    'category_id'         => $category_id,
+                    'category_ids'        => array_values( $category_ids ),
+                    'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
+                    'parent_category_ids' => array_values( $parents ),
+                );
             }
         }
         unset( $question );

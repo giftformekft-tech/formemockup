@@ -10,10 +10,12 @@
 6. Add meg az automatikus szezonális ajánlókártyákat. Kártyánként választható:
    - a WooCommerce kategória képe (mockup), vagy
    - egy kijelölt hero termék kiemelt képe.
-7. A kérdésekhez add hozzá a válaszokat, és minden választ kapcsolj egy WooCommerce termékkategóriához.
+7. A kérdésekhez add hozzá a válaszokat. Egy válaszhoz megadható egy elsődleges kategória és több további, alá tartozó WooCommerce-kategória is.
 8. Mentsd a beállításokat.
 
 Az érdeklődési kör WooCommerce-kategóriák alapján szűr. Évszak- és árkeretkérdés nincs. A szezonális kártyák automatikusan csak a kiválasztott évszak hónapjaiban jelennek meg (tél: december–február, tavasz: március–május, nyár: június–augusztus, ősz: szeptember–november).
+
+Az ajándékválasztó logikai kategóriái nem hoznak létre új WooCommerce-kategóriát. Például az „Apák napja” válasz alá közösen bevonható az `Apának`, `Papának` és `Férjnek` kategória. A keresés ezeket egyetlen alkalomcsoportként kezeli. Termékcímkéket a találati logika nem használ.
 
 ### Függő kérdések
 
@@ -45,6 +47,6 @@ Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal kés
 
 ## Találati és cross-sell logika
 
-A kereső minden válaszhoz egy WooCommerce kategóriát rendel. A legutolsó, legpontosabb válasz az elsődleges szűrő: az érdeklődési kör megelőzi az alkalmat, az alkalom pedig a címzettet. Ha ez a kategória üres, a kereső visszalép az előző válaszra. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
+A kereső minden válaszhoz egy vagy több WooCommerce-kategóriát rendel. A termékek annyi pontot kapnak, ahány választott logikai kategóriacsoportnak megfelelnek; csak a legmagasabb egyezésű csoport kerül a találatok közé. Az érdeklődési lépés csak születésnapnál és az általános „csak úgy” alkalomnál jelenik meg, ezért például az `Anyának → Karácsonyra` útvonalat nem írhatja felül egy nem igazolható „vicces” vagy „horgász” szűrés. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
 
 Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. Az eredménytelen kereséseket a rendszer összesítve tárolja; ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja.

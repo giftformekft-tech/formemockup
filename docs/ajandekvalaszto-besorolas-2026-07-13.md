@@ -17,6 +17,8 @@
 6. Évszak- és árkeretkérdés nincs a keresőben.
 7. Ajándékcsomag nem került automatikusan létrehozásra. Terméknevek és terméktípus-kapcsolatok nélkül nem állítható össze megbízható, tartalmilag összetartozó csomag. A meglévő póló → sapka/párna/vászontáska cross-sell szabály változatlan marad.
 8. A főoldali Gutenberg blokk a címzettválasztással indul, majd a kiválasztott címzettel a teljes kereső alkalomlépésére visz. A blokk és a kereső hét közös színe az adminban módosítható.
+9. Az alkalmak saját, több meglévő kategóriát összefogó csoportok is lehetnek. Az Apák napja, Anyák napja, évforduló/házassági alkalom és nyugdíjazás ilyen csoportként került be; a meglévő alkalmak mellett Halloween és tejfakasztó is választható. A kereső termékcímkéket nem használ.
+10. A „Munkája a szenvedélye” és a „Nyugdíjazás” útvonal után külön foglalkozáslépés jelenik meg a meglévő foglalkozási alkategóriákkal.
 
 ## Adatminőségi megjegyzések
 

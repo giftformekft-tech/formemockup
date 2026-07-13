@@ -39,7 +39,8 @@ Az importfájl gyökérstruktúrája:
     "questions": {
       "recipient": { "title": "Kinek keresel ajándékot?", "options": [] },
       "occasion": { "title": "Milyen alkalomra?", "options": [] },
-      "interest": { "title": "Milyen a személyisége, mi érdekli?", "options": [] }
+      "interest": { "title": "Milyen a személyisége, mi érdekli?", "options": [] },
+      "occupation": { "title": "Mi a foglalkozása?", "options": [] }
     },
     "bundles": []
   }
@@ -57,5 +58,19 @@ Egy függő válasz formátuma:
   "parent_category_ids": [12]
 }
 ```
+
+Egy több meglévő kategóriát összefogó saját alkalom formátuma:
+
+```json
+{
+  "label": "Apák napjára",
+  "category_id": 0,
+  "category_ids": [110, 111, 116],
+  "option_id": "fathers-day",
+  "parent_category_ids": [110, 111, 116]
+}
+```
+
+A `category_ids` mező az adott logikai válasz alá bevont WooCommerce-kategóriákat tartalmazza. Az `option_id` akkor szükséges, amikor nincs egyetlen kitüntetett elsődleges kategória. A kereső termékcímkéket nem használ a rangsoroláshoz.
 
 Importálás előtt a rendszer elmenti a jelenlegi beállításokat. Ez az adminoldalról egy kattintással visszaállítható.
