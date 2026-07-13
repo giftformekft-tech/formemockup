@@ -195,7 +195,7 @@ class MG_Gift_Finder {
                     <div class="mg-gift-options mg-gift-teaser__recipients">
                         <?php foreach ( $recipients as $option ) : $term_id = (int) ( $option['category_id'] ?? 0 ); if ( ! $term_id ) continue; ?>
                             <label class="mg-gift-option">
-                                <input type="radio" name="mg_gift_recipient" value="<?php echo esc_attr( $term_id ); ?>" required />
+                                <input type="radio" name="mg_gift_recipient" value="<?php echo esc_attr( self::get_option_value( $option ) ); ?>" required />
                                 <span><?php echo esc_html( $option['label'] ); ?></span>
                             </label>
                         <?php endforeach; ?>
@@ -247,9 +247,13 @@ class MG_Gift_Finder {
         $total_steps = count( $questions );
         $initial_step = 0;
         if ( ! $is_submitted && ! empty( $_GET['mg_gift_recipient'] ) ) {
-            $requested_recipient = (int) $_GET['mg_gift_recipient'];
-            $recipient_ids = array_map( 'intval', wp_list_pluck( $settings['questions']['recipient']['options'], 'category_id' ) );
-            if ( in_array( $requested_recipient, $recipient_ids, true ) ) $initial_step = 1;
+            $requested_recipient = sanitize_text_field( wp_unslash( $_GET['mg_gift_recipient'] ) );
+            foreach ( $settings['questions']['recipient']['options'] as $option ) {
+                if ( self::option_matches_value( $option, $requested_recipient ) ) {
+                    $initial_step = 1;
+                    break;
+                }
+            }
         }
 
         ob_start(); ?>
@@ -272,7 +276,7 @@ class MG_Gift_Finder {
                                 $option_category_ids = self::get_option_category_ids( $option );
                                 if ( $option_value === '' ) continue; ?>
                                 <label class="mg-gift-option"<?php if ( $parent_ids ) : ?> data-parent-ids="<?php echo esc_attr( implode( ',', $parent_ids ) ); ?>"<?php endif; ?>>
-                                    <input type="radio" name="mg_gift_<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $option_value ); ?>" data-category-ids="<?php echo esc_attr( implode( ',', $option_category_ids ) ); ?>" <?php checked( sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) ), $option_value ); ?> />
+                                    <input type="radio" name="mg_gift_<?php echo esc_attr( $key ); ?>" value="<?php echo esc_attr( $option_value ); ?>" data-category-ids="<?php echo esc_attr( implode( ',', $option_category_ids ) ); ?>" <?php checked( self::option_matches_value( $option, sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) ) ), true ); ?> />
                                     <span><?php echo esc_html( $option['label'] ); ?></span>
                                 </label>
                             <?php endforeach; ?>
@@ -312,6 +316,14 @@ class MG_Gift_Finder {
         $primary = (int) ( $option['category_id'] ?? 0 );
         if ( $primary ) array_unshift( $category_ids, $primary );
         return array_values( array_unique( $category_ids ) );
+    }
+
+    private static function option_matches_value( $option, $value ) {
+        $value = (string) $value;
+        if ( $value === '' ) return false;
+        if ( self::get_option_value( $option ) === $value ) return true;
+        if ( ! ctype_digit( $value ) ) return false;
+        return in_array( (int) $value, self::get_option_category_ids( $option ), true );
     }
 
     private static function get_option_keywords( $option ) {
@@ -361,7 +373,7 @@ class MG_Gift_Finder {
             $value = sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) );
             if ( $value === '' || $value === '0' ) continue;
             foreach ( $question['options'] as $option ) {
-                if ( self::get_option_value( $option ) !== $value ) continue;
+                if ( ! self::option_matches_value( $option, $value ) ) continue;
                 $parents = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
                 if ( empty( $parents ) || array_intersect( $parents, $prior ) ) {
                     $category_ids = self::get_option_category_ids( $option );
