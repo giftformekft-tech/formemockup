@@ -82,29 +82,68 @@
                     finder.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
-            finder.addEventListener('change', function (event) {
-                if (!event.target.matches('.mg-gift-type-select')) return;
-                var type = event.target.value;
+            function updateProductPreviews(type, color) {
                 finder.querySelectorAll('.mg-gift-product-card').forEach(function (card) {
-                    var image = card.querySelector('img[data-type-previews]');
+                    var image = card.querySelector('img[data-default-src]');
                     var link = card.querySelector('a[data-default-url]');
                     if (!image || !link) return;
-                    var previews = {};
                     var typeUrls = {};
-                    try { previews = JSON.parse(image.dataset.typePreviews || '{}'); } catch (error) { previews = {}; }
                     try { typeUrls = JSON.parse(link.dataset.typeUrls || '{}'); } catch (error) { typeUrls = {}; }
-                    var nextSrc = (type && previews[type]) ? previews[type] : image.dataset.defaultSrc;
+                    var base = (image.dataset.previewBase || '').replace(/\/$/, '');
+                    var sku = image.dataset.productSku || '';
+                    var hasPreview = !!(type && color && base && sku);
+                    var filename = sku + '_' + type + '_' + color + '_front.webp';
+                    var nextSrc = hasPreview ? base + '/' + encodeURIComponent(sku) + '/' + encodeURIComponent(filename) : image.dataset.defaultSrc;
                     image.classList.add('is-loading');
                     image.src = nextSrc;
-                    image.dataset.previewActive = type && previews[type] ? '1' : '0';
+                    image.dataset.previewActive = hasPreview ? '1' : '0';
                     if (type && typeUrls[type]) {
                         link.href = typeUrls[type];
                     } else {
                         link.href = link.dataset.defaultUrl;
                     }
                 });
+            }
+
+            finder.addEventListener('change', function (event) {
+                if (event.target.matches('.mg-gift-option input[type="radio"]') && window.matchMedia('(max-width: 520px)').matches) {
+                    var selectedStep = event.target.closest('.mg-gift-step');
+                    var stepActions = selectedStep ? selectedStep.querySelector('.mg-gift-step__actions') : null;
+                    if (stepActions) {
+                        window.setTimeout(function () {
+                            stepActions.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 80);
+                    }
+                    return;
+                }
+
+                var typeSelect = finder.querySelector('.mg-gift-type-select');
+                var colorSelect = finder.querySelector('.mg-gift-color-select');
+                var colorPicker = finder.querySelector('.mg-gift-color-picker');
+                if (!typeSelect || !colorSelect || !colorPicker) return;
+
+                if (event.target.matches('.mg-gift-type-select')) {
+                    var typeColors = {};
+                    try { typeColors = JSON.parse(typeSelect.dataset.typeColors || '{}'); } catch (error) { typeColors = {}; }
+                    var colors = typeColors[typeSelect.value] || {};
+                    colorSelect.innerHTML = '';
+                    Object.keys(colors).forEach(function (slug) {
+                        var option = document.createElement('option');
+                        option.value = slug;
+                        option.textContent = colors[slug];
+                        colorSelect.appendChild(option);
+                    });
+                    colorPicker.hidden = !typeSelect.value || !colorSelect.options.length;
+                    colorSelect.disabled = colorPicker.hidden;
+                    updateProductPreviews(typeSelect.value, colorSelect.value);
+                    return;
+                }
+
+                if (event.target.matches('.mg-gift-color-select')) {
+                    updateProductPreviews(typeSelect.value, colorSelect.value);
+                }
             });
-            finder.querySelectorAll('.mg-gift-product-card img[data-type-previews]').forEach(function (image) {
+            finder.querySelectorAll('.mg-gift-product-card img[data-default-src]').forEach(function (image) {
                 image.addEventListener('load', function () { image.classList.remove('is-loading'); });
                 image.addEventListener('error', function () {
                     if (image.dataset.previewActive === '1') {

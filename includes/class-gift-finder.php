@@ -572,10 +572,10 @@ class MG_Gift_Finder {
             );
         }
 
-        $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
         if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
         $ranked = self::compose_diverse_results( $ranked, $scoring_choices, 10, 10 );
         $ranked = array_slice( $ranked, 0, 50 );
+        $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
         foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
         unset( $item );
         $virtual_types = self::get_virtual_type_options();
@@ -592,7 +592,8 @@ class MG_Gift_Finder {
                             <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
                         <?php endif; ?>
                         <?php if ( ! empty( $virtual_types ) ) : ?>
-                            <label class="mg-gift-type-picker"><span>Előnézet terméktípusa</span><select class="mg-gift-type-select"><option value="">Alapértelmezett termék</option><?php foreach ( $virtual_types as $type_slug => $type ) : ?><option value="<?php echo esc_attr( $type_slug ); ?>"><?php echo esc_html( $type['label'] ); ?></option><?php endforeach; ?></select></label>
+                            <label class="mg-gift-type-picker"><span>Előnézet terméktípusa</span><select class="mg-gift-type-select" data-type-colors="<?php echo esc_attr( wp_json_encode( array_map( function( $type ) { return $type['colors']; }, $virtual_types ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES ) ); ?>"><option value="">Alapértelmezett termék</option><?php foreach ( $virtual_types as $type_slug => $type ) : ?><option value="<?php echo esc_attr( $type_slug ); ?>"><?php echo esc_html( $type['label'] ); ?></option><?php endforeach; ?></select></label>
+                            <label class="mg-gift-type-picker mg-gift-color-picker" hidden><span>Előnézet színe</span><select class="mg-gift-color-select" disabled></select></label>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>
@@ -603,7 +604,7 @@ class MG_Gift_Finder {
                     $product_url = $product->get_permalink(); ?>
                     <article class="mg-gift-product-card" <?php echo $index >= 20 ? 'hidden' : ''; ?>>
                         <a href="<?php echo esc_url( $product_url ); ?>" data-default-url="<?php echo esc_url( $product_url ); ?>" data-type-urls="<?php echo esc_attr( wp_json_encode( $type_data['urls'], JSON_UNESCAPED_SLASHES ) ); ?>">
-                            <img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-type-previews="<?php echo esc_attr( wp_json_encode( $type_data['previews'], JSON_UNESCAPED_SLASHES ) ); ?>" />
+                            <img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-preview-base="<?php echo esc_url( $type_data['preview_base'] ); ?>" data-product-sku="<?php echo esc_attr( $type_data['sku'] ); ?>" />
                             <?php if ( ( $item['tier'] ?? '' ) === 'related' ) : ?>
                                 <span class="mg-gift-match">Kapcsolódó ötlet</span>
                             <?php elseif ( $item['score'] > 1 ) : ?>
@@ -631,27 +632,30 @@ class MG_Gift_Finder {
         foreach ( $catalog as $type_slug => $type ) {
             $colors = array_keys( (array) ( $type['colors'] ?? array() ) );
             if ( empty( $colors ) ) continue;
+            $type_colors = array();
+            foreach ( (array) ( $type['colors'] ?? array() ) as $color_slug => $color ) {
+                $color_slug = sanitize_title( $color_slug );
+                if ( $color_slug === '' ) continue;
+                $type_colors[ $color_slug ] = sanitize_text_field( $color['label'] ?? $color_slug );
+            }
             $types[ sanitize_title( $type_slug ) ] = array(
                 'label' => sanitize_text_field( $type['label'] ?? $type_slug ),
                 'color' => sanitize_title( reset( $colors ) ),
+                'colors' => $type_colors,
             );
         }
         return $types;
     }
 
     private static function get_product_type_data( $product, $virtual_types ) {
-        $data = array( 'previews' => array(), 'urls' => array() );
+        $data = array( 'preview_base' => '', 'sku' => '', 'urls' => array() );
         if ( ! $product instanceof WC_Product || ! class_exists( 'MG_Virtual_Variant_Manager' ) ) return $data;
         $config = MG_Virtual_Variant_Manager::get_frontend_config( $product );
+        $data['preview_base'] = esc_url_raw( $config['mockup']['baseUrl'] ?? '' );
+        $data['sku'] = sanitize_text_field( $config['product']['sku'] ?? $product->get_sku() );
         $configured_urls = isset( $config['typeUrls'] ) && is_array( $config['typeUrls'] ) ? $config['typeUrls'] : array();
         foreach ( $virtual_types as $type_slug => $type ) {
             if ( empty( $config['types'][ $type_slug ] ) ) continue;
-            $type_config = $config['types'][ $type_slug ];
-            $colors = isset( $type_config['color_order'] ) ? (array) $type_config['color_order'] : array();
-            $color_slug = $colors ? sanitize_title( reset( $colors ) ) : $type['color'];
-            $preview_url = MG_Virtual_Variant_Manager::get_existing_preview_url( $product->get_id(), $type_slug, $color_slug );
-            if ( $preview_url !== '' ) $data['previews'][ $type_slug ] = $preview_url;
-
             if ( ! empty( $configured_urls[ $type_slug ] ) ) {
                 $data['urls'][ $type_slug ] = esc_url_raw( $configured_urls[ $type_slug ] );
             } elseif ( ! empty( $config['useVirtualPermalinks'] ) && class_exists( 'MG_GMC_SEO_Optimizer' ) ) {
