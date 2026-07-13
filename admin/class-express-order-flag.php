@@ -39,6 +39,12 @@ class MG_Express_Order_Flag {
             'color_from' => '#0066cc',
             'color_to'   => '#00aaff',
         ],
+        'has_custom_fields' => [
+            'meta_key'   => '_mg_has_custom_fields',
+            'label'      => '✎ Egyedi mező',
+            'color_from' => '#00897b',
+            'color_to'   => '#26a69a',
+        ],
     ];
 
     private static $names_cache = [];
@@ -205,6 +211,22 @@ class MG_Express_Order_Flag {
     /* ── Detection helpers ──────────────────────────────────────────── */
 
     private static function order_matches_type( WC_Abstract_Order $order, $type_key ) {
+        if ( $type_key === 'has_custom_fields' ) {
+            $order_fields = $order->get_meta( '_mg_custom_fields', true );
+            if ( is_array( $order_fields ) && ! empty( $order_fields ) ) {
+                return true;
+            }
+
+            foreach ( $order->get_items() as $item ) {
+                $item_fields = $item->get_meta( '_mg_custom_fields', true );
+                if ( is_array( $item_fields ) && ! empty( $item_fields ) ) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         $names = self::get_names_for_type( $type_key );
         if ( empty( $names ) ) {
             return false;

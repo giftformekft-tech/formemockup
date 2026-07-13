@@ -581,6 +581,7 @@ class MG_Custom_Fields_Frontend {
         }
         if (!empty($aggregated)) {
             $order->update_meta_data('_mg_custom_fields', $aggregated);
+            $order->update_meta_data('_mg_has_custom_fields', '1');
             $order->save();
         }
     }
