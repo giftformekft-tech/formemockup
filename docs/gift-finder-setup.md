@@ -38,6 +38,10 @@ Csak kiválasztott kategóriák megjelenítéséhez:
 
 Az adminoldal tetején a **Menübe illeszthető link** mellett található másolás gombbal másold ki a céloldal URL-jét, majd ezt add meg a saját menü appban.
 
+## Katalógus átadása besoroláshoz
+
+Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal készíthető elemzési fájl. Az export nem tartalmaz képeket, árakat vagy vásárlói adatokat. A visszakapott `mg-gift-finder-config` JSON ugyanitt importálható; előtte automatikus biztonsági mentés készül.
+
 ## Találati és cross-sell logika
 
 A kereső minden válaszhoz egy WooCommerce kategóriát rendel. Azok a termékek kerülnek előre, amelyek több kiválasztott kategóriához is tartoznak. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.

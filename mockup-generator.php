@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.4.1
+Version: 2.5.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.4.1');
+    define('MG_VERSION', '2.5.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -42,6 +42,7 @@ add_action('plugins_loaded', function(){
         'admin/class-bundle-discount-page.php',
         'admin/class-crosssell-page.php',
         'admin/class-gift-finder-page.php',
+        'admin/class-gift-finder-transfer.php',
         'admin/upload-handler.php',
         'admin/bulk-handler.php',
         'admin/class-custom-fields-page.php',
@@ -197,6 +198,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Gift_Finder')) {
         MG_Gift_Finder::init();
+    }
+    if (class_exists('MG_Gift_Finder_Transfer')) {
+        MG_Gift_Finder_Transfer::init();
     }
     if (class_exists('MG_Variant_Display_Manager')) {
         MG_Variant_Display_Manager::init();

@@ -43,6 +43,8 @@ class MG_Gift_Finder_Page {
 
             <div class="notice notice-info inline"><p><strong>Menübe illeszthető link:</strong> <code id="mg-gift-menu-url"><?php echo esc_html( $finder_url ); ?></code> <button type="button" class="button button-small" data-copy-target="mg-gift-menu-url">Link másolása</button></p></div>
 
+            <?php if ( class_exists( 'MG_Gift_Finder_Transfer' ) ) MG_Gift_Finder_Transfer::render_panel(); ?>
+
             <form method="post">
                 <?php wp_nonce_field( 'mg_save_gift_finder', 'mg_gift_finder_nonce' ); ?>
                 <h2>1. Ajándékkereső oldal</h2>
