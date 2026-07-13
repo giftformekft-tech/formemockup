@@ -158,8 +158,90 @@ class MG_Gift_Finder {
             'render_callback' => array( __CLASS__, 'render_teaser_block' ),
         ) );
 
+        register_block_type( 'mockup-generator/trust-section', array(
+            'api_version'     => 2,
+            'editor_script'   => 'mg-gift-finder-block',
+            'style'           => 'mg-gift-finder',
+            'attributes'      => array(
+                'eyebrow'          => array( 'type' => 'string', 'default' => 'A termék mögött valódi műhely áll' ),
+                'title'            => array( 'type' => 'string', 'default' => 'Nem továbbadjuk. Mi készítjük.' ),
+                'intro'            => array( 'type' => 'string', 'default' => 'A Forme ajándékok saját gépparkkal, saját műhelyben, Debrecen közelében készülnek – olyan emberek kezében, akik nap mint nap ezzel foglalkoznak.' ),
+                'familyText'       => array( 'type' => 'string', 'default' => 'Családi magyar vállalkozás' ),
+                'locationText'     => array( 'type' => 'string', 'default' => 'Saját gyártás Debrecen közelében' ),
+                'experienceText'   => array( 'type' => 'string', 'default' => 'Több év gyakorlati tapasztalat' ),
+                'printingText'     => array( 'type' => 'string', 'default' => 'Tartós DTG- és DTF-nyomtatás' ),
+                'speedText'        => array( 'type' => 'string', 'default' => 'Gyors, helyben végzett elkészítés' ),
+                'reviewsText'      => array( 'type' => 'string', 'default' => 'Valós vásárlói értékelések' ),
+                'workshopImageId'  => array( 'type' => 'number', 'default' => 0 ),
+                'workshopImageUrl' => array( 'type' => 'string', 'default' => '' ),
+                'workshopImageAlt' => array( 'type' => 'string', 'default' => 'A Forme saját műhelye és gépparkja' ),
+                'workshopCaption'  => array( 'type' => 'string', 'default' => 'Saját műhelyünk és gépparkunk' ),
+                'teamImageId'      => array( 'type' => 'number', 'default' => 0 ),
+                'teamImageUrl'     => array( 'type' => 'string', 'default' => '' ),
+                'teamImageAlt'     => array( 'type' => 'string', 'default' => 'A Forme csapata' ),
+                'teamCaption'      => array( 'type' => 'string', 'default' => 'A csapat, aki elkészíti a rendeléseket' ),
+            ),
+            'render_callback' => array( __CLASS__, 'render_trust_section' ),
+        ) );
+
         add_shortcode( 'mg_gift_finder_teaser', array( __CLASS__, 'teaser_shortcode' ) );
         add_shortcode( 'mg_gift_finder', array( __CLASS__, 'finder_shortcode' ) );
+    }
+
+    public static function render_trust_section( $attributes = array() ) {
+        wp_enqueue_style( 'mg-gift-finder' );
+        $defaults = array(
+            'eyebrow' => 'A termék mögött valódi műhely áll',
+            'title' => 'Nem továbbadjuk. Mi készítjük.',
+            'intro' => 'A Forme ajándékok saját gépparkkal, saját műhelyben, Debrecen közelében készülnek – olyan emberek kezében, akik nap mint nap ezzel foglalkoznak.',
+            'familyText' => 'Családi magyar vállalkozás',
+            'locationText' => 'Saját gyártás Debrecen közelében',
+            'experienceText' => 'Több év gyakorlati tapasztalat',
+            'printingText' => 'Tartós DTG- és DTF-nyomtatás',
+            'speedText' => 'Gyors, helyben végzett elkészítés',
+            'reviewsText' => 'Valós vásárlói értékelések',
+            'workshopCaption' => 'Saját műhelyünk és gépparkunk',
+            'teamCaption' => 'A csapat, aki elkészíti a rendeléseket',
+        );
+        $attributes = wp_parse_args( is_array( $attributes ) ? $attributes : array(), $defaults );
+        $facts = array_values( array_filter( array(
+            $attributes['familyText'], $attributes['locationText'], $attributes['experienceText'],
+            $attributes['printingText'], $attributes['speedText'], $attributes['reviewsText'],
+        ) ) );
+        $workshop_id = absint( $attributes['workshopImageId'] ?? 0 );
+        $team_id = absint( $attributes['teamImageId'] ?? 0 );
+        $workshop = $workshop_id ? wp_get_attachment_image( $workshop_id, 'large', false, array(
+            'loading' => 'lazy', 'decoding' => 'async', 'alt' => sanitize_text_field( $attributes['workshopImageAlt'] ?? '' ),
+        ) ) : '';
+        $team = $team_id ? wp_get_attachment_image( $team_id, 'large', false, array(
+            'loading' => 'lazy', 'decoding' => 'async', 'alt' => sanitize_text_field( $attributes['teamImageAlt'] ?? '' ),
+        ) ) : '';
+        $heading_id = wp_unique_id( 'mg-trust-title-' );
+        $align = isset( $attributes['align'] ) ? sanitize_key( $attributes['align'] ) : '';
+        $class = 'mg-trust-section' . ( $align ? ' align' . $align : '' ) . ( ! $workshop && ! $team ? ' mg-trust-section--no-media' : '' );
+
+        ob_start(); ?>
+        <section class="<?php echo esc_attr( $class ); ?>" aria-labelledby="<?php echo esc_attr( $heading_id ); ?>">
+            <div class="mg-trust-section__heading">
+                <span class="mg-gift-eyebrow"><?php echo esc_html( $attributes['eyebrow'] ); ?></span>
+                <h2 id="<?php echo esc_attr( $heading_id ); ?>"><?php echo esc_html( $attributes['title'] ); ?></h2>
+                <p><?php echo esc_html( $attributes['intro'] ); ?></p>
+            </div>
+            <div class="mg-trust-section__body">
+                <ul class="mg-trust-section__facts">
+                    <?php foreach ( $facts as $index => $fact ) : ?>
+                        <li><span aria-hidden="true"><?php echo esc_html( str_pad( (string) ( $index + 1 ), 2, '0', STR_PAD_LEFT ) ); ?></span><strong><?php echo esc_html( $fact ); ?></strong></li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php if ( $workshop || $team ) : ?>
+                    <div class="mg-trust-section__media">
+                        <?php if ( $workshop ) : ?><figure class="mg-trust-section__photo mg-trust-section__photo--workshop"><?php echo wp_kses_post( $workshop ); ?><figcaption><?php echo esc_html( $attributes['workshopCaption'] ); ?></figcaption></figure><?php endif; ?>
+                        <?php if ( $team ) : ?><figure class="mg-trust-section__photo mg-trust-section__photo--team"><?php echo wp_kses_post( $team ); ?><figcaption><?php echo esc_html( $attributes['teamCaption'] ); ?></figcaption></figure><?php endif; ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </section>
+        <?php return ob_get_clean();
     }
 
     public static function teaser_shortcode( $atts ) {
