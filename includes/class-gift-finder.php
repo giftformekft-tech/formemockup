@@ -335,9 +335,7 @@ class MG_Gift_Finder {
     }
 
     private static function get_option_keywords( $option ) {
-        $sources = is_string( $option['keywords'] ?? null )
-            ? preg_split( '/[,;\r\n]+/', $option['keywords'] )
-            : (array) ( $option['keywords'] ?? array() );
+        $sources = self::get_explicit_keywords( $option );
         $sources[] = sanitize_text_field( $option['label'] ?? '' );
         foreach ( self::get_option_category_ids( $option ) as $category_id ) {
             $term = get_term( $category_id, 'product_cat' );
@@ -347,6 +345,16 @@ class MG_Gift_Finder {
         $keywords = array();
         foreach ( $sources as $source ) $keywords = array_merge( $keywords, self::keyword_variants( $source ) );
         return array_values( array_unique( $keywords ) );
+    }
+
+    private static function get_explicit_keywords( $option ) {
+        $keywords = is_string( $option['keywords'] ?? null )
+            ? preg_split( '/[,;\r\n]+/', $option['keywords'] )
+            : (array) ( $option['keywords'] ?? array() );
+        $keywords = array_map( 'sanitize_text_field', $keywords );
+        return array_values( array_unique( array_filter( array_map( 'trim', $keywords ), function( $keyword ) {
+            return mb_strlen( $keyword ) >= 3;
+        } ) ) );
     }
 
     private static function keyword_variants( $source ) {
@@ -391,6 +399,8 @@ class MG_Gift_Finder {
                         'category_id'=> (int) ( $category_ids[0] ?? 0 ),
                         'category_ids'=> $category_ids,
                         'keywords'    => self::get_option_keywords( $option ),
+                        'priority_keywords' => self::get_explicit_keywords( $option ),
+                        'keyword_priority' => ! empty( $option['keywords'] ),
                     );
                     $prior = array_merge( $prior, $category_ids );
                 }
@@ -433,7 +443,7 @@ class MG_Gift_Finder {
         $scoring_choices = $choices;
         foreach ( $term_ids as $term_id ) {
             $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
-            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array() );
+            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array(), 'priority_keywords' => array(), 'keyword_priority' => false );
         }
 
         $candidate_ids = array();
@@ -497,9 +507,11 @@ class MG_Gift_Finder {
 
         $choice_families = array();
         $choice_keywords = array();
+        $choice_priority_keywords = array();
         foreach ( $scoring_choices as $index => $choice ) {
             $choice_families[ $index ] = array();
             $choice_keywords[ $index ] = self::get_option_keywords( $choice );
+            $choice_priority_keywords[ $index ] = self::get_explicit_keywords( array( 'keywords' => $choice['priority_keywords'] ?? array() ) );
             foreach ( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) as $category_id ) {
                 $children = get_term_children( $category_id, 'product_cat' );
                 $choice_families[ $index ] = array_merge( $choice_families[ $index ], array( $category_id ), is_wp_error( $children ) ? array() : array_map( 'intval', $children ) );
@@ -514,6 +526,7 @@ class MG_Gift_Finder {
             $name_score = 0;
             $category_matches = array();
             $keyword_matches = array();
+            $priority_keyword_matches = array();
             $normalized_title = mb_strtolower( remove_accents( get_the_title( $product_id ) ) );
             foreach ( $scoring_choices as $index => $choice ) {
                 $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
@@ -532,6 +545,14 @@ class MG_Gift_Finder {
                 if ( $keyword_match_count > 0 ) $name_score += $keyword_match_count;
                 $category_matches[ $index ] = $category_match;
                 $keyword_matches[ $index ] = $keyword_match_count > 0;
+                $priority_keyword_matches[ $index ] = false;
+                foreach ( $choice_priority_keywords[ $index ] as $priority_keyword ) {
+                    $normalized_priority_keyword = mb_strtolower( remove_accents( $priority_keyword ) );
+                    if ( $normalized_priority_keyword !== '' && mb_strpos( $normalized_title, $normalized_priority_keyword ) !== false ) {
+                        $priority_keyword_matches[ $index ] = true;
+                        break;
+                    }
+                }
             }
             $ranked[] = array(
                 'product_id'               => $product_id,
@@ -540,33 +561,14 @@ class MG_Gift_Finder {
                 'tie'                      => $tie_score,
                 'category_matches'         => $category_matches,
                 'keyword_matches'          => $keyword_matches,
+                'priority_keyword_matches' => $priority_keyword_matches,
             );
         }
 
-        // A korábbi válasz mindig elsőbbséget élvez: pontos kategória, majd névkulcsszó.
-        // Ha az aktuális feltétel az addigi halmazban nem ad találatot, megtartjuk a korábbi releváns halmazt.
-        foreach ( array_keys( $scoring_choices ) as $choice_index ) {
-            $category_results = array_values( array_filter( $ranked, function( $item ) use ( $choice_index ) {
-                return ! empty( $item['category_matches'][ $choice_index ] );
-            } ) );
-            if ( ! empty( $category_results ) ) {
-                $ranked = $category_results;
-                continue;
-            }
-            $keyword_results = array_values( array_filter( $ranked, function( $item ) use ( $choice_index ) {
-                return ! empty( $item['keyword_matches'][ $choice_index ] );
-            } ) );
-            if ( ! empty( $keyword_results ) ) $ranked = $keyword_results;
-        }
         $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
-        $ranked = array_values( array_filter( $ranked, function( $item ) use ( $max_score ) { return $item['score'] === $max_score; } ) );
         if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
-        usort( $ranked, function( $a, $b ) {
-            if ( $a['name_score'] !== $b['name_score'] ) return $b['name_score'] <=> $a['name_score'];
-            if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
-            return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
-        } );
-        $ranked = array_slice( $ranked, 0, 48 );
+        $ranked = self::compose_diverse_results( $ranked, $scoring_choices, 10, 10 );
+        $ranked = array_slice( $ranked, 0, 50 );
         foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
         unset( $item );
         ?>
@@ -581,22 +583,113 @@ class MG_Gift_Finder {
                 <?php endif; ?>
                 <div class="mg-gift-product-grid">
                 <?php foreach ( $ranked as $index => $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue; ?>
-                    <article class="mg-gift-product-card" <?php echo $index >= 12 ? 'hidden' : ''; ?>>
+                    <article class="mg-gift-product-card" <?php echo $index >= 20 ? 'hidden' : ''; ?>>
                         <a href="<?php echo esc_url( $product->get_permalink() ); ?>">
                             <?php echo wp_kses_post( $product->get_image( 'woocommerce_thumbnail' ) ); ?>
-                            <?php if ( $item['score'] > 1 ) : ?><span class="mg-gift-match"><?php echo esc_html( $item['score'] ); ?> válaszodhoz is illik</span><?php endif; ?>
+                            <?php if ( ( $item['tier'] ?? '' ) === 'related' ) : ?>
+                                <span class="mg-gift-match">Kapcsolódó ötlet</span>
+                            <?php elseif ( $item['score'] > 1 ) : ?>
+                                <span class="mg-gift-match"><?php echo esc_html( $item['score'] ); ?> válaszodhoz is illik</span>
+                            <?php endif; ?>
                             <h3><?php echo esc_html( $product->get_name() ); ?></h3>
                         </a>
                     </article>
                 <?php endforeach; ?>
                 </div>
-                <?php if ( count( $ranked ) > 12 ) : ?>
+                <?php if ( count( $ranked ) > 20 ) : ?>
                     <div class="mg-gift-load-more-wrap"><button type="button" class="mg-gift-primary-button mg-gift-load-more">Mutass még ötleteket</button></div>
                 <?php endif; ?>
             <?php endif; ?>
         </div>
         <?php self::render_bundles( $term_ids, $settings ); ?>
         <?php wp_reset_postdata();
+    }
+
+    private static function compose_diverse_results( $all_items, $choices, $primary_limit, $related_limit ) {
+        if ( empty( $all_items ) ) return array();
+        $choice_indexes = array_keys( $choices );
+        self::sort_ranked_items( $all_items );
+        $primary_index = reset( $choice_indexes );
+        $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
+            return ! empty( $item['category_matches'][ $primary_index ] );
+        } ) );
+        if ( empty( $primary ) ) {
+            $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
+                return ! empty( $item['keyword_matches'][ $primary_index ] );
+            } ) );
+        }
+        if ( empty( $primary ) ) $primary = $all_items;
+        self::sort_ranked_items( $primary );
+        $primary_ids = array_fill_keys( array_map( 'intval', array_column( $primary, 'product_id' ) ), true );
+
+        $buckets = array();
+        foreach ( array_slice( $choice_indexes, 1 ) as $choice_index ) {
+            $keyword_first = ! empty( $choices[ $choice_index ]['keyword_priority'] );
+            $category_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids, $keyword_first ) {
+                return empty( $primary_ids[ (int) $item['product_id'] ] )
+                    && ! empty( $item['category_matches'][ $choice_index ] )
+                    && ( ! $keyword_first || empty( $item['priority_keyword_matches'][ $choice_index ] ) );
+            } ) );
+            $keyword_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids, $keyword_first ) {
+                return empty( $primary_ids[ (int) $item['product_id'] ] )
+                    && ( $keyword_first ? ! empty( $item['priority_keyword_matches'][ $choice_index ] ) : ! empty( $item['keyword_matches'][ $choice_index ] ) )
+                    && ( $keyword_first || empty( $item['category_matches'][ $choice_index ] ) );
+            } ) );
+            self::sort_ranked_items( $category_bucket );
+            self::sort_ranked_items( $keyword_bucket );
+            $bucket = $keyword_first ? array_merge( $keyword_bucket, $category_bucket ) : array_merge( $category_bucket, $keyword_bucket );
+            if ( ! empty( $bucket ) ) $buckets[] = $bucket;
+        }
+
+        $related = array();
+        $related_seen = array();
+        $positions = array_fill( 0, count( $buckets ), 0 );
+        while ( count( $related ) < $related_limit ) {
+            $added = false;
+            foreach ( $buckets as $bucket_index => $bucket ) {
+                while ( isset( $bucket[ $positions[ $bucket_index ] ] ) ) {
+                    $item = $bucket[ $positions[ $bucket_index ]++ ];
+                    $product_id = (int) $item['product_id'];
+                    if ( isset( $related_seen[ $product_id ] ) ) continue;
+                    $item['tier'] = 'related';
+                    $related[] = $item;
+                    $related_seen[ $product_id ] = true;
+                    $added = true;
+                    break;
+                }
+                if ( count( $related ) >= $related_limit ) break;
+            }
+            if ( ! $added ) break;
+        }
+
+        $ordered = array();
+        $seen = array();
+        $append = function( $items, $limit = null, $tier = '' ) use ( &$ordered, &$seen ) {
+            $added = 0;
+            foreach ( $items as $item ) {
+                $product_id = (int) $item['product_id'];
+                if ( isset( $seen[ $product_id ] ) ) continue;
+                if ( $tier !== '' ) $item['tier'] = $tier;
+                $ordered[] = $item;
+                $seen[ $product_id ] = true;
+                $added++;
+                if ( $limit !== null && $added >= $limit ) break;
+            }
+        };
+        $append( $primary, $primary_limit, 'primary' );
+        $append( $related, $related_limit );
+        $append( array_slice( $primary, $primary_limit ), null, 'primary' );
+        $append( $all_items, null, 'related' );
+        return $ordered;
+    }
+
+    private static function sort_ranked_items( &$items ) {
+        usort( $items, function( $a, $b ) {
+            if ( $a['score'] !== $b['score'] ) return $b['score'] <=> $a['score'];
+            if ( $a['name_score'] !== $b['name_score'] ) return $b['name_score'] <=> $a['name_score'];
+            if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
+            return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
+        } );
     }
 
     private static function render_bundles( $term_ids, $settings ) {

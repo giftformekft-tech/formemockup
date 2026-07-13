@@ -62,8 +62,8 @@
                 var loadMore = event.target.closest('.mg-gift-load-more');
                 if (loadMore) {
                     var hiddenCards = Array.prototype.slice.call(results.querySelectorAll('.mg-gift-product-card[hidden]'));
-                    hiddenCards.slice(0, 12).forEach(function (card) { card.hidden = false; });
-                    if (hiddenCards.length <= 12) loadMore.hidden = true;
+                    hiddenCards.slice(0, 10).forEach(function (card) { card.hidden = false; });
+                    if (hiddenCards.length <= 10) loadMore.hidden = true;
                     return;
                 }
                 if (event.target.closest('.mg-gift-next')) {
