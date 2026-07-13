@@ -141,7 +141,8 @@
           { "label": "Férjnek", "category_id": 116, "parent_category_ids": [] },
           { "label": "A szerelmemnek", "category_id": 243, "parent_category_ids": [] },
           { "label": "Tesónak", "category_id": 114, "parent_category_ids": [] },
-          { "label": "Keresztszülőnek", "category_id": 115, "parent_category_ids": [] },
+          { "label": "Keresztanyának", "category_id": 115, "keywords": ["keresztanya"], "option_id": "godmother", "parent_category_ids": [] },
+          { "label": "Keresztapának", "category_id": 115, "keywords": ["keresztapa"], "option_id": "godfather", "parent_category_ids": [] },
           { "label": "Egy párnak / házasoknak", "category_id": 98, "parent_category_ids": [] },
           { "label": "Barátnak / barátnőnek", "category_id": 245, "parent_category_ids": [] }
         ]
@@ -197,6 +198,7 @@
             "label": "Nyugdíjazásra",
             "category_id": 0,
             "category_ids": [97],
+            "keywords": ["nyugdíj"],
             "option_id": "retirement",
             "parent_category_ids": [109, 110, 112, 111, 113, 117, 116, 243, 114, 115, 245]
           },

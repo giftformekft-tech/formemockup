@@ -289,6 +289,7 @@ class MG_Gift_Finder_Transfer {
                     'label'               => $label,
                     'category_id'         => $category_id,
                     'category_ids'        => array_values( $category_ids ),
+                    'keywords'            => self::sanitize_keywords( $option['keywords'] ?? array() ),
                     'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
                     'parent_category_ids' => array_values( $parents ),
                 );
@@ -307,6 +308,13 @@ class MG_Gift_Finder_Transfer {
             $clean['bundles'][] = array( 'title' => $title, 'badge' => sanitize_text_field( $bundle['badge'] ?? '' ), 'category_ids' => $category_ids, 'product_ids' => $product_ids );
         }
         return $clean;
+    }
+
+    private static function sanitize_keywords( $value ) {
+        if ( is_string( $value ) ) $value = preg_split( '/[,;\r\n]+/', $value );
+        $keywords = array_map( 'sanitize_text_field', (array) $value );
+        $keywords = array_filter( array_map( 'trim', $keywords ), function( $keyword ) { return mb_strlen( $keyword ) >= 3; } );
+        return array_values( array_unique( $keywords ) );
     }
 
     private static function authorize( $action, $nonce_field ) {

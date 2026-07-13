@@ -268,6 +268,17 @@ class MG_Gift_Finder {
         return array_values( array_unique( $category_ids ) );
     }
 
+    private static function get_option_keywords( $option ) {
+        $keywords = is_string( $option['keywords'] ?? null )
+            ? preg_split( '/[,;\r\n]+/', $option['keywords'] )
+            : (array) ( $option['keywords'] ?? array() );
+        $keywords = array_map( 'sanitize_text_field', $keywords );
+        $keywords = array_filter( array_map( 'trim', $keywords ), function( $keyword ) {
+            return mb_strlen( $keyword ) >= 3;
+        } );
+        return array_values( array_unique( $keywords ) );
+    }
+
     private static function get_selected_choices( $settings ) {
         $selected = array();
         $prior = array();
@@ -284,6 +295,7 @@ class MG_Gift_Finder {
                         'label'      => sanitize_text_field( $option['label'] ?? '' ),
                         'category_id'=> (int) ( $category_ids[0] ?? 0 ),
                         'category_ids'=> $category_ids,
+                        'keywords'    => self::get_option_keywords( $option ),
                     );
                     $prior = array_merge( $prior, $category_ids );
                 }
@@ -326,7 +338,7 @@ class MG_Gift_Finder {
         $scoring_choices = $choices;
         foreach ( $term_ids as $term_id ) {
             $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
-            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ) );
+            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array() );
         }
 
         $candidate_ids = array();
@@ -349,6 +361,32 @@ class MG_Gift_Finder {
                 'tax_query'              => $query_tax,
             ) );
             $candidate_ids = array_merge( $candidate_ids, array_map( 'intval', $query->posts ) );
+
+            $keywords = self::get_option_keywords( $choice );
+            if ( ! empty( $keywords ) ) {
+                global $wpdb;
+                $title_where = array();
+                foreach ( $keywords as $keyword ) {
+                    $title_where[] = $wpdb->prepare( 'post_title LIKE %s', '%' . $wpdb->esc_like( $keyword ) . '%' );
+                }
+                $title_ids = $wpdb->get_col(
+                    "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND (" . implode( ' OR ', $title_where ) . ') LIMIT 500'
+                );
+                if ( ! empty( $title_ids ) ) {
+                    $title_query = new WP_Query( array(
+                        'post_type'              => 'product',
+                        'post_status'            => 'publish',
+                        'post__in'               => array_map( 'intval', $title_ids ),
+                        'posts_per_page'         => 500,
+                        'fields'                 => 'ids',
+                        'no_found_rows'          => true,
+                        'update_post_meta_cache' => false,
+                        'update_post_term_cache' => false,
+                        'tax_query'              => $tax_query,
+                    ) );
+                    $candidate_ids = array_merge( $candidate_ids, array_map( 'intval', $title_query->posts ) );
+                }
+            }
         }
         if ( empty( $candidate_ids ) && empty( $scoring_choices ) ) {
             $query = new WP_Query( array( 'post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => 48, 'fields' => 'ids', 'no_found_rows' => true ) );
@@ -376,19 +414,28 @@ class MG_Gift_Finder {
         foreach ( $candidate_ids as $product_id ) {
             $match_count = 0;
             $tie_score = 0;
+            $name_score = 0;
+            $normalized_title = mb_strtolower( remove_accents( get_the_title( $product_id ) ) );
             foreach ( $scoring_choices as $index => $choice ) {
                 $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
-                if ( $category_match ) {
+                $keyword_match_count = 0;
+                foreach ( self::get_option_keywords( $choice ) as $keyword ) {
+                    $normalized_keyword = mb_strtolower( remove_accents( $keyword ) );
+                    if ( $normalized_keyword !== '' && mb_strpos( $normalized_title, $normalized_keyword ) !== false ) $keyword_match_count++;
+                }
+                if ( $category_match || $keyword_match_count > 0 ) {
                     $match_count++;
                     $tie_score += 1 << min( $index, 20 );
                 }
+                if ( $keyword_match_count > 0 ) $name_score += $keyword_match_count;
             }
-            $ranked[] = array( 'product_id' => $product_id, 'score' => $match_count, 'tie' => $tie_score );
+            $ranked[] = array( 'product_id' => $product_id, 'score' => $match_count, 'name_score' => $name_score, 'tie' => $tie_score );
         }
         $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
         $ranked = array_values( array_filter( $ranked, function( $item ) use ( $max_score ) { return $item['score'] === $max_score; } ) );
         if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
         usort( $ranked, function( $a, $b ) {
+            if ( $a['name_score'] !== $b['name_score'] ) return $b['name_score'] <=> $a['name_score'];
             if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
             return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
         } );

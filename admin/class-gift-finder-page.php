@@ -172,7 +172,7 @@ class MG_Gift_Finder_Page {
     }
 
     private static function option_row( $key, $index, $option, $categories, $parent_categories = array() ) {
-        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'category_ids' => array(), 'option_id' => '', 'parent_category_ids' => array() ) );
+        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'category_ids' => array(), 'keywords' => array(), 'option_id' => '', 'parent_category_ids' => array() ) );
         $prefix = 'settings[questions][' . $key . '][options][' . $index . ']'; ?>
         <div class="mg-gift-admin-row">
             <input type="text" name="<?php echo esc_attr( $prefix ); ?>[label]" value="<?php echo esc_attr( $option['label'] ); ?>" placeholder="pl. Anyukának" required />
@@ -183,6 +183,9 @@ class MG_Gift_Finder_Page {
                 </select>
             </label>
             <input type="hidden" name="<?php echo esc_attr( $prefix ); ?>[option_id]" value="<?php echo esc_attr( $option['option_id'] ); ?>" />
+            <label>Terméknév-kulcsszavak
+                <input type="text" name="<?php echo esc_attr( $prefix ); ?>[keywords]" value="<?php echo esc_attr( implode( ', ', (array) $option['keywords'] ) ); ?>" placeholder="pl. nyugdíj, nyugdíjas" />
+            </label>
             <?php if ( ! empty( $parent_categories ) ) : ?>
                 <label>Csak ezek után jelenjen meg
                     <select multiple name="<?php echo esc_attr( $prefix ); ?>[parent_category_ids][]" size="4">
@@ -252,6 +255,7 @@ class MG_Gift_Finder_Page {
                         'label'               => $label,
                         'category_id'         => $term_id,
                         'category_ids'        => $category_ids,
+                        'keywords'            => self::sanitize_keywords( $option['keywords'] ?? array() ),
                         'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
                         'parent_category_ids' => array_values( array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),
                     );
@@ -278,5 +282,12 @@ class MG_Gift_Finder_Page {
     private static function parse_id_list( $value ) {
         if ( is_string( $value ) ) $value = preg_split( '/[\s,;]+/', $value );
         return array_values( array_unique( array_filter( array_map( 'absint', (array) $value ) ) ) );
+    }
+
+    private static function sanitize_keywords( $value ) {
+        if ( is_string( $value ) ) $value = preg_split( '/[,;\r\n]+/', $value );
+        $keywords = array_map( 'sanitize_text_field', (array) $value );
+        $keywords = array_filter( array_map( 'trim', $keywords ), function( $keyword ) { return mb_strlen( $keyword ) >= 3; } );
+        return array_values( array_unique( $keywords ) );
     }
 }
