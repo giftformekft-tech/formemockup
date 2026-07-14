@@ -3,23 +3,19 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-/**
- * Class MG_Facebook_Pixel_Settings
- *
- * Admin beállítási felület a Meta (Facebook) Pixel integrációhoz.
- */
+/** Meta Pixel/CAPI settings and order-level delivery diagnostics. */
 class MG_Facebook_Pixel_Settings {
-
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_settings_page'));
         add_action('admin_post_mg_fb_pixel_save', array(__CLASS__, 'handle_save'));
+        add_action('admin_post_mg_meta_retry_order', array(__CLASS__, 'handle_retry_order'));
     }
 
     public static function add_settings_page() {
         add_submenu_page(
             'mockup-generator',
-            'Facebook Pixel',
-            'Facebook Pixel',
+            'Meta mérés',
+            'Meta mérés',
             'manage_options',
             'mg-fb-pixel-settings',
             array(__CLASS__, 'render_settings_page')
@@ -31,124 +27,195 @@ class MG_Facebook_Pixel_Settings {
             wp_die('Unauthorized');
         }
         check_admin_referer('mg_fb_pixel_save_action');
+        $input = isset($_POST['mg_fb_pixel_settings']) && is_array($_POST['mg_fb_pixel_settings'])
+            ? wp_unslash($_POST['mg_fb_pixel_settings'])
+            : array();
+        $old = class_exists('MG_Facebook_Pixel_Reliability')
+            ? MG_Facebook_Pixel_Reliability::get_settings()
+            : get_option('mg_fb_pixel_settings', array());
 
-        $input = isset($_POST['mg_fb_pixel_settings']) ? $_POST['mg_fb_pixel_settings'] : array();
+        $allowed = array('pending', 'on-hold', 'processing', 'completed');
+        $statuses = array_values(array_intersect($allowed, array_map('sanitize_key', (array) ($input['eligible_statuses'] ?? array()))));
+        if (!$statuses) {
+            $statuses = array('processing', 'completed');
+        }
+
+        $token = trim((string) ($input['access_token'] ?? ''));
+        if (!empty($input['delete_access_token'])) {
+            $token = '';
+        } elseif ($token === '') {
+            $token = (string) ($old['access_token'] ?? '');
+        }
 
         $saved = array(
-            'pixel_id'        => isset($input['pixel_id'])        ? trim(wp_strip_all_tags($input['pixel_id']))        : '',
-            'access_token'    => isset($input['access_token'])    ? trim(wp_strip_all_tags($input['access_token']))    : '',
-            'test_event_code' => isset($input['test_event_code']) ? trim(wp_strip_all_tags($input['test_event_code'])) : '',
+            'pixel_id' => self::digits($input['pixel_id'] ?? ''),
+            'access_token' => sanitize_text_field($token),
+            'test_event_code' => sanitize_text_field($input['test_event_code'] ?? ''),
+            'server_side_enabled' => !empty($input['server_side_enabled']) ? 1 : 0,
+            'eligible_statuses' => $statuses,
         );
+        update_option('mg_fb_pixel_settings', $saved, false);
 
-        update_option('mg_fb_pixel_settings', $saved);
-
-        wp_redirect(admin_url('admin.php?page=mg-fb-pixel-settings&updated=1'));
+        $queued = 0;
+        if ($saved['server_side_enabled'] && class_exists('MG_Facebook_Pixel_Reliability')) {
+            $queued = MG_Facebook_Pixel_Reliability::backfill_recent_orders(6);
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mg-fb-pixel-settings&updated=1&queued=' . absint($queued)));
         exit;
+    }
+
+    public static function handle_retry_order() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die('Unauthorized');
+        }
+        $order_id = absint($_GET['order_id'] ?? 0);
+        check_admin_referer('mg_meta_retry_' . $order_id);
+        if ($order_id && class_exists('MG_Facebook_Pixel_Reliability')) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                foreach (array(
+                    MG_Facebook_Pixel_Reliability::META_STATUS,
+                    MG_Facebook_Pixel_Reliability::META_ATTEMPTS,
+                    MG_Facebook_Pixel_Reliability::META_LAST_ERROR,
+                    MG_Facebook_Pixel_Reliability::META_TRACE_ID,
+                ) as $meta_key) {
+                    $order->delete_meta_data($meta_key);
+                }
+                $order->save();
+                MG_Facebook_Pixel_Reliability::queue_purchase($order_id);
+            }
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mg-fb-pixel-settings&retried=' . $order_id));
+        exit;
+    }
+
+    private static function digits($value) {
+        return preg_replace('/[^0-9]/', '', (string) $value);
     }
 
     public static function render_settings_page() {
         if (!current_user_can('manage_options')) {
             return;
         }
-
-        $settings = get_option('mg_fb_pixel_settings', array('pixel_id' => '', 'access_token' => '', 'test_event_code' => ''));
+        $settings = class_exists('MG_Facebook_Pixel_Reliability')
+            ? MG_Facebook_Pixel_Reliability::get_settings()
+            : get_option('mg_fb_pixel_settings', array());
+        $has_token = defined('MG_META_CAPI_ACCESS_TOKEN') || !empty($settings['access_token']);
         ?>
         <div class="wrap">
-            <h1>Meta (Facebook) Pixel (Mockup Generator)</h1>
+            <h1>Meta – pontos Pixel és Conversions API mérés</h1>
 
             <?php if (isset($_GET['updated'])): ?>
-            <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong></p></div>
+                <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong> <?php echo absint($_GET['queued'] ?? 0); ?> korábbi rendelés került CAPI-sorba.</p></div>
+            <?php endif; ?>
+            <?php if (isset($_GET['retried'])): ?>
+                <div class="notice notice-success is-dismissible"><p>A #<?php echo absint($_GET['retried']); ?> rendelést újra sorba állítottuk.</p></div>
+            <?php endif; ?>
+            <?php if (!empty($settings['test_event_code'])): ?>
+                <div class="notice notice-warning"><p><strong>Teszt mód aktív:</strong> a szerveroldali események a Meta Test Events nézetébe kerülnek. Élesítés előtt töröld a tesztkódot.</p></div>
             <?php endif; ?>
 
-            <p>A Meta Pixel automatikusan beküldi az összes fontos vásárlói eseményt (PageView, ViewContent, AddToCart, InitiateCheckout, Purchase) a virtuális variáns ID-kkal. Advanced Matching (hashelt vásárlóadatok) automatikusan működik a Purchase eseménynél.</p>
+            <p>A böngészős Pixel és a tartós CAPI ugyanazt a rendelésszámot használja <code>event_id</code>-ként. A CAPI csak engedélyezett consent és mérhető rendelésállapot esetén küld, a Meta válaszát ellenőrzi, hiba esetén pedig újrapróbálkozik.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_fb_pixel_save">
                 <?php wp_nonce_field('mg_fb_pixel_save_action'); ?>
 
+                <h2>Pixel és vásárlási feltételek</h2>
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><label for="pixel_id">Pixel ID (Pl.: 123456789012345)</label></th>
-                        <td>
-                            <input type="text" id="pixel_id" name="mg_fb_pixel_settings[pixel_id]" value="<?php echo esc_attr($settings['pixel_id'] ?? ''); ?>" class="regular-text" placeholder="123456789012345" />
-                            <p class="description">Meta Business Suite → Eseménykezelő → Adatforrások. Csak a számokat add meg.</p>
-                        </td>
+                        <th><label for="mg-meta-pixel-id">Meta Pixel ID</label></th>
+                        <td><input id="mg-meta-pixel-id" class="regular-text" name="mg_fb_pixel_settings[pixel_id]" value="<?php echo esc_attr($settings['pixel_id']); ?>" placeholder="123456789012345"></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="access_token">Conversions API Access Token</label></th>
+                        <th>Mérhető rendelésállapotok</th>
                         <td>
-                            <input type="text" id="access_token" name="mg_fb_pixel_settings[access_token]" value="<?php echo esc_attr($settings['access_token'] ?? ''); ?>" class="large-text" placeholder="EAAxxxxxxxx..." />
-                            <p class="description">Meta Business Suite → Eseménykezelő → <strong>Beállítások → Conversions API → Token generálása</strong>. Ha üres, a CAPI ki van kapcsolva.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="test_event_code">Test Event Code <em>(opcionális)</em></label></th>
-                        <td>
-                            <input type="text" id="test_event_code" name="mg_fb_pixel_settings[test_event_code]" value="<?php echo esc_attr($settings['test_event_code'] ?? ''); ?>" class="regular-text" placeholder="TEST12345" />
-                            <p class="description">Eseménykezelő → Test Events alatt találod. Csak tesztelés alatt töltsd ki – éles üzemben hagyd üresen!</p>
+                            <?php foreach (array('pending' => 'Fizetésre vár', 'on-hold' => 'Fizetés folyamatban', 'processing' => 'Feldolgozás alatt', 'completed' => 'Teljesítve') as $key => $label): ?>
+                                <label style="display:block;margin:4px 0"><input type="checkbox" name="mg_fb_pixel_settings[eligible_statuses][]" value="<?php echo esc_attr($key); ?>" <?php checked(in_array($key, $settings['eligible_statuses'], true)); ?>> <?php echo esc_html($label); ?> (<code><?php echo esc_html($key); ?></code>)</label>
+                            <?php endforeach; ?>
+                            <p class="description">Alapértelmezetten csak a <code>processing</code> és <code>completed</code> rendelés számít Purchase eseménynek.</p>
                         </td>
                     </tr>
                 </table>
 
-                <?php submit_button('Beállítások mentése'); ?>
+                <h2>Tartós szerveroldali mérés – Meta CAPI</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>Bekapcsolás</th>
+                        <td><label><input type="checkbox" name="mg_fb_pixel_settings[server_side_enabled]" value="1" <?php checked(!empty($settings['server_side_enabled'])); ?>> Szerveroldali küldés, válaszellenőrzés és automatikus újrapróbálkozás</label></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-meta-token">Conversions API access token</label></th>
+                        <td>
+                            <input id="mg-meta-token" type="password" class="large-text" name="mg_fb_pixel_settings[access_token]" value="" placeholder="<?php echo $has_token ? 'Mentve – hagyd üresen a megőrzéshez' : 'EAA…'; ?>">
+                            <p class="description">Állapot: <strong><?php echo $has_token ? 'beállítva' : 'hiányzik'; ?></strong>. A Meta Events Manager → Settings → Conversions API alatt generálható.</p>
+                            <?php if ($has_token && !defined('MG_META_CAPI_ACCESS_TOKEN')): ?><label><input type="checkbox" name="mg_fb_pixel_settings[delete_access_token]" value="1"> Mentett token törlése</label><?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Graph API-verzió</th>
+                        <td><code><?php echo esc_html(MG_Facebook_Pixel_Reliability::API_VERSION); ?></code></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-meta-test-code">Test Event Code</label></th>
+                        <td><input id="mg-meta-test-code" class="regular-text" name="mg_fb_pixel_settings[test_event_code]" value="<?php echo esc_attr($settings['test_event_code']); ?>" placeholder="Éles üzemben üres"><p class="description">Csak rövid teszteléshez használd.</p></td>
+                    </tr>
+                </table>
+
+                <?php submit_button('Meta mérési beállítások mentése'); ?>
             </form>
 
-            <hr style="margin-top: 40px; margin-bottom: 20px;">
+            <?php self::render_diagnostics(); ?>
 
-            <h2>Beküldött események</h2>
-            <table class="widefat" style="max-width: 700px;">
-                <thead>
-                    <tr>
-                        <th>Facebook esemény</th>
-                        <th>Mikor tüzel</th>
-                        <th>Adatok</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>PageView</strong></td>
-                        <td>Minden oldal betöltésekor (beleegyezés után)</td>
-                        <td>—</td>
-                    </tr>
-                    <tr>
-                        <td><strong>ViewContent</strong></td>
-                        <td>Termékoldal megtekintésekor</td>
-                        <td>content_ids (variáns ID), value, currency</td>
-                    </tr>
-                    <tr>
-                        <td><strong>AddToCart</strong></td>
-                        <td>Kosárba gomb kattintásakor</td>
-                        <td>content_ids (variáns ID), value, currency, quantity</td>
-                    </tr>
-                    <tr>
-                        <td><strong>InitiateCheckout</strong></td>
-                        <td>Pénztár oldal megnyitásakor</td>
-                        <td>content_ids, value, currency, num_items</td>
-                    </tr>
-                    <tr>
-                        <td><strong>Purchase</strong></td>
-                        <td>Köszönöm oldalon (sikeres rendelés)</td>
-                        <td>content_ids, value, currency, num_items + Advanced Matching<br><em>+ CAPI (szerver-oldali) – ha Access Token meg van adva</em></td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <h2 style="margin-top: 30px;">Advanced Matching (Purchase)</h2>
-            <p>A Purchase eseménynél az alábbi vásárlóadatokat küldi be a rendszer SHA-256 hashelt formában:</p>
-            <ul style="list-style: disc; margin-left: 20px;">
-                <li>Email cím</li>
-                <li>Telefonszám (E.164 formátumban, +36-os előhívóval)</li>
-                <li>Keresztnév és Vezetéknév</li>
-                <li>Város, Irányítószám, Ország</li>
-            </ul>
-
-            <hr style="margin-top: 40px; margin-bottom: 20px;">
-            <h2>Fontos figyelmeztetés!</h2>
-            <div class="notice notice-warning inline">
-                <p>Ha ezt a modult használod, <strong>távolítsd el</strong> az összes többi Facebook Pixel plugin-t (pl. PixelYourSite, Facebook for WooCommerce / Meta for WooCommerce), különben a Purchase esemény duplán fog bemenni!</p>
-                <p>A GDPR Consent kezelés automatikusan összekötve az <code>mg_gads_consent</code> eseménnyel – ugyanaz a cookie banner kezeli, mint a Google Ads modult.</p>
-            </div>
+            <div class="notice notice-warning inline" style="margin-top:24px"><p><strong>Duplikációvédelem:</strong> más Meta Pixel/CAPI plugin ugyanahhoz a Pixelhez ne küldjön külön Purchase eseményt.</p></div>
         </div>
+        <?php
+    }
+
+    private static function render_diagnostics() {
+        if (!function_exists('wc_get_orders') || !class_exists('MG_Facebook_Pixel_Reliability')) {
+            return;
+        }
+        $orders = wc_get_orders(array(
+            'limit' => 30,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        ));
+        $counts = array();
+        foreach ($orders as $order) {
+            $status = $order->get_meta(MG_Facebook_Pixel_Reliability::META_STATUS) ?: 'not_queued';
+            $counts[$status] = ($counts[$status] ?? 0) + 1;
+        }
+        ?>
+        <hr>
+        <h2>Utolsó 30 rendelés Meta diagnosztikája</h2>
+        <p>
+            <?php foreach ($counts as $status => $count): ?>
+                <span style="display:inline-block;padding:5px 9px;margin:0 6px 6px 0;background:#fff;border:1px solid #ccd0d4;border-radius:3px"><code><?php echo esc_html($status); ?></code>: <strong><?php echo absint($count); ?></strong></span>
+            <?php endforeach; ?>
+        </p>
+        <table class="widefat striped">
+            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>CAPI</th><th>Consent</th><th>Attribution</th><th>Próba</th><th>Hiba / Trace ID</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($orders as $order):
+                $status = $order->get_meta(MG_Facebook_Pixel_Reliability::META_STATUS) ?: 'not_queued';
+                $detail = $order->get_meta(MG_Facebook_Pixel_Reliability::META_LAST_ERROR) ?: $order->get_meta(MG_Facebook_Pixel_Reliability::META_TRACE_ID);
+                $retry_url = wp_nonce_url(admin_url('admin-post.php?action=mg_meta_retry_order&order_id=' . $order->get_id()), 'mg_meta_retry_' . $order->get_id());
+                ?>
+                <tr>
+                    <td><a href="<?php echo esc_url($order->get_edit_order_url()); ?>"><strong>#<?php echo esc_html($order->get_order_number()); ?></strong></a></td>
+                    <td><?php echo esc_html(wc_get_order_status_name($order->get_status())); ?></td>
+                    <td><code><?php echo esc_html($status); ?></code></td>
+                    <td><?php echo esc_html($order->get_meta('_mg_meta_consent') ?: 'ismeretlen'); ?></td>
+                    <td><?php echo ($order->get_meta('_mg_meta_fbc') || $order->get_meta('_mg_meta_fbp') || $order->get_meta('_mg_meta_fbclid')) ? 'igen' : 'nincs'; ?></td>
+                    <td><?php echo absint($order->get_meta(MG_Facebook_Pixel_Reliability::META_ATTEMPTS)); ?></td>
+                    <td style="max-width:360px;word-break:break-word"><?php echo esc_html($detail); ?></td>
+                    <td><a class="button button-small" href="<?php echo esc_url($retry_url); ?>">Újrapróba</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
         <?php
     }
 }

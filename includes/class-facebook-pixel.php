@@ -27,16 +27,6 @@ class MG_Facebook_Pixel {
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
         add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_initiate_checkout_event'), 5);
         add_action('woocommerce_after_add_to_cart_button', array(__CLASS__, 'output_add_to_cart_script'), 10);
-
-        // CAPI (Conversions API) – szerver-oldali eseményküldés
-        $settings = get_option('mg_fb_pixel_settings', array());
-        if (!empty($settings['access_token'])) {
-            // FB cookie-k mentése rendelés metába (thankyou oldalon már lehet, hogy nincs cookie)
-            add_action('woocommerce_checkout_order_processed', array(__CLASS__, 'save_fb_cookies_to_order'), 10, 1);
-            add_action('woocommerce_store_api_checkout_order_processed', array(__CLASS__, 'save_fb_cookies_to_order'), 10, 1);
-            // Purchase CAPI – 20-as prioritás, a pixel (10) után fut
-            add_action('woocommerce_thankyou', array(__CLASS__, 'send_capi_purchase'), 20, 1);
-        }
     }
 
     private static function get_pixel_id() {
@@ -83,33 +73,31 @@ class MG_Facebook_Pixel {
         fbq('consent', 'revoke');
         fbq('init', '<?php echo $pixel_id; ?>');
 
-        var _mgFbConsentGranted = false;
-        function mg_fb_grant_consent() {
-            if (_mgFbConsentGranted) return;
-            _mgFbConsentGranted = true;
-            fbq('consent', 'grant');
-            fbq('track', 'PageView');
-        }
+        window.mgFbConsentGranted = false;
+        window.mgFbSetConsent = function(granted) {
+            var state = granted ? 'granted' : 'denied';
+            window.mgFbConsentGranted = !!granted;
+            fbq('consent', granted ? 'grant' : 'revoke');
+            document.cookie = 'mg_gads_consent=' + state + ';path=/;max-age=31536000;SameSite=Lax' + (location.protocol === 'https:' ? ';Secure' : '');
+            if (granted && !window.mgFbPageViewSent) {
+                fbq('track', 'PageView');
+                window.mgFbPageViewSent = true;
+            }
+        };
 
-        document.addEventListener('mg_gads_consent', mg_fb_grant_consent);
-        document.addEventListener('rcb:consent', function() { setTimeout(mg_fb_grant_consent, 200); });
-
-        // Fallback: ha nincs cookie banner, 1000ms után küldünk
-        var _mgFbFallbackStarted = false;
-        function mg_fb_start_fallback() {
-            if (_mgFbFallbackStarted) return;
-            _mgFbFallbackStarted = true;
-            setTimeout(mg_fb_grant_consent, 1000);
-        }
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', mg_fb_start_fallback);
-        } else {
-            mg_fb_start_fallback();
+        document.addEventListener('mg_gads_consent', function() {
+            window.mgFbSetConsent(true);
+        });
+        document.addEventListener('rcb:consent', function(event) {
+            if (event.detail && typeof event.detail.acceptedAll !== 'undefined') {
+                window.mgFbSetConsent(!!event.detail.acceptedAll);
+            }
+        });
+        var mgFbConsentMatch = document.cookie.match(/(?:^|; )mg_gads_consent=(granted|denied)/);
+        if (mgFbConsentMatch) {
+            window.mgFbSetConsent(mgFbConsentMatch[1] === 'granted');
         }
         </script>
-        <noscript><img height="1" width="1" style="display:none"
-        src="https://www.facebook.com/tr?id=<?php echo $pixel_id; ?>&ev=PageView&noscript=1"
-        /></noscript>
         <?php
     }
 
@@ -156,6 +144,7 @@ class MG_Facebook_Pixel {
 
             function mg_fb_fire_view_content() {
                 if (_mgFbViewSent) return;
+                if (window.mgFbConsentGranted !== true) return;
                 if (typeof window.fbq === 'function') {
                     window.fbq('track', 'ViewContent', _mgFbViewData);
                     _mgFbViewSent = true;
@@ -163,7 +152,9 @@ class MG_Facebook_Pixel {
             }
 
             document.addEventListener('mg_gads_consent', mg_fb_fire_view_content);
-            document.addEventListener('rcb:consent', function() { setTimeout(mg_fb_fire_view_content, 300); });
+            document.addEventListener('rcb:consent', function(event) {
+                if (event.detail && event.detail.acceptedAll) setTimeout(mg_fb_fire_view_content, 300);
+            });
 
             var fallback = function() { setTimeout(mg_fb_fire_view_content, 1200); };
             if (document.readyState === 'loading') {
@@ -191,13 +182,17 @@ class MG_Facebook_Pixel {
             return;
         }
 
+        if (class_exists('MG_Facebook_Pixel_Reliability') && !MG_Facebook_Pixel_Reliability::is_order_eligible($order)) {
+            return;
+        }
+
         $pixel_id     = self::get_pixel_id();
         $value        = (float) $order->get_total();
         $currency     = $order->get_currency();
         $transaction_id = $order->get_order_number();
 
         $content_ids = array();
-        $num_items   = 0;
+        $contents    = array();
 
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
@@ -227,20 +222,30 @@ class MG_Facebook_Pixel {
                 }
             }
 
-            $content_ids[] = self::get_virtual_item_id($product, $type_slug, false);
-            $num_items    += $item->get_quantity();
+            $item_id = self::get_virtual_item_id($product, $type_slug, false);
+            $quantity = max(1, (int) $item->get_quantity());
+            $content_ids[] = $item_id;
+            $contents[] = array(
+                'id' => $item_id,
+                'quantity' => $quantity,
+                'item_price' => round((float) $item->get_total() / $quantity, 2),
+            );
         }
 
         // Advanced Matching mezők normalizálása és SHA-256 hash
         $email      = strtolower(trim($order->get_billing_email()));
         $phone_raw  = preg_replace('/[^0-9]/', '', $order->get_billing_phone());
-        // Magyar számok: 06... → 36...
-        if (strlen($phone_raw) === 11 && substr($phone_raw, 0, 2) === '06') {
-            $phone_raw = '36' . substr($phone_raw, 2);
+        // Magyar mobil- és vezetékes számok egységes nemzetközi formátumban.
+        if ($phone_raw !== '') {
+            if (substr($phone_raw, 0, 2) === '06') {
+                $phone_raw = '36' . substr($phone_raw, 2);
+            } elseif ($order->get_billing_country() === 'HU' && substr($phone_raw, 0, 2) !== '36') {
+                $phone_raw = '36' . ltrim($phone_raw, '0');
+            }
         }
-        $first_name = strtolower(preg_replace('/\s+/', '', $order->get_billing_first_name()));
-        $last_name  = strtolower(preg_replace('/\s+/', '', $order->get_billing_last_name()));
-        $city       = strtolower(preg_replace('/\s+/', '', $order->get_billing_city()));
+        $first_name = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_first_name())));
+        $last_name  = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_last_name())));
+        $city       = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_city())));
         $zip        = strtolower(preg_replace('/\s+/', '', $order->get_billing_postcode()));
         $country    = strtolower($order->get_billing_country());
 
@@ -252,34 +257,40 @@ class MG_Facebook_Pixel {
         if (!empty($city))       { $hashed['ct']      = hash('sha256', $city); }
         if (!empty($zip))        { $hashed['zp']      = hash('sha256', $zip); }
         if (!empty($country))    { $hashed['country'] = hash('sha256', $country); }
+
+        $order->update_meta_data('_mg_fb_browser_rendered', time());
+        $order->save();
         ?>
         <script>
         (function() {
-            <?php if (!empty($hashed)): ?>
-            // Advanced Matching: re-init hashelt adatokkal a pontosabb vevőegyeztetésért
-            window.fbq('init', '<?php echo $pixel_id; ?>', <?php echo wp_json_encode($hashed); ?>);
-            <?php endif; ?>
-
             var _mgFbPurchaseData = {
                 value: <?php echo number_format($value, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js($currency); ?>',
                 content_ids: <?php echo wp_json_encode($content_ids); ?>,
+                contents: <?php echo wp_json_encode($contents); ?>,
                 content_type: 'product',
-                num_items: <?php echo (int) $num_items; ?>
+                order_id: '<?php echo esc_js($transaction_id); ?>',
+                discount: <?php echo wp_json_encode((float) $order->get_discount_total()); ?>
             };
             var _mgFbPurchaseSent = false;
 
             function mg_fb_fire_purchase() {
                 if (_mgFbPurchaseSent) return;
+                if (window.mgFbConsentGranted !== true) return;
                 if (typeof window.fbq === 'function') {
-                    // eventID a szerver-oldali API deduplication-höz (jövőbeli CAPI-hoz)
+                    <?php if (!empty($hashed)): ?>
+                    window.fbq('init', '<?php echo $pixel_id; ?>', <?php echo wp_json_encode($hashed, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>);
+                    <?php endif; ?>
+                    // Ugyanez az event ID kerül a tartós CAPI eseménybe is.
                     window.fbq('track', 'Purchase', _mgFbPurchaseData, {eventID: '<?php echo esc_js($transaction_id); ?>'});
                     _mgFbPurchaseSent = true;
                 }
             }
 
             document.addEventListener('mg_gads_consent', mg_fb_fire_purchase);
-            document.addEventListener('rcb:consent', function() { setTimeout(mg_fb_fire_purchase, 300); });
+            document.addEventListener('rcb:consent', function(event) {
+                if (event.detail && event.detail.acceptedAll) setTimeout(mg_fb_fire_purchase, 300);
+            });
 
             var fallback = function() { setTimeout(mg_fb_fire_purchase, 1200); };
             if (document.readyState === 'loading') {
@@ -301,6 +312,7 @@ class MG_Facebook_Pixel {
         }
 
         $content_ids = array();
+        $contents    = array();
         $total       = 0;
         $num_items   = 0;
 
@@ -312,11 +324,17 @@ class MG_Facebook_Pixel {
 
             $type_slug   = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
             $item_id     = self::get_virtual_item_id($product, $type_slug);
-            $price       = (float) $product->get_price();
             $qty         = (int) $cart_item['quantity'];
-            $total      += $price * $qty;
+            $line_total  = isset($cart_item['line_total']) ? (float) $cart_item['line_total'] : ((float) $product->get_price() * $qty);
+            $unit_price  = $qty > 0 ? $line_total / $qty : 0;
+            $total      += $line_total;
             $num_items  += $qty;
             $content_ids[] = $item_id;
+            $contents[] = array(
+                'id' => $item_id,
+                'quantity' => $qty,
+                'item_price' => round($unit_price, 2),
+            );
         }
 
         if (empty($content_ids)) {
@@ -329,13 +347,16 @@ class MG_Facebook_Pixel {
                 value: <?php echo number_format($total, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 content_ids: <?php echo wp_json_encode($content_ids); ?>,
+                contents: <?php echo wp_json_encode($contents); ?>,
                 content_type: 'product',
-                num_items: <?php echo (int) $num_items; ?>
+                num_items: <?php echo (int) $num_items; ?>,
+                discount: <?php echo wp_json_encode((float) WC()->cart->get_discount_total()); ?>
             };
             var _mgFbCheckoutSent = false;
 
             function mg_fb_fire_checkout() {
                 if (_mgFbCheckoutSent) return;
+                if (window.mgFbConsentGranted !== true) return;
                 if (typeof window.fbq === 'function') {
                     window.fbq('track', 'InitiateCheckout', _mgFbCheckoutData);
                     _mgFbCheckoutSent = true;
@@ -343,7 +364,9 @@ class MG_Facebook_Pixel {
             }
 
             document.addEventListener('mg_gads_consent', mg_fb_fire_checkout);
-            document.addEventListener('rcb:consent', function() { setTimeout(mg_fb_fire_checkout, 200); });
+            document.addEventListener('rcb:consent', function(event) {
+                if (event.detail && event.detail.acceptedAll) setTimeout(mg_fb_fire_checkout, 200);
+            });
 
             var fallback = function() { setTimeout(mg_fb_fire_checkout, 800); };
             if (document.readyState === 'loading') {
@@ -354,190 +377,6 @@ class MG_Facebook_Pixel {
         })();
         </script>
         <?php
-    }
-
-    // -------------------------------------------------------------------------
-    // CAPI – Conversions API (szerver-oldali eseményküldés)
-    // -------------------------------------------------------------------------
-
-    /**
-     * Elmenti az _fbp és _fbc cookie-kat a rendelés metaadatai közé.
-     * A thankyou oldalon esetleg már nincs cookie (redirect, cache), ezért
-     * a checkout feldolgozásakor menti el.
-     */
-    public static function save_fb_cookies_to_order($order_or_id) {
-        $order_id = is_object($order_or_id) ? $order_or_id->get_id() : (int) $order_or_id;
-        $order    = wc_get_order($order_id);
-        if (!$order) return;
-
-        if (!empty($_COOKIE['_fbp'])) {
-            $order->update_meta_data('_mg_fbp', sanitize_text_field($_COOKIE['_fbp']));
-        }
-        if (!empty($_COOKIE['_fbc'])) {
-            $order->update_meta_data('_mg_fbc', sanitize_text_field($_COOKIE['_fbc']));
-        }
-        $order->save();
-    }
-
-    /**
-     * Felépíti a CAPI user_data tömböt: hashelt vásárlóadatok + IP + UA + FB cookie-k.
-     */
-    private static function build_capi_user_data($order) {
-        $ud = array(
-            'client_ip_address' => self::get_client_ip(),
-            'client_user_agent' => isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '',
-        );
-
-        // _fbp és _fbc: előnyben a rendelés metaadata (checkout alatt mentve)
-        $fbp = $order->get_meta('_mg_fbp') ?: (isset($_COOKIE['_fbp']) ? sanitize_text_field($_COOKIE['_fbp']) : '');
-        $fbc = $order->get_meta('_mg_fbc') ?: (isset($_COOKIE['_fbc']) ? sanitize_text_field($_COOKIE['_fbc']) : '');
-        if (!empty($fbp)) $ud['fbp'] = $fbp;
-        if (!empty($fbc)) $ud['fbc'] = $fbc;
-
-        // Hashelt vásárlóadatok (SHA-256, normalizált)
-        $email = strtolower(trim($order->get_billing_email()));
-        $phone = preg_replace('/[^0-9]/', '', $order->get_billing_phone());
-        if (strlen($phone) === 11 && substr($phone, 0, 2) === '06') {
-            $phone = '36' . substr($phone, 2);
-        }
-        $fn      = strtolower(preg_replace('/\s+/', '', $order->get_billing_first_name()));
-        $ln      = strtolower(preg_replace('/\s+/', '', $order->get_billing_last_name()));
-        $city    = strtolower(preg_replace('/\s+/', '', $order->get_billing_city()));
-        $zip     = strtolower(preg_replace('/\s+/', '', $order->get_billing_postcode()));
-        $country = strtolower($order->get_billing_country());
-
-        if (!empty($email))   $ud['em']      = hash('sha256', $email);
-        if (!empty($phone))   $ud['ph']      = hash('sha256', $phone);
-        if (!empty($fn))      $ud['fn']      = hash('sha256', $fn);
-        if (!empty($ln))      $ud['ln']      = hash('sha256', $ln);
-        if (!empty($city))    $ud['ct']      = hash('sha256', $city);
-        if (!empty($zip))     $ud['zp']      = hash('sha256', $zip);
-        if (!empty($country)) $ud['country'] = hash('sha256', $country);
-
-        return $ud;
-    }
-
-    /**
-     * Visszaadja a látogató valódi IP-jét (proxy-tudatos).
-     */
-    private static function get_client_ip() {
-        foreach (array('HTTP_CLIENT_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR') as $key) {
-            if (!empty($_SERVER[$key])) {
-                return trim(explode(',', $_SERVER[$key])[0]);
-            }
-        }
-        return '';
-    }
-
-    /**
-     * Elküldi az eseményt a Meta Graph API-ra (szerver → szerver).
-     * Non-blocking: nem lassítja az oldal betöltést.
-     */
-    private static function send_capi_event($event_name, $custom_data, $user_data, $event_id = '', $source_url = '') {
-        $settings     = get_option('mg_fb_pixel_settings', array());
-        $pixel_id     = $settings['pixel_id'] ?? '';
-        $access_token = $settings['access_token'] ?? '';
-
-        if (empty($pixel_id) || empty($access_token)) {
-            return false;
-        }
-
-        $event = array(
-            'event_name'       => $event_name,
-            'event_time'       => time(),
-            'action_source'    => 'website',
-            'event_source_url' => $source_url ?: (is_ssl() ? 'https' : 'http') . '://' . (isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '') . (isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/'),
-            'user_data'        => $user_data,
-            'custom_data'      => $custom_data,
-        );
-
-        if (!empty($event_id)) {
-            $event['event_id'] = (string) $event_id;
-        }
-
-        $payload = array(
-            'data'         => array($event),
-            'access_token' => $access_token,
-        );
-
-        $test_code = $settings['test_event_code'] ?? '';
-        if (!empty($test_code)) {
-            $payload['test_event_code'] = $test_code;
-        }
-
-        wp_remote_post(
-            'https://graph.facebook.com/v21.0/' . rawurlencode($pixel_id) . '/events',
-            array(
-                'body'     => wp_json_encode($payload),
-                'headers'  => array('Content-Type' => 'application/json'),
-                'timeout'  => 8,
-                'blocking' => false,
-            )
-        );
-
-        return true;
-    }
-
-    /**
-     * CAPI Purchase esemény – a köszönöm oldalon fut, a pixel event után (prio 20).
-     * Az event_id = rendelésszám, megegyezik a pixel eventID-jával → deduplication.
-     */
-    public static function send_capi_purchase($order_id) {
-        if (!$order_id) return;
-
-        $order = wc_get_order($order_id);
-        if (!$order) return;
-
-        // Duplikáció-védelem: oldal-frissítésre sem küld kétszer
-        if ($order->get_meta('_mg_fb_capi_purchase_sent')) return;
-        $order->update_meta_data('_mg_fb_capi_purchase_sent', time());
-        $order->save();
-
-        $content_ids = array();
-        $num_items   = 0;
-
-        foreach ($order->get_items() as $item) {
-            $product = $item->get_product();
-            if (!$product) continue;
-
-            $type_slug   = '';
-            $direct_slug = $item->get_meta('mg_product_type');
-            if (!empty($direct_slug)) {
-                $type_slug = sanitize_title($direct_slug);
-            }
-            if (empty($type_slug)) {
-                $type_label = $item->get_meta(__('Terméktípus', 'mgdtp'));
-                if (!$type_label) $type_label = $item->get_meta('Terméktípus');
-                if ($type_label) {
-                    $catalog_flat = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
-                    foreach ($catalog_flat as $raw_slug => $data) {
-                        if (isset($data['label']) && $data['label'] === $type_label) {
-                            $type_slug = sanitize_title($raw_slug);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            $content_ids[] = self::get_virtual_item_id($product, $type_slug, false);
-            $num_items    += $item->get_quantity();
-        }
-
-        $custom_data = array(
-            'value'        => (float) $order->get_total(),
-            'currency'     => $order->get_currency(),
-            'content_ids'  => $content_ids,
-            'content_type' => 'product',
-            'num_items'    => $num_items,
-        );
-
-        self::send_capi_event(
-            'Purchase',
-            $custom_data,
-            self::build_capi_user_data($order),
-            $order->get_order_number(),
-            $order->get_checkout_order_received_url()
-        );
     }
 
     /**
@@ -552,11 +391,22 @@ class MG_Facebook_Pixel {
 
         $base_sku   = $product->get_sku() ? $product->get_sku() : 'ID_' . $product->get_id();
         $base_price = (float) $product->get_price();
+        $type_prices = array();
+        $size_surcharges = array();
+        if (class_exists('MG_Virtual_Variant_Manager')) {
+            $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+            foreach ((array) ($config['types'] ?? array()) as $slug => $type) {
+                $type_prices[$slug] = !empty($type['price']) ? (float) $type['price'] : $base_price;
+                $size_surcharges[$slug] = (array) ($type['size_surcharges'] ?? array());
+            }
+        }
         ?>
         <script>
         (function() {
             var _mgFbAtcForm = document.querySelector('form.cart');
             if (!_mgFbAtcForm) return;
+            var _mgFbTypePrices = <?php echo wp_json_encode($type_prices); ?>;
+            var _mgFbSizeSurcharges = <?php echo wp_json_encode($size_surcharges); ?>;
 
             _mgFbAtcForm.addEventListener('submit', function() {
                 var typeInput = _mgFbAtcForm.querySelector('[name="mg_product_type"]');
@@ -565,16 +415,24 @@ class MG_Facebook_Pixel {
 
                 var qtyInput = _mgFbAtcForm.querySelector('[name="quantity"]');
                 var qty      = qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
+                var sizeInput = _mgFbAtcForm.querySelector('[name="mg_size"]');
+                var sizeValue = sizeInput ? sizeInput.value : '';
+                var unitPrice = Object.prototype.hasOwnProperty.call(_mgFbTypePrices, typeSlug) ? parseFloat(_mgFbTypePrices[typeSlug]) : <?php echo wp_json_encode($base_price); ?>;
+                if (_mgFbSizeSurcharges[typeSlug] && Object.prototype.hasOwnProperty.call(_mgFbSizeSurcharges[typeSlug], sizeValue)) {
+                    unitPrice += parseFloat(_mgFbSizeSurcharges[typeSlug][sizeValue]) || 0;
+                }
 
                 var atcData = {
                     content_ids:  [itemId],
+                    contents:     [{id: itemId, quantity: qty, item_price: unitPrice}],
                     content_type: 'product',
-                    value:        <?php echo $base_price; ?>,
+                    value:        unitPrice * qty,
                     currency:     '<?php echo esc_js(get_woocommerce_currency()); ?>',
                     quantity:     qty
                 };
 
                 function doFbAtc() {
+                    if (window.mgFbConsentGranted !== true) return false;
                     if (typeof window.fbq === 'function') {
                         window.fbq('track', 'AddToCart', atcData);
                         return true;

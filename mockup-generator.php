@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.18.0
+Version: 2.19.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.18.0');
+    define('MG_VERSION', '2.19.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -84,6 +84,7 @@ add_action('plugins_loaded', function(){
         'includes/class-google-ads-reliability.php',
         'includes/class-google-ads-settings.php',
         'includes/class-facebook-pixel.php',
+        'includes/class-facebook-pixel-reliability.php',
         'includes/class-facebook-pixel-settings.php',
         'includes/class-ai-seo-generator.php',
         'admin/class-ai-seo-page.php',
@@ -278,6 +279,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Facebook_Pixel')) {
         MG_Facebook_Pixel::init();
+    }
+    if (class_exists('MG_Facebook_Pixel_Reliability')) {
+        MG_Facebook_Pixel_Reliability::init();
     }
     if (class_exists('MG_Facebook_Pixel_Settings')) {
         MG_Facebook_Pixel_Settings::init();
