@@ -549,9 +549,9 @@ class MG_Order_Design_Download {
      * trim is applied.
      *
      * The original file on disk is never modified — a temporary copy is
-     * written and returned instead. Falls back to the original path if
-     * Imagick processing isn't available or fails, so a single broken
-     * design never aborts the whole batch.
+     * written and returned instead. Export fails if Imagick processing is
+     * unavailable or incomplete, so an unprocessed PNG can never silently
+     * bypass the production requirements.
      *
      * Results are cached per (design path, type, size, large-size flag) so
      * repeated items (multiple quantities, or identical designs across
@@ -574,9 +574,11 @@ class MG_Order_Design_Download {
         }
 
         if (!class_exists('Imagick')) {
-            $cache[$cache_key] = $design_path;
-            return $design_path;
+            throw new RuntimeException(__('A PNG exporthoz szükséges Imagick nem érhető el a szerveren.', 'mg'));
         }
+
+        $image     = null;
+        $temp_path = null;
 
         try {
             $image = new Imagick($design_path);
@@ -621,9 +623,17 @@ class MG_Order_Design_Download {
                 $image->setImageUnits(Imagick::RESOLUTION_PIXELSPERINCH);
             }
 
+            // Resizing can create new semi-transparent edge pixels. Apply the
+            // DTF-safe hard alpha mask only after every resize/rotation step,
+            // immediately before writing the final PNG.
+            MG_Image_Utils::threshold_alpha_binary($image, 128);
+
             $image->setImageFormat('png');
 
             $temp_path = tempnam(sys_get_temp_dir(), 'mg_design_export_');
+            if ($temp_path === false) {
+                throw new RuntimeException(__('Nem sikerült ideiglenes PNG fájlt létrehozni.', 'mg'));
+            }
             $image->writeImage($temp_path);
             $image->clear();
             $image->destroy();
@@ -638,8 +648,18 @@ class MG_Order_Design_Download {
             $temp_files[]      = $temp_path;
             return $temp_path;
         } catch (Throwable $e) {
-            $cache[$cache_key] = $design_path;
-            return $design_path;
+            if ($image instanceof Imagick) {
+                $image->clear();
+                $image->destroy();
+            }
+            if (is_string($temp_path) && file_exists($temp_path)) {
+                @unlink($temp_path);
+            }
+            throw new RuntimeException(
+                sprintf(__('Nem sikerült előkészíteni a PNG exportot: %s', 'mg'), $e->getMessage()),
+                0,
+                $e
+            );
         }
     }
 
@@ -721,9 +741,13 @@ class MG_Order_Design_Download {
         $size_label = isset($_GET['size']) ? sanitize_text_field(wp_unslash($_GET['size'])) : '';
         $large_size = isset($_GET['large_size']) && $_GET['large_size'] === '1';
 
-        $cache       = array();
-        $temp_files  = array();
-        $export_path = self::prepare_export_png($design_path, $type_slug, $size_label, $cache, $temp_files, $large_size);
+        $cache      = array();
+        $temp_files = array();
+        try {
+            $export_path = self::prepare_export_png($design_path, $type_slug, $size_label, $cache, $temp_files, $large_size);
+        } catch (Throwable $e) {
+            wp_die(esc_html($e->getMessage()), '', array('response' => 500));
+        }
 
         $filename = sanitize_file_name(get_the_title($product_id));
         if ($size_label !== '') {

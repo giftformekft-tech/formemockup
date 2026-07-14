@@ -111,6 +111,54 @@ class MG_Image_Utils {
     }
 
     /**
+     * Converts a PNG's alpha channel to a hard, binary mask in place.
+     *
+     * Pixels below the 0-255 alpha threshold become transparent black. Pixels
+     * at or above it become fully opaque while retaining their original RGB
+     * values. This removes semi-transparent edge pixels that can produce a
+     * white halo during DTF printing.
+     *
+     * @param Imagick $image
+     * @param int     $threshold Alpha threshold in the 0-255 range.
+     * @throws RuntimeException If the image cannot be processed completely.
+     */
+    public static function threshold_alpha_binary($image, $threshold = 128) {
+        if (!($image instanceof Imagick)) {
+            throw new RuntimeException('Az alpha-csatorna feldolgozása Imagick képet igényel.');
+        }
+
+        $threshold = max(0, min(255, (int) $threshold));
+
+        try {
+            // Images without an explicit alpha channel must be treated as
+            // fully opaque instead of accidentally receiving a blank mask.
+            if (!method_exists($image, 'setImageAlphaChannel') ||
+                !defined('Imagick::ALPHACHANNEL_ACTIVATE') ||
+                !defined('Imagick::ALPHACHANNEL_BACKGROUND')) {
+                throw new RuntimeException('A telepített Imagick verzió nem támogatja a szükséges alpha-műveleteket.');
+            }
+            $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+
+            $range = Imagick::getQuantumRange();
+            if (!isset($range['quantumRangeLong']) || $range['quantumRangeLong'] <= 0) {
+                throw new RuntimeException('Nem határozható meg az Imagick alpha-tartománya.');
+            }
+
+            // The half-step boundary makes 127 transparent and 128 opaque.
+            // thresholdImage performs the per-pixel scan in native code.
+            $quantum_threshold = (($threshold - 0.5) / 255) * $range['quantumRangeLong'];
+            $image->thresholdImage($quantum_threshold, Imagick::CHANNEL_ALPHA);
+
+            // Normalize the hidden RGB values of fully transparent pixels.
+            // ALPHACHANNEL_BACKGROUND leaves their alpha at zero.
+            $image->setImageBackgroundColor(new ImagickPixel('rgba(0,0,0,0)'));
+            $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_BACKGROUND);
+        } catch (Throwable $e) {
+            throw new RuntimeException('Nem sikerült binárissá alakítani a PNG alpha-csatornáját.', 0, $e);
+        }
+    }
+
+    /**
      * Stamps an exact DPI into a PNG file's pHYs chunk by editing the raw
      * bytes directly, bypassing Imagick's setImageResolution()/setImageUnits()
      * entirely. Those calls don't reliably survive to the written file across
