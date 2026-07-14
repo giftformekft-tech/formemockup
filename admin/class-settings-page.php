@@ -287,10 +287,13 @@ class MG_Settings_Page {
                 $conversion_id = sanitize_text_field($_POST['mg_gads_conversion_id'] ?? '');
                 $purchase_label = sanitize_text_field($_POST['mg_gads_purchase_label'] ?? '');
 
-                update_option('mg_gads_settings', array(
-                    'conversion_id' => $conversion_id,
-                    'purchase_label' => $purchase_label
-                ));
+                $gads_settings = get_option('mg_gads_settings', array());
+                if (!is_array($gads_settings)) {
+                    $gads_settings = array();
+                }
+                $gads_settings['conversion_id'] = $conversion_id;
+                $gads_settings['purchase_label'] = $purchase_label;
+                update_option('mg_gads_settings', $gads_settings, false);
                 echo '<div class="notice notice-success is-dismissible"><p>Google Ads követés beállítások elmentve.</p></div>';
             }
         }
@@ -945,6 +948,7 @@ class MG_Settings_Page {
             </table>
             <?php submit_button('Google Ads Beállítások Mentése'); ?>
         </form>
+        <p><a class="button button-secondary" href="<?php echo esc_url(admin_url('admin.php?page=mg-gads-settings')); ?>">Tűpontos szerveroldali mérés és diagnosztika</a></p>
         <?php
     }
 

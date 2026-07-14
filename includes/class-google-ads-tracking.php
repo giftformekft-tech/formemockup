@@ -35,9 +35,6 @@ class MG_Google_Ads_Tracking {
 
         // 3. Purchase (Conversion) - Köszönöm oldalon (klasszikus + block checkout)
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
-        // Block checkout kompatibilitás (WC 8.3+)
-        add_action('woocommerce_store_api_checkout_order_processed', array(__CLASS__, 'mark_order_for_tracking'), 10, 1);
-        add_action('woocommerce_order_status_changed', array(__CLASS__, 'output_purchase_event_status_hook'), 10, 3);
 
         // 4. Begin Checkout - Pénztár oldalon
         add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_begin_checkout_event'), 5);
@@ -90,6 +87,32 @@ class MG_Google_Ads_Tracking {
               'analytics_storage':   'denied',
               'wait_for_update':     2000
           });
+          window.mgGadsConsentGranted = false;
+
+          // Persist the choice so checkout can attach consent to the order.
+          window.mgGadsSetConsent = function(granted) {
+              var state = granted ? 'granted' : 'denied';
+              window.mgGadsConsentGranted = !!granted;
+              gtag('consent', 'update', {
+                  'ad_storage': state,
+                  'ad_user_data': state,
+                  'ad_personalization': state,
+                  'analytics_storage': state
+              });
+              document.cookie = 'mg_gads_consent=' + state + ';path=/;max-age=31536000;SameSite=Lax' + (location.protocol === 'https:' ? ';Secure' : '');
+          };
+          document.addEventListener('mg_gads_consent', function() {
+              window.mgGadsSetConsent(true);
+          });
+          document.addEventListener('rcb:consent', function(event) {
+              if (event.detail && typeof event.detail.acceptedAll !== 'undefined') {
+                  window.mgGadsSetConsent(!!event.detail.acceptedAll);
+              }
+          });
+          var mgConsentMatch = document.cookie.match(/(?:^|; )mg_gads_consent=(granted|denied)/);
+          if (mgConsentMatch) {
+              window.mgGadsSetConsent(mgConsentMatch[1] === 'granted');
+          }
         </script>
         <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $conversion_id; ?>"></script>
         <script>
@@ -190,6 +213,10 @@ class MG_Google_Ads_Tracking {
             return;
         }
 
+        if (class_exists('MG_Google_Ads_Reliability') && !MG_Google_Ads_Reliability::is_order_eligible($order)) {
+            return;
+        }
+
         $settings = get_option('mg_gads_settings');
         $conversion_id = esc_js($settings['conversion_id']);
         $purchase_label = esc_js(isset($settings['purchase_label']) ? $settings['purchase_label'] : '');
@@ -251,7 +278,7 @@ class MG_Google_Ads_Tracking {
             }
 
             $item_id = self::get_virtual_item_id($product, $type_slug, false);
-            $item_price = (float) $item->get_total() / max(1, $item->get_quantity());
+            $item_price = (float) $item->get_subtotal() / max(1, $item->get_quantity());
 
             // GA4 standard item mezők
             $item_name = $product->get_name();
@@ -299,10 +326,14 @@ class MG_Google_Ads_Tracking {
         $phone_e164 = '';
         if (!empty($customer_phone)) {
             $phone_digits = preg_replace('/[^0-9]/', '', $customer_phone);
-            // Magyar számok: 06... → +36...
-            if (strlen($phone_digits) === 11 && substr($phone_digits, 0, 2) === '06') {
+            // Magyar mobil- és vezetékes számok egységes E.164 formátumban.
+            if (substr($phone_digits, 0, 2) === '06') {
                 $phone_e164 = '+36' . substr($phone_digits, 2);
-            } elseif (strlen($phone_digits) >= 11) {
+            } elseif (substr($phone_digits, 0, 2) === '36') {
+                $phone_e164 = '+' . $phone_digits;
+            } elseif ($order->get_billing_country() === 'HU') {
+                $phone_e164 = '+36' . ltrim($phone_digits, '0');
+            } elseif (strlen($phone_digits) >= 8) {
                 $phone_e164 = '+' . $phone_digits;
             }
         }
@@ -312,8 +343,35 @@ class MG_Google_Ads_Tracking {
         $city         = $order->get_billing_city();
         $postal_code  = $order->get_billing_postcode();
         $country      = $order->get_billing_country(); // ISO 2-letter
-        // SHA-256 csak email-hez (fallback), a többit plaintext küldjük – Google hasheli
-        $hashed_email = !empty($customer_email) ? hash('sha256', $customer_email) : '';
+        $event_extras = array('discount' => (float) $order->get_discount_total());
+        if (!empty($settings['merchant_id'])) {
+            $event_extras['aw_merchant_id'] = preg_replace('/[^0-9]/', '', $settings['merchant_id']);
+        }
+        if (!empty($settings['feed_country'])) {
+            $event_extras['aw_feed_country'] = strtoupper(sanitize_text_field($settings['feed_country']));
+        }
+        if (!empty($settings['feed_language'])) {
+            $event_extras['aw_feed_language'] = strtolower(sanitize_text_field($settings['feed_language']));
+        }
+
+        $user_data = array_filter(array(
+            'email' => $customer_email,
+            'phone_number' => $phone_e164,
+        ), 'strlen');
+        $user_address = array_filter(array(
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'street' => $street,
+            'city' => $city,
+            'postal_code' => $postal_code,
+            'country' => $country,
+        ), 'strlen');
+        if ($user_address) {
+            $user_data['address'] = $user_address;
+        }
+
+        $order->update_meta_data('_mg_gads_browser_rendered', time());
+        $order->save();
 
         ?>
         <script>
@@ -323,7 +381,17 @@ class MG_Google_Ads_Tracking {
                 transaction_id: '<?php echo esc_js($transaction_id); ?>',
                 value: <?php echo number_format($value, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js($currency); ?>',
-                items: <?php echo wp_json_encode($items); ?>
+                items: <?php echo wp_json_encode($items); ?>,
+                discount: <?php echo wp_json_encode($event_extras['discount']); ?>
+                <?php if (isset($event_extras['aw_merchant_id'])): ?>,
+                aw_merchant_id: <?php echo wp_json_encode($event_extras['aw_merchant_id']); ?>
+                <?php endif; ?>
+                <?php if (isset($event_extras['aw_feed_country'])): ?>,
+                aw_feed_country: <?php echo wp_json_encode($event_extras['aw_feed_country']); ?>
+                <?php endif; ?>
+                <?php if (isset($event_extras['aw_feed_language'])): ?>,
+                aw_feed_language: <?php echo wp_json_encode($event_extras['aw_feed_language']); ?>
+                <?php endif; ?>
             };
             var _mgSent = false;
 
@@ -346,7 +414,9 @@ class MG_Google_Ads_Tracking {
                     ?>
                     <?php if (!empty($ud_fields)): ?>
                     // Enhanced Conversions: user_data globálisan (Google ajánlás)
-                    window.gtag('set', 'user_data', { <?php echo implode(',', $ud_fields); ?> });
+                    if (window.mgGadsConsentGranted === true) {
+                        window.gtag('set', 'user_data', <?php echo wp_json_encode($user_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>);
+                    }
                     <?php endif; ?>
                     window.gtag('event', 'purchase', _mgPurchaseData);
                     _mgSent = true;
@@ -564,28 +634,4 @@ class MG_Google_Ads_Tracking {
         <?php
     }
 
-    /**
-     * Block Checkout: elmenti az order ID-t tranzientbe, hogy a thank you oldalon tüzelhessen.
-     * Meghívva: woocommerce_store_api_checkout_order_processed
-     */
-    public static function mark_order_for_tracking($order) {
-        if (!$order) return;
-        $order_id = is_object($order) ? $order->get_id() : (int)$order;
-        set_transient('mg_gads_block_order_' . $order_id, 1, 3600);
-    }
-
-    /**
-     * Block Checkout: status változáskor ellenőrzi, hogy kell-e a purchase eventet sütni.
-     * A WC block checkout esetén a woocommerce_thankyou hook nem mindig fut le.
-     */
-    public static function output_purchase_event_status_hook($order_id, $old_status, $new_status) {
-        // Csak processing/completed státuszra, és csak ha block checkout jelölte meg
-        if (!in_array($new_status, array('processing', 'completed'), true)) return;
-        if (!get_transient('mg_gads_block_order_' . $order_id)) return;
-        delete_transient('mg_gads_block_order_' . $order_id);
-        // Csak ha éppen a thank you oldalon vagyunk (is_order_received_page)
-        if (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received')) {
-            self::output_purchase_event($order_id);
-        }
-    }
 }

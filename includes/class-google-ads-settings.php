@@ -3,23 +3,19 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-/**
- * Class MG_Google_Ads_Settings
- *
- * Regisztrálja a beállítási felületet a Google Ads követéshez.
- */
+/** Admin settings and measurement diagnostics for Google Ads. */
 class MG_Google_Ads_Settings {
-
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'add_settings_page'));
         add_action('admin_post_mg_gads_save', array(__CLASS__, 'handle_save'));
+        add_action('admin_post_mg_gads_retry_order', array(__CLASS__, 'handle_retry_order'));
     }
 
     public static function add_settings_page() {
         add_submenu_page(
             'mockup-generator',
-            'Google Ads Követés',
-            'Google Ads Követés',
+            'Google Ads mérés',
+            'Google Ads mérés',
             'manage_options',
             'mg-gads-settings',
             array(__CLASS__, 'render_settings_page')
@@ -32,66 +28,251 @@ class MG_Google_Ads_Settings {
         }
         check_admin_referer('mg_gads_save_action');
 
-        $input = isset($_POST['mg_gads_settings']) ? $_POST['mg_gads_settings'] : array();
+        $input = isset($_POST['mg_gads_settings']) && is_array($_POST['mg_gads_settings'])
+            ? wp_unslash($_POST['mg_gads_settings'])
+            : array();
+        $old = class_exists('MG_Google_Ads_Reliability')
+            ? MG_Google_Ads_Reliability::get_settings()
+            : get_option('mg_gads_settings', array());
+
+        $allowed_statuses = array('pending', 'on-hold', 'processing', 'completed');
+        $statuses = array_intersect(
+            $allowed_statuses,
+            array_map('sanitize_key', (array) ($input['eligible_statuses'] ?? array()))
+        );
+        if (!$statuses) {
+            $statuses = array('processing', 'completed');
+        }
+
+        $service_json = trim((string) ($input['service_account_json'] ?? ''));
+        if (!empty($input['delete_service_account'])) {
+            $service_json = '';
+        } elseif ($service_json === '') {
+            $service_json = (string) ($old['service_account_json'] ?? '');
+        } else {
+            $decoded = json_decode($service_json, true);
+            if (!is_array($decoded) || empty($decoded['client_email']) || empty($decoded['private_key'])) {
+                wp_safe_redirect(admin_url('admin.php?page=mg-gads-settings&error=credentials'));
+                exit;
+            }
+            $service_json = wp_json_encode($decoded);
+        }
+
+        $developer_token = trim((string) ($input['developer_token'] ?? ''));
+        if (!empty($input['delete_developer_token'])) {
+            $developer_token = '';
+        } elseif ($developer_token === '') {
+            $developer_token = (string) ($old['developer_token'] ?? '');
+        }
 
         $saved = array(
-            'conversion_id'  => isset($input['conversion_id'])  ? trim(wp_strip_all_tags($input['conversion_id']))  : '',
-            'purchase_label' => isset($input['purchase_label']) ? trim(wp_strip_all_tags($input['purchase_label'])) : '',
+            'conversion_id' => sanitize_text_field($input['conversion_id'] ?? ''),
+            'purchase_label' => sanitize_text_field($input['purchase_label'] ?? ''),
+            'eligible_statuses' => array_values($statuses),
+            'server_side_enabled' => !empty($input['server_side_enabled']) ? 1 : 0,
+            'customer_id' => self::digits($input['customer_id'] ?? ''),
+            'login_customer_id' => self::digits($input['login_customer_id'] ?? ''),
+            'conversion_action_id' => self::digits($input['conversion_action_id'] ?? ''),
+            'service_account_json' => $service_json,
+            'developer_token' => sanitize_text_field($developer_token),
+            'adjustments_enabled' => !empty($input['adjustments_enabled']) ? 1 : 0,
+            'merchant_id' => self::digits($input['merchant_id'] ?? ''),
+            'feed_country' => strtoupper(substr(sanitize_text_field($input['feed_country'] ?? 'HU'), 0, 10)),
+            'feed_language' => strtolower(substr(sanitize_text_field($input['feed_language'] ?? 'hu'), 0, 10)),
+            'validate_only' => !empty($input['validate_only']) ? 1 : 0,
         );
+        update_option('mg_gads_settings', $saved, false);
 
-        update_option('mg_gads_settings', $saved);
-
-        wp_redirect(admin_url('admin.php?page=mg-gads-settings&updated=1'));
+        $queued = 0;
+        if ($saved['server_side_enabled'] && class_exists('MG_Google_Ads_Reliability')) {
+            $queued = MG_Google_Ads_Reliability::backfill_recent_orders(30);
+        }
+        if ($saved['adjustments_enabled'] && class_exists('MG_Google_Ads_Reliability')) {
+            $queued += MG_Google_Ads_Reliability::backfill_pending_adjustments(90);
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mg-gads-settings&updated=1&queued=' . absint($queued)));
         exit;
+    }
+
+    public static function handle_retry_order() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die('Unauthorized');
+        }
+        $order_id = absint($_GET['order_id'] ?? 0);
+        check_admin_referer('mg_gads_retry_' . $order_id);
+        if ($order_id && class_exists('MG_Google_Ads_Reliability')) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order->delete_meta_data(MG_Google_Ads_Reliability::META_REQUEST_ID);
+                $order->delete_meta_data(MG_Google_Ads_Reliability::META_STATUS);
+                $order->delete_meta_data(MG_Google_Ads_Reliability::META_ATTEMPTS);
+                $order->save();
+                MG_Google_Ads_Reliability::queue_purchase($order_id);
+            }
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mg-gads-settings&retried=' . $order_id));
+        exit;
+    }
+
+    private static function digits($value) {
+        return preg_replace('/[^0-9]/', '', (string) $value);
     }
 
     public static function render_settings_page() {
         if (!current_user_can('manage_options')) {
             return;
         }
-
-        $settings = get_option('mg_gads_settings', array('conversion_id' => '', 'purchase_label' => ''));
+        $settings = class_exists('MG_Google_Ads_Reliability')
+            ? MG_Google_Ads_Reliability::get_settings()
+            : get_option('mg_gads_settings', array());
+        $has_service_account = !empty($settings['service_account_json']) || defined('MG_GADS_SERVICE_ACCOUNT_JSON');
+        $has_developer_token = !empty($settings['developer_token']);
         ?>
         <div class="wrap">
-            <h1>Google Ads Konverziókövetés (Mockup Generator)</h1>
+            <h1>Google Ads – tűpontos vásárlásmérés</h1>
 
             <?php if (isset($_GET['updated'])): ?>
-            <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong></p></div>
+                <div class="notice notice-success is-dismissible"><p><strong>Beállítások elmentve.</strong> <?php echo absint($_GET['queued'] ?? 0); ?> korábbi rendelés került ellenőrzési sorba.</p></div>
+            <?php endif; ?>
+            <?php if (isset($_GET['retried'])): ?>
+                <div class="notice notice-success is-dismissible"><p>A #<?php echo absint($_GET['retried']); ?> rendelést újra sorba állítottuk.</p></div>
+            <?php endif; ?>
+            <?php if (($_GET['error'] ?? '') === 'credentials'): ?>
+                <div class="notice notice-error"><p>A service account JSON hibás: a <code>client_email</code> és <code>private_key</code> mező kötelező.</p></div>
             <?php endif; ?>
 
-            <p>Itt állíthatod be a Google Ads konverziókövetés (gtag.js) azonosítóit. Ha ezeket kitöltöd, a rendszer automatikusan beküldi a megfelelő virtuális variáns ID-kat és árakat a Google felé.</p>
+            <p>A böngészős Google tag és a WooCommerce-ből küldött szerveroldali rekord ugyanazt a rendelési azonosítót használja. A Google így deduplikálja a két forrást, a feldolgozást pedig a plugin utólag is ellenőrzi.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_gads_save">
                 <?php wp_nonce_field('mg_gads_save_action'); ?>
 
+                <h2>Böngészős mérés</h2>
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><label for="conversion_id">Conversion ID (Pl.: AW-678723674)</label></th>
-                        <td>
-                            <input type="text" id="conversion_id" name="mg_gads_settings[conversion_id]" value="<?php echo esc_attr($settings['conversion_id'] ?? ''); ?>" class="regular-text" />
-                            <p class="description">A Google Ads fiókod azonosítója. Ezt használja az alap követőkód (gtag) és a remarketing.</p>
-                        </td>
+                        <th><label for="mg-gads-conversion-id">Conversion ID</label></th>
+                        <td><input id="mg-gads-conversion-id" class="regular-text" name="mg_gads_settings[conversion_id]" value="<?php echo esc_attr($settings['conversion_id']); ?>" placeholder="AW-123456789"></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="purchase_label">Purchase Label (Pl.: FITDCNCqwP8bENqA0sMC)</label></th>
+                        <th><label for="mg-gads-purchase-label">Purchase Label</label></th>
+                        <td><input id="mg-gads-purchase-label" class="regular-text" name="mg_gads_settings[purchase_label]" value="<?php echo esc_attr($settings['purchase_label']); ?>" placeholder="AbCdEf..."><p class="description">A Google Ads Vásárlás konverziós művelet címkéje.</p></td>
+                    </tr>
+                    <tr>
+                        <th>Mérhető rendelésállapotok</th>
                         <td>
-                            <input type="text" id="purchase_label" name="mg_gads_settings[purchase_label]" value="<?php echo esc_attr($settings['purchase_label'] ?? ''); ?>" class="regular-text" />
-                            <p class="description">A "Vásárlás" (Purchase) konverziós művelethez tartozó specifikus címke. Ezt csak a Köszönöm oldalon küldjük be.</p>
+                            <?php foreach (array('pending' => 'Fizetésre vár', 'on-hold' => 'Fizetés folyamatban', 'processing' => 'Feldolgozás alatt', 'completed' => 'Teljesítve') as $key => $label): ?>
+                                <label style="display:block;margin:4px 0"><input type="checkbox" name="mg_gads_settings[eligible_statuses][]" value="<?php echo esc_attr($key); ?>" <?php checked(in_array($key, $settings['eligible_statuses'], true)); ?>> <?php echo esc_html($label); ?> (<code><?php echo esc_html($key); ?></code>)</label>
+                            <?php endforeach; ?>
+                            <p class="description">Alapértelmezetten csak a fizetett/feldolgozható rendelések számítanak. Átutalásnál az „on-hold” bekapcsolása üzleti döntés.</p>
                         </td>
                     </tr>
                 </table>
 
-                <?php submit_button('Beállítások mentése'); ?>
+                <h2>Szerveroldali kiegészítés – Google Data Manager API</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>Bekapcsolás</th>
+                        <td><label><input type="checkbox" name="mg_gads_settings[server_side_enabled]" value="1" <?php checked(!empty($settings['server_side_enabled'])); ?>> Tartós szerveroldali küldés, újrapróbálkozás és feldolgozás-ellenőrzés</label></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-customer">Google Ads ügyfélazonosító</label></th>
+                        <td><input id="mg-gads-customer" class="regular-text" name="mg_gads_settings[customer_id]" value="<?php echo esc_attr($settings['customer_id']); ?>" placeholder="1234567890"><p class="description">Kötőjelek nélkül.</p></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-login-customer">MCC/login ügyfélazonosító</label></th>
+                        <td><input id="mg-gads-login-customer" class="regular-text" name="mg_gads_settings[login_customer_id]" value="<?php echo esc_attr($settings['login_customer_id']); ?>" placeholder="opcionális"><p class="description">Csak akkor kell, ha a service account egy kezelői fiókon keresztül fér hozzá.</p></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-action">Konverziós művelet ID</label></th>
+                        <td><input id="mg-gads-action" class="regular-text" name="mg_gads_settings[conversion_action_id]" value="<?php echo esc_attr($settings['conversion_action_id']); ?>" placeholder="123456789"><p class="description">Google Ads → Konverzió részletei; az URL <code>ctId</code> értéke. Ugyanaz a művelet legyen, mint a Purchase Labelnél.</p></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-service-json">Service account JSON</label></th>
+                        <td>
+                            <textarea id="mg-gads-service-json" class="large-text code" rows="7" name="mg_gads_settings[service_account_json]" placeholder="A mentett kulcs megőrzéséhez hagyd üresen."></textarea>
+                            <p class="description">Állapot: <strong><?php echo $has_service_account ? 'beállítva' : 'hiányzik'; ?></strong>. A Google Cloudban engedélyezni kell a Data Manager API-t, a service account e-mailjét pedig fel kell venni a Google Ads fiók felhasználói közé.</p>
+                            <?php if ($has_service_account && !defined('MG_GADS_SERVICE_ACCOUNT_JSON')): ?><label><input type="checkbox" name="mg_gads_settings[delete_service_account]" value="1"> Mentett kulcs törlése</label><?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Teszt mód</th>
+                        <td><label><input type="checkbox" name="mg_gads_settings[validate_only]" value="1" <?php checked(!empty($settings['validate_only'])); ?>> Csak validálás, éles konverzió létrehozása nélkül</label></td>
+                    </tr>
+                </table>
+
+                <h2>Merchant Center kosáradatok</h2>
+                <table class="form-table">
+                    <tr><th>Merchant Center ID</th><td><input class="regular-text" name="mg_gads_settings[merchant_id]" value="<?php echo esc_attr($settings['merchant_id']); ?>"></td></tr>
+                    <tr><th>Feed ország/címke</th><td><input class="small-text" name="mg_gads_settings[feed_country]" value="<?php echo esc_attr($settings['feed_country']); ?>" placeholder="HU"></td></tr>
+                    <tr><th>Feed nyelv</th><td><input class="small-text" name="mg_gads_settings[feed_language]" value="<?php echo esc_attr($settings['feed_language']); ?>" placeholder="hu"></td></tr>
+                </table>
+
+                <h2>Refund és törlés korrekció</h2>
+                <table class="form-table">
+                    <tr>
+                        <th>Google Ads API</th>
+                        <td><label><input type="checkbox" name="mg_gads_settings[adjustments_enabled]" value="1" <?php checked(!empty($settings['adjustments_enabled'])); ?>> Teljes refund/törlés visszavonása, részleges refund értékkorrekciója</label></td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-developer-token">Developer token</label></th>
+                        <td><input id="mg-gads-developer-token" type="password" class="regular-text" name="mg_gads_settings[developer_token]" value="" placeholder="<?php echo $has_developer_token ? 'Mentve – hagyd üresen a megőrzéshez' : 'Google Ads API Center token'; ?>"><p class="description">Csak a korrekciókhoz szükséges; MCC fiók API Center oldaláról kérhető.</p><?php if ($has_developer_token): ?><label><input type="checkbox" name="mg_gads_settings[delete_developer_token]" value="1"> Mentett token törlése</label><?php endif; ?></td>
+                    </tr>
+                </table>
+
+                <?php submit_button('Mérési beállítások mentése'); ?>
             </form>
 
-            <hr style="margin-top: 40px; margin-bottom: 20px;">
-            <h2>Fontos figyelmeztetés!</h2>
-            <div class="notice notice-warning inline">
-                <p>Ha ezt a modult használod, <strong>MINDEN MÁS</strong> Google Ads követő plugint (például GTM4WP, Google Listings and Ads, Site Kit) ki kell kapcsolnod az E-kereskedelmi / Konverzió követés tekintetében!</p>
-                <p>Különben duplán fognak bemenni a konverziók: egyszer a mi jó, variánsokat ismerő "ID_123_ferfi-polo" kódunkkal, egyszer pedig a másik plugin hibás "123" hivatkozásával.</p>
-            </div>
+            <?php self::render_diagnostics(); ?>
+
+            <div class="notice notice-warning inline" style="margin-top:24px"><p><strong>Duplikációvédelem:</strong> más Google Ads/WooCommerce mérőplugin ugyanahhoz vagy másik Purchase konverziós művelethez ne küldjön külön vásárlást.</p></div>
         </div>
+        <?php
+    }
+
+    private static function render_diagnostics() {
+        if (!function_exists('wc_get_orders')) {
+            return;
+        }
+        $orders = wc_get_orders(array(
+            'limit' => 30,
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        ));
+        $counts = array();
+        foreach ($orders as $order) {
+            $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
+            $counts[$status] = ($counts[$status] ?? 0) + 1;
+        }
+        ?>
+        <hr>
+        <h2>Utolsó 30 rendelés mérési diagnosztikája</h2>
+        <p>
+            <?php foreach ($counts as $status => $count): ?>
+                <span style="display:inline-block;padding:5px 9px;margin:0 6px 6px 0;background:#fff;border:1px solid #ccd0d4;border-radius:3px"><code><?php echo esc_html($status); ?></code>: <strong><?php echo absint($count); ?></strong></span>
+            <?php endforeach; ?>
+        </p>
+        <table class="widefat striped">
+            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Server mérés</th><th>Korrekció</th><th>Consent</th><th>Click ID</th><th>Hiba / Request ID</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($orders as $order):
+                $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
+                $detail = $order->get_meta(MG_Google_Ads_Reliability::META_LAST_ERROR) ?: $order->get_meta(MG_Google_Ads_Reliability::META_REQUEST_ID);
+                $retry_url = wp_nonce_url(admin_url('admin-post.php?action=mg_gads_retry_order&order_id=' . $order->get_id()), 'mg_gads_retry_' . $order->get_id());
+                ?>
+                <tr>
+                    <td><a href="<?php echo esc_url($order->get_edit_order_url()); ?>"><strong>#<?php echo esc_html($order->get_order_number()); ?></strong></a><br><?php echo esc_html($order->get_date_created() ? $order->get_date_created()->date_i18n('Y-m-d H:i') : ''); ?></td>
+                    <td><?php echo esc_html(wc_get_order_status_name($order->get_status())); ?></td>
+                    <td><code><?php echo esc_html($status); ?></code></td>
+                    <td><code><?php echo esc_html($order->get_meta('_mg_gads_adjustment_status') ?: '—'); ?></code></td>
+                    <td><?php echo esc_html($order->get_meta('_mg_gads_consent') ?: 'ismeretlen'); ?></td>
+                    <td><?php echo ($order->get_meta('_mg_gads_gclid') || $order->get_meta('_mg_gads_gbraid') || $order->get_meta('_mg_gads_wbraid')) ? 'igen' : 'nincs'; ?></td>
+                    <td style="max-width:360px;word-break:break-word"><?php echo esc_html($detail); ?></td>
+                    <td><a class="button button-small" href="<?php echo esc_url($retry_url); ?>">Újrapróba</a></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
         <?php
     }
 }

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.17.1
+Version: 2.18.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.17.1');
+    define('MG_VERSION', '2.18.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -81,6 +81,7 @@ add_action('plugins_loaded', function(){
         'includes/class-price-override.php',
         'includes/class-google-customer-reviews.php',
         'includes/class-google-ads-tracking.php',
+        'includes/class-google-ads-reliability.php',
         'includes/class-google-ads-settings.php',
         'includes/class-facebook-pixel.php',
         'includes/class-facebook-pixel-settings.php',
@@ -268,6 +269,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Google_Ads_Tracking')) {
         MG_Google_Ads_Tracking::init();
+    }
+    if (class_exists('MG_Google_Ads_Reliability')) {
+        MG_Google_Ads_Reliability::init();
     }
     if (class_exists('MG_Google_Ads_Settings')) {
         MG_Google_Ads_Settings::init();
