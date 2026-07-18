@@ -68,6 +68,7 @@ add_action('plugins_loaded', function(){
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
         'includes/class-designer-button.php',
+        'includes/class-temu-xlsx-writer.php',
         'admin/class-temu-export-page.php',
         'admin/class-order-design-download.php',
         'admin/class-order-item-editor.php',

@@ -11,6 +11,10 @@ class MG_Temu_Export_Page {
         add_action('wp_ajax_mg_temu_generate_export', [self::class, 'ajax_generate_export']);
         add_action('wp_ajax_mg_temu_mark_exported', [self::class, 'ajax_mark_exported']);
         add_action('wp_ajax_mg_temu_save_name_suffix', [self::class, 'ajax_save_name_suffix']);
+        // Temu XLSX export (sebészi ZIP-módszer, lásd MG_Temu_Xlsx_Writer)
+        add_action('wp_ajax_mg_temu_generate_xlsx', [self::class, 'ajax_generate_xlsx']);
+        add_action('admin_post_mg_temu_download_xlsx', [self::class, 'handle_download_xlsx']);
+        add_action('admin_post_mg_temu_upload_template', [self::class, 'handle_upload_template']);
     }
 
     public static function render_page() {
@@ -28,6 +32,38 @@ class MG_Temu_Export_Page {
                     <button type="button" class="button" id="mg-temu-save-suffix"><?php esc_html_e('Mentés', 'mockup-generator'); ?></button>
                     <span id="mg-temu-suffix-status" style="font-style:italic;color:#666;font-size:12px;"></span>
                     <span style="color:#888;font-size:12px;"><?php esc_html_e('Exportban: Terméknév + típus + ez a mező', 'mockup-generator'); ?></span>
+                </div>
+
+                <?php
+                // --- Temu XLSX mestersablon állapot + feltöltés ---
+                $tpl_exists = file_exists(self::get_template_path());
+                $tpl_meta   = get_option('mg_temu_template_meta', []);
+                $tpl_notice = isset($_GET['mg_temu_tpl']) ? sanitize_key(wp_unslash($_GET['mg_temu_tpl'])) : '';
+                $tpl_msg    = isset($_GET['mg_temu_msg']) ? sanitize_text_field(rawurldecode(wp_unslash($_GET['mg_temu_msg']))) : '';
+                ?>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                    <label style="font-weight:600;white-space:nowrap;"><?php esc_html_e('Temu XLSX mestersablon:', 'mockup-generator'); ?></label>
+                    <?php if ($tpl_exists): ?>
+                        <span style="color:#1a7a35;font-size:12px;">✓ <?php
+                            echo esc_html(isset($tpl_meta['name']) ? $tpl_meta['name'] : 'temu-master.xlsx');
+                            if (!empty($tpl_meta['uploaded'])) {
+                                echo ' — ' . esc_html($tpl_meta['uploaded']);
+                            }
+                        ?></span>
+                    <?php else: ?>
+                        <span style="color:#d63638;font-size:12px;"><?php esc_html_e('Nincs feltöltve — az XLSX exporthoz töltsd fel a Temu hivatalos feltöltő sablonját.', 'mockup-generator'); ?></span>
+                    <?php endif; ?>
+                    <form method="post" enctype="multipart/form-data" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;align-items:center;gap:8px;margin:0;">
+                        <input type="hidden" name="action" value="mg_temu_upload_template">
+                        <?php wp_nonce_field('mg_temu_upload_template'); ?>
+                        <input type="file" name="mg_temu_template" accept=".xlsx" required>
+                        <button type="submit" class="button"><?php esc_html_e('Sablon feltöltése', 'mockup-generator'); ?></button>
+                    </form>
+                    <?php if ($tpl_notice === 'ok'): ?>
+                        <span style="color:#1a7a35;font-size:12px;font-weight:600;">✓ <?php esc_html_e('Sablon elmentve.', 'mockup-generator'); ?></span>
+                    <?php elseif ($tpl_notice === 'err'): ?>
+                        <span style="color:#d63638;font-size:12px;font-weight:600;"><?php echo esc_html($tpl_msg !== '' ? $tpl_msg : __('A sablon feltöltése nem sikerült.', 'mockup-generator')); ?></span>
+                    <?php endif; ?>
                 </div>
 
                 <div id="mg-temu-app" class="mg-temu-app">
@@ -105,7 +141,10 @@ class MG_Temu_Export_Page {
                     <div id="mg-temu-step-2" class="mg-temu-step" style="display:none;">
                          <div class="mg-temu-toolbar">
                             <button type="button" class="button" id="mg-temu-back-step"><?php esc_html_e('« Vissza a termékekhez', 'mockup-generator'); ?></button>
-                            <button type="button" class="button button-primary" id="mg-temu-generate"><?php esc_html_e('CSV Export Generálása', 'mockup-generator'); ?></button>
+                            <div style="display:flex;gap:8px;">
+                                <button type="button" class="button button-primary" id="mg-temu-generate"><?php esc_html_e('CSV Export Generálása', 'mockup-generator'); ?></button>
+                                <button type="button" class="button button-primary" id="mg-temu-generate-xlsx"><?php esc_html_e('Temu XLSX letöltése', 'mockup-generator'); ?></button>
+                            </div>
                         </div>
                         
                         <div id="mg-temu-variant-list"></div>
@@ -512,7 +551,8 @@ class MG_Temu_Export_Page {
 
             // --- Export ---
 
-            $('#mg-temu-generate').on('click', function() {
+            // A szűrők alapján kiválasztott variációk összegyűjtése (CSV és XLSX közös)
+            function collectSelection() {
                 const selTypes = $('.mg-filter-type:checked').map((i, el) => el.value).get();
                 const selColors = $('.mg-filter-color:checked').map((i, el) => el.value).get();
                 const selSizes = $('.mg-filter-size:checked').map((i, el) => el.value).get();
@@ -530,12 +570,17 @@ class MG_Temu_Export_Page {
                         }
                     });
                 });
+                return selection;
+            }
+
+            $('#mg-temu-generate').on('click', function() {
+                const selection = collectSelection();
 
                 if (selection.length === 0) {
                     alert('Nincs kiválasztott variáció.');
                     return;
                 }
-                
+
                 const $btn = $(this);
                 $btn.prop('disabled', true).text('Generálás...');
 
@@ -562,6 +607,45 @@ class MG_Temu_Export_Page {
                     },
                     error: function() {
                         $btn.prop('disabled', false).text('CSV Export Generálása');
+                        alert('Kommunikációs hiba.');
+                    }
+                });
+            });
+
+            // --- Temu XLSX export (kész, Temura feltölthető fájl) ---
+            $('#mg-temu-generate-xlsx').on('click', function() {
+                const selection = collectSelection();
+
+                if (selection.length === 0) {
+                    alert('Nincs kiválasztott variáció.');
+                    return;
+                }
+
+                const $btn = $(this);
+                $btn.prop('disabled', true).text('XLSX generálása...');
+
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'mg_temu_generate_xlsx',
+                        selection: JSON.stringify(selection),
+                        nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        $btn.prop('disabled', false).text('Temu XLSX letöltése');
+                        if (response.success) {
+                            if (response.data.unknown_colors && response.data.unknown_colors.length) {
+                                alert('FIGYELEM — ismeretlen szín(ek), változatlanul kerültek az xlsx-be:\n' +
+                                    response.data.unknown_colors.join(', '));
+                            }
+                            window.location.href = response.data.download_url;
+                        } else {
+                            alert('Hiba: ' + response.data);
+                        }
+                    },
+                    error: function() {
+                        $btn.prop('disabled', false).text('Temu XLSX letöltése');
                         alert('Kommunikációs hiba.');
                     }
                 });
@@ -733,9 +817,55 @@ class MG_Temu_Export_Page {
             $selection = [];
         }
         // selection = [ { pid, type, color, size }, ... ]
-        
+
         // CSV Header
         $header = ['Termék neve', 'SKU', 'Sub SKU', 'Szín', 'Méret', 'Leírás', 'Kép URL'];
+
+        $rows = self::build_export_rows($selection);
+
+        // Exportált termékek megjelölése – típusonként a selection alapján
+        self::mark_selection_exported($selection);
+
+        // Export
+        $upload_dir = wp_upload_dir();
+        // Versioned filename to ensure freshness
+        $filename = 'temu-export-v2-' . date('Y-m-d-H-i-s') . '.csv';
+        $filepath = $upload_dir['path'] . '/' . $filename;
+        $fileurl = $upload_dir['url'] . '/' . $filename;
+
+        $fp = fopen($filepath, 'w');
+        // BOM for Excel compatibility
+        fprintf($fp, chr(0xEF).chr(0xBB).chr(0xBF));
+
+        fputcsv($fp, $header, ';');
+        foreach ($rows as $row) {
+            fputcsv($fp, [
+                $row['name'],
+                $row['sku'],
+                $row['sub_sku'],
+                $row['color'],
+                $row['size'],
+                $row['desc'],
+                $row['img'],
+            ], ';');
+        }
+        fclose($fp);
+
+        wp_send_json_success([
+            'url' => $fileurl,
+            'filename' => $filename
+        ]);
+    }
+
+    /**
+     * A kiválasztott variációkból az exportsorok összeállítása.
+     * Ezt használja a CSV ÉS az XLSX export is — az adatlekérdezés garantáltan
+     * azonos, csak a kimeneti formátum tér el.
+     *
+     * @param array $selection [ { pid, type, color, size }, ... ]
+     * @return array<int,array{name:string,sku:string,sub_sku:string,color:string,size:string,desc:string,img:string}>
+     */
+    private static function build_export_rows(array $selection) {
         $rows = [];
 
         // Cache products to avoid reloading
@@ -835,13 +965,13 @@ class MG_Temu_Export_Page {
             $export_name = trim($product->get_name() . ' ' . $type_label . ' ' . $name_suffix);
 
             $rows[] = [
-                $export_name,   // Termék név + típus + egyedi mező
-                $sku_generated, // SKU
-                $sub_sku,       // Sub SKU
-                $color_label,         // Szín
-                $size,                // Méret
-                $export_description,  // Leírás
-                $img_url              // Img URL
+                'name'    => $export_name,   // Termék név + típus + egyedi mező
+                'sku'     => $sku_generated, // SKU
+                'sub_sku' => $sub_sku,       // Sub SKU
+                'color'   => $color_label,         // Szín
+                'size'    => $size,                // Méret
+                'desc'    => $export_description,  // Leírás
+                'img'     => $img_url              // Img URL
             ];
 
             // Ha gyerekpóló (12-es méret, ami 12Y lett), csinálünk egy extra '14Y' sort a Temu miatt
@@ -851,18 +981,26 @@ class MG_Temu_Export_Page {
                 $sub_sku_14y = $sku_generated . $letters_14y . $numbers_14y;
 
                 $rows[] = [
-                    $export_name,   // Termék név + típus + egyedi mező
-                    $sku_generated, // SKU
-                    $sub_sku_14y,   // Kamu méret új Sub SKU-ja
-                    $color_label,         // Szín
-                    '14Y',                // Kamu méret
-                    $export_description,  // Leírás
-                    $img_url              // Img URL (A 12-es méreté hasznosítva)
+                    'name'    => $export_name,   // Termék név + típus + egyedi mező
+                    'sku'     => $sku_generated, // SKU
+                    'sub_sku' => $sub_sku_14y,   // Kamu méret új Sub SKU-ja
+                    'color'   => $color_label,         // Szín
+                    'size'    => '14Y',                // Kamu méret
+                    'desc'    => $export_description,  // Leírás
+                    'img'     => $img_url              // Img URL (A 12-es méreté hasznosítva)
                 ];
             }
         }
 
-        // Exportált termékek megjelölése – típusonként a selection alapján
+        return $rows;
+    }
+
+    /**
+     * Exportált termékek megjelölése – típusonként a selection alapján.
+     *
+     * @param array $selection [ { pid, type, color, size }, ... ]
+     */
+    private static function mark_selection_exported(array $selection) {
         $now = current_time('Y-m-d H:i');
         $types_by_pid = [];
         foreach ($selection as $item) {
@@ -876,28 +1014,223 @@ class MG_Temu_Export_Page {
         foreach ($types_by_pid as $pid => $slug_map) {
             self::mark_types_exported($pid, array_keys($slug_map), $now);
         }
+    }
 
-        // Export
-        $upload_dir = wp_upload_dir();
-        // Versioned filename to ensure freshness
-        $filename = 'temu-export-v2-' . date('Y-m-d-H-i-s') . '.csv';
-        $filepath = $upload_dir['path'] . '/' . $filename;
-        $fileurl = $upload_dir['url'] . '/' . $filename;
-        
-        $fp = fopen($filepath, 'w');
-        // BOM for Excel compatibility
-        fprintf($fp, chr(0xEF).chr(0xBB).chr(0xBF));
-        
-        fputcsv($fp, $header, ';');
-        foreach ($rows as $row) {
-            fputcsv($fp, $row, ';');
+    // ------------------------------------------------------------------
+    // Temu XLSX export — a mestersablon kitöltése sebészi ZIP-módszerrel
+    // ------------------------------------------------------------------
+
+    /**
+     * A mestersablon védett tárolási könyvtára (wp-content/uploads/temu-template).
+     *
+     * @return string
+     */
+    private static function get_template_dir() {
+        $up = wp_upload_dir();
+        return trailingslashit($up['basedir']) . 'temu-template';
+    }
+
+    /**
+     * A feltöltött mestersablon útvonala.
+     *
+     * @return string
+     */
+    private static function get_template_path() {
+        return self::get_template_dir() . '/temu-master.xlsx';
+    }
+
+    /**
+     * Könyvtár létrehozása + közvetlen webes letöltés tiltása (.htaccess, index.php).
+     */
+    private static function ensure_template_dir() {
+        $dir = self::get_template_dir();
+        if (!is_dir($dir)) {
+            wp_mkdir_p($dir);
         }
-        fclose($fp);
+        if (!file_exists($dir . '/.htaccess')) {
+            @file_put_contents(
+                $dir . '/.htaccess',
+                "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n"
+            );
+        }
+        if (!file_exists($dir . '/index.php')) {
+            @file_put_contents($dir . '/index.php', "<?php // Silence is golden.\n");
+        }
+    }
+
+    /**
+     * Mestersablon feltöltése (admin-post). Csak .xlsx, admin jogosultság,
+     * nonce ellenőrzés; mentés előtt validáljuk, hogy tényleg Temu sablon-e.
+     */
+    public static function handle_upload_template() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(esc_html__('Nincs jogosultság.', 'mockup-generator'));
+        }
+        check_admin_referer('mg_temu_upload_template');
+
+        $redirect = wp_get_referer();
+        if (!$redirect) {
+            $redirect = admin_url('admin.php?page=mockup-generator');
+        }
+        $redirect = remove_query_arg(['mg_temu_tpl', 'mg_temu_msg'], $redirect);
+        $fail = function ($msg) use ($redirect) {
+            wp_safe_redirect(add_query_arg([
+                'mg_temu_tpl' => 'err',
+                'mg_temu_msg' => rawurlencode($msg),
+            ], $redirect));
+            exit;
+        };
+
+        if (empty($_FILES['mg_temu_template']['tmp_name']) || !is_uploaded_file($_FILES['mg_temu_template']['tmp_name'])) {
+            $fail(__('Nincs kiválasztott fájl.', 'mockup-generator'));
+        }
+        $orig_name = isset($_FILES['mg_temu_template']['name']) ? sanitize_file_name(wp_unslash($_FILES['mg_temu_template']['name'])) : '';
+        if (strtolower(pathinfo($orig_name, PATHINFO_EXTENSION)) !== 'xlsx') {
+            $fail(__('Csak .xlsx fájl tölthető fel.', 'mockup-generator'));
+        }
+
+        $tmp = $_FILES['mg_temu_template']['tmp_name'];
+        try {
+            // Feltöltéskor rögtön kiderül, ha nem a Temu sablon (nincs Template
+            // lap, hiányzó mezőkulcsok, üres mintasor stb.)
+            MG_Temu_Xlsx_Writer::validate_template($tmp);
+        } catch (Exception $e) {
+            $fail(sprintf(__('Érvénytelen sablon: %s', 'mockup-generator'), $e->getMessage()));
+        }
+
+        self::ensure_template_dir();
+        $dest = self::get_template_path();
+        if (!@move_uploaded_file($tmp, $dest)) {
+            $fail(__('A sablon mentése nem sikerült (írási jogosultság?).', 'mockup-generator'));
+        }
+
+        update_option('mg_temu_template_meta', [
+            'name'     => $orig_name,
+            'size'     => (int) filesize($dest),
+            'uploaded' => current_time('Y-m-d H:i'),
+        ]);
+
+        wp_safe_redirect(add_query_arg('mg_temu_tpl', 'ok', $redirect));
+        exit;
+    }
+
+    /**
+     * XLSX generálása a kiválasztott variációkból (admin-ajax).
+     * Ugyanazt az adatlekérdezést használja, mint a CSV export
+     * (build_export_rows), csak a szín itt magyarról angolra fordul.
+     */
+    public static function ajax_generate_xlsx() {
+        check_ajax_referer('mg_temu_nonce', 'nonce');
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('Nincs jogosultság.', 'mockup-generator'));
+        }
+
+        $selection = isset($_POST['selection']) ? wp_unslash($_POST['selection']) : '';
+        if (is_string($selection)) {
+            $selection = json_decode($selection, true);
+        }
+        if (!is_array($selection) || empty($selection)) {
+            wp_send_json_error(__('Nincs kiválasztott variáció.', 'mockup-generator'));
+        }
+
+        if (!class_exists('MG_Temu_Xlsx_Writer')) {
+            wp_send_json_error(__('Az XLSX exporter modul nem érhető el.', 'mockup-generator'));
+        }
+
+        $template = self::get_template_path();
+        if (!file_exists($template)) {
+            wp_send_json_error(__('Nincs feltöltött Temu mestersablon. Töltsd fel a lap tetején található beállításnál.', 'mockup-generator'));
+        }
+
+        $rows = self::build_export_rows($selection);
+        if (empty($rows)) {
+            wp_send_json_error(__('A kiválasztásból nem készült egyetlen adatsor sem.', 'mockup-generator'));
+        }
+
+        // Szín: magyar -> Temu angol érték; az ismeretlen színek változatlanul
+        // mennek be, de figyelmeztetést küldünk a felületre.
+        $unknown_colors = [];
+        foreach ($rows as $i => $row) {
+            list($color, $unknown) = MG_Temu_Xlsx_Writer::map_color($row['color']);
+            if ($unknown !== null) {
+                $unknown_colors[$unknown] = true;
+            }
+            $rows[$i]['color'] = $color;
+        }
+
+        self::ensure_template_dir();
+        self::cleanup_stale_exports();
+
+        $token    = strtolower(wp_generate_password(20, false));
+        $filename = 'temu-upload-' . date('Y-m-d-Hi', current_time('timestamp')) . '.xlsx';
+        $out_path = self::get_template_dir() . '/export-' . $token . '.xlsx';
+
+        try {
+            MG_Temu_Xlsx_Writer::generate($template, $rows, $out_path);
+        } catch (Exception $e) {
+            wp_send_json_error($e->getMessage());
+        }
+
+        // Egyszer használatos letöltési token — a fájl védett könyvtárban van,
+        // a letöltés admin-post handleren keresztül, helyes headerekkel megy.
+        set_transient('mg_temu_xlsx_' . $token, [
+            'path'     => $out_path,
+            'filename' => $filename,
+        ], 15 * MINUTE_IN_SECONDS);
+
+        self::mark_selection_exported($selection);
 
         wp_send_json_success([
-            'url' => $fileurl,
-            'filename' => $filename
+            'download_url'   => wp_nonce_url(
+                admin_url('admin-post.php?action=mg_temu_download_xlsx&token=' . $token),
+                'mg_temu_download_xlsx'
+            ),
+            'filename'       => $filename,
+            'rows'           => count($rows),
+            'unknown_colors' => array_keys($unknown_colors),
         ]);
+    }
+
+    /**
+     * A generált xlsx letöltése (admin-post) a megfelelő headerekkel.
+     */
+    public static function handle_download_xlsx() {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_die(esc_html__('Nincs jogosultság.', 'mockup-generator'));
+        }
+        check_admin_referer('mg_temu_download_xlsx');
+
+        $token = isset($_GET['token']) ? preg_replace('/[^a-z0-9]/', '', (string) wp_unslash($_GET['token'])) : '';
+        $data  = $token !== '' ? get_transient('mg_temu_xlsx_' . $token) : false;
+        if (!$data || empty($data['path']) || !file_exists($data['path'])) {
+            wp_die(esc_html__('A letöltési hivatkozás lejárt vagy érvénytelen. Generáld újra az exportot.', 'mockup-generator'));
+        }
+
+        nocache_headers();
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $data['filename'] . '"');
+        header('Content-Length: ' . filesize($data['path']));
+        readfile($data['path']);
+
+        @unlink($data['path']);
+        delete_transient('mg_temu_xlsx_' . $token);
+        exit;
+    }
+
+    /**
+     * Ottfelejtett (le nem töltött) exportfájlok törlése 1 nap után.
+     */
+    private static function cleanup_stale_exports() {
+        $files = glob(self::get_template_dir() . '/export-*.xlsx');
+        if (!is_array($files)) {
+            return;
+        }
+        foreach ($files as $file) {
+            $mtime = @filemtime($file);
+            if ($mtime !== false && $mtime < time() - DAY_IN_SECONDS) {
+                @unlink($file);
+            }
+        }
     }
 
     public static function ajax_mark_exported() {
