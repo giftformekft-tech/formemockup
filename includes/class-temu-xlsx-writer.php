@@ -204,8 +204,23 @@ class MG_Temu_Xlsx_Writer {
         $missing = [];
         $field_col = []; // adatmező -> oszlopbetű
         foreach (self::KEY_TO_FIELD as $key => $field) {
+            $col = null;
             if (isset($key_col[$key])) {
-                $field_col[$field] = $key_col[$key];
+                $col = $key_col[$key];
+            } elseif (($colon = strpos($key, ':')) !== false) {
+                // pl. t_4_Size:3001 — a property-azonosító sablononként eltérhet
+                // (női/gyerek/más kategóriájú sablon), ezért ha a pontos kulcs
+                // nincs meg, az azonos előtagú első kulcsot fogadjuk el
+                $prefix = substr($key, 0, $colon + 1);
+                foreach ($key_col as $k => $c) {
+                    if (strpos($k, $prefix) === 0) {
+                        $col = $c;
+                        break;
+                    }
+                }
+            }
+            if ($col !== null) {
+                $field_col[$field] = $col;
             } else {
                 $missing[] = $key;
             }
