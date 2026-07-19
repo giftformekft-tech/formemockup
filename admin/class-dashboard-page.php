@@ -75,6 +75,49 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
         return array('items'=>$rows,'total'=>$total,'per_page'=>$per_page,'paged'=>$paged,'pages'=>max(1,ceil($total/$per_page)));
     }
 
+    /**
+     * Stat cards + quick action links shown at the top of the dashboard.
+     * Read-only summary, no behaviour change to the list below.
+     *
+     * @param array $data Result of find_generated_products() for the total count.
+     */
+    protected static function render_overview_cards($data){
+        global $wpdb;
+
+        $products = get_option('mg_products', array());
+        $type_count = is_array($products) ? count($products) : 0;
+
+        $recent_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN ('publish','draft','pending','private') AND post_date >= %s",
+            gmdate('Y-m-d H:i:s', strtotime('-30 days'))
+        ));
+
+        $queue_pending = class_exists('MG_Bulk_Queue') ? MG_Bulk_Queue::get_pending_count() : 0;
+
+        echo '<div class="mg-dash-stats">';
+        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Aktív terméktípus</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($type_count)) . '</p><p class="mg-dash-stat__hint">a Beállításokban konfigurálva</p></div>';
+        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Termék összesen</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n((int) $data['total'])) . '</p><p class="mg-dash-stat__hint">publish, draft, pending, private</p></div>';
+        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Új termék (30 nap)</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($recent_count)) . '</p><p class="mg-dash-stat__hint">az elmúlt 30 napban létrehozva</p></div>';
+        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Bulk sor</p><p class="mg-dash-stat__value">' . ($queue_pending > 0 ? esc_html(number_format_i18n($queue_pending)) : 'Üres') . '</p><p class="mg-dash-stat__hint">' . ($queue_pending > 0 ? 'feldolgozásra váró tétel' : 'nincs feldolgozásra váró tétel') . '</p></div>';
+        echo '</div>';
+
+        $shell = admin_url('admin.php?page=mockup-generator');
+        $actions = array(
+            array('mg_tab=bulk', 'dashicons-upload', 'Bulk minta feltöltés', 'Több design egyszerre'),
+            array('mg_tab=temu_export', 'dashicons-migrate', 'Temu Export', 'XLSX a sablonod alapján'),
+            array('mg_tab=dedup', 'dashicons-search', 'Duplikátum-keresés', 'Ismétlődő termékek tisztítása'),
+            array('mg_tab=settings', 'dashicons-admin-generic', 'Beállítások', 'Terméktípusok és opciók'),
+        );
+        echo '<div class="mg-quick-actions">';
+        foreach ($actions as $a) {
+            echo '<a class="mg-quick-action" href="' . esc_url($shell . '&' . $a[0]) . '">';
+            echo '<span class="dashicons ' . esc_attr($a[1]) . '" aria-hidden="true"></span>';
+            echo '<span><strong>' . esc_html($a[2]) . '</strong><span class="mg-quick-action__desc">' . esc_html($a[3]) . '</span></span>';
+            echo '</a>';
+        }
+        echo '</div>';
+    }
+
     public static function render_page(){
         if (!current_user_can('edit_products')) { wp_die(__('Nincs jogosultság.')); }
 
@@ -89,8 +132,10 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
         $base_url = admin_url('admin.php?page=mockup-generator-dashboard');
 
         echo '<div class="wrap">';
-        echo '<h1>Mockup Generator – Dashboard</h1>';
+        echo '<h1>Dashboard</h1>';
         echo '<p>Áttekintés a pluginnal generált termékekről. Keresés, szűrés, lapozás.</p>';
+
+        self::render_overview_cards($data);
 
         echo '<form method="get" class="mg-filters">';
         echo '<input type="hidden" name="page" value="mockup-generator-dashboard">';

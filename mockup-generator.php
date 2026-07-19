@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.19.0
+Version: 2.20.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.19.0');
+    define('MG_VERSION', '2.20.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -37,6 +37,7 @@ add_action('plugins_loaded', function(){
         'includes/class-category-toggle.php',
         'includes/class-category-popup.php',
         'admin/class-admin-page.php',
+        'admin/class-menu-manager.php',
         'admin/class-settings-page.php',
         'admin/class-product-settings-page.php',
         'admin/class-variant-display-page.php',
@@ -143,6 +144,10 @@ add_action('plugins_loaded', function(){
         }
         });
 
+    if (class_exists('MG_Menu_Manager')) {
+        MG_Menu_Manager::init();
+    }
+
     if (class_exists('MG_Dedup_Products_Page')) {
         MG_Dedup_Products_Page::register_ajax();
     }
@@ -168,7 +173,9 @@ add_action('plugins_loaded', function(){
             ));
         }
 
-        if ($is_shell && $tab === 'variants' && class_exists('MG_Variant_Display_Page')) {
+        // The shell renders every panel up front, so the variant editor's
+        // assets must be present regardless of which tab the page opened on.
+        if ($is_shell && class_exists('MG_Variant_Display_Page')) {
             MG_Variant_Display_Page::enqueue_assets($hook);
         }
     });

@@ -32,8 +32,9 @@ class MG_Variant_Display_Page {
 
     public static function enqueue_assets($hook) {
         $page_slug = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
-        $tab_slug  = isset($_GET['mg_tab']) ? sanitize_key(wp_unslash($_GET['mg_tab'])) : '';
-        $is_shell_variant = ($page_slug === 'mockup-generator' && $tab_slug === 'variants');
+        // The shell pre-renders every panel, so the variant editor assets are
+        // needed on any shell load, not only when it opens on the variants tab.
+        $is_shell_variant = ($page_slug === 'mockup-generator');
 
         if (!$is_shell_variant && strpos((string) $hook, 'mockup-generator-variant-display') === false && $page_slug !== 'mockup-generator-variant-display') {
             return;

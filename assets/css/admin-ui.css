@@ -1,16 +1,27 @@
 .mg-admin-shell {
-    --mg-bg: #f5f7fb;
+    --mg-bg: #f4f6fa;
     --mg-soft: #ffffff;
+    --mg-border: #e3e8ef;
     --mg-muted: #d8dee6;
-    --mg-text: #1e1e1e;
+    --mg-text: #1d2327;
+    --mg-text-muted: #68707c;
+    --mg-accent: #2271b1;
+    --mg-accent-soft: #e8f1f8;
+    --mg-ok: #1a7f37;
+    --mg-ok-bg: #e6f4ea;
+    --mg-warn: #9a6700;
+    --mg-warn-bg: #fff4d6;
+    --mg-err: #b42318;
+    --mg-err-bg: #fdecea;
     --mg-radius: 12px;
-    --mg-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+    --mg-radius-sm: 8px;
+    --mg-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 24px rgba(16, 24, 40, 0.06);
     --mg-gap: 20px;
     --mg-pad: 20px;
     background: var(--mg-bg);
     color: var(--mg-text);
     min-height: 100vh;
-    padding: 32px;
+    padding: 28px 32px 96px;
     box-sizing: border-box;
 }
 
@@ -70,37 +81,97 @@
     box-shadow: var(--mg-shadow);
 }
 
-.mg-tabbar {
+/* ── Elsődleges csoport-navigáció (pill stílus) ─────────────────────── */
+.mg-groupnav {
     display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: var(--mg-soft);
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    padding: 6px;
+    box-shadow: var(--mg-shadow);
+    margin-bottom: 14px;
+}
+
+.mg-group {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
+    border: 0;
+    background: transparent;
+    border-radius: var(--mg-radius-sm);
+    padding: 9px 14px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--mg-text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.mg-group .dashicons {
+    font-size: 17px;
+    width: 17px;
+    height: 17px;
+}
+
+.mg-group:hover,
+.mg-group:focus {
+    background: var(--mg-bg);
+    color: var(--mg-text);
+    outline: none;
+}
+
+.mg-group.is-active {
+    background: var(--mg-accent);
+    color: #fff;
+}
+
+.mg-group:last-child {
+    margin-left: auto;
+}
+
+/* ── Másodlagos al-tabok (aláhúzásos stílus) ────────────────────────── */
+.mg-subtabs {
+    display: none;
+    gap: 20px;
+    padding: 0 6px;
+    border-bottom: 1px solid var(--mg-border);
     overflow-x: auto;
-    padding: 8px 0 16px;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.mg-subtabs.is-active {
+    display: flex;
+}
+
+.mg-subtabs--single.is-active {
+    display: none;
 }
 
 .mg-tab {
     background: transparent;
     border: none;
-    border-radius: 999px;
-    padding: 10px 18px;
-    font-size: 14px;
+    border-bottom: 2px solid transparent;
+    padding: 10px 2px;
+    font-size: 13.5px;
     font-weight: 500;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
-    color: #475569;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    color: var(--mg-text-muted);
+    white-space: nowrap;
 }
 
 .mg-tab:hover,
 .mg-tab:focus {
-    background: rgba(34, 113, 177, 0.12);
-    color: #1e293b;
+    color: var(--mg-text);
     outline: none;
 }
 
 .mg-tab.is-active {
-    background: var(--mg-soft);
-    color: #1e293b;
-    box-shadow: inset 0 0 0 2px rgba(34, 113, 177, 0.18);
+    color: var(--mg-accent);
+    border-bottom-color: var(--mg-accent);
+    font-weight: 600;
 }
 
 .mg-tabpanels {
@@ -882,4 +953,298 @@ body.wp-admin[data-theme="dark"] .mg-tab.is-active {
 
 body.wp-admin[data-theme="dark"] .mg-card__meta li {
     background: rgba(148, 163, 184, 0.14);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   V2 design réteg – egységes megjelenés a beágyazott (legacy) oldalakon
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Beágyazott oldal fejlécek */
+.mg-panel-body--legacy .wrap > h1,
+.mg-panel-body--legacy .wrap > h1:first-child {
+    font-size: 18px;
+    font-weight: 600;
+    padding: 0;
+    margin: 0 0 4px;
+    color: var(--mg-text);
+}
+
+.mg-panel-body--legacy .wrap > p:first-of-type {
+    color: var(--mg-text-muted);
+    margin-top: 0;
+}
+
+.mg-panel-body--legacy .wrap h2,
+.mg-panel-body--legacy .wrap h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 24px 0 8px;
+}
+
+/* A settings oldal belső nav-tab sora – igazítás az al-tab stílushoz */
+.mg-panel-body--legacy .nav-tab-wrapper {
+    border-bottom: 1px solid var(--mg-border);
+    padding: 0;
+    margin: 0 0 20px;
+    display: flex;
+    gap: 18px;
+    overflow-x: auto;
+}
+
+.mg-panel-body--legacy .nav-tab {
+    float: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    margin: 0;
+    padding: 10px 2px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--mg-text-muted);
+    white-space: nowrap;
+}
+
+.mg-panel-body--legacy .nav-tab:hover,
+.mg-panel-body--legacy .nav-tab:focus {
+    color: var(--mg-text);
+    box-shadow: none;
+}
+
+.mg-panel-body--legacy .nav-tab-active,
+.mg-panel-body--legacy .nav-tab-active:hover {
+    color: var(--mg-accent);
+    border-bottom-color: var(--mg-accent);
+    font-weight: 600;
+    background: transparent;
+}
+
+/* Táblázatok egységesítése */
+.mg-panel-body--legacy table.widefat {
+    border: 1px solid var(--mg-border);
+    box-shadow: none;
+}
+
+.mg-panel-body--legacy table.widefat thead th {
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--mg-text-muted);
+    border-bottom: 1px solid var(--mg-border);
+    padding: 10px 12px;
+}
+
+.mg-panel-body--legacy table.widefat td {
+    padding: 11px 12px;
+    vertical-align: middle;
+}
+
+.mg-panel-body--legacy table.widefat tbody tr:hover td {
+    background: var(--mg-bg);
+}
+
+/* form-table sorok kártyásabb ritmusa */
+.mg-panel-body--legacy table.form-table th {
+    font-weight: 600;
+    font-size: 13.5px;
+    padding: 14px 10px 14px 0;
+}
+
+.mg-panel-body--legacy table.form-table td {
+    padding: 10px 10px;
+}
+
+.mg-panel-body--legacy table.form-table .description {
+    color: var(--mg-text-muted);
+    font-size: 12.5px;
+}
+
+/* Beviteli mezők */
+.mg-panel-body--legacy input[type="text"],
+.mg-panel-body--legacy input[type="number"],
+.mg-panel-body--legacy input[type="url"],
+.mg-panel-body--legacy input[type="email"],
+.mg-panel-body--legacy input[type="password"],
+.mg-panel-body--legacy input[type="search"],
+.mg-panel-body--legacy input[type="date"],
+.mg-panel-body--legacy select,
+.mg-panel-body--legacy textarea {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius-sm);
+    box-shadow: none;
+}
+
+.mg-panel-body--legacy input:focus,
+.mg-panel-body--legacy select:focus,
+.mg-panel-body--legacy textarea:focus {
+    border-color: var(--mg-accent);
+    box-shadow: 0 0 0 2px var(--mg-accent-soft);
+    outline: none;
+}
+
+/* Gombok */
+.mg-panel-body--legacy .button {
+    border-radius: var(--mg-radius-sm);
+    border-color: var(--mg-border);
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.mg-panel-body--legacy .button:hover {
+    border-color: var(--mg-accent);
+    color: var(--mg-accent);
+}
+
+.mg-panel-body--legacy .button-primary,
+.mg-panel-body--legacy .button-primary:hover {
+    border-color: var(--mg-accent);
+    color: #fff;
+}
+
+/* Notice-ok a panel tetején, kerekítve */
+.mg-panel-body--legacy .notice,
+.mg-panel-body--legacy .updated,
+.mg-panel-body--legacy .error {
+    border-radius: var(--mg-radius-sm);
+    box-shadow: none;
+    border-top: 0;
+    border-right: 0;
+    border-bottom: 0;
+}
+
+/* Kártya jellegű dobozok a legacy oldalakon (pl. Maintenance .card) */
+.mg-panel-body--legacy .card {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    box-shadow: var(--mg-shadow);
+    background: var(--mg-soft);
+}
+
+/* ── Státusz badge-ek ───────────────────────────────────────────────── */
+.mg-badge--ok {
+    color: var(--mg-ok);
+    background: var(--mg-ok-bg);
+}
+
+.mg-badge--warn {
+    color: var(--mg-warn);
+    background: var(--mg-warn-bg);
+}
+
+.mg-badge--err {
+    color: var(--mg-err);
+    background: var(--mg-err-bg);
+}
+
+.mg-badge--info {
+    color: var(--mg-accent);
+    background: var(--mg-accent-soft);
+}
+
+/* ── Dashboard: stat kártyák és gyorsműveletek ─────────────────────── */
+.mg-dash-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 0 0 20px;
+}
+
+.mg-dash-stat {
+    background: var(--mg-soft);
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    padding: 16px 18px;
+    box-shadow: var(--mg-shadow);
+}
+
+.mg-dash-stat__label {
+    font-size: 12.5px;
+    color: var(--mg-text-muted);
+    margin: 0;
+}
+
+.mg-dash-stat__value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 4px 0 2px;
+    color: var(--mg-text);
+}
+
+.mg-dash-stat__hint {
+    font-size: 12px;
+    color: var(--mg-text-muted);
+    margin: 0;
+}
+
+.mg-quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 0 0 24px;
+}
+
+.mg-quick-action {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius-sm);
+    background: var(--mg-soft);
+    padding: 12px 14px;
+    text-decoration: none;
+    color: var(--mg-text);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mg-quick-action:hover,
+.mg-quick-action:focus {
+    border-color: var(--mg-accent);
+    background: var(--mg-accent-soft);
+    color: var(--mg-text);
+    outline: none;
+}
+
+.mg-quick-action .dashicons {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    border-radius: 9px;
+    background: var(--mg-accent-soft);
+    color: var(--mg-accent);
+    display: grid;
+    place-items: center;
+    flex: none;
+}
+
+.mg-quick-action strong {
+    display: block;
+    font-size: 13.5px;
+}
+
+.mg-quick-action span.mg-quick-action__desc {
+    font-size: 12px;
+    color: var(--mg-text-muted);
+}
+
+/* ── Reszponzív finomítás az új navigációhoz ───────────────────────── */
+@media (max-width: 782px) {
+    .mg-groupnav {
+        gap: 4px;
+    }
+
+    .mg-group {
+        padding: 8px 10px;
+    }
+
+    .mg-group__label {
+        display: none;
+    }
+
+    .mg-group.is-active .mg-group__label {
+        display: inline;
+    }
+
+    .mg-group:last-child {
+        margin-left: 0;
+    }
 }

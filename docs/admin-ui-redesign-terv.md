@@ -1,6 +1,6 @@
 # Mockup Generator – Admin UI egységesítési és modernizálási terv
 
-Dátum: 2026-07-19 · Státusz: TERV (kódolás még nem történt)
+Dátum: 2026-07-19 · Státusz: **VÉGREHAJTVA** (v2.20.0 – F1–F4 implementálva; a Logok tab funkció nélkül eltávolítva, a migrációs eszközök az Eszközök csoportban maradtak láthatóak)
 Alapelv: **a funkciók nem változnak** – csak a navigáció, az elrendezés és a vizuális réteg.
 
 ---

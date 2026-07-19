@@ -354,11 +354,15 @@ add_action('admin_menu', function() {
         'Design Path Migration',
         'manage_woocommerce',
         'mg-design-path-migration',
-        function() {
+        'mg_render_design_path_migration_page'
+    );
+}, 100);
+
+function mg_render_design_path_migration_page() {
             if (!current_user_can('manage_woocommerce')) {
                 wp_die('Unauthorized');
             }
-            
+
             echo '<div class="wrap">';
             echo '<h1>Design Path Migration</h1>';
             
@@ -469,11 +473,9 @@ add_action('admin_menu', function() {
                 }
             });
             </script>';
-            
+
             echo '</div>';
-        }
-    );
-}, 100);
+}
 
 // AJAX handler for batch processing
 add_action('wp_ajax_mg_migrate_batch', function() {

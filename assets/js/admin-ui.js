@@ -788,10 +788,26 @@
         }
     }
 
+    function syncGroupUi(tab) {
+        const $btn = $('.mg-tab[data-tab="' + tab + '"]');
+        const group = sanitizeTab($btn.data('group'));
+        if (!group) {
+            return;
+        }
+        $('.mg-group').removeClass('is-active').filter('[data-group="' + group + '"]').addClass('is-active');
+        $('.mg-subtabs').removeClass('is-active').filter('[data-group="' + group + '"]').addClass('is-active');
+    }
+
     function setActiveTab(tab, options) {
-        const sanitized = sanitizeTab(tab);
+        let sanitized = sanitizeTab(tab);
         if (!sanitized) {
             return;
+        }
+        if (!$('.mg-tab[data-tab="' + sanitized + '"]').length) {
+            sanitized = sanitizeTab($('.mg-tab').first().data('tab'));
+            if (!sanitized) {
+                return;
+            }
         }
         const opts = options || {};
         if (state.active === sanitized) {
@@ -810,6 +826,7 @@
 
         $('.mg-tab').removeClass('is-active').filter('[data-tab="' + sanitized + '"]').addClass('is-active');
         $('.mg-panel').removeClass('is-active').filter('#tab-' + sanitized).addClass('is-active');
+        syncGroupUi(sanitized);
         rewriteLegacyLinks('#tab-' + sanitized);
         initColorManagers('#tab-' + sanitized);
 
@@ -857,6 +874,16 @@
             if (target) {
                 setActiveTab(target);
             }
+        });
+
+        $('.mg-group').on('click', function () {
+            const group = sanitizeTab($(this).data('group'));
+            const isCurrent = $(this).hasClass('is-active');
+            const target = sanitizeTab($(this).data('defaultTab'));
+            if (!target || (isCurrent && group)) {
+                return;
+            }
+            setActiveTab(target);
         });
 
         $(document).on('change input', '.mg-panel input, .mg-panel select, .mg-panel textarea', function () {

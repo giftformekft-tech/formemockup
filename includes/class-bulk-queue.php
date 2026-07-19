@@ -654,6 +654,15 @@ class MG_Bulk_Queue {
         delete_transient(self::lock_key($job_id));
     }
 
+    /**
+     * Read-only pending job count for dashboard/status displays.
+     *
+     * @return int
+     */
+    public static function get_pending_count() {
+        return self::count_pending_jobs();
+    }
+
     private static function count_pending_jobs() {
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order)) {

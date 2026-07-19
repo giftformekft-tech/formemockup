@@ -74,7 +74,7 @@ class MG_Admin_Page {
             true
         );
 
-        $tabs = self::get_tabs();
+        $tabs = self::get_accessible_tabs();
         $active = self::determine_active_tab($tabs);
         $data = array(
             'defaultTab' => $active,
@@ -96,59 +96,200 @@ class MG_Admin_Page {
     }
 
     /**
-     * Returns the list of admin tabs rendered inside the SPA shell.
+     * Returns the primary navigation groups of the admin shell.
      *
      * @return array<string,array<string,string>>
      */
-    private static function get_tabs() {
+    public static function get_groups() {
         return array(
             'dashboard' => array(
-                'label'     => __('Dashboard', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-dashboard',
+                'label' => __('Dashboard', 'mockup-generator'),
+                'icon'  => 'dashicons-chart-area',
             ),
             'mockups' => array(
                 'label' => __('Mockupok', 'mockup-generator'),
-                'type'  => 'custom',
+                'icon'  => 'dashicons-art',
             ),
-            'bulk' => array(
-                'label' => __('Bulk feltöltés', 'mockup-generator'),
-                'type'  => 'bulk',
+            'sales' => array(
+                'label' => __('Értékesítés', 'mockup-generator'),
+                'icon'  => 'dashicons-cart',
             ),
-            'temu_export' => array(
-                'label' => __('Temu Export', 'mockup-generator'),
-                'type'  => 'temu_export',
+            'marketing' => array(
+                'label' => __('Marketing & Mérés', 'mockup-generator'),
+                'icon'  => 'dashicons-chart-line',
             ),
-            'variants' => array(
-                'label'     => __('Variánsok', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-variant-display',
+            'export' => array(
+                'label' => __('Export & Feedek', 'mockup-generator'),
+                'icon'  => 'dashicons-migrate',
             ),
-            'surcharges' => array(
-                'label'     => __('Felárak', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-surcharges',
-            ),
-            'bundle_discount' => array(
-                'label'     => __('Mennyiségi kedvezmény', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-bundle-discount',
-            ),
-            'custom_fields' => array(
-                'label'     => __('Egyedi mezők', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-custom-fields',
+            'tools' => array(
+                'label' => __('Eszközök', 'mockup-generator'),
+                'icon'  => 'dashicons-admin-tools',
             ),
             'settings' => array(
-                'label'     => __('Beállítások', 'mockup-generator'),
-                'type'      => 'legacy',
-                'page_slug' => 'mockup-generator-settings',
-            ),
-            'logs' => array(
-                'label' => __('Logok', 'mockup-generator'),
-                'type'  => 'placeholder',
+                'label' => __('Beállítások', 'mockup-generator'),
+                'icon'  => 'dashicons-admin-generic',
             ),
         );
+    }
+
+    /**
+     * Returns the list of admin tabs rendered inside the SPA shell.
+     *
+     * Each tab keeps the capability of its original standalone admin page so
+     * embedding never widens (or narrows) who can access a feature.
+     *
+     * @return array<string,array<string,string>>
+     */
+    public static function get_tabs() {
+        return array(
+            'dashboard' => array(
+                'label'      => __('Dashboard', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-dashboard',
+                'group'      => 'dashboard',
+                'capability' => 'edit_products',
+            ),
+            'mockups' => array(
+                'label'      => __('Mockupok', 'mockup-generator'),
+                'type'       => 'custom',
+                'group'      => 'mockups',
+                'capability' => 'edit_products',
+            ),
+            'bulk' => array(
+                'label'      => __('Bulk feltöltés', 'mockup-generator'),
+                'type'       => 'bulk',
+                'group'      => 'mockups',
+                'capability' => 'edit_products',
+            ),
+            'dedup' => array(
+                'label'      => __('Duplikált termékek', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-dedup',
+                'group'      => 'mockups',
+                'capability' => 'manage_woocommerce',
+            ),
+            'variants' => array(
+                'label'      => __('Variánsok', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-variant-display',
+                'group'      => 'sales',
+                'capability' => 'manage_woocommerce',
+            ),
+            'surcharges' => array(
+                'label'      => __('Felárak', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-surcharges',
+                'group'      => 'sales',
+                'capability' => 'manage_woocommerce',
+            ),
+            'bundle_discount' => array(
+                'label'      => __('Mennyiségi kedvezmény', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-bundle-discount',
+                'group'      => 'sales',
+                'capability' => 'manage_woocommerce',
+            ),
+            'crosssell' => array(
+                'label'      => __('Cross-sell', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-crosssell',
+                'group'      => 'sales',
+                'capability' => 'manage_woocommerce',
+            ),
+            'gift_finder' => array(
+                'label'      => __('Ajándékkereső', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-gift-finder',
+                'group'      => 'sales',
+                'capability' => 'manage_woocommerce',
+            ),
+            'custom_fields' => array(
+                'label'      => __('Egyedi mezők', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-custom-fields',
+                'group'      => 'sales',
+                'capability' => 'edit_products',
+            ),
+            'gads' => array(
+                'label'      => __('Google Ads mérés', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-gads-settings',
+                'group'      => 'marketing',
+                'capability' => 'manage_options',
+            ),
+            'meta_pixel' => array(
+                'label'      => __('Meta mérés', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-fb-pixel-settings',
+                'group'      => 'marketing',
+                'capability' => 'manage_options',
+            ),
+            'ai_seo' => array(
+                'label'      => __('AI Minta SEO', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-ai-seo',
+                'group'      => 'marketing',
+                'capability' => 'manage_options',
+            ),
+            'temu_export' => array(
+                'label'      => __('Temu Export', 'mockup-generator'),
+                'type'       => 'temu_export',
+                'group'      => 'export',
+                'capability' => 'edit_products',
+            ),
+            'custom_feeds' => array(
+                'label'      => __('Egyedi Feeder', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-custom-feeds',
+                'group'      => 'export',
+                'capability' => 'manage_options',
+            ),
+            'maintenance' => array(
+                'label'      => __('Karbantartás', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-maintenance',
+                'group'      => 'tools',
+                'capability' => 'manage_woocommerce',
+            ),
+            'design_migration' => array(
+                'label'      => __('Design útvonal migráció', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-design-path-migration',
+                'group'      => 'tools',
+                'capability' => 'manage_woocommerce',
+            ),
+            'global_migration' => array(
+                'label'      => __('Global Config migráció', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-migration',
+                'group'      => 'tools',
+                'capability' => 'manage_options',
+            ),
+            'settings' => array(
+                'label'      => __('Beállítások', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mockup-generator-settings',
+                'group'      => 'settings',
+                'capability' => 'manage_options',
+            ),
+        );
+    }
+
+    /**
+     * Returns only the tabs the current user may access.
+     *
+     * @return array<string,array<string,string>>
+     */
+    public static function get_accessible_tabs() {
+        $tabs = array();
+        foreach (self::get_tabs() as $id => $tab) {
+            $cap = isset($tab['capability']) ? $tab['capability'] : 'edit_products';
+            if (current_user_can($cap)) {
+                $tabs[$id] = $tab;
+            }
+        }
+        return $tabs;
     }
 
     /**
@@ -179,16 +320,22 @@ class MG_Admin_Page {
             }
         }
 
-        return self::get_default_tab();
+        return self::get_default_tab($tabs);
     }
 
     /**
-     * Returns the default tab key.
+     * Returns the default tab key for the given (already capability filtered)
+     * tab set.
      *
+     * @param array $tabs
      * @return string
      */
-    private static function get_default_tab() {
-        return 'dashboard';
+    private static function get_default_tab($tabs = array()) {
+        if (empty($tabs) || isset($tabs['dashboard'])) {
+            return 'dashboard';
+        }
+        $keys = array_keys($tabs);
+        return $keys[0];
     }
 
     /**
@@ -196,7 +343,7 @@ class MG_Admin_Page {
      *
      * @return array<string,string>
      */
-    private static function get_legacy_slug_map() {
+    public static function get_legacy_slug_map() {
         return array(
             'mockup-generator-dashboard'        => 'dashboard',
             'mockup-generator-variant-display'  => 'variants',
@@ -205,6 +352,16 @@ class MG_Admin_Page {
             'mockup-generator-custom-fields'    => 'custom_fields',
             'mockup-generator-settings'         => 'settings',
             'mockup-generator-product'          => 'mockups',
+            'mockup-generator-dedup'            => 'dedup',
+            'mockup-generator-crosssell'        => 'crosssell',
+            'mockup-generator-gift-finder'      => 'gift_finder',
+            'mg-ai-seo'                         => 'ai_seo',
+            'mg-gads-settings'                  => 'gads',
+            'mg-fb-pixel-settings'              => 'meta_pixel',
+            'mg-custom-feeds'                   => 'custom_feeds',
+            'mg-maintenance'                    => 'maintenance',
+            'mg-design-path-migration'          => 'design_migration',
+            'mg-migration'                      => 'global_migration',
         );
     }
 
@@ -237,6 +394,36 @@ class MG_Admin_Page {
         if (class_exists('MG_Product_Settings_Page')) {
             $callbacks['mockup-generator-product'] = array('MG_Product_Settings_Page', 'render_product');
         }
+        if (class_exists('MG_Dedup_Products_Page')) {
+            $callbacks['mockup-generator-dedup'] = array('MG_Dedup_Products_Page', 'render');
+        }
+        if (class_exists('MG_Crosssell_Page')) {
+            $callbacks['mockup-generator-crosssell'] = array('MG_Crosssell_Page', 'render');
+        }
+        if (class_exists('MG_Gift_Finder_Page')) {
+            $callbacks['mockup-generator-gift-finder'] = array('MG_Gift_Finder_Page', 'render');
+        }
+        if (class_exists('MG_AI_SEO_Page')) {
+            $callbacks['mg-ai-seo'] = array('MG_AI_SEO_Page', 'render_page');
+        }
+        if (class_exists('MG_Google_Ads_Settings')) {
+            $callbacks['mg-gads-settings'] = array('MG_Google_Ads_Settings', 'render_settings_page');
+        }
+        if (class_exists('MG_Facebook_Pixel_Settings')) {
+            $callbacks['mg-fb-pixel-settings'] = array('MG_Facebook_Pixel_Settings', 'render_settings_page');
+        }
+        if (class_exists('MG_Custom_Feed_Manager')) {
+            $callbacks['mg-custom-feeds'] = array('MG_Custom_Feed_Manager', 'render_admin_page');
+        }
+        if (function_exists('mg_render_maintenance_page')) {
+            $callbacks['mg-maintenance'] = 'mg_render_maintenance_page';
+        }
+        if (function_exists('mg_render_design_path_migration_page')) {
+            $callbacks['mg-design-path-migration'] = 'mg_render_design_path_migration_page';
+        }
+        if (class_exists('MG_Migration_Admin_Page')) {
+            $callbacks['mg-migration'] = array('MG_Migration_Admin_Page', 'render_page');
+        }
 
         return $callbacks;
     }
@@ -249,9 +436,18 @@ class MG_Admin_Page {
             wp_die(__('Nincs jogosultságod a Mockup Generator megnyitásához.', 'mockup-generator'));
         }
 
-        $tabs    = self::get_tabs();
+        $tabs    = self::get_accessible_tabs();
+        $groups  = self::get_groups();
         $current = self::determine_active_tab($tabs);
         $product = self::get_requested_product_key();
+
+        $current_group = isset($tabs[$current]['group']) ? $tabs[$current]['group'] : 'dashboard';
+
+        $grouped = array();
+        foreach ($tabs as $id => $tab) {
+            $gid = isset($tab['group']) ? $tab['group'] : 'dashboard';
+            $grouped[$gid][$id] = $tab;
+        }
 
         echo '<div class="mg-admin-shell">';
         echo '<header class="mg-admin-header">';
@@ -259,7 +455,7 @@ class MG_Admin_Page {
         echo '<span class="dashicons dashicons-art" aria-hidden="true"></span>';
         echo '<div class="mg-admin-heading">';
         echo '<h1>Mockup Generator</h1>';
-        echo '<p class="mg-admin-sub">' . esc_html__('Egységes admin felület gyors tabváltással.', 'mockup-generator') . '</p>';
+        echo '<p class="mg-admin-sub">' . esc_html__('Minden funkció egy helyen.', 'mockup-generator') . '</p>';
         echo '</div>';
         echo '</div>';
         $cta_url  = esc_url(self::build_panel_url('settings'));
@@ -272,19 +468,53 @@ class MG_Admin_Page {
 
         self::render_quick_add_modal();
 
-        echo '<nav class="mg-tabbar" role="tablist">';
-        foreach ($tabs as $id => $tab) {
-            $is_active = $id === $current ? ' is-active' : '';
-            $url = esc_url(self::build_panel_url($id, $id === 'mockups' && $product ? array('mg_product' => $product) : array()));
+        echo '<nav class="mg-groupnav" role="tablist" aria-label="' . esc_attr__('Fő navigáció', 'mockup-generator') . '">';
+        foreach ($groups as $gid => $group) {
+            if (empty($grouped[$gid])) {
+                continue;
+            }
+            $group_tab_keys = array_keys($grouped[$gid]);
+            $default_tab = $group_tab_keys[0];
+            $is_active = $gid === $current_group ? ' is-active' : '';
+            $url = esc_url(self::build_panel_url($default_tab));
             printf(
-                '<button type="button" id="mg-tab-%1$s" class="mg-tab%4$s" data-tab="%1$s" role="tab" data-url="%3$s">%2$s</button>',
-                esc_attr($id),
-                esc_html($tab['label']),
+                '<button type="button" class="mg-group%1$s" data-group="%2$s" data-default-tab="%3$s" data-url="%4$s"><span class="dashicons %5$s" aria-hidden="true"></span><span class="mg-group__label">%6$s</span></button>',
+                esc_attr($is_active),
+                esc_attr($gid),
+                esc_attr($default_tab),
                 $url,
-                esc_attr($is_active)
+                esc_attr($group['icon']),
+                esc_html($group['label'])
             );
         }
         echo '</nav>';
+
+        foreach ($groups as $gid => $group) {
+            if (empty($grouped[$gid])) {
+                continue;
+            }
+            $row_classes = 'mg-subtabs';
+            if ($gid === $current_group) {
+                $row_classes .= ' is-active';
+            }
+            if (count($grouped[$gid]) < 2) {
+                $row_classes .= ' mg-subtabs--single';
+            }
+            echo '<div class="' . esc_attr($row_classes) . '" data-group="' . esc_attr($gid) . '" role="tablist" aria-label="' . esc_attr($group['label']) . '">';
+            foreach ($grouped[$gid] as $id => $tab) {
+                $is_active = $id === $current ? ' is-active' : '';
+                $url = esc_url(self::build_panel_url($id, $id === 'mockups' && $product ? array('mg_product' => $product) : array()));
+                printf(
+                    '<button type="button" id="mg-tab-%1$s" class="mg-tab%4$s" data-tab="%1$s" data-group="%5$s" role="tab" data-url="%3$s">%2$s</button>',
+                    esc_attr($id),
+                    esc_html($tab['label']),
+                    $url,
+                    esc_attr($is_active),
+                    esc_attr($gid)
+                );
+            }
+            echo '</div>';
+        }
 
         echo '<div class="mg-tabpanels">';
         foreach ($tabs as $id => $tab) {
@@ -337,9 +567,6 @@ class MG_Admin_Page {
                 if (class_exists('MG_Temu_Export_Page')) {
                     MG_Temu_Export_Page::render_page();
                 }
-                break;
-            case 'bulk':
-                self::render_bulk_panel();
                 break;
             case 'placeholder':
             default:
@@ -1105,8 +1332,7 @@ class MG_Admin_Page {
      */
     private static function render_placeholder_panel() {
         echo '<div class="mg-panel-body mg-panel-body--empty">';
-        echo '<h2>' . esc_html__('Logok', 'mockup-generator') . '</h2>';
-        echo '<p>' . esc_html__('A naplók a wp-content/uploads/mockup-generator könyvtárban találhatók. A következő frissítésben itt is elérhető lesz egy kényelmes nézet.', 'mockup-generator') . '</p>';
+        echo '<p>' . esc_html__('Ez a nézet jelenleg nem érhető el.', 'mockup-generator') . '</p>';
         echo '</div>';
     }
 
