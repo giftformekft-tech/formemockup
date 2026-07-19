@@ -163,7 +163,30 @@ Minden fázis önállóan szállítható; F1 után már megszűnik az „össze-
 - jogosultsági szintek oldalanként,
 - frontend (vásárlói) felület – a terv kizárólag a wp-admin oldalt érinti.
 
-## 6. Nyitott döntések
+## 6. Képernyőnkénti modernizálás (kiemelt oldalak)
+
+A design-rendszer minden oldalra érvényes; az alábbi három képernyő kap célzott UX-átalakítást is (funkcióváltozás nélkül – ugyanazok a mezők, ugyanazok a mentések):
+
+### 6.1 Bulk feltöltés
+- **Drag & drop feltöltőzóna** thumbnail-előnézetekkel a sima file input helyett.
+- **Terméktípus-választás chipekkel/kártyákkal** a checkbox-lista helyett, "összes kijelölése" gyorsgombbal.
+- **Queue vs. közvetlen mód**: szegmentált kapcsoló; a queue-beállítások (batch méret, intervallum) csúszkái külön kártyába kerülnek, csak queue módban láthatók (a logika ma is megvan, csak vizuálisan rendezetlen).
+- **Élő folyamat-panel**: progress bar + számlálók (feldolgozva / hátralévő / hibás), tételenkénti státusz badge-ekkel, a végén összefoglaló és linkek a létrejött termékekre.
+
+### 6.2 Termék típus szerkesztő (a legnagyobb átalakulás)
+Ma egyetlen, kb. 15 szekciós végtelen oldal (név, slug, ár, méretek, méret-felárak, nyomtatási méret, színek, UTT cikkszámok, nézetek, template mappa, leírás, mockup mátrix…). Terv:
+- **Al-tabokra bontás**: Alapadatok | Méretek & Árak | Színek & Nézetek | Mockup képek | Leírás — vagy sticky oldalsó szekció-index gyors ugráshoz.
+- **Szín × nézet mockup mátrix vizuálisan**: thumbnail-grid, a hiányzó cellák kiemelve ("3 hiányzó mockup" badge a tab címén), a printarea-szerkesztő modal marad.
+- **Színek színminta-chipekkel** (hex-előnézet), méret-elérhetőség színenként toggle-mátrixszal.
+- **Sticky mentősáv + dirty-jelzés** — ma könnyű mentés nélkül elnavigálni és elveszteni a munkát.
+
+### 6.3 Beállítások (5 al-tab: Termékek, Képoptimalizálás, Termékoldali elemek, Export & Feedek, E-mailek)
+- A `nav-tab-wrapper` + `form-table` páros lecserélése az egységes al-tab stílusra és section-kártyákra, checkboxok helyett toggle-ök, minden mező mellett egysoros magyarázat.
+- **Termékek lista**: modern táblázat vagy kártya-grid soronkénti státusszal (aktív/inaktív, mockupok száma) és közvetlen "Szerkesztés" gombbal a termék típus szerkesztőbe.
+
+A többi oldal (Variánsok, Felárak, Cross-sell, Ajándékkereső, mérési oldalak, Feeder, Temu export, Dedup, Maintenance…) a 3. fejezet komponens-készletét kapja: page header, section kártyák, egységes táblázatok, badge-ek, üres állapotok, mentősáv.
+
+## 7. Nyitott döntések
 
 1. **Logok tab**: törlés most (javasolt), vagy valódi log-nézet fejlesztése az Eszközök csoportban?
 2. **Csoportnevek/ikonok** véglegesítése (a fenti javaslat szabadon átnevezhető).
