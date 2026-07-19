@@ -708,6 +708,11 @@ class MG_Temu_Export_Page {
                                 alert('FIGYELEM — ismeretlen szín(ek), változatlanul kerültek az xlsx-be:\n' +
                                     response.data.unknown_colors.join(', '));
                             }
+                            if (response.data.unknown_sizes && response.data.unknown_sizes.length) {
+                                alert('FIGYELEM — a sablon Size listája nem tartalmazza ezeket a méreteket:\n' +
+                                    response.data.unknown_sizes.join(', ') +
+                                    '\nA Temu emiatt visszadobhatja ezeket a sorokat.');
+                            }
                             // Típusonként külön fájl készül — linklista + automatikus letöltés
                             const files = response.data.files || [];
                             let html = '<strong>Kész XLSX fájlok (típusonként külön):</strong><ul style="margin:8px 0 0;">';
@@ -1341,6 +1346,8 @@ class MG_Temu_Export_Page {
 
         $stamp = date('Y-m-d-Hi', current_time('timestamp'));
         $unknown_colors = [];
+        $unknown_sizes = [];
+        $allowed_sizes_cache = [];
         $files = [];
 
         foreach ($by_type as $tslug => $items) {
@@ -1348,6 +1355,14 @@ class MG_Temu_Export_Page {
             if (empty($rows)) {
                 continue;
             }
+
+            // A sablon Size lenyílójának engedélyezett értékei (sablononként
+            // eltérhet az írásmód: pl. a női sablon 3XL-t vár, nem XXXL-t).
+            $tpl_path = $templates[$tslug];
+            if (!array_key_exists($tpl_path, $allowed_sizes_cache)) {
+                $allowed_sizes_cache[$tpl_path] = MG_Temu_Xlsx_Writer::get_allowed_sizes($tpl_path);
+            }
+            $allowed_sizes = $allowed_sizes_cache[$tpl_path];
 
             // Szín: magyar -> Temu angol érték; az ismeretlen színek
             // változatlanul mennek be, de figyelmeztetést küldünk a felületre.
@@ -1357,6 +1372,13 @@ class MG_Temu_Export_Page {
                     $unknown_colors[$unknown] = true;
                 }
                 $rows[$i]['color'] = $color;
+
+                // Méret a sablon listájához igazítva (XXXL <-> 3XL stb.)
+                list($size, $size_ok) = MG_Temu_Xlsx_Writer::normalize_size_for_list($row['size'], $allowed_sizes);
+                if (!$size_ok) {
+                    $unknown_sizes[$size] = true;
+                }
+                $rows[$i]['size'] = $size;
             }
 
             $token    = strtolower(wp_generate_password(20, false));
@@ -1414,6 +1436,7 @@ class MG_Temu_Export_Page {
         wp_send_json_success([
             'files'          => array_values($files),
             'unknown_colors' => array_keys($unknown_colors),
+            'unknown_sizes'  => array_keys($unknown_sizes),
         ]);
     }
 

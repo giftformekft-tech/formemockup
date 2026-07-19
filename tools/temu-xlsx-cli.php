@@ -104,6 +104,25 @@ while (($line = fgetcsv($fh, 0, $delim)) !== false) {
 }
 fclose($fh);
 
+// Méretek hozzáigazítása a sablon Size lenyílójához (XXXL <-> 3XL stb.)
+$allowed_sizes = MG_Temu_Xlsx_Writer::get_allowed_sizes($template_path);
+$unknown_sizes = [];
+if ($allowed_sizes !== null) {
+    echo 'Sablon engedélyezett méretei: ' . implode(', ', $allowed_sizes) . "\n";
+    foreach ($rows as $i => $row) {
+        list($size, $ok) = MG_Temu_Xlsx_Writer::normalize_size_for_list($row['size'], $allowed_sizes);
+        if (!$ok) {
+            $unknown_sizes[$size] = true;
+        }
+        $rows[$i]['size'] = $size;
+    }
+} else {
+    echo "A sablon Size listája nem oldható fel — a méretek változatlanul mennek.\n";
+}
+if ($unknown_sizes) {
+    echo 'FIGYELEM — a sablon Size listájában nem szereplő méret(ek): ' . implode(', ', array_keys($unknown_sizes)) . "\n";
+}
+
 echo 'CSV beolvasva: ' . count($rows) . " sor (elválasztó: '{$delim}')\n";
 $skus = [];
 foreach ($rows as $r) {

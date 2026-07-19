@@ -155,6 +155,169 @@ class MG_Temu_Xlsx_Writer {
         return ['rows' => count($rows), 'sheet_path' => $tpl['sheet_path']];
     }
 
+    /**
+     * A sablon Size lenyílójában engedélyezett méretek kiolvasása.
+     *
+     * A Temu sablonban a Size lista dinamikus: a kategória (t_1_Category),
+     * a Size Family és a Sub-Size Family értékétől függ. A lenyíló képlete:
+     *   INDIRECT(VLOOKUP("t_4_"&Category&"_"&SizeFamily&"_"&SubSizeFamily&"_Size",
+     *                    'Dropdown Lists'!A:B, 2, FALSE))
+     * Ugyanezt a láncot járjuk végig: mintasor értékei -> Dropdown Lists lap
+     * kulcs->névtartomány párosai -> definedName -> cellatartomány értékei.
+     *
+     * @param string $template_path
+     * @return string[]|null Engedélyezett méretek, vagy null, ha nem
+     *                       feloldható (ilyenkor nem szűrünk).
+     */
+    public static function get_allowed_sizes($template_path) {
+        try {
+            $zip = self::open_zip($template_path);
+        } catch (Exception $e) {
+            return null;
+        }
+        try {
+            $shared = self::read_shared_strings($zip);
+            $sheet_xml = $zip->getFromName(self::locate_sheet($zip, self::SHEET_NAME));
+
+            // kulcssor: melyik oszlopban van a kategória / Size Family / Sub-Size Family
+            if (!preg_match('#<row[^>]*\br="' . self::KEY_ROW . '"[^>]*>.*?</row>#s', $sheet_xml, $m)) {
+                return null;
+            }
+            $key_col = [];
+            foreach (self::parse_cells($m[0]) as $cell) {
+                $text = self::cell_text($cell, $shared);
+                if ($text !== '' && !isset($key_col[$text])) {
+                    $key_col[$text] = $cell['col'];
+                }
+            }
+            if (!isset($key_col['t_1_Category'], $key_col['t_4_Size Family'], $key_col['t_4_Sub-Size Family'])) {
+                return null;
+            }
+
+            // mintasor értékei
+            if (!preg_match('#<row[^>]*\br="' . self::DATA_START_ROW . '"[^>]*>.*?</row>#s', $sheet_xml, $m)) {
+                return null;
+            }
+            $sample = [];
+            foreach (self::parse_cells($m[0]) as $cell) {
+                $sample[$cell['col']] = self::cell_text($cell, $shared);
+            }
+            $cat    = isset($sample[$key_col['t_1_Category']]) ? trim($sample[$key_col['t_1_Category']]) : '';
+            $fam    = isset($sample[$key_col['t_4_Size Family']]) ? trim($sample[$key_col['t_4_Size Family']]) : '';
+            $subfam = isset($sample[$key_col['t_4_Sub-Size Family']]) ? trim($sample[$key_col['t_4_Sub-Size Family']]) : '';
+            if ($cat === '' || $fam === '') {
+                return null;
+            }
+            // Excel a számot egészként fűzi a kulcsba (29069, nem 29069.0)
+            if (is_numeric($cat) && (float) $cat == (int) (float) $cat) {
+                $cat = (string) (int) (float) $cat;
+            }
+            $lookup_key = 't_4_' . $cat . '_' . $fam . '_' . $subfam . '_Size';
+
+            // Dropdown Lists lap: A oszlop kulcs -> B oszlop névtartomány-név
+            $dl_xml = $zip->getFromName(self::locate_sheet($zip, 'Dropdown Lists'));
+            $range_name = null;
+            if (preg_match_all('#<row[^>]*\br="\d+"[^>]*>.*?</row>#s', $dl_xml, $rm)) {
+                foreach ($rm[0] as $row_xml) {
+                    $a = null;
+                    $b = null;
+                    foreach (self::parse_cells($row_xml) as $cell) {
+                        if ($cell['col'] === 'A') {
+                            $a = self::cell_text($cell, $shared);
+                        } elseif ($cell['col'] === 'B') {
+                            $b = self::cell_text($cell, $shared);
+                        }
+                    }
+                    if ($a === $lookup_key && $b !== null && $b !== '') {
+                        $range_name = $b;
+                        break;
+                    }
+                }
+            }
+            if ($range_name === null) {
+                return null;
+            }
+
+            // definedName -> tartomány, pl. 'Dropdown Lists'!$C$56:$P$56
+            $wb = $zip->getFromName('xl/workbook.xml');
+            if (!preg_match('#<definedName name="' . preg_quote($range_name, '#') . '"[^>]*>([^<]+)</definedName>#', $wb, $dm)) {
+                return null;
+            }
+            $ref = self::xml_decode($dm[1]);
+            if (!preg_match("/^(?:'([^']+)'|([A-Za-z0-9_.\\- ]+))!\\\$?([A-Z]+)\\\$?(\\d+)(?::\\\$?([A-Z]+)\\\$?(\\d+))?$/", $ref, $r)) {
+                return null;
+            }
+            $sheet_name = $r[1] !== '' ? str_replace("''", "'", $r[1]) : $r[2];
+            $c1 = self::col_index($r[3]);
+            $r1 = (int) $r[4];
+            $c2 = isset($r[5]) && $r[5] !== '' ? self::col_index($r[5]) : $c1;
+            $r2 = isset($r[6]) && $r[6] !== '' ? (int) $r[6] : $r1;
+
+            $target_xml = $zip->getFromName(self::locate_sheet($zip, $sheet_name));
+            $values = [];
+            for ($row = min($r1, $r2); $row <= max($r1, $r2); $row++) {
+                if (!preg_match('#<row[^>]*\br="' . $row . '"[^>]*>.*?</row>#s', $target_xml, $rm2)) {
+                    continue;
+                }
+                foreach (self::parse_cells($rm2[0]) as $cell) {
+                    $ci = self::col_index($cell['col']);
+                    if ($ci < min($c1, $c2) || $ci > max($c1, $c2)) {
+                        continue;
+                    }
+                    $v = trim(self::cell_text($cell, $shared));
+                    if ($v !== '') {
+                        $values[] = $v;
+                    }
+                }
+            }
+            return $values ? $values : null;
+        } catch (Exception $e) {
+            return null;
+        } finally {
+            $zip->close();
+        }
+    }
+
+    /**
+     * Méret hozzáigazítása a sablon engedélyezett listájához. A XXXL <-> 3XL
+     * típusú írásmódkülönbséget automatikusan átváltja arra az alakra, amit a
+     * sablon lenyílója elfogad.
+     *
+     * @param string        $size
+     * @param string[]|null $allowed get_allowed_sizes() eredménye (null = nincs szűrés)
+     * @return array{0:string,1:bool} [érték, szerepel-e a listában]
+     */
+    public static function normalize_size_for_list($size, $allowed) {
+        $size = (string) $size;
+        if ($allowed === null || in_array($size, $allowed, true)) {
+            return [$size, true];
+        }
+        foreach (self::size_alternatives($size) as $alt) {
+            if (in_array($alt, $allowed, true)) {
+                return [$alt, true];
+            }
+        }
+        return [$size, false];
+    }
+
+    /**
+     * Egy méret ekvivalens írásmódjai: XXXL <-> 3XL, XXXXL <-> 4XL stb.
+     *
+     * @param string $size
+     * @return string[]
+     */
+    private static function size_alternatives($size) {
+        $s = strtoupper(trim($size));
+        $out = [];
+        if (preg_match('/^(\d+)XL$/', $s, $m)) {
+            $out[] = str_repeat('X', (int) $m[1]) . 'L'; // 3XL -> XXXL
+        }
+        if (preg_match('/^X{2,}L$/', $s)) {
+            $out[] = (strlen($s) - 1) . 'XL'; // XXXL -> 3XL
+        }
+        return $out;
+    }
+
     // ------------------------------------------------------------------ belső
 
     /**
@@ -319,6 +482,17 @@ class MG_Temu_Xlsx_Writer {
      * @return string pl. "xl/worksheets/sheet4.xml"
      */
     private static function locate_template_sheet(ZipArchive $zip) {
+        return self::locate_sheet($zip, self::SHEET_NAME);
+    }
+
+    /**
+     * Tetszőleges nevű munkalap ZIP-beli útvonalának megkeresése.
+     *
+     * @param ZipArchive $zip
+     * @param string     $sheet_name
+     * @return string
+     */
+    private static function locate_sheet(ZipArchive $zip, $sheet_name) {
         $wb = $zip->getFromName('xl/workbook.xml');
         if ($wb === false) {
             throw new MG_Temu_Xlsx_Error('Érvénytelen xlsx: hiányzik az xl/workbook.xml.');
@@ -327,7 +501,7 @@ class MG_Temu_Xlsx_Writer {
         if (preg_match_all('/<sheet\b[^>]*>/', $wb, $m)) {
             foreach ($m[0] as $tag) {
                 if (preg_match('/\bname="([^"]*)"/', $tag, $nm)
-                    && self::xml_decode($nm[1]) === self::SHEET_NAME
+                    && self::xml_decode($nm[1]) === $sheet_name
                     && preg_match('/\br:id="([^"]*)"/', $tag, $rm)) {
                     $rid = $rm[1];
                     break;
@@ -335,7 +509,7 @@ class MG_Temu_Xlsx_Writer {
             }
         }
         if ($rid === null) {
-            throw new MG_Temu_Xlsx_Error('Nincs "' . self::SHEET_NAME . '" nevű munkalap a sablonban.');
+            throw new MG_Temu_Xlsx_Error('Nincs "' . $sheet_name . '" nevű munkalap a sablonban.');
         }
 
         $rels = $zip->getFromName('xl/_rels/workbook.xml.rels');
@@ -353,7 +527,7 @@ class MG_Temu_Xlsx_Writer {
             }
         }
         if ($target === null) {
-            throw new MG_Temu_Xlsx_Error('A "' . self::SHEET_NAME . '" munkalap fájlja nem azonosítható a sablonban.');
+            throw new MG_Temu_Xlsx_Error('A "' . $sheet_name . '" munkalap fájlja nem azonosítható a sablonban.');
         }
 
         // a Target lehet abszolút ("/xl/worksheets/...") vagy az xl/-hez relatív
