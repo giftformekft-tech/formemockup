@@ -16,6 +16,7 @@ class MG_Temu_Export_Page {
         add_action('admin_post_mg_temu_download_xlsx', [self::class, 'handle_download_xlsx']);
         add_action('admin_post_mg_temu_upload_template', [self::class, 'handle_upload_template']);
         add_action('admin_post_mg_temu_delete_template', [self::class, 'handle_delete_template']);
+        add_action('wp_ajax_mg_temu_save_bullets', [self::class, 'ajax_save_bullets']);
     }
 
     public static function render_page() {
@@ -56,6 +57,61 @@ class MG_Temu_Export_Page {
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                </div>
+
+                <?php
+                // --- Temu Bullet Pointok kategóriánként ---
+                // A sablon 6 "Bullet Point" oszlopába kerülő rövid termékkiemelők.
+                // Az itt beállított értékek a termék WooCommerce-kategóriája
+                // alapján kerülnek minden exportsorba; ha egy kategóriához nincs
+                // beállítás, a mestersablon mintasorának értéke másolódik.
+                $bullet_map = get_option('mg_temu_bullet_points', []);
+                if (!is_array($bullet_map)) {
+                    $bullet_map = [];
+                }
+                $all_cats = get_terms(['taxonomy' => 'product_cat', 'hide_empty' => false, 'orderby' => 'name']);
+                $cats_by_parent = [];
+                foreach ((array) $all_cats as $ct) {
+                    $cats_by_parent[$ct->parent][] = $ct;
+                }
+                $cat_options = [];
+                $walk_cats = function ($parent, $depth) use (&$walk_cats, &$cat_options, $cats_by_parent) {
+                    if (empty($cats_by_parent[$parent])) {
+                        return;
+                    }
+                    foreach ($cats_by_parent[$parent] as $ct) {
+                        $cat_options[] = ['id' => $ct->term_id, 'label' => str_repeat('— ', $depth) . $ct->name];
+                        $walk_cats($ct->term_id, $depth + 1);
+                    }
+                };
+                $walk_cats(0, 0);
+                ?>
+                <div style="margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                        <strong><?php esc_html_e('Temu Bullet Pointok (kategóriánként)', 'mockup-generator'); ?></strong>
+                        <span style="color:#888;font-size:12px;"><?php esc_html_e('Max. 6 rövid termékkiemelő mondat az XLSX "Bullet Point" oszlopaiba. A termék kategóriája alapján kerül be; ha üres, a mestersablon mintasora számít.', 'mockup-generator'); ?></span>
+                    </div>
+                    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+                        <div style="min-width:320px;flex:1;max-width:560px;">
+                            <select id="mg-temu-bullet-cat" style="width:100%;margin-bottom:6px;">
+                                <option value=""><?php esc_html_e('— válassz kategóriát —', 'mockup-generator'); ?></option>
+                                <?php foreach ($cat_options as $opt): ?>
+                                    <option value="<?php echo esc_attr($opt['id']); ?>"><?php echo esc_html($opt['label']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <?php for ($bi = 1; $bi <= 6; $bi++): ?>
+                                <input type="text" class="mg-temu-bullet-input" data-idx="<?php echo $bi; ?>" maxlength="200" style="width:100%;margin-bottom:4px;" placeholder="<?php echo esc_attr(sprintf(__('%d. bullet point (pl. 100%% prémium pamut a kényelemért.)', 'mockup-generator'), $bi)); ?>" disabled>
+                            <?php endfor; ?>
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <button type="button" class="button" id="mg-temu-save-bullets" disabled><?php esc_html_e('Bullet pointok mentése', 'mockup-generator'); ?></button>
+                                <span id="mg-temu-bullet-status" style="font-style:italic;color:#666;font-size:12px;"></span>
+                            </div>
+                        </div>
+                        <div style="min-width:260px;flex:1;">
+                            <div style="font-weight:600;margin-bottom:4px;"><?php esc_html_e('Beállított kategóriák:', 'mockup-generator'); ?></div>
+                            <ul id="mg-temu-bullet-list" style="margin:0;color:#555;font-size:12px;"></ul>
+                        </div>
+                    </div>
                 </div>
 
                 <?php
@@ -250,10 +306,75 @@ class MG_Temu_Export_Page {
             echo wp_json_encode($all_children);
         ?>;
 
+        var mgTemuBullets = <?php
+            $bm = get_option('mg_temu_bullet_points', []);
+            echo wp_json_encode(is_array($bm) ? (object) $bm : new stdClass());
+        ?>;
+
         jQuery(document).ready(function($) {
             let currentPage = 1;
             let productsPerPage = 25;
             let selectedProducts = {};
+
+            // --- Bullet pointok kategóriánként ---
+            function refreshBulletList() {
+                let html = '';
+                $('#mg-temu-bullet-cat option').each(function() {
+                    const tid = $(this).val();
+                    if (tid && mgTemuBullets[tid] && mgTemuBullets[tid].some(v => v && v.length)) {
+                        const count = mgTemuBullets[tid].filter(v => v && v.length).length;
+                        html += '<li>' + $(this).text().replace(/^(— )+/, '') + ' <span style="color:#999">(' + count + ' db)</span></li>';
+                    }
+                });
+                $('#mg-temu-bullet-list').html(html || '<li style="color:#aaa;"><?php echo esc_js(__('még nincs', 'mockup-generator')); ?></li>');
+            }
+
+            $('#mg-temu-bullet-cat').on('change', function() {
+                const tid = $(this).val();
+                const enabled = !!tid;
+                $('.mg-temu-bullet-input').prop('disabled', !enabled);
+                $('#mg-temu-save-bullets').prop('disabled', !enabled);
+                const vals = (tid && mgTemuBullets[tid]) ? mgTemuBullets[tid] : [];
+                $('.mg-temu-bullet-input').each(function() {
+                    $(this).val(vals[$(this).data('idx') - 1] || '');
+                });
+            });
+
+            $('#mg-temu-save-bullets').on('click', function() {
+                const tid = $('#mg-temu-bullet-cat').val();
+                if (!tid) return;
+                const bullets = [];
+                $('.mg-temu-bullet-input').each(function() {
+                    bullets[$(this).data('idx') - 1] = $(this).val();
+                });
+                const $btn = $(this).prop('disabled', true).text('Mentés...');
+                $('#mg-temu-bullet-status').text('');
+                $.post(ajaxurl, {
+                    action: 'mg_temu_save_bullets',
+                    term_id: tid,
+                    bullets: JSON.stringify(bullets),
+                    nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
+                }, function(resp) {
+                    $btn.prop('disabled', false).text('<?php echo esc_js(__('Bullet pointok mentése', 'mockup-generator')); ?>');
+                    if (resp.success) {
+                        if (resp.data && resp.data.cleared) {
+                            delete mgTemuBullets[tid];
+                        } else {
+                            mgTemuBullets[tid] = bullets;
+                        }
+                        refreshBulletList();
+                        $('#mg-temu-bullet-status').text('✓ Elmentve').css('color', '#1a7a35');
+                        setTimeout(() => $('#mg-temu-bullet-status').text(''), 3000);
+                    } else {
+                        $('#mg-temu-bullet-status').text('Hiba!').css('color', '#d63638');
+                    }
+                }).fail(function() {
+                    $btn.prop('disabled', false).text('<?php echo esc_js(__('Bullet pointok mentése', 'mockup-generator')); ?>');
+                    $('#mg-temu-bullet-status').text('Kommunikációs hiba.').css('color', '#d63638');
+                });
+            });
+
+            refreshBulletList();
 
             // --- Egyedi névmező mentése (alap + típusonként) ---
             $('#mg-temu-save-suffix').on('click', function() {
@@ -957,12 +1078,15 @@ class MG_Temu_Export_Page {
         // Cache products to avoid reloading
         $product_cache = [];
         $config_cache = [];
+        $bullets_cache = [];
 
         foreach ($selection as $item) {
             $pid = $item['pid'];
             if (!isset($product_cache[$pid])) {
                 $product_cache[$pid] = wc_get_product($pid);
                 $config_cache[$pid] = MG_Virtual_Variant_Manager::get_frontend_config($product_cache[$pid]);
+                // Kategóriánkénti fix Bullet Pointok (csak az XLSX exportban használt)
+                $bullets_cache[$pid] = self::get_bullets_for_product($pid);
             }
             $product = $product_cache[$pid];
             $config = $config_cache[$pid];
@@ -1054,7 +1178,17 @@ class MG_Temu_Export_Page {
                 : get_option('mg_temu_name_suffix', '');
             $export_name = trim($product->get_name() . ' ' . $type_label . ' ' . $name_suffix);
 
-            $rows[] = [
+            // Bullet Point mezők a termék kategóriája alapján (bullet_1..bullet_6)
+            $bullet_fields = [];
+            if (!empty($bullets_cache[$pid])) {
+                foreach (array_values($bullets_cache[$pid]) as $bi => $btext) {
+                    if ($btext !== '') {
+                        $bullet_fields['bullet_' . ($bi + 1)] = $btext;
+                    }
+                }
+            }
+
+            $rows[] = array_merge([
                 'name'    => $export_name,   // Termék név + típus + egyedi mező
                 'sku'     => $sku_generated, // SKU
                 'sub_sku' => $sub_sku,       // Sub SKU
@@ -1062,7 +1196,7 @@ class MG_Temu_Export_Page {
                 'size'    => $size,                // Méret
                 'desc'    => $export_description,  // Leírás
                 'img'     => $img_url              // Img URL
-            ];
+            ], $bullet_fields);
 
             // Ha gyerekpóló (12-es méret, ami 12Y lett), csinálünk egy extra '14Y' sort a Temu miatt
             if ($normalized_size === '12') {
@@ -1070,7 +1204,7 @@ class MG_Temu_Export_Page {
                 $numbers_14y = substr(str_shuffle("0123456789"), 0, 3);
                 $sub_sku_14y = $sku_generated . $letters_14y . $numbers_14y;
 
-                $rows[] = [
+                $rows[] = array_merge([
                     'name'    => $export_name,   // Termék név + típus + egyedi mező
                     'sku'     => $sku_generated, // SKU
                     'sub_sku' => $sub_sku_14y,   // Kamu méret új Sub SKU-ja
@@ -1078,7 +1212,7 @@ class MG_Temu_Export_Page {
                     'size'    => '14Y',                // Kamu méret
                     'desc'    => $export_description,  // Leírás
                     'img'     => $img_url              // Img URL (A 12-es méreté hasznosítva)
-                ];
+                ], $bullet_fields);
             }
         }
 
@@ -1533,6 +1667,74 @@ class MG_Temu_Export_Page {
             update_option('mg_temu_name_suffix_types', $types);
         }
         wp_send_json_success();
+    }
+
+    /**
+     * Kategóriánkénti fix Bullet Pointok mentése (admin-ajax).
+     * Option: mg_temu_bullet_points = [ term_id => [max 6 szöveg] ].
+     */
+    public static function ajax_save_bullets() {
+        check_ajax_referer('mg_temu_nonce', 'nonce');
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('Nincs jogosultság.', 'mockup-generator'));
+        }
+        $term_id = isset($_POST['term_id']) ? (int) $_POST['term_id'] : 0;
+        $term = $term_id > 0 ? get_term($term_id, 'product_cat') : null;
+        if (!$term || is_wp_error($term)) {
+            wp_send_json_error(__('Érvénytelen kategória.', 'mockup-generator'));
+        }
+
+        $bullets_raw = isset($_POST['bullets']) ? json_decode(wp_unslash($_POST['bullets']), true) : [];
+        $bullets = [];
+        if (is_array($bullets_raw)) {
+            foreach (array_slice(array_values($bullets_raw), 0, 6) as $b) {
+                $bullets[] = sanitize_text_field((string) $b);
+            }
+        }
+        // csupa üres = a kategória beállításának törlése
+        $has_value = array_filter($bullets, function ($b) { return $b !== ''; });
+
+        $map = get_option('mg_temu_bullet_points', []);
+        if (!is_array($map)) {
+            $map = [];
+        }
+        if ($has_value) {
+            $map[$term_id] = $bullets;
+        } else {
+            unset($map[$term_id]);
+        }
+        update_option('mg_temu_bullet_points', $map);
+
+        wp_send_json_success(['cleared' => empty($has_value)]);
+    }
+
+    /**
+     * A termékhez tartozó fix Bullet Pointok: először a termék saját
+     * kategóriái, utána azok szülőkategóriái közül az első, amelyikhez van
+     * beállítás. Null, ha egyikhez sincs.
+     *
+     * @param int $product_id
+     * @return string[]|null
+     */
+    private static function get_bullets_for_product($product_id) {
+        $map = get_option('mg_temu_bullet_points', []);
+        if (!is_array($map) || empty($map)) {
+            return null;
+        }
+        $terms = wc_get_product_term_ids($product_id, 'product_cat');
+        foreach ($terms as $tid) {
+            if (!empty($map[$tid])) {
+                return $map[$tid];
+            }
+        }
+        foreach ($terms as $tid) {
+            foreach (get_ancestors($tid, 'product_cat') as $aid) {
+                if (!empty($map[$aid])) {
+                    return $map[$aid];
+                }
+            }
+        }
+        return null;
     }
 
     /**

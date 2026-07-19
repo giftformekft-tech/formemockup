@@ -28,6 +28,11 @@ class MG_Temu_Xlsx_Writer {
     const KEY_ROW        = 4; // mezőkulcs sor (t_1_..., t_2_... stb.)
     const DATA_START_ROW = 5; // első adatsor = mintasor
 
+    // Bullet Point oszlopok kulcsa: több azonos kulcsú oszlop van a sablonban
+    // (bullet_1..bullet_N adatmezők), az érték soronként felülírható,
+    // különben a mintasor értéke másolódik.
+    const BULLET_KEY = 't_2_Bullet Point';
+
     // Template mezőkulcs -> adatmező (ezek jönnek a WooCommerce-ből,
     // minden más oszlop a mintasorból másolódik)
     const KEY_TO_FIELD = [
@@ -99,8 +104,9 @@ class MG_Temu_Xlsx_Writer {
             $zip->close();
         }
         return [
-            'sheet_path' => $tpl['sheet_path'],
-            'field_cols' => $tpl['field_col'],
+            'sheet_path'   => $tpl['sheet_path'],
+            'field_cols'   => $tpl['field_col'],
+            'bullet_count' => $tpl['bullet_count'],
         ];
     }
 
@@ -358,9 +364,16 @@ class MG_Temu_Xlsx_Writer {
             throw new MG_Temu_Xlsx_Error('A Template lapon nem található a ' . self::KEY_ROW . '. (mezőkulcs) sor.');
         }
         $key_col = [];
+        $bullet_cols = []; // az összes Bullet Point oszlop, sorrendben
         foreach (self::parse_cells($m[0]) as $cell) {
             $text = self::cell_text($cell, $shared);
-            if ($text !== '' && !isset($key_col[$text])) {
+            if ($text === '') {
+                continue;
+            }
+            if ($text === self::BULLET_KEY) {
+                $bullet_cols[] = $cell['col'];
+            }
+            if (!isset($key_col[$text])) {
                 $key_col[$text] = $cell['col'];
             }
         }
@@ -430,9 +443,23 @@ class MG_Temu_Xlsx_Writer {
 
         // --- kimeneti oszlopterv a mintasor alapján ---
         $col_to_field = array_flip($field_col);
+        $bullet_field = []; // oszlopbetű -> bullet_1..bullet_N
+        foreach ($bullet_cols as $i => $bcol) {
+            $bullet_field[$bcol] = 'bullet_' . ($i + 1);
+        }
         $plan = []; // oszlopindex => cellaterv
         foreach ($by_col as $col => $cell) {
             $idx = self::col_index($col);
+            if (isset($bullet_field[$col])) {
+                // Bullet Point: ha a sor ad értéket, az megy be, különben a
+                // mintasor értéke (mint bármely más fix oszlopnál)
+                $fallback = null;
+                if ($cell['t'] === 's' || $cell['t'] === 'inlineStr' || $cell['t'] === 'str') {
+                    $fallback = self::cell_text($cell, $shared);
+                }
+                $plan[$idx] = ['kind' => 'field_fallback', 'col' => $col, 'field' => $bullet_field[$col], 's' => $cell['s'], 'fallback' => $fallback];
+                continue;
+            }
             if (isset($col_to_field[$col])) {
                 // változó oszlop: az érték a WooCommerce-ből jön, a stílus a mintából
                 $plan[$idx] = ['kind' => 'field', 'col' => $col, 'field' => $col_to_field[$col], 's' => $cell['s']];
@@ -461,6 +488,13 @@ class MG_Temu_Xlsx_Writer {
                 $plan[$idx] = ['kind' => 'field', 'col' => $col, 'field' => $field, 's' => null];
             }
         }
+        // Bullet Point oszlopok, amik a mintasorban üresek
+        foreach ($bullet_field as $col => $field) {
+            $idx = self::col_index($col);
+            if (!isset($plan[$idx])) {
+                $plan[$idx] = ['kind' => 'field_fallback', 'col' => $col, 'field' => $field, 's' => null, 'fallback' => null];
+            }
+        }
         ksort($plan);
 
         return [
@@ -470,6 +504,7 @@ class MG_Temu_Xlsx_Writer {
             'sample_row_open' => $sample_row_open,
             'plan'            => $plan,
             'field_col'       => $field_col,
+            'bullet_count'    => count($bullet_cols),
         ];
     }
 
@@ -696,6 +731,13 @@ class MG_Temu_Xlsx_Writer {
             switch ($spec['kind']) {
                 case 'field':
                     $val = isset($row[$spec['field']]) ? (string) $row[$spec['field']] : '';
+                    $xml .= self::inline_cell($ref, $s_attr, $val);
+                    break;
+                case 'field_fallback':
+                    // Bullet Point: a sor értéke, ha van; különben a mintasoré
+                    $val = isset($row[$spec['field']]) && (string) $row[$spec['field']] !== ''
+                        ? (string) $row[$spec['field']]
+                        : (string) $spec['fallback'];
                     $xml .= self::inline_cell($ref, $s_attr, $val);
                     break;
                 case 'formula':
