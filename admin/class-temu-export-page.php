@@ -27,12 +27,35 @@ class MG_Temu_Export_Page {
                     <p><?php esc_html_e('Generálj Temu-kompatibilis CSV fájlt a termékeidből két egyszerű lépésben.', 'mockup-generator'); ?></p>
                 </div>
 
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
-                    <label style="font-weight:600;white-space:nowrap;"><?php esc_html_e('Névhez hozzáfűzendő egyedi mező:', 'mockup-generator'); ?></label>
-                    <input type="text" id="mg-temu-name-suffix" value="<?php echo esc_attr(get_option('mg_temu_name_suffix', '')); ?>" style="flex:1;max-width:400px;" placeholder="pl. Hungary" />
-                    <button type="button" class="button" id="mg-temu-save-suffix"><?php esc_html_e('Mentés', 'mockup-generator'); ?></button>
-                    <span id="mg-temu-suffix-status" style="font-style:italic;color:#666;font-size:12px;"></span>
-                    <span style="color:#888;font-size:12px;"><?php esc_html_e('Exportban: Terméknév + típus + ez a mező', 'mockup-generator'); ?></span>
+                <?php
+                // Névhez fűzendő egyedi mező: típusonként külön érték adható meg,
+                // az üresen hagyott típusokra az alap érték vonatkozik.
+                $suffix_types = get_option('mg_temu_name_suffix_types', []);
+                if (!is_array($suffix_types)) {
+                    $suffix_types = [];
+                }
+                ?>
+                <div style="margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                        <strong><?php esc_html_e('Névhez hozzáfűzendő egyedi mező', 'mockup-generator'); ?></strong>
+                        <span style="color:#888;font-size:12px;"><?php esc_html_e('Exportban: Terméknév + típus + ez a mező. Ha egy típusnál üres, az alap érték kerül a névbe.', 'mockup-generator'); ?></span>
+                        <button type="button" class="button" id="mg-temu-save-suffix"><?php esc_html_e('Mentés', 'mockup-generator'); ?></button>
+                        <span id="mg-temu-suffix-status" style="font-style:italic;color:#666;font-size:12px;"></span>
+                    </div>
+                    <table class="widefat striped" style="max-width:640px;">
+                        <tbody>
+                            <tr>
+                                <td style="white-space:nowrap;width:220px;"><?php esc_html_e('Alap (minden típus)', 'mockup-generator'); ?></td>
+                                <td><input type="text" id="mg-temu-name-suffix" value="<?php echo esc_attr(get_option('mg_temu_name_suffix', '')); ?>" style="width:100%;max-width:360px;" placeholder="pl. Hungary" /></td>
+                            </tr>
+                            <?php foreach (self::get_all_types() as $type_slug => $type_label): ?>
+                            <tr>
+                                <td style="white-space:nowrap;"><?php echo esc_html($type_label); ?></td>
+                                <td><input type="text" class="mg-temu-name-suffix-type" data-type="<?php echo esc_attr($type_slug); ?>" value="<?php echo esc_attr(isset($suffix_types[$type_slug]) ? $suffix_types[$type_slug] : ''); ?>" style="width:100%;max-width:360px;" placeholder="<?php esc_attr_e('üres = alap érték', 'mockup-generator'); ?>" /></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
 
                 <?php
@@ -232,14 +255,19 @@ class MG_Temu_Export_Page {
             let productsPerPage = 25;
             let selectedProducts = {};
 
-            // --- Egyedi névmező mentése ---
+            // --- Egyedi névmező mentése (alap + típusonként) ---
             $('#mg-temu-save-suffix').on('click', function() {
                 const val = $('#mg-temu-name-suffix').val();
+                const types = {};
+                $('.mg-temu-name-suffix-type').each(function() {
+                    types[$(this).data('type')] = $(this).val();
+                });
                 const $btn = $(this).prop('disabled', true).text('Mentés...');
                 $('#mg-temu-suffix-status').text('');
                 $.post(ajaxurl, {
                     action: 'mg_temu_save_name_suffix',
                     value: val,
+                    types: JSON.stringify(types),
                     nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                 }, function(resp) {
                     $btn.prop('disabled', false).text('Mentés');
@@ -1014,7 +1042,11 @@ class MG_Temu_Export_Page {
                 $export_description = $product->get_description(); // Fallback ha egyáltalán nincs SEO leírás
             }
 
-            $name_suffix = get_option('mg_temu_name_suffix', '');
+            // Egyedi mező: a típus saját értéke, ha van, különben az alap
+            $suffix_types = get_option('mg_temu_name_suffix_types', []);
+            $name_suffix = (is_array($suffix_types) && isset($suffix_types[$type_slug]) && $suffix_types[$type_slug] !== '')
+                ? $suffix_types[$type_slug]
+                : get_option('mg_temu_name_suffix', '');
             $export_name = trim($product->get_name() . ' ' . $type_label . ' ' . $name_suffix);
 
             $rows[] = [
@@ -1458,6 +1490,25 @@ class MG_Temu_Export_Page {
         }
         $value = isset($_POST['value']) ? sanitize_text_field(wp_unslash($_POST['value'])) : '';
         update_option('mg_temu_name_suffix', $value);
+
+        // típusonkénti egyedi mezők (üres érték = az alap értéket használja)
+        if (isset($_POST['types'])) {
+            $types_raw = json_decode(wp_unslash($_POST['types']), true);
+            $types = [];
+            if (is_array($types_raw)) {
+                foreach ($types_raw as $slug => $suffix) {
+                    $slug = sanitize_title($slug);
+                    if ($slug === '') {
+                        continue;
+                    }
+                    $suffix = sanitize_text_field((string) $suffix);
+                    if ($suffix !== '') {
+                        $types[$slug] = $suffix;
+                    }
+                }
+            }
+            update_option('mg_temu_name_suffix_types', $types);
+        }
         wp_send_json_success();
     }
 
