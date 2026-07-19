@@ -1119,6 +1119,15 @@ class MG_Temu_Export_Page {
                 '8'  => '8Y',
                 '10' => '10Y',
                 '12' => '12Y',
+                // Páros gyerekméretek (pl. gyerek pulcsi) -> Temu tartományos alak.
+                // A 9/11 és 12/13 nem létezik a Temu listában, a legközelebbi
+                // tartományra képezzük (9-10Y ill. 11-12Y).
+                '1/2'   => '1-2Y',
+                '3/4'   => '3-4Y',
+                '5/6'   => '5-6Y',
+                '7/8'   => '7-8Y',
+                '9/11'  => '9-10Y',
+                '12/13' => '11-12Y',
             ];
             
             if (isset($temu_size_map[$normalized_size])) {
@@ -1133,8 +1142,8 @@ class MG_Temu_Export_Page {
             
             $sku_generated = $base_sku;
 
-            // Ha gyerekpóló (2, 4, 6, 8, 10, 12 méretek), hozzátesszük az SKU-hoz, hogy GYEREK
-            if (in_array($normalized_size, ['2', '4', '6', '8', '10', '12'], true)) {
+            // Ha gyerekméret (2..12 vagy páros 1/2..12/13), hozzátesszük az SKU-hoz, hogy GYEREK
+            if (in_array($normalized_size, ['2', '4', '6', '8', '10', '12', '1/2', '3/4', '5/6', '7/8', '9/11', '12/13'], true)) {
                 $sku_generated .= '-GYEREK';
             }
             
