@@ -1355,10 +1355,14 @@ class MG_Temu_Export_Page {
                 'type_label'   => isset($all_types[$tslug]) ? $all_types[$tslug] : $tslug,
                 'filename'     => $filename,
                 'rows'         => count($rows),
-                'download_url' => wp_nonce_url(
-                    admin_url('admin-post.php?action=mg_temu_download_xlsx&token=' . $token),
-                    'mg_temu_download_xlsx'
-                ),
+                // FONTOS: nem wp_nonce_url(), mert az HTML-escapeli az &-t
+                // (&#038;), és JSON-on át a böngésző fragmentként levágná a
+                // nonce-ot -> "A követett hivatkozás érvényessége lejárt."
+                'download_url' => add_query_arg([
+                    'action'   => 'mg_temu_download_xlsx',
+                    'token'    => $token,
+                    '_wpnonce' => wp_create_nonce('mg_temu_download_xlsx'),
+                ], admin_url('admin-post.php')),
                 '_path'        => $out_path,
                 '_token'       => $token,
             ];
