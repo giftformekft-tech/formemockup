@@ -87,18 +87,47 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
         $products = get_option('mg_products', array());
         $type_count = is_array($products) ? count($products) : 0;
 
+        $statuses = "('publish','draft','pending','private')";
         $recent_count = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN ('publish','draft','pending','private') AND post_date >= %s",
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN {$statuses} AND post_date >= %s",
             gmdate('Y-m-d H:i:s', strtotime('-30 days'))
         ));
+        $previous_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN {$statuses} AND post_date >= %s AND post_date < %s",
+            gmdate('Y-m-d H:i:s', strtotime('-60 days')),
+            gmdate('Y-m-d H:i:s', strtotime('-30 days'))
+        ));
+
+        $daily_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT DATE(post_date) AS d, COUNT(*) AS c FROM {$wpdb->posts} WHERE post_type='product' AND post_status IN {$statuses} AND post_date >= %s GROUP BY DATE(post_date)",
+            gmdate('Y-m-d H:i:s', strtotime('-30 days'))
+        ), ARRAY_A);
+        $daily = array();
+        foreach ((array) $daily_rows as $row) {
+            $daily[$row['d']] = (int) $row['c'];
+        }
+        $series = array();
+        for ($i = 29; $i >= 0; $i--) {
+            $day = gmdate('Y-m-d', strtotime('-' . $i . ' days'));
+            $series[] = isset($daily[$day]) ? $daily[$day] : 0;
+        }
+
+        $delta_html = '';
+        if ($previous_count > 0) {
+            $pct = (int) round((($recent_count - $previous_count) / $previous_count) * 100);
+            $dir = $pct >= 0 ? 'up' : 'down';
+            $delta_html = '<span class="mg-delta mg-delta--' . $dir . '">' . ($pct >= 0 ? '+' : '') . $pct . '%</span>';
+        } elseif ($recent_count > 0) {
+            $delta_html = '<span class="mg-delta mg-delta--up">+' . esc_html(number_format_i18n($recent_count)) . '</span>';
+        }
 
         $queue_pending = class_exists('MG_Bulk_Queue') ? MG_Bulk_Queue::get_pending_count() : 0;
 
         echo '<div class="mg-dash-stats">';
-        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Aktív terméktípus</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($type_count)) . '</p><p class="mg-dash-stat__hint">a Beállításokban konfigurálva</p></div>';
-        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Termék összesen</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n((int) $data['total'])) . '</p><p class="mg-dash-stat__hint">publish, draft, pending, private</p></div>';
-        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Új termék (30 nap)</p><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($recent_count)) . '</p><p class="mg-dash-stat__hint">az elmúlt 30 napban létrehozva</p></div>';
-        echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Bulk sor</p><p class="mg-dash-stat__value">' . ($queue_pending > 0 ? esc_html(number_format_i18n($queue_pending)) : 'Üres') . '</p><p class="mg-dash-stat__hint">' . ($queue_pending > 0 ? 'feldolgozásra váró tétel' : 'nincs feldolgozásra váró tétel') . '</p></div>';
+        echo '<div class="mg-dash-stat"><div class="mg-dash-stat__top"><p class="mg-dash-stat__label">Aktív terméktípus</p></div><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($type_count)) . '</p><p class="mg-dash-stat__hint">a Beállításokban konfigurálva</p></div>';
+        echo '<div class="mg-dash-stat"><div class="mg-dash-stat__top"><p class="mg-dash-stat__label">Termék összesen</p></div><p class="mg-dash-stat__value">' . esc_html(number_format_i18n((int) $data['total'])) . '</p><p class="mg-dash-stat__hint">publish, draft, pending, private</p></div>';
+        echo '<div class="mg-dash-stat"><div class="mg-dash-stat__top"><p class="mg-dash-stat__label">Új termék (30 nap)</p>' . $delta_html . '</div><p class="mg-dash-stat__value">' . esc_html(number_format_i18n($recent_count)) . '</p>' . self::render_sparkline($series) . '</div>';
+        echo '<div class="mg-dash-stat"><div class="mg-dash-stat__top"><p class="mg-dash-stat__label">Bulk sor</p></div><p class="mg-dash-stat__value">' . ($queue_pending > 0 ? esc_html(number_format_i18n($queue_pending)) : 'Üres') . '</p><p class="mg-dash-stat__hint">' . ($queue_pending > 0 ? 'feldolgozásra váró tétel' : 'nincs feldolgozásra váró tétel') . '</p></div>';
         echo '</div>';
 
         $actions = array(
@@ -115,6 +144,36 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
             echo '</a>';
         }
         echo '</div>';
+    }
+
+    /**
+     * Renders a tiny inline SVG sparkline from a numeric series.
+     *
+     * @param int[] $series
+     * @return string
+     */
+    protected static function render_sparkline($series){
+        $count = count($series);
+        if ($count < 2 || max($series) <= 0) {
+            return '<p class="mg-dash-stat__hint">az elmúlt 30 napban létrehozva</p>';
+        }
+
+        $max = max($series);
+        $points = array();
+        $step = 100 / ($count - 1);
+        foreach ($series as $i => $value) {
+            $x = round($i * $step, 1);
+            // 2px top/bottom padding inside the 30-unit-high viewBox.
+            $y = round(28 - (($value / $max) * 26), 1);
+            $points[] = $x . ',' . $y;
+        }
+        $line = implode(' ', $points);
+        $area = '0,30 ' . $line . ' 100,30';
+
+        return '<svg class="mg-spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true">'
+            . '<polygon points="' . esc_attr($area) . '"></polygon>'
+            . '<polyline points="' . esc_attr($line) . '"></polyline>'
+            . '</svg>';
     }
 
     public static function render_page(){
