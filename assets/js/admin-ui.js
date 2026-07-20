@@ -803,9 +803,20 @@
         if (!sanitized) {
             return;
         }
-        if (!$('.mg-tab[data-tab="' + sanitized + '"]').length) {
+        const $targetBtn = $('.mg-tab[data-tab="' + sanitized + '"]');
+        if (!$targetBtn.length) {
             sanitized = sanitizeTab($('.mg-tab').first().data('tab'));
             if (!sanitized) {
+                return;
+            }
+        }
+
+        // Only the active panel is rendered server-side; switching to any
+        // other tab is a normal navigation to its deep link.
+        if (!$('#tab-' + sanitized).length) {
+            const targetUrl = $('.mg-tab[data-tab="' + sanitized + '"]').data('url');
+            if (targetUrl) {
+                window.location.href = targetUrl;
                 return;
             }
         }

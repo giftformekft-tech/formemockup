@@ -101,16 +101,15 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
         echo '<div class="mg-dash-stat"><p class="mg-dash-stat__label">Bulk sor</p><p class="mg-dash-stat__value">' . ($queue_pending > 0 ? esc_html(number_format_i18n($queue_pending)) : 'Üres') . '</p><p class="mg-dash-stat__hint">' . ($queue_pending > 0 ? 'feldolgozásra váró tétel' : 'nincs feldolgozásra váró tétel') . '</p></div>';
         echo '</div>';
 
-        $shell = admin_url('admin.php?page=mockup-generator');
         $actions = array(
-            array('mg_tab=bulk', 'dashicons-upload', 'Bulk minta feltöltés', 'Több design egyszerre'),
-            array('mg_tab=temu_export', 'dashicons-migrate', 'Temu Export', 'XLSX a sablonod alapján'),
-            array('mg_tab=dedup', 'dashicons-search', 'Duplikátum-keresés', 'Ismétlődő termékek tisztítása'),
-            array('mg_tab=settings', 'dashicons-admin-generic', 'Beállítások', 'Terméktípusok és opciók'),
+            array('bulk', 'dashicons-upload', 'Bulk minta feltöltés', 'Több design egyszerre'),
+            array('temu_export', 'dashicons-migrate', 'Temu Export', 'XLSX a sablonod alapján'),
+            array('dedup', 'dashicons-search', 'Duplikátum-keresés', 'Ismétlődő termékek tisztítása'),
+            array('settings', 'dashicons-admin-generic', 'Beállítások', 'Terméktípusok és opciók'),
         );
         echo '<div class="mg-quick-actions">';
         foreach ($actions as $a) {
-            echo '<a class="mg-quick-action" href="' . esc_url($shell . '&' . $a[0]) . '">';
+            echo '<a class="mg-quick-action" href="' . esc_url(MG_Admin_Page::build_panel_url($a[0])) . '">';
             echo '<span class="dashicons ' . esc_attr($a[1]) . '" aria-hidden="true"></span>';
             echo '<span><strong>' . esc_html($a[2]) . '</strong><span class="mg-quick-action__desc">' . esc_html($a[3]) . '</span></span>';
             echo '</a>';

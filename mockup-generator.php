@@ -173,9 +173,7 @@ add_action('plugins_loaded', function(){
             ));
         }
 
-        // The shell renders every panel up front, so the variant editor's
-        // assets must be present regardless of which tab the page opened on.
-        if ($is_shell && class_exists('MG_Variant_Display_Page')) {
+        if ($is_shell && $tab === 'variants' && class_exists('MG_Variant_Display_Page')) {
             MG_Variant_Display_Page::enqueue_assets($hook);
         }
     });

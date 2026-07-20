@@ -23,51 +23,39 @@ class MG_Menu_Manager {
     }
 
     /**
-     * Sidebar entries: one per shell group, in fixed order. Each links to the
-     * shell with the group's default tab. The capability is the most
-     * permissive one within the group – individual tabs are still gated by
-     * their own capability inside the shell.
+     * Sidebar entries: one per shell group, derived from the shell's own group
+     * and tab definitions so labels, targets and capabilities can never drift.
+     * A group links to its first tab the CURRENT user can access, and is
+     * omitted entirely when none of its tabs are accessible – mirroring
+     * exactly what the shell will show after its own capability filtering.
      *
      * @return array<string,array{label:string,tab:string,capability:string}>
      */
     private static function get_group_links() {
-        return array(
-            'dashboard' => array(
-                'label'      => __('Dashboard', 'mockup-generator'),
-                'tab'        => 'dashboard',
-                'capability' => 'edit_products',
-            ),
-            'mockups' => array(
-                'label'      => __('Mockupok', 'mockup-generator'),
-                'tab'        => 'mockups',
-                'capability' => 'edit_products',
-            ),
-            'sales' => array(
-                'label'      => __('Értékesítés', 'mockup-generator'),
-                'tab'        => 'variants',
-                'capability' => 'edit_products',
-            ),
-            'marketing' => array(
-                'label'      => __('Marketing & Mérés', 'mockup-generator'),
-                'tab'        => 'gads',
-                'capability' => 'manage_options',
-            ),
-            'export' => array(
-                'label'      => __('Export & Feedek', 'mockup-generator'),
-                'tab'        => 'temu_export',
-                'capability' => 'edit_products',
-            ),
-            'tools' => array(
-                'label'      => __('Eszközök', 'mockup-generator'),
-                'tab'        => 'maintenance',
-                'capability' => 'manage_woocommerce',
-            ),
-            'settings' => array(
-                'label'      => __('Beállítások', 'mockup-generator'),
-                'tab'        => 'settings',
-                'capability' => 'manage_options',
-            ),
-        );
+        $links = array();
+        $groups = MG_Admin_Page::get_groups();
+        $tabs = MG_Admin_Page::get_tabs();
+
+        foreach ($groups as $gid => $group) {
+            foreach ($tabs as $tab_id => $tab) {
+                $tab_group = isset($tab['group']) ? $tab['group'] : 'dashboard';
+                if ($tab_group !== $gid) {
+                    continue;
+                }
+                $cap = isset($tab['capability']) ? $tab['capability'] : 'edit_products';
+                if (!current_user_can($cap)) {
+                    continue;
+                }
+                $links[$gid] = array(
+                    'label'      => $group['label'],
+                    'tab'        => $tab_id,
+                    'capability' => $cap,
+                );
+                break;
+            }
+        }
+
+        return $links;
     }
 
     /**
@@ -142,11 +130,15 @@ class MG_Menu_Manager {
         );
 
         foreach ($_GET as $key => $value) {
-            if (in_array($key, array('page', 'mg_tab'), true) || is_array($value)) {
+            if (in_array($key, array('page', 'mg_tab'), true)) {
                 continue;
             }
             $key = sanitize_key($key);
             if ($key === '') {
+                continue;
+            }
+            if (is_array($value)) {
+                $args[$key] = array_map('sanitize_text_field', wp_unslash($value));
                 continue;
             }
             // The old product editor used "product", the shell uses "mg_product".

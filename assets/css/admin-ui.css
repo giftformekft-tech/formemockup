@@ -231,7 +231,6 @@
 .mg-panel-body--legacy table.widefat {
     border-radius: var(--mg-radius);
     overflow: hidden;
-    box-shadow: var(--mg-shadow);
 }
 
 .mg-panel-body--legacy table.form-table th {

@@ -87,9 +87,13 @@ class MG_Admin_Page {
             $data['currentProduct'] = $product;
         }
 
-        $bulk_data = self::prepare_bulk_data();
-        if (!empty($bulk_data['products'])) {
-            self::enqueue_bulk_assets($bulk_data);
+        // The bulk uploader UI only exists on the bulk/mockups panels, and only
+        // the active panel is rendered - don't load its assets elsewhere.
+        if (in_array($active, array('bulk', 'mockups'), true)) {
+            $bulk_data = self::prepare_bulk_data();
+            if (!empty($bulk_data['products'])) {
+                self::enqueue_bulk_assets($bulk_data);
+            }
         }
 
         wp_localize_script('mg-admin-ui', 'MG_ADMIN_UI', $data);
@@ -516,25 +520,30 @@ class MG_Admin_Page {
             echo '</div>';
         }
 
+        // Only the active tab's panel is rendered server-side. The other tabs
+        // navigate via their data-url (full page load), so each embedded page
+        // only executes its queries and enqueues its assets when actually
+        // viewed - pre-rendering ~19 pages per request would be wasteful.
         echo '<div class="mg-tabpanels">';
-        foreach ($tabs as $id => $tab) {
-            $panel_classes = 'mg-panel' . ($id === $current ? ' is-active' : '');
-            $attrs = array(
-                'id'            => 'tab-' . $id,
-                'class'         => $panel_classes,
-                'role'          => 'tabpanel',
-                'aria-labelledby' => 'mg-tab-' . $id,
-                'data-tab-id'   => $id,
-            );
+        $attrs = array(
+            'id'              => 'tab-' . $current,
+            'class'           => 'mg-panel is-active',
+            'role'            => 'tabpanel',
+            'aria-labelledby' => 'mg-tab-' . $current,
+            'data-tab-id'     => $current,
+        );
 
-            if ($id === 'mockups') {
-                $attrs['data-product-key'] = $product;
-            }
-
-            echo '<section' . self::compile_attributes($attrs) . '>';
-            self::render_panel_body($id, $tab);
-            echo '</section>';
+        if ($current === 'mockups') {
+            $attrs['data-product-key'] = $product;
         }
+
+        echo '<section' . self::compile_attributes($attrs) . '>';
+        if (isset($tabs[$current])) {
+            self::render_panel_body($current, $tabs[$current]);
+        } else {
+            self::render_placeholder_panel();
+        }
+        echo '</section>';
         echo '</div>';
 
         echo '<footer class="mg-save-bar" aria-hidden="true">';
@@ -1419,7 +1428,7 @@ class MG_Admin_Page {
      * @param array  $args
      * @return string
      */
-    private static function build_panel_url($tab, $args = array()) {
+    public static function build_panel_url($tab, $args = array()) {
         $args = array_merge(
             array(
                 'page'   => self::MAIN_SLUG,
