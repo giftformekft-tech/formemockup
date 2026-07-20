@@ -919,5 +919,30 @@
         initModals();
         rewriteLegacyLinks(document);
         initColorManagers(document);
+        initProductEditorTabs();
     });
+
+    // Client-side section tabs of the product type editor. All panels stay in
+    // the DOM (the single form submits every field), only visibility changes.
+    function initProductEditorTabs() {
+        const $tabs = $('.mg-pst-tab');
+        if (!$tabs.length) {
+            return;
+        }
+        $tabs.on('click', function () {
+            const target = $(this).data('pst');
+            if (!target) {
+                return;
+            }
+            $('.mg-pst-tab').removeClass('is-active');
+            $(this).addClass('is-active');
+            $('.mg-pst-panel').removeClass('is-active').filter('[data-pst-panel="' + target + '"]').addClass('is-active');
+            // Nudge TinyMCE / lazy widgets after becoming visible.
+            try {
+                window.dispatchEvent(new Event('resize'));
+            } catch (err) {
+                // ignore
+            }
+        });
+    }
 })(jQuery);

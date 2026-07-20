@@ -784,6 +784,25 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
         $uploads_base = trailingslashit($uploads['basedir']);
         $uploads_url  = trailingslashit($uploads['baseurl']);
 
+        // Count empty color x view mockup cells for the tab badge.
+        $mockup_cell_count = 0;
+        $mockup_missing_count = 0;
+        foreach ($colors as $c) {
+            if (!isset($c['slug'])) continue;
+            foreach ($views as $v) {
+                if (!isset($v['file'])) continue;
+                $mockup_cell_count++;
+                $cell = isset($over[$c['slug']][$v['file']]) ? $over[$c['slug']][$v['file']] : array();
+                if (!is_array($cell)) {
+                    $cell = $cell ? array($cell) : array();
+                }
+                $cell = array_filter($cell);
+                if (empty($cell)) {
+                    $mockup_missing_count++;
+                }
+            }
+        }
+
         ?>
         <div class="wrap">
             <h1>Termék beállítások – <?php echo esc_html($prod['label']); ?>
@@ -802,8 +821,16 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
                     class="button"
                 ><?php esc_html_e('Terméktípus duplikálása', 'mgdtp'); ?></a>
             </p>
+            <nav class="mg-pst-tabs" aria-label="Terméktípus szekciók">
+                <button type="button" class="mg-pst-tab is-active" data-pst="basic">Alapadatok</button>
+                <button type="button" class="mg-pst-tab" data-pst="sizes">Méretek &amp; Árak</button>
+                <button type="button" class="mg-pst-tab" data-pst="colors">Színek &amp; Nézetek</button>
+                <button type="button" class="mg-pst-tab" data-pst="mockups">Mockup képek<?php echo $mockup_missing_count > 0 ? ' <span class="mg-pst-tab__badge">' . intval($mockup_missing_count) . ' hiányzó</span>' : ''; ?></button>
+                <button type="button" class="mg-pst-tab" data-pst="description">Leírás</button>
+            </nav>
             <form method="post" enctype="multipart/form-data">
                 <?php wp_nonce_field('mg_save_product','mg_save_product_nonce'); ?>
+                <div class="mg-pst-panel is-active" data-pst-panel="basic">
                 <h2>Megjelenített név</h2>
                 <p><input type="text" name="label" class="regular-text" value="<?php echo esc_attr($prod['label']); ?>" /></p>
                 <h2>Terméktípus slug</h2>
@@ -877,6 +904,8 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
                     <span class="description" style="display:block;margin-top:4px;">A kiválasztott méret jelenik meg alapértelmezésként a WooCommerce termékvariációknál.</span>
                 </p>
 
+                </div><!-- /basic -->
+                <div class="mg-pst-panel" data-pst-panel="sizes">
                 <h2>Méretek</h2>
                 <p><input type="text" name="sizes" class="regular-text" value="<?php echo esc_attr(implode(',', $sizes)); ?>" /></p>
 
@@ -953,6 +982,8 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
     <?php endforeach; ?>
     </tbody>
 </table>
+</div><!-- /sizes -->
+<div class="mg-pst-panel" data-pst-panel="colors">
 <h2>Színek</h2>
 
                 <div class="mg-color-field" data-mg-color-manager>
@@ -1003,8 +1034,9 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
 
                 <h2>Template alap mappa</h2>
                 <p><input type="text" name="template_base" class="regular-text" value="<?php echo esc_attr($template_base); ?>" /></p>
+                </div><!-- /colors -->
 
-                
+<div class="mg-pst-panel" data-pst-panel="description">
 <h2>Termék leírás</h2>
 <p class="description">Ez kerül a WooCommerce termék hosszú leírásába; a rövid leírást automatikusan egy kivonatból generáljuk.</p>
 <?php
@@ -1041,9 +1073,18 @@ if (function_exists('wp_editor')) {
     echo '<textarea name="type_description" rows="8" class="large-text">'.esc_textarea($curr_desc).'</textarea>';
 }
 ?>
+                </div><!-- /description -->
+                <div class="mg-pst-panel" data-pst-panel="mockups">
                 <h2>Mockup feltöltés (szín × nézet)</h2>
                 <p class="description">Színenként és nézetenként több mockup is tárolható; a generáláskor a rendszer véletlenszerűen választ közülük.</p>
-                <p class="description">Feltöltés után katt a <em>Print area jelölése</em> gombra: megnyílik egy jelölőréteg, ahol húzással/átméretezéssel állítod a nyomtatási területet. Az eredmény a fenti „Nézetek (views)” JSON-ba íródik (x,y,w,h).</p>
+                <p class="description">Feltöltés után katt a <em>Print area jelölése</em> gombra: megnyílik egy jelölőréteg, ahol húzással/átméretezéssel állítod a nyomtatási területet. Az eredmény a „Színek &amp; Nézetek” fülön lévő „Nézetek (views)” JSON-ba íródik (x,y,w,h).</p>
+                <?php if ($mockup_cell_count > 0): ?>
+                    <p>
+                        <span class="mg-badge <?php echo $mockup_missing_count > 0 ? 'mg-badge--warn' : 'mg-badge--ok'; ?>">
+                            <?php echo intval($mockup_cell_count - $mockup_missing_count); ?> / <?php echo intval($mockup_cell_count); ?> cella feltöltve<?php echo $mockup_missing_count > 0 ? ' · ' . intval($mockup_missing_count) . ' hiányzik' : ''; ?>
+                        </span>
+                    </p>
+                <?php endif; ?>
 
                 <table class="widefat striped">
                     <thead>
@@ -1094,7 +1135,7 @@ if (function_exists('wp_editor')) {
                                     return $path !== '';
                                 }));
                             ?>
-                                <td>
+                                <td class="mg-mx-cell<?php echo empty($existing) ? ' mg-mx-cell--missing' : ''; ?>">
                                     <?php if (!empty($existing)): ?>
                                         <div class="mg-mockup-existing-list">
                                             <?php foreach ($existing as $idx => $path):
@@ -1105,14 +1146,22 @@ if (function_exists('wp_editor')) {
                                                 }
                                             ?>
                                                 <div class="mg-mockup-existing-item">
-                                                    <div>Mockup #<?php echo esc_html($idx + 1); ?>: <code><?php echo esc_html(basename($path)); ?></code></div>
                                                     <?php if ($display): ?>
-                                                        <div><a href="<?php echo esc_url($display); ?>" target="_blank">Megnyitás</a></div>
+                                                        <a class="mg-mx-thumb" href="<?php echo esc_url($display); ?>" target="_blank" title="<?php echo esc_attr(basename($path)); ?> – megnyitás új lapon">
+                                                            <img src="<?php echo esc_url($display); ?>" alt="<?php echo esc_attr(basename($path)); ?>" loading="lazy" />
+                                                        </a>
+                                                    <?php else: ?>
+                                                        <span class="mg-mx-thumb mg-mx-thumb--nofile" title="<?php echo esc_attr(basename($path)); ?>"><span class="dashicons dashicons-format-image"></span></span>
                                                     <?php endif; ?>
-                                                    <label><input type="checkbox" name="mockup_remove[<?php echo esc_attr($slug); ?>][<?php echo esc_attr($file_key); ?>][]" value="<?php echo esc_attr($idx); ?>" /> Törlés</label>
+                                                    <label class="mg-mx-remove" title="<?php echo esc_attr(basename($path)); ?>">
+                                                        <input type="checkbox" name="mockup_remove[<?php echo esc_attr($slug); ?>][<?php echo esc_attr($file_key); ?>][]" value="<?php echo esc_attr($idx); ?>" />
+                                                        Törlés
+                                                    </label>
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>
+                                    <?php else: ?>
+                                        <span class="mg-badge mg-badge--warn mg-mx-missing-label">Hiányzó mockup</span>
                                     <?php endif; ?>
                                     <input type="file" name="mockup_files[<?php echo esc_attr($slug); ?>][<?php echo esc_attr($file_key); ?>][]" accept=".png,.jpg,.jpeg,.webp" multiple />
                                     <p class="description">Új fájlok hozzáadásához jelöld ki egyszerre a feltölteni kívánt képeket.</p>
@@ -1122,6 +1171,7 @@ if (function_exists('wp_editor')) {
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div><!-- /mockups -->
 
                 <?php submit_button('Mentés'); ?>
             </form>

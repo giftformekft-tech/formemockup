@@ -1374,3 +1374,132 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
 #wpfooter {
     display: none;
 }
+
+/* ── Termék típus szerkesztő: szekció-tabok ─────────────────────────── */
+.mg-pst-tabs {
+    display: flex;
+    gap: 18px;
+    padding: 0 2px;
+    margin: 16px 0 20px;
+    border-bottom: 1px solid var(--mg-border);
+    overflow-x: auto;
+}
+
+.mg-pst-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 2px;
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
+    color: var(--mg-text-muted);
+    white-space: nowrap;
+}
+
+.mg-pst-tab:hover,
+.mg-pst-tab:focus {
+    color: var(--mg-text);
+    outline: none;
+}
+
+.mg-pst-tab.is-active {
+    color: var(--mg-accent);
+    border-bottom-color: var(--mg-accent);
+    font-weight: 600;
+}
+
+.mg-pst-tab__badge {
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 20px;
+    padding: 1px 7px;
+    margin-left: 6px;
+    color: var(--mg-warn);
+    background: var(--mg-warn-bg);
+    vertical-align: 1px;
+}
+
+.mg-pst-panel {
+    display: none;
+}
+
+.mg-pst-panel.is-active {
+    display: block;
+}
+
+/* ── Mockup mátrix: thumbnailek és hiányzó cellák ───────────────────── */
+.mg-mx-cell {
+    vertical-align: top;
+    min-width: 150px;
+}
+
+.mg-mx-cell--missing {
+    background: var(--mg-warn-bg) !important;
+}
+
+.mg-mx-missing-label {
+    display: inline-block;
+    margin-bottom: 8px;
+}
+
+.mg-mockup-existing-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.mg-mockup-existing-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.mg-mx-thumb {
+    display: block;
+    width: 64px;
+    height: 64px;
+    border-radius: var(--mg-radius-sm);
+    border: 1px solid var(--mg-border);
+    background: var(--mg-bg);
+    overflow: hidden;
+    text-decoration: none;
+}
+
+.mg-mx-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.mg-mx-thumb--nofile {
+    display: grid;
+    place-items: center;
+    color: var(--mg-text-muted);
+}
+
+.mg-mx-remove {
+    font-size: 11.5px;
+    color: var(--mg-text-muted);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.mg-mx-remove input {
+    margin: 0 3px 0 0;
+    vertical-align: -2px;
+}
+
+.mg-mx-cell input[type="file"] {
+    max-width: 150px;
+    font-size: 11.5px;
+}
+
+.mg-mx-cell .description {
+    font-size: 11px;
+    margin: 4px 0 0;
+}
