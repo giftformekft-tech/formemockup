@@ -36,41 +36,55 @@ class MG_Dashboard_Page {
         $date_to   = isset($args['date_to']) ? sanitize_text_field($args['date_to']) : '';
 
         $posts = $wpdb->posts; $pm = $wpdb->postmeta;
-        $where = " WHERE p.post_type='product' ";
-        if ($status){ $where .= $wpdb->prepare(" AND p.post_status=%s ", $status); }
-        else { $where .= " AND p.post_status IN ('publish','draft','pending','private') "; }
-        if ($search){
-            $like = '%' . $wpdb->esc_like($search) . '%';
-            $where .= $wpdb->prepare(" AND (p.post_title LIKE %s OR p.post_excerpt LIKE %s OR p.post_content LIKE %s)", $like,$like,$like);
-        }
-        if ($date_from){ $where .= $wpdb->prepare(" AND p.post_date >= %s ", $date_from.' 00:00:00'); }
-        if ($date_to){ $where .= $wpdb->prepare(" AND p.post_date <= %s ", $date_to.' 23:59:59'); }
 
-        $join = " LEFT JOIN {$pm} pmg ON (pmg.post_id=p.ID AND pmg.meta_key=%s) ";
-        $params = array('_mg_generated');
+        // Minden feltétel egyetlen placeholder-listába kerül, és a végén egy
+        // lépésben prepare-eljük - korábban a szűrők összeálltak, de a futó
+        // lekérdezés nem használta őket, ezért a keresés/szűrés nem működött.
+        $where_parts = array("p.post_type = 'product'");
+        $params = array();
 
-        $prefixes = self::get_sku_prefixes();
-        if (!empty($prefixes)){
-            $join .= " LEFT JOIN {$pm} pmsku ON (pmsku.post_id=p.ID AND pmsku.meta_key='_sku') ";
-            $sku_or = array(); foreach ($prefixes as $pref){ $sku_or[] = " (pmsku.meta_value LIKE %s) "; $params[] = $pref.'%'; }
-            $where .= " AND (pmg.meta_value='1' OR (".implode(' OR ', $sku_or).")) ";
+        if ($status) {
+            $where_parts[] = 'p.post_status = %s';
+            $params[] = $status;
         } else {
-            $where .= " AND (pmg.meta_value='1') ";
+            $where_parts[] = "p.post_status IN ('publish','draft','pending','private')";
+        }
+        if ($search !== '') {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $where_parts[] = '(p.post_title LIKE %s OR p.post_excerpt LIKE %s OR p.post_content LIKE %s)';
+            $params[] = $like; $params[] = $like; $params[] = $like;
+        }
+        if ($date_from) {
+            $where_parts[] = 'p.post_date >= %s';
+            $params[] = $date_from . ' 00:00:00';
+        }
+        if ($date_to) {
+            $where_parts[] = 'p.post_date <= %s';
+            $params[] = $date_to . ' 23:59:59';
         }
 
-        $offset = ($paged-1)*$per_page;
-        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$posts} WHERE post_type='product' AND post_status IN ('publish','draft','pending','private')");
+        $join = " LEFT JOIN {$pm} pmg ON (pmg.post_id = p.ID AND pmg.meta_key = '_mg_generated') ";
+        $prefixes = self::get_sku_prefixes();
+        if (!empty($prefixes)) {
+            $join .= " LEFT JOIN {$pm} pmsku ON (pmsku.post_id = p.ID AND pmsku.meta_key = '_sku') ";
+            $sku_or = array();
+            foreach ($prefixes as $pref) {
+                $sku_or[] = 'pmsku.meta_value LIKE %s';
+                $params[] = $wpdb->esc_like($pref) . '%';
+            }
+            $where_parts[] = "(pmg.meta_value = '1' OR (" . implode(' OR ', $sku_or) . '))';
+        } else {
+            $where_parts[] = "pmg.meta_value = '1'";
+        }
 
-        $sql = $wpdb->prepare("
-    SELECT ID, post_title, post_status, post_date
-    FROM {$posts}
-    WHERE post_type='product'
-    AND post_status IN ('publish','draft','pending','private')
-    ORDER BY post_date DESC
-    LIMIT %d OFFSET %d
-", $per_page, $offset);
+        $base = "FROM {$posts} p {$join} WHERE " . implode(' AND ', $where_parts);
 
-$rows = $wpdb->get_results($sql, ARRAY_A);
+        $count_sql = "SELECT COUNT(DISTINCT p.ID) {$base}";
+        $total = (int) $wpdb->get_var(empty($params) ? $count_sql : $wpdb->prepare($count_sql, $params));
+
+        $offset = ($paged - 1) * $per_page;
+        $list_sql = "SELECT DISTINCT p.ID, p.post_title, p.post_status, p.post_date {$base} ORDER BY p.post_date DESC LIMIT %d OFFSET %d";
+        $rows = $wpdb->get_results($wpdb->prepare($list_sql, array_merge($params, array($per_page, $offset))), ARRAY_A);
 
         return array('items'=>$rows,'total'=>$total,'per_page'=>$per_page,'paged'=>$paged,'pages'=>max(1,ceil($total/$per_page)));
     }
