@@ -63,19 +63,25 @@ class MG_Dashboard_Page {
             $params[] = $date_to . ' 23:59:59';
         }
 
-        $join = " LEFT JOIN {$pm} pmg ON (pmg.post_id = p.ID AND pmg.meta_key = '_mg_generated') ";
-        $prefixes = self::get_sku_prefixes();
-        if (!empty($prefixes)) {
-            $join .= " LEFT JOIN {$pm} pmsku ON (pmsku.post_id = p.ID AND pmsku.meta_key = '_sku') ";
-            $sku_or = array();
-            foreach ($prefixes as $pref) {
-                $sku_or[] = 'pmsku.meta_value LIKE %s';
-                $params[] = $wpdb->esc_like($pref) . '%';
-            }
-            $where_parts[] = "(pmg.meta_value = '1' OR (" . implode(' OR ', $sku_or) . '))';
-        } else {
-            $where_parts[] = "pmg.meta_value = '1'";
+        // Generátorral készült termék ismertetőjegyei: van mentett design
+        // útvonala (_mg_last_design_path), VAGY a szülő SKU a kreátor FORME
+        // prefixével kezdődik, VAGY a katalógusban beállított típus-prefixek
+        // egyikével. (A korábbi _mg_generated meta sosem íródott, halott jelző.)
+        $join  = " LEFT JOIN {$pm} pmd ON (pmd.post_id = p.ID AND pmd.meta_key = '_mg_last_design_path') ";
+        $join .= " LEFT JOIN {$pm} pmsku ON (pmsku.post_id = p.ID AND pmsku.meta_key = '_sku') ";
+
+        $gen_or = array('pmd.meta_id IS NOT NULL');
+
+        $parent_prefix = class_exists('MG_Product_Creator') ? MG_Product_Creator::SKU_PREFIX : 'FORME';
+        $gen_or[] = 'pmsku.meta_value LIKE %s';
+        $params[] = $wpdb->esc_like($parent_prefix) . '%';
+
+        foreach (self::get_sku_prefixes() as $pref) {
+            $gen_or[] = 'pmsku.meta_value LIKE %s';
+            $params[] = $wpdb->esc_like($pref) . '%';
         }
+
+        $where_parts[] = '(' . implode(' OR ', $gen_or) . ')';
 
         $base = "FROM {$posts} p {$join} WHERE " . implode(' AND ', $where_parts);
 
