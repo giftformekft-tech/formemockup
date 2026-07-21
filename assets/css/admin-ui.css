@@ -1587,3 +1587,217 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ── Bulk feltöltés finomhangolás ───────────────────────────────────── */
+
+/* Terméktípus- és AI-mező választó chipek */
+.mg-admin-shell .mg-types {
+    gap: 8px;
+}
+
+.mg-admin-shell .mg-type {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--mg-soft);
+    border: 1px solid var(--mg-border);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.mg-admin-shell .mg-type:hover {
+    border-color: var(--mg-accent);
+}
+
+.mg-admin-shell .mg-type input[type="checkbox"] {
+    accent-color: var(--mg-accent);
+    margin: 0;
+}
+
+@supports selector(:has(*)) {
+    .mg-admin-shell .mg-type input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .mg-admin-shell .mg-type {
+        position: relative;
+    }
+
+    .mg-admin-shell .mg-type::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--mg-muted);
+        flex: none;
+        transition: background 0.15s ease;
+    }
+
+    .mg-admin-shell .mg-type:has(input:checked) {
+        background: var(--mg-accent-soft);
+        border-color: var(--mg-accent);
+        color: var(--mg-accent);
+        font-weight: 600;
+    }
+
+    .mg-admin-shell .mg-type:has(input:checked)::before {
+        background: var(--mg-accent);
+    }
+}
+
+/* Drop zóna */
+.mg-admin-shell #mg-drop-zone.mg-drop-zone {
+    border: 2px dashed var(--mg-muted);
+    border-radius: var(--mg-radius);
+    padding: 28px 18px;
+    background: var(--mg-bg);
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mg-admin-shell #mg-drop-zone.is-dragover {
+    border-color: var(--mg-accent);
+    background: var(--mg-accent-soft);
+}
+
+/* Sor-táblázat: kompaktabb oszlopok, görgethető törzs, ragadós fejléc */
+.mg-admin-shell .mg-table-wrap {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    max-height: 65vh;
+    overflow: auto;
+}
+
+.mg-admin-shell .mg-bulk-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--mg-soft);
+    z-index: 2;
+    box-shadow: inset 0 -1px 0 var(--mg-border);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--mg-text-muted);
+}
+
+.mg-admin-shell .mg-bulk-table th,
+.mg-admin-shell .mg-bulk-table td {
+    padding: 8px 10px;
+    font-size: 12.5px;
+}
+
+.mg-admin-shell .mg-bulk-table th:nth-child(1),
+.mg-admin-shell .mg-bulk-table td:nth-child(1) { width: 2.5rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(2),
+.mg-admin-shell .mg-bulk-table td:nth-child(2) { width: 6rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(3),
+.mg-admin-shell .mg-bulk-table td:nth-child(3) { width: 11rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(4),
+.mg-admin-shell .mg-bulk-table td:nth-child(4) { width: 12rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(5),
+.mg-admin-shell .mg-bulk-table td:nth-child(5) { width: 13rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(6),
+.mg-admin-shell .mg-bulk-table td:nth-child(6) { width: 14rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(7),
+.mg-admin-shell .mg-bulk-table td:nth-child(7) { width: 13rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(8),
+.mg-admin-shell .mg-bulk-table td:nth-child(8) { width: 10rem; }
+.mg-admin-shell .mg-bulk-table th:nth-child(9),
+.mg-admin-shell .mg-bulk-table td:nth-child(9) { width: 9rem; }
+
+.mg-admin-shell .mg-thumb .mg-thumb-box {
+    width: 72px;
+    height: 72px;
+    border-radius: var(--mg-radius-sm);
+    border-color: var(--mg-border);
+    background: var(--mg-bg);
+}
+
+.mg-admin-shell select.mg-main {
+    min-width: 0;
+    width: 100%;
+}
+
+.mg-admin-shell select.mg-subs {
+    min-width: 0;
+    width: 100%;
+    min-height: 72px;
+}
+
+/* Állapot oszlop badge-ként */
+.mg-admin-shell .mg-bulk-table td.mg-state {
+    text-align: center;
+    white-space: normal;
+    font-size: 12px;
+    color: var(--mg-text-muted);
+}
+
+.mg-admin-shell .mg-bulk-table td.mg-state.is-done {
+    color: var(--mg-ok);
+    font-weight: 600;
+}
+
+.mg-admin-shell .mg-bulk-table td.mg-state.is-warn {
+    color: var(--mg-warn);
+    font-weight: 600;
+}
+
+.mg-admin-shell .mg-bulk-table td.mg-state.is-error {
+    color: var(--mg-err);
+    font-weight: 600;
+}
+
+/* Folyamatjelző sor */
+.mg-admin-shell .mg-actions {
+    align-items: center;
+}
+
+.mg-admin-shell .mg-progress {
+    height: 12px;
+    border-radius: 999px;
+    background: var(--mg-border);
+    overflow: hidden;
+}
+
+.mg-admin-shell .mg-bar {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--mg-accent), #4f94d4);
+    transition: width 0.3s ease;
+}
+
+.mg-admin-shell #mg-bulk-status {
+    font-weight: 600;
+    color: var(--mg-text);
+    white-space: nowrap;
+}
+
+/* Feldolgozás-mód / queue / worker dobozok kártya-stílusban */
+.mg-admin-shell .mg-processing-control,
+.mg-admin-shell .mg-queue-control,
+.mg-admin-shell .mg-worker-control {
+    border: 1px solid var(--mg-border);
+    border-radius: var(--mg-radius);
+    background: var(--mg-bg);
+}
+
+.mg-admin-shell .mg-worker-label {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.mg-admin-shell .mg-queue-slider {
+    accent-color: var(--mg-accent);
+}
+
+/* A folyamat-százalék span láthatóságának biztosítása (a .mg-bulk-status
+   konténer-szabály display:none-ja elrejtené). */
+.mg-admin-shell span#mg-bulk-status.mg-bulk-status {
+    display: inline-block;
+}
