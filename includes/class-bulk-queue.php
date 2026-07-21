@@ -462,6 +462,7 @@ class MG_Bulk_Queue {
             // TWO-PHASE GENERATION FOR NEW PRODUCTS
             if ($parent_id > 0) {
                 // EXISTING PRODUCT - can generate mockups immediately (SKU exists)
+                $replace_started = !empty($payload['replace_design']) ? time() : 0;
                 $generator = new MG_Generator();
                 $images_by_type_color = array();
                 
@@ -498,7 +499,13 @@ class MG_Bulk_Queue {
                     throw new RuntimeException($res->get_error_message());
                 }
                 $result_product_id = intval($parent_id);
-                
+
+                // Minta csere: a sikeres újragenerálás után az elavult mockup
+                // fájlok és az árva attachmentek kitakarítása.
+                if ($replace_started > 0 && class_exists('MG_Design_Replace')) {
+                    MG_Design_Replace::cleanup_after_replace($parent_id, $replace_started);
+                }
+
             } else {
                 // NEW PRODUCT - Two-phase generation
                 
@@ -899,6 +906,7 @@ class MG_Bulk_Queue {
         $tags = array_map('sanitize_text_field', array_filter(array_map('trim', $tags)));
         $clean['tags'] = array_values(array_filter(array_unique($tags)));
         $clean['sample_seo'] = isset($payload['sample_seo']) ? wp_kses_post($payload['sample_seo']) : '';
+        $clean['replace_design'] = !empty($payload['replace_design']) ? 1 : 0;
         return $clean;
     }
 

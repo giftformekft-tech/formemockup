@@ -223,7 +223,8 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
                 echo '<td>'.esc_html($r['post_status']).'</td>';
                 echo '<td>'.esc_html(mysql2date('Y-m-d H:i', $r['post_date'])).'</td>';
                 echo '<td><a class="button button-small" href="'.esc_url($edit).'">Szerkesztés</a> ';
-                echo '<a class="button button-small" target="_blank" href="'.esc_url($view).'">Megnyitás</a></td>';
+                echo '<a class="button button-small" target="_blank" href="'.esc_url($view).'">Megnyitás</a> ';
+                echo '<button type="button" class="button button-small mg-replace-design-trigger" data-mg-open-modal="replace-design" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">Minta cseréje</button></td>';
                 echo '</tr>';
             }
         } else {
@@ -242,6 +243,29 @@ $rows = $wpdb->get_results($sql, ARRAY_A);
             echo '</div></div>';
         }
 
+        self::render_replace_design_modal();
+
+        echo '</div>';
+    }
+
+    /**
+     * Modal for replacing the base design of a generated product. Opened via
+     * the per-row "Minta cseréje" buttons; submission runs over AJAX
+     * (mg_replace_design) and queues a background regeneration job.
+     */
+    protected static function render_replace_design_modal(){
+        echo '<div class="mg-modal" id="mg-replace-design-modal" aria-hidden="true">';
+        echo '<div class="mg-modal__backdrop" data-mg-close-modal></div>';
+        echo '<div class="mg-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="mg-replace-design-title">';
+        echo '<button type="button" class="mg-modal__close" aria-label="Bezárás" data-mg-close-modal>&times;</button>';
+        echo '<h2 id="mg-replace-design-title">Minta cseréje</h2>';
+        echo '<p class="description">Termék: <strong id="mg-replace-product-name"></strong></p>';
+        echo '<p class="description">Töltsd fel a javított mintát (PNG, JPG vagy WebP). A rendszer a termék összes terméktípusára újragenerálja a mockupokat a háttérben, majd kitakarítja a régi képeket. A bolt képei csere közben is elérhetők maradnak.</p>';
+        echo '<input type="hidden" id="mg-replace-product-id" value="" />';
+        echo '<p><input type="file" id="mg-replace-design-file" accept=".png,.jpg,.jpeg,.webp" /></p>';
+        echo '<p><button type="button" class="button button-primary" id="mg-replace-design-submit">Csere indítása</button></p>';
+        echo '<p class="description" id="mg-replace-design-status" aria-live="polite"></p>';
+        echo '</div>';
         echo '</div>';
     }
 }

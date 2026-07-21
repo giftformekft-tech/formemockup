@@ -920,7 +920,60 @@
         rewriteLegacyLinks(document);
         initColorManagers(document);
         initProductEditorTabs();
+        initDesignReplace();
     });
+
+    // "Minta cseréje" modal a Dashboard soraiból: feltölti a javított mintát
+    // és sorba állítja az újragenerálást (mg_replace_design AJAX).
+    function initDesignReplace() {
+        $(document).on('click', '.mg-replace-design-trigger', function () {
+            $('#mg-replace-product-id').val($(this).data('productId') || '');
+            $('#mg-replace-product-name').text($(this).data('productTitle') || '');
+            $('#mg-replace-design-file').val('');
+            $('#mg-replace-design-status').text('');
+        });
+
+        $(document).on('click', '#mg-replace-design-submit', function () {
+            const $btn = $(this);
+            const pid = $('#mg-replace-product-id').val();
+            const fileInput = document.getElementById('mg-replace-design-file');
+            const $status = $('#mg-replace-design-status');
+            if (!pid || !fileInput || !fileInput.files || !fileInput.files.length) {
+                $status.text('Válaszd ki az új minta fájlt.');
+                return;
+            }
+            const ajaxCfg = window.MG_AJAX || {};
+            if (!ajaxCfg.ajax_url || !ajaxCfg.nonce) {
+                $status.text('Hiányzó AJAX konfiguráció – frissítsd az oldalt.');
+                return;
+            }
+            const form = new FormData();
+            form.append('action', 'mg_replace_design');
+            form.append('nonce', ajaxCfg.nonce);
+            form.append('product_id', pid);
+            form.append('design_file', fileInput.files[0]);
+            $btn.prop('disabled', true);
+            $status.text('Feltöltés és sorba állítás…');
+            $.ajax({
+                url: ajaxCfg.ajax_url,
+                method: 'POST',
+                data: form,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+            }).done(function (resp) {
+                if (resp && resp.success) {
+                    $status.text((resp.data && resp.data.message) || 'Sorba állítva.');
+                } else {
+                    $status.text('Hiba: ' + ((resp && resp.data && resp.data.message) || 'ismeretlen'));
+                }
+            }).fail(function () {
+                $status.text('Hiba: a kérés nem sikerült.');
+            }).always(function () {
+                $btn.prop('disabled', false);
+            });
+        });
+    }
 
     // Client-side section tabs of the product type editor. All panels stay in
     // the DOM (the single form submits every field), only visibility changes.
