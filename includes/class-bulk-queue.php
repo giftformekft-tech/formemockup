@@ -493,6 +493,11 @@ class MG_Bulk_Queue {
                     'trigger' => $context_trigger,
                     'sample_seo' => $sample_seo,
                 );
+                if ($replace_started > 0) {
+                    // Minta csere: a kiemelt képet is újra kell generálni, a
+                    // "már van kiemelt kép, hagyjuk" alapviselkedés helyett.
+                    $generation_context['force_featured'] = 1;
+                }
 
                 $res = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
                 if (is_wp_error($res)) {
