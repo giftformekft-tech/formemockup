@@ -38,11 +38,6 @@ class MG_Design_Replace {
                 wp_send_json_error(array('message' => 'A terméknek nincs SKU-ja, így nem mockup-generátoros termék – a csere nem értelmezhető.'), 400);
             }
 
-            // A termék meglévő terméktípusai (pa_termektipus) metszete a katalógussal.
-            $type_slugs = wp_get_object_terms($product_id, 'pa_termektipus', array('fields' => 'slugs'));
-            if (is_wp_error($type_slugs)) {
-                $type_slugs = array();
-            }
             $catalog = function_exists('mg_get_catalog_products') ? mg_get_catalog_products() : get_option('mg_products', array());
             $catalog_keys = array();
             foreach ((array) $catalog as $p) {
@@ -50,9 +45,10 @@ class MG_Design_Replace {
                     $catalog_keys[] = $p['key'];
                 }
             }
-            $product_keys = array_values(array_intersect((array) $type_slugs, $catalog_keys));
+
+            $product_keys = self::detect_product_type_keys($product_id, $sku, $catalog_keys);
             if (empty($product_keys)) {
-                wp_send_json_error(array('message' => 'Ehhez a termékhez nem található mockup-terméktípus, a minta csere nem lehetséges.'), 400);
+                wp_send_json_error(array('message' => 'Ehhez a termékhez nem található mockup-terméktípus (nincs generált mockup könyvtára), a minta csere nem lehetséges.'), 400);
             }
 
             if (!isset($_FILES['design_file']) || empty($_FILES['design_file']['tmp_name'])) {
@@ -97,6 +93,59 @@ class MG_Design_Replace {
         } catch (Throwable $e) {
             wp_send_json_error(array('message' => $e->getMessage()), 500);
         }
+    }
+
+    /**
+     * Determines which catalog product types a product actually has.
+     *
+     * Primary source: the file names in uploads/mg_mockups/{SKU}/ - the
+     * generator writes {SKU}_{type}_{color}_{view}.webp, and the storefront
+     * derives the available types the same way. Fallback: pa_termektipus
+     * taxonomy terms, if the directory does not exist yet.
+     *
+     * @param int      $product_id
+     * @param string   $sku
+     * @param string[] $catalog_keys
+     * @return string[]
+     */
+    private static function detect_product_type_keys($product_id, $sku, $catalog_keys) {
+        $found = array();
+
+        $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        $dir = $base_dir !== '' ? trailingslashit($base_dir) . 'mg_mockups/' . $sku : '';
+
+        if ($dir !== '' && is_dir($dir)) {
+            $files = glob(trailingslashit($dir) . '*');
+            $names = array();
+            foreach ((array) $files as $file) {
+                if (is_file($file)) {
+                    $names[] = basename($file);
+                }
+            }
+            foreach ($catalog_keys as $key) {
+                $slug = sanitize_title($key);
+                if ($slug === '') {
+                    continue;
+                }
+                $prefix = $sku . '_' . $slug . '_';
+                foreach ($names as $name) {
+                    if (strpos($name, $prefix) === 0) {
+                        $found[] = $key;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (empty($found)) {
+            $type_slugs = wp_get_object_terms($product_id, 'pa_termektipus', array('fields' => 'slugs'));
+            if (!is_wp_error($type_slugs)) {
+                $found = array_values(array_intersect((array) $type_slugs, $catalog_keys));
+            }
+        }
+
+        return array_values(array_unique($found));
     }
 
     /**

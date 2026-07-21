@@ -967,8 +967,16 @@
                 } else {
                     $status.text('Hiba: ' + ((resp && resp.data && resp.data.message) || 'ismeretlen'));
                 }
-            }).fail(function () {
-                $status.text('Hiba: a kérés nem sikerült.');
+            }).fail(function (xhr) {
+                let msg = 'a kérés nem sikerült.';
+                if (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+                    msg = xhr.responseJSON.data.message;
+                } else if (xhr && xhr.status === 413) {
+                    msg = 'a fájl túl nagy a szerver feltöltési limitjéhez (HTTP 413).';
+                } else if (xhr && xhr.status) {
+                    msg = 'a kérés nem sikerült (HTTP ' + xhr.status + ').';
+                }
+                $status.text('Hiba: ' + msg);
             }).always(function () {
                 $btn.prop('disabled', false);
             });
