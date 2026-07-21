@@ -1503,3 +1503,35 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
     font-size: 11px;
     margin: 4px 0 0;
 }
+
+/* ── Temu Export: beállítások gomb mögé rejtett blokkok ─────────────── */
+.mg-temu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.mg-temu-header > div h2,
+.mg-temu-header > div p {
+    margin: 0;
+}
+
+.mg-temu-header > div p {
+    margin-top: 4px;
+    color: var(--mg-text-muted);
+}
+
+#mg-temu-settings-toggle.is-open {
+    border-color: var(--mg-accent);
+    color: var(--mg-accent);
+    background: var(--mg-accent-soft);
+}
+
+.mg-temu-settings {
+    border: 1px dashed var(--mg-border);
+    border-radius: var(--mg-radius);
+    padding: 14px;
+    background: var(--mg-bg);
+}

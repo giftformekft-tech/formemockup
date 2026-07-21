@@ -21,13 +21,24 @@ class MG_Temu_Export_Page {
 
     public static function render_page() {
         ?>
+        <?php
+        // A sablon-feltöltés visszajelzése a beállítások blokkban jelenik meg,
+        // ezért ha van ilyen, nyitva indul a panel.
+        $settings_open = isset($_GET['mg_temu_tpl']) && $_GET['mg_temu_tpl'] !== '';
+        ?>
         <div class="mg-panel-body mg-panel-body--temu-export">
             <section class="mg-panel-section">
-                <div class="mg-panel-section__header">
-                    <h2><?php esc_html_e('Temu Export (CSV)', 'mockup-generator'); ?></h2>
-                    <p><?php esc_html_e('Generálj Temu-kompatibilis CSV fájlt a termékeidből két egyszerű lépésben.', 'mockup-generator'); ?></p>
+                <div class="mg-panel-section__header mg-temu-header">
+                    <div>
+                        <h2><?php esc_html_e('Temu Export', 'mockup-generator'); ?></h2>
+                        <p><?php esc_html_e('Generálj Temu-kompatibilis export fájlt a termékeidből két egyszerű lépésben.', 'mockup-generator'); ?></p>
+                    </div>
+                    <button type="button" class="button<?php echo $settings_open ? ' is-open' : ''; ?>" id="mg-temu-settings-toggle" aria-expanded="<?php echo $settings_open ? 'true' : 'false'; ?>" aria-controls="mg-temu-settings">
+                        <span class="dashicons dashicons-admin-generic" aria-hidden="true" style="vertical-align:-4px;margin-right:4px;"></span><?php esc_html_e('Beállítások', 'mockup-generator'); ?>
+                    </button>
                 </div>
 
+                <div id="mg-temu-settings" class="mg-temu-settings"<?php echo $settings_open ? '' : ' hidden'; ?>>
                 <?php
                 // Névhez fűzendő egyedi mező: típusonként külön érték adható meg,
                 // az üresen hagyott típusokra az alap érték vonatkozik.
@@ -183,6 +194,25 @@ class MG_Temu_Export_Page {
                         </tbody>
                     </table>
                 </div>
+                </div><!-- /#mg-temu-settings -->
+
+                <script>
+                jQuery(function ($) {
+                    $('#mg-temu-settings-toggle').on('click', function () {
+                        var panel = document.getElementById('mg-temu-settings');
+                        if (!panel) {
+                            return;
+                        }
+                        var isHidden = panel.hasAttribute('hidden');
+                        if (isHidden) {
+                            panel.removeAttribute('hidden');
+                        } else {
+                            panel.setAttribute('hidden', 'hidden');
+                        }
+                        $(this).toggleClass('is-open', isHidden).attr('aria-expanded', isHidden ? 'true' : 'false');
+                    });
+                });
+                </script>
 
                 <div id="mg-temu-app" class="mg-temu-app">
                     <!-- Step 1: Product Selection -->
