@@ -1695,7 +1695,7 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
 .mg-admin-shell .mg-bulk-table th:nth-child(1),
 .mg-admin-shell .mg-bulk-table td:nth-child(1) { width: 2.5rem; }
 .mg-admin-shell .mg-bulk-table th:nth-child(2),
-.mg-admin-shell .mg-bulk-table td:nth-child(2) { width: 6rem; }
+.mg-admin-shell .mg-bulk-table td:nth-child(2) { width: 9rem; }
 .mg-admin-shell .mg-bulk-table th:nth-child(3),
 .mg-admin-shell .mg-bulk-table td:nth-child(3) { width: 11rem; }
 .mg-admin-shell .mg-bulk-table th:nth-child(4),
@@ -1711,9 +1711,8 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
 .mg-admin-shell .mg-bulk-table th:nth-child(9),
 .mg-admin-shell .mg-bulk-table td:nth-child(9) { width: 9rem; }
 
+/* A thumbnail szándékosan marad a nagyobb, 112px-es méretben. */
 .mg-admin-shell .mg-thumb .mg-thumb-box {
-    width: 72px;
-    height: 72px;
     border-radius: var(--mg-radius-sm);
     border-color: var(--mg-border);
     background: var(--mg-bg);
