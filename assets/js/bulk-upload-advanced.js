@@ -934,7 +934,7 @@
     var total = rows.length;
     var active = 0;
     var nextIndex = 0;
-    var uploadLimit = 2;
+    var uploadLimit = 3;
     var jobIds = [];
     var jobRows = {};
     var failedLocal = 0;
@@ -1232,6 +1232,9 @@
       var form = new FormData();
       form.append('action', 'mg_bulk_process');
       form.append('nonce', MG_BULK_ADV.nonce);
+      // Idempotencia-azonosító: az automatikus újrapróbálkozások ugyanezt a
+      // FormData-t küldik újra, így a szerver felismeri és nem duplikál.
+      form.append('request_id', 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
       form.append('design_file', file);
       keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
@@ -1304,6 +1307,12 @@
           $state.text('Hiba: ' + msg).addClass('is-error');
         }
       }).fail(function (xhr, status, error) {
+        if (xhr && xhr.status === 409) {
+          // A szerver még dolgozik ugyanezen a kérésen (idempotencia-őr) –
+          // nem hiba, csak lassú; duplikátum nem készül.
+          $state.text('A szerver még dolgozik rajta – ne töltsd fel újra, pár perc múlva ellenőrizd a termékeknél.').addClass('is-warn');
+          return;
+        }
         var errorMsg = serverErrorToText(xhr);
         if (status === 'timeout') {
           errorMsg = 'Időtúllépés (120s)';

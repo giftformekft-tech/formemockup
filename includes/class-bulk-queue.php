@@ -389,6 +389,8 @@ class MG_Bulk_Queue {
     private static function execute_job(array $job, $worker_id, $dispatch_after = true) {
         $job_id = $job['id'];
         self::mark_worker_active($worker_id, true);
+        $result_product_id = 0;
+        $created_new_product = false;
         try {
             $payload = isset($job['payload']) && is_array($job['payload']) ? $job['payload'] : array();
             $design_path = isset($payload['design_path']) ? $payload['design_path'] : '';
@@ -534,7 +536,8 @@ class MG_Bulk_Queue {
                 if ($result_product_id <= 0) {
                     throw new RuntimeException(__('Nem sikerült terméket létrehozni.', 'mgdtp'));
                 }
-                
+                $created_new_product = true;
+
                 // PHASE 2: Generate mockups with product_id/SKU
                 
                 // DEBUG: Verify SKU before generation
@@ -636,6 +639,11 @@ class MG_Bulk_Queue {
                 'product_id' => $result_product_id,
             ), $dispatch_after);
         } catch (Throwable $e) {
+            // Ha az 1. fázisban már létrejött az (új) termék, de a generálás
+            // elhasalt, ne maradjon kép nélküli árva termék a boltban.
+            if ($created_new_product && $result_product_id > 0) {
+                wp_delete_post($result_product_id, true);
+            }
             if (self::owns_job($job_id, $worker_id)) {
                 self::fail_job($job_id, $e->getMessage(), $dispatch_after);
             }
