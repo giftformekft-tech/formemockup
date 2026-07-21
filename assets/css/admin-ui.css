@@ -1535,3 +1535,55 @@ body.wp-admin[data-theme="dark"] .mg-card__meta li {
     padding: 14px;
     background: var(--mg-bg);
 }
+
+/* ── Toggle kapcsoló (checkbox helyett, azonos mező, csak kinézet) ──── */
+.mg-admin-shell input[type="checkbox"].mg-switch {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 40px;
+    height: 22px;
+    min-width: 40px;
+    border: none;
+    border-radius: 20px;
+    background: var(--mg-muted);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    vertical-align: middle;
+    margin: 0 8px 0 0;
+    box-shadow: none;
+    outline: none;
+}
+
+.mg-admin-shell input[type="checkbox"].mg-switch::before {
+    content: "" !important;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: left 0.2s ease;
+    margin: 0;
+    float: none;
+}
+
+.mg-admin-shell input[type="checkbox"].mg-switch:checked {
+    background: var(--mg-accent);
+}
+
+.mg-admin-shell input[type="checkbox"].mg-switch:checked::before {
+    content: "" !important;
+    left: 20px;
+}
+
+.mg-admin-shell input[type="checkbox"].mg-switch:focus {
+    box-shadow: 0 0 0 2px var(--mg-accent-soft);
+}
+
+.mg-admin-shell input[type="checkbox"].mg-switch:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

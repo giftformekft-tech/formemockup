@@ -390,7 +390,10 @@ class MG_Settings_Page {
             <table class="form-table">
                 <tr>
                     <th scope="row">Méretezés engedélyezése</th>
-                    <td><label><input type="checkbox" name="resize_enabled" <?php checked($r_enabled); ?> /> Engedélyezve</label></td>
+                    <td>
+                        <label><input type="checkbox" class="mg-switch" name="resize_enabled" <?php checked($r_enabled); ?> /> Engedélyezve</label>
+                        <p class="description">Bekapcsolva a generált mockup képek legfeljebb a lenti max. szélesség/magasság méretben készülnek – kisebb fájlok, gyorsabb oldalbetöltés.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row">Mód</th>
@@ -510,7 +513,10 @@ class MG_Settings_Page {
             <table class="form-table">
                 <tr>
                     <th scope="row">Automatikus megjelenítés</th>
-                    <td><label><input type="checkbox" name="mg_design_gallery[enabled]" value="1" <?php checked(!empty($gallery_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                    <td>
+                        <label><input type="checkbox" class="mg-switch" name="mg_design_gallery[enabled]" value="1" <?php checked(!empty($gallery_settings['enabled'])); ?> /> Engedélyezve</label>
+                        <p class="description">A mintagalléria automatikusan megjelenik minden termékoldalon a lent kiválasztott pozícióban – kikapcsolva csak Gutenberg blokként használható.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row">Pozíció</th>
@@ -528,12 +534,15 @@ class MG_Settings_Page {
                 </tr>
                 <tr>
                     <th scope="row">Cím megjelenítése</th>
-                    <td><label><input type="checkbox" name="mg_design_gallery[show_title]" value="1" <?php checked(!empty($gallery_settings['show_title'])); ?> /> Igen</label></td>
+                    <td>
+                        <label><input type="checkbox" class="mg-switch" name="mg_design_gallery[show_title]" value="1" <?php checked(!empty($gallery_settings['show_title'])); ?> /> Igen</label>
+                        <p class="description">A galéria felett megjelenik a fenti „Cím” mezőben megadott felirat.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row">Csak vélemények fül</th>
                     <td>
-                        <label><input type="checkbox" name="mg_design_gallery[reviews_only]" value="1" <?php checked(!empty($gallery_settings['reviews_only'])); ?> /> Csak a vélemények tab megjelenítése</label>
+                        <label><input type="checkbox" class="mg-switch" name="mg_design_gallery[reviews_only]" value="1" <?php checked(!empty($gallery_settings['reviews_only'])); ?> /> Csak a vélemények tab megjelenítése</label>
                         <p class="description">Eltávolítja a Leírás és További információk tabokat a termékoldalról.</p>
                     </td>
                 </tr>
@@ -567,7 +576,10 @@ class MG_Settings_Page {
             <table class="form-table">
                 <tr>
                     <th scope="row">Megjelenítés</th>
-                    <td><label><input type="checkbox" name="mg_designer_button[enabled]" value="1" <?php checked(!empty($designer_button_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                    <td>
+                        <label><input type="checkbox" class="mg-switch" name="mg_designer_button[enabled]" value="1" <?php checked(!empty($designer_button_settings['enabled'])); ?> /> Engedélyezve</label>
+                        <p class="description">A kosár gomb alatt megjelenik a „Szerkesztés a designerben” gomb azoknál a termékeknél, amelyekhez van mentett minta.</p>
+                    </td>
                 </tr>
             </table>
             <?php submit_button('Designer gomb mentése'); ?>
@@ -582,7 +594,10 @@ class MG_Settings_Page {
             <table class="form-table">
                 <tr>
                     <th scope="row">Megjelenítés</th>
-                    <td><label><input type="checkbox" name="mg_delivery_estimate[enabled]" value="1" <?php checked(!empty($delivery_settings['enabled'])); ?> /> Engedélyezve</label></td>
+                    <td>
+                        <label><input type="checkbox" class="mg-switch" name="mg_delivery_estimate[enabled]" value="1" <?php checked(!empty($delivery_settings['enabled'])); ?> /> Engedélyezve</label>
+                        <p class="description">A várható érkezési dátumot mutató csempe megjelenik a termékoldalon a kosár gomb alatt.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row">Működési mód</th>
@@ -897,7 +912,7 @@ class MG_Settings_Page {
                 <tr>
                     <th scope="row">Engedélyezés</th>
                     <td>
-                        <label><input type="checkbox" name="mg_gcr_enabled" value="1" <?php checked(!empty($gcr_settings['enabled'])); ?> /> Megjelenítés a fizetés utáni (Thank You) oldalon</label>
+                        <label><input type="checkbox" class="mg-switch" name="mg_gcr_enabled" value="1" <?php checked(!empty($gcr_settings['enabled'])); ?> /> Megjelenítés a fizetés utáni (Thank You) oldalon</label>
                         <p class="description">Ha be van kapcsolva, a rendszer automatikusan felkínálja a vásárlóknak a Google értékelést.</p>
                     </td>
                 </tr>
