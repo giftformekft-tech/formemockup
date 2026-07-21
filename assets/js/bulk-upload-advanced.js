@@ -934,7 +934,7 @@
     var total = rows.length;
     var active = 0;
     var nextIndex = 0;
-    var uploadLimit = 2;
+    var uploadLimit = 3;
     var jobIds = [];
     var jobRows = {};
     var failedLocal = 0;
@@ -945,7 +945,7 @@
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
-    $rowsCollection.each(function () { $(this).find('.mg-state').text('Feltöltésre vár…'); });
+    $rowsCollection.each(function () { $(this).find('.mg-state').removeClass('is-done is-error is-warn').text('Feltöltésre vár…'); });
 
     function updateProgressFromStats(stats) {
       var totalCount = (stats && typeof stats.total === 'number') ? stats.total : jobIds.length;
@@ -990,17 +990,19 @@
       if (!job || !job.id || !jobRows[job.id]) { return; }
       var $row = jobRows[job.id];
       var status = job.status || '';
+      var $st = $row.find('.mg-state');
+      $st.removeClass('is-done is-error is-warn');
       if (status === 'pending') {
-        $row.find('.mg-state').text('Sorban áll…');
+        $st.text('Sorban áll…');
       } else if (status === 'running') {
-        $row.find('.mg-state').text('Feldolgozás…');
+        $st.text('Feldolgozás…');
       } else if (status === 'completed') {
-        $row.find('.mg-state').text('Kész');
+        $st.text('Kész').addClass('is-done');
       } else if (status === 'failed') {
         var msg = job.message ? ('Hiba: ' + job.message) : 'Hiba';
-        $row.find('.mg-state').text(msg);
+        $st.text(msg).addClass('is-error');
       } else {
-        $row.find('.mg-state').text('Ismeretlen');
+        $st.text('Ismeretlen');
       }
     }
 
@@ -1040,7 +1042,7 @@
       }
       var file = files[index];
       if (!file) {
-        $row.find('.mg-state').text('Hiba: hiányzó fájl');
+        $row.find('.mg-state').addClass('is-error').text('Hiba: hiányzó fájl');
         failedLocal++;
         updateEnqueueProgress(nextIndex);
         return;
@@ -1155,7 +1157,7 @@
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
-    $rowsCollection.each(function () { $(this).find('.mg-state').text('Sorban áll…'); });
+    $rowsCollection.each(function () { $(this).find('.mg-state').removeClass('is-done is-error is-warn').text('Sorban áll…'); });
 
     var jobProgress = {};
 
@@ -1214,7 +1216,7 @@
       }
       var file = files[index];
       if (!file) {
-        $row.find('.mg-state').text('Hiba: hiányzó fájl');
+        $row.find('.mg-state').addClass('is-error').text('Hiba: hiányzó fájl');
         done++;
         updateProgress();
         launchNext();
@@ -1230,6 +1232,9 @@
       var form = new FormData();
       form.append('action', 'mg_bulk_process');
       form.append('nonce', MG_BULK_ADV.nonce);
+      // Idempotencia-azonosító: az automatikus újrapróbálkozások ugyanezt a
+      // FormData-t küldik újra, így a szerver felismeri és nem duplikál.
+      form.append('request_id', 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
       form.append('design_file', file);
       keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
@@ -1291,17 +1296,23 @@
               product_id: pid,
               tags: latestTags
             }, function (r) {
-              if (r && r.success) { $state.text('OK'); }
-              else { $state.text('OK – tagek hiba'); }
-            }, 'json').fail(function () { $state.text('OK – tagek hiba'); });
+              if (r && r.success) { $state.text('Kész').addClass('is-done'); }
+              else { $state.text('Kész – tagek hiba').addClass('is-warn'); }
+            }, 'json').fail(function () { $state.text('Kész – tagek hiba').addClass('is-warn'); });
           } else {
-            $state.text('OK');
+            $state.text('Kész').addClass('is-done');
           }
         } else {
           var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'Ismeretlen';
-          $state.text('Hiba: ' + msg);
+          $state.text('Hiba: ' + msg).addClass('is-error');
         }
       }).fail(function (xhr, status, error) {
+        if (xhr && xhr.status === 409) {
+          // A szerver még dolgozik ugyanezen a kérésen (idempotencia-őr) –
+          // nem hiba, csak lassú; duplikátum nem készül.
+          $state.text('A szerver még dolgozik rajta – ne töltsd fel újra, pár perc múlva ellenőrizd a termékeknél.').addClass('is-warn');
+          return;
+        }
         var errorMsg = serverErrorToText(xhr);
         if (status === 'timeout') {
           errorMsg = 'Időtúllépés (120s)';
@@ -1312,7 +1323,7 @@
         } else if (xhr.status === 500) {
           errorMsg = 'Szerver hiba (500)';
         }
-        $state.text('Hiba: ' + errorMsg);
+        $state.text('Hiba: ' + errorMsg).addClass('is-error');
         console.error('Bulk upload failed after retries:', {
           status: status,
           error: error,

@@ -19,6 +19,8 @@ class MG_Bulk_Queue {
     const MAX_JOBS_PER_WORKER = 10;
     const CRON_HOOK = 'mg_bulk_process_queue';
     const CRON_LOCK = 'mg_bulk_queue_lock';
+    const RECOVERY_THROTTLE = 'mg_bulk_recovery_throttle';
+    const RECOVERY_INTERVAL = 60; // seconds between full stalled-job sweeps
     const OPTION_BATCH_SIZE = 'mg_bulk_queue_batch_size';
     const OPTION_INTERVAL_MINUTES = 'mg_bulk_queue_interval_minutes';
     const DEFAULT_BATCH = 5;
@@ -323,6 +325,9 @@ class MG_Bulk_Queue {
             $processed = 0;
             while ($processed < $batch) {
                 self::mark_worker_active($worker_id);
+                // A cron lock frissítése jobonként, hogy hosszú batch alatt se
+                // járjon le és ne induljon párhuzamos második feldolgozó.
+                set_transient(self::CRON_LOCK, 1, 600);
                 $job = self::claim_next_job($worker_id);
                 if (!$job) {
                     break;
@@ -362,6 +367,17 @@ class MG_Bulk_Queue {
             if (!set_transient(self::lock_key($job_id), $worker_id, self::LOCK_TTL)) {
                 continue;
             }
+            // Double-check after acquiring the lock: another worker may have
+            // claimed the job in the get/set race window (e.g. with an external
+            // object cache, where set_transient is not atomic).
+            wp_cache_delete(self::JOB_OPTION_PREFIX . $job_id, 'options');
+            $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
+            if (!is_array($job) || !isset($job['status']) || $job['status'] !== 'pending') {
+                if (is_array($job) && get_transient(self::lock_key($job_id)) === $worker_id) {
+                    self::release_lock($job_id);
+                }
+                continue;
+            }
             $job['status'] = 'running';
             $job['message'] = __('Feldolgozás…', 'mgdtp');
             $job['started_at'] = time();
@@ -375,6 +391,8 @@ class MG_Bulk_Queue {
     private static function execute_job(array $job, $worker_id, $dispatch_after = true) {
         $job_id = $job['id'];
         self::mark_worker_active($worker_id, true);
+        $result_product_id = 0;
+        $created_new_product = false;
         try {
             $payload = isset($job['payload']) && is_array($job['payload']) ? $job['payload'] : array();
             $design_path = isset($payload['design_path']) ? $payload['design_path'] : '';
@@ -444,6 +462,7 @@ class MG_Bulk_Queue {
             // TWO-PHASE GENERATION FOR NEW PRODUCTS
             if ($parent_id > 0) {
                 // EXISTING PRODUCT - can generate mockups immediately (SKU exists)
+                $replace_started = !empty($payload['replace_design']) ? time() : 0;
                 $generator = new MG_Generator();
                 $images_by_type_color = array();
                 
@@ -454,6 +473,10 @@ class MG_Bulk_Queue {
                 
                 foreach ($selected as $prod) {
                     self::mark_worker_active($worker_id, true); // heartbeat – prevent stale detection during slow generation
+                    self::refresh_job_lock($job_id, $worker_id);
+                    if (!self::owns_job($job_id, $worker_id)) {
+                        return; // a job már másé, ne dolgozzunk rajta tovább
+                    }
                     $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
                     if (is_wp_error($res)) {
                         throw new RuntimeException($res->get_error_message());
@@ -470,13 +493,24 @@ class MG_Bulk_Queue {
                     'trigger' => $context_trigger,
                     'sample_seo' => $sample_seo,
                 );
+                if ($replace_started > 0) {
+                    // Minta csere: a kiemelt képet is újra kell generálni, a
+                    // "már van kiemelt kép, hagyjuk" alapviselkedés helyett.
+                    $generation_context['force_featured'] = 1;
+                }
 
                 $res = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
                 if (is_wp_error($res)) {
                     throw new RuntimeException($res->get_error_message());
                 }
                 $result_product_id = intval($parent_id);
-                
+
+                // Minta csere: a sikeres újragenerálás után az elavult mockup
+                // fájlok és az árva attachmentek kitakarítása.
+                if ($replace_started > 0 && class_exists('MG_Design_Replace')) {
+                    MG_Design_Replace::cleanup_after_replace($parent_id, $replace_started);
+                }
+
             } else {
                 // NEW PRODUCT - Two-phase generation
                 
@@ -495,6 +529,10 @@ class MG_Bulk_Queue {
                 }
                 
                 self::mark_worker_active($worker_id, true); // heartbeat before product creation
+                self::refresh_job_lock($job_id, $worker_id);
+                if (!self::owns_job($job_id, $worker_id)) {
+                    return; // a job már másé, ne hozzunk létre duplikált terméket
+                }
                 $result_product_id = $creator->create_parent_with_type_color_size_webp_fast(
                     $parent_name, 
                     $selected, 
@@ -512,7 +550,8 @@ class MG_Bulk_Queue {
                 if ($result_product_id <= 0) {
                     throw new RuntimeException(__('Nem sikerült terméket létrehozni.', 'mgdtp'));
                 }
-                
+                $created_new_product = true;
+
                 // PHASE 2: Generate mockups with product_id/SKU
                 
                 // DEBUG: Verify SKU before generation
@@ -554,6 +593,10 @@ class MG_Bulk_Queue {
                 
                 foreach ($selected as $prod) {
                     self::mark_worker_active($worker_id, true); // heartbeat – prevent stale detection during slow generation
+                    self::refresh_job_lock($job_id, $worker_id);
+                    if (!self::owns_job($job_id, $worker_id)) {
+                        return; // a job már másé, ne dolgozzunk rajta tovább
+                    }
                     $res = $generator->generate_for_product($prod['key'], $design_path, $generation_context_base);
                     if (is_wp_error($res)) {
                         throw new RuntimeException($res->get_error_message());
@@ -603,11 +646,21 @@ class MG_Bulk_Queue {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, false);
             }
 
+            if (!self::owns_job($job_id, $worker_id)) {
+                return; // közben más worker vette át, az ő állapotát nem írjuk felül
+            }
             self::complete_job($job_id, array(
                 'product_id' => $result_product_id,
             ), $dispatch_after);
         } catch (Throwable $e) {
-            self::fail_job($job_id, $e->getMessage(), $dispatch_after);
+            // Ha az 1. fázisban már létrejött az (új) termék, de a generálás
+            // elhasalt, ne maradjon kép nélküli árva termék a boltban.
+            if ($created_new_product && $result_product_id > 0) {
+                wp_delete_post($result_product_id, true);
+            }
+            if (self::owns_job($job_id, $worker_id)) {
+                self::fail_job($job_id, $e->getMessage(), $dispatch_after);
+            }
         }
     }
 
@@ -654,6 +707,41 @@ class MG_Bulk_Queue {
         delete_transient(self::lock_key($job_id));
     }
 
+    /**
+     * Keeps the per-job lock alive while a long generation is running, so the
+     * stalled-job recovery never mistakes a slow job for a dead one.
+     */
+    private static function refresh_job_lock($job_id, $worker_id) {
+        set_transient(self::lock_key($job_id), $worker_id, self::LOCK_TTL);
+    }
+
+    /**
+     * True while this worker still owns the running job. Ownership is lost if
+     * the recovery reset the job or another worker re-claimed it - in that
+     * case the original process must abort without touching the job state,
+     * otherwise the same design would be finished (and a product created)
+     * twice.
+     */
+    private static function owns_job($job_id, $worker_id) {
+        // Bypass the per-request option cache: the reset/re-claim happens in a
+        // DIFFERENT PHP process, so a cached read would always say "still ours".
+        wp_cache_delete(self::JOB_OPTION_PREFIX . $job_id, 'options');
+        $job = get_option(self::JOB_OPTION_PREFIX . $job_id, null);
+        return is_array($job)
+            && isset($job['status'], $job['worker'])
+            && $job['status'] === 'running'
+            && $job['worker'] === $worker_id;
+    }
+
+    /**
+     * Read-only pending job count for dashboard/status displays.
+     *
+     * @return int
+     */
+    public static function get_pending_count() {
+        return self::count_pending_jobs();
+    }
+
     private static function count_pending_jobs() {
         $order = get_option(self::ORDER_OPTION, array());
         if (!is_array($order)) {
@@ -675,6 +763,15 @@ class MG_Bulk_Queue {
     }
 
     private static function maybe_recover_stalled_jobs() {
+        // A 4 mp-enkénti státusz-poll is meghívja, de a teljes átvizsgálás
+        // (worker-lista karbantartás + jobonkénti option-olvasás) percenként
+        // egyszer bőven elég: egy job legkorábban STALE_TTL után minősülhet
+        // beragadtnak, a sűrűbb ellenőrzés csak az adatbázist terhelné.
+        if (false !== get_transient(self::RECOVERY_THROTTLE)) {
+            return;
+        }
+        set_transient(self::RECOVERY_THROTTLE, 1, self::RECOVERY_INTERVAL);
+
         self::prune_stale_workers();
 
         $order = get_option(self::ORDER_OPTION, array());
@@ -693,8 +790,15 @@ class MG_Bulk_Queue {
             $lock = get_transient(self::lock_key($job_id));
             $is_stale = ($started_at > 0 && ($now - $started_at) > self::STALE_TTL);
 
-            // Ha van aktív lock ÉS az elvégző worker még életjelet adott, ne állítsuk vissza
-            if (!$is_stale && $lock !== false) {
+            // Élő lock = a feldolgozó még dolgozik (a lockot futás közben
+            // frissíti), ilyenkor SOHA nem tesszük vissza a sorba – korábban a
+            // 600s-nél hosszabb generálás alatt visszakerült pending-be, és egy
+            // másik worker duplikálva legyártotta ugyanazt a mintát.
+            if ($lock !== false) {
+                continue;
+            }
+
+            if (!$is_stale) {
                 continue;
             }
 
@@ -807,6 +911,7 @@ class MG_Bulk_Queue {
         $tags = array_map('sanitize_text_field', array_filter(array_map('trim', $tags)));
         $clean['tags'] = array_values(array_filter(array_unique($tags)));
         $clean['sample_seo'] = isset($payload['sample_seo']) ? wp_kses_post($payload['sample_seo']) : '';
+        $clean['replace_design'] = !empty($payload['replace_design']) ? 1 : 0;
         return $clean;
     }
 

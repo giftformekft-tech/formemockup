@@ -134,17 +134,48 @@ add_action('wp_ajax_mg_bulk_process', function(){
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_bulk_nonce')) {
             wp_send_json_error(array('message'=>'Érvénytelen kérés (nonce).'), 401);
         }
+
+        // Idempotencia-őr: a kliens timeout utáni újrapróbálkozása ugyanazzal a
+        // request_id-vel érkezik, így nem indíthat második generálást ugyanarra
+        // a sorra. Ha az első kérés közben elkészült, a kész product_id-t adjuk
+        // vissza; ha még fut, 409-cel jelezzük.
+        $request_id = isset($_POST['request_id']) ? sanitize_key($_POST['request_id']) : '';
+        $guard_key = $request_id !== '' ? 'mg_bulkreq_' . $request_id : '';
+        $pre_created_id = 0;
+        $parent_id = 0;
+        $mg_bulk_fail = function($message, $code = 500) use (&$guard_key, &$pre_created_id, &$parent_id) {
+            if ($guard_key !== '') {
+                delete_transient($guard_key);
+            }
+            // Csak az általunk előre létrehozott (új) terméket takarítjuk el,
+            // meglévő szülő terméket soha.
+            if ($parent_id <= 0 && $pre_created_id > 0) {
+                wp_delete_post($pre_created_id, true);
+            }
+            wp_send_json_error(array('message' => $message), $code);
+        };
+        if ($guard_key !== '') {
+            $previous = get_transient($guard_key);
+            if (is_array($previous) && isset($previous['product_id'])) {
+                wp_send_json_success(array('product_id' => intval($previous['product_id']), 'already_done' => true));
+            }
+            if ($previous === 'running') {
+                wp_send_json_error(array('message' => 'A feldolgozás még folyamatban van – nem indítunk duplikált generálást.', 'code' => 'in_progress'), 409);
+            }
+            set_transient($guard_key, 'running', 30 * MINUTE_IN_SECONDS);
+        }
+
         // Validate keys
         $keys = isset($_POST['product_keys']) ? array_map('sanitize_text_field', (array)$_POST['product_keys']) : array();
-        if (empty($keys)) wp_send_json_error(array('message'=>'Nincs kiválasztott terméktípus.'), 400);
+        if (empty($keys)) $mg_bulk_fail('Nincs kiválasztott terméktípus.', 400);
 
         // File
         if (!isset($_FILES['design_file']) || empty($_FILES['design_file']['tmp_name'])) {
-            wp_send_json_error(array('message'=>'Hiányzó design fájl.'), 400);
+            $mg_bulk_fail('Hiányzó design fájl.', 400);
         }
         $uploaded = wp_handle_upload($_FILES['design_file'], ['test_form' => false, 'mimes' => ['png'=>'image/png','jpg'=>'image/jpeg','jpeg'=>'image/jpeg','webp'=>'image/webp']]);
         if (isset($uploaded['error'])) {
-            wp_send_json_error(array('message'=>'Feltöltési hiba: '.$uploaded['error']), 400);
+            $mg_bulk_fail('Feltöltési hiba: '.$uploaded['error'], 400);
         }
         $design_path = $uploaded['file'];
 
@@ -182,12 +213,12 @@ add_action('wp_ajax_mg_bulk_process', function(){
         // Load config & engine
         $all = get_option('mg_products', array());
         $selected = array_values(array_filter($all, function($p) use ($keys){ return in_array($p['key'], $keys, true); }));
-        if (empty($selected)) wp_send_json_error(array('message'=>'A kiválasztott terméktípusok nem találhatók.'), 400);
+        if (empty($selected)) $mg_bulk_fail('A kiválasztott terméktípusok nem találhatók.', 400);
 
         $gen_path = plugin_dir_path(__FILE__) . '../includes/class-generator.php';
         $creator_path = plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
         if (!file_exists($gen_path) || !file_exists($creator_path)) {
-            wp_send_json_error(array('message'=>'Hiányzó rendszerfájlok.'), 500);
+            $mg_bulk_fail('Hiányzó rendszerfájlok.', 500);
         }
         require_once $gen_path; require_once $creator_path;
 
@@ -201,7 +232,10 @@ add_action('wp_ajax_mg_bulk_process', function(){
         if ($parent_id <= 0) {
             $temp_product = new WC_Product_Simple();
             $temp_product->set_name($parent_name);
-            $temp_product->set_status('publish');
+            // Vázlatként jön létre: amíg a mockup-generálás fut (vagy elhasal),
+            // addig nem jelenhet meg kép nélküli termék a boltban. Sikeres
+            // befejezéskor lentebb publikáljuk.
+            $temp_product->set_status('draft');
             $pre_created_id = $temp_product->save();
 
             if ($pre_created_id > 0 && class_exists('MG_Product_Creator')) {
@@ -229,7 +263,7 @@ add_action('wp_ajax_mg_bulk_process', function(){
         foreach ($selected as $prod) {
             $res = $gen->generate_for_product($prod['key'], $design_path, $generation_context_base);
             if (is_wp_error($res)) {
-                wp_send_json_error(array('message'=>$res->get_error_message()), 500);
+                $mg_bulk_fail($res->get_error_message(), 500);
             }
             $images_by_type_color[$prod['key']] = $res;
         }
@@ -245,26 +279,46 @@ add_action('wp_ajax_mg_bulk_process', function(){
         
         if ($parent_id > 0) {
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
-            if (is_wp_error($result)) wp_send_json_error(array('message'=>$result->get_error_message()), 500);
+            if (is_wp_error($result)) $mg_bulk_fail($result->get_error_message(), 500);
             MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
             if ($is_custom_product && $preset_id !== '') {
                 MG_Custom_Fields_Manager::apply_preset_to_product($parent_id, $preset_id);
+            }
+            if ($guard_key !== '') {
+                set_transient($guard_key, array('product_id' => $parent_id), DAY_IN_SECONDS);
             }
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
             // Pass the pre-created ID to the creator
             $generation_context['existing_product_id'] = $pre_created_id;
-            
+
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
-            if (is_wp_error($pid)) wp_send_json_error(array('message'=>$pid->get_error_message()), 500);
+            if (is_wp_error($pid)) $mg_bulk_fail($pid->get_error_message(), 500);
             MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
             MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
             if ($is_custom_product && $preset_id !== '') {
                 MG_Custom_Fields_Manager::apply_preset_to_product($pid, $preset_id);
             }
+            // A vázlatként előre létrehozott termék csak most, a sikeres
+            // generálás végén válik publikálttá.
+            $pid = intval($pid);
+            if ($pid > 0) {
+                wp_update_post(array('ID' => $pid, 'post_status' => 'publish'));
+            }
+            if ($pre_created_id > 0 && $pid !== $pre_created_id) {
+                // A creator nem a előre létrehozott terméket használta – az
+                // üres vázlat ne maradjon árván.
+                wp_delete_post($pre_created_id, true);
+            }
+            if ($guard_key !== '') {
+                set_transient($guard_key, array('product_id' => $pid), DAY_IN_SECONDS);
+            }
             wp_send_json_success(array('product_id'=>$pid));
         }
     } catch (Throwable $e) {
+        if (isset($mg_bulk_fail)) {
+            $mg_bulk_fail($e->getMessage(), 500);
+        }
         wp_send_json_error(array('message'=>$e->getMessage()), 500);
     }
 });

@@ -788,10 +788,37 @@
         }
     }
 
+    function syncGroupUi(tab) {
+        const $btn = $('.mg-tab[data-tab="' + tab + '"]');
+        const group = sanitizeTab($btn.data('group'));
+        if (!group) {
+            return;
+        }
+        $('.mg-group').removeClass('is-active').filter('[data-group="' + group + '"]').addClass('is-active');
+        $('.mg-subtabs').removeClass('is-active').filter('[data-group="' + group + '"]').addClass('is-active');
+    }
+
     function setActiveTab(tab, options) {
-        const sanitized = sanitizeTab(tab);
+        let sanitized = sanitizeTab(tab);
         if (!sanitized) {
             return;
+        }
+        const $targetBtn = $('.mg-tab[data-tab="' + sanitized + '"]');
+        if (!$targetBtn.length) {
+            sanitized = sanitizeTab($('.mg-tab').first().data('tab'));
+            if (!sanitized) {
+                return;
+            }
+        }
+
+        // Only the active panel is rendered server-side; switching to any
+        // other tab is a normal navigation to its deep link.
+        if (!$('#tab-' + sanitized).length) {
+            const targetUrl = $('.mg-tab[data-tab="' + sanitized + '"]').data('url');
+            if (targetUrl) {
+                window.location.href = targetUrl;
+                return;
+            }
         }
         const opts = options || {};
         if (state.active === sanitized) {
@@ -810,6 +837,7 @@
 
         $('.mg-tab').removeClass('is-active').filter('[data-tab="' + sanitized + '"]').addClass('is-active');
         $('.mg-panel').removeClass('is-active').filter('#tab-' + sanitized).addClass('is-active');
+        syncGroupUi(sanitized);
         rewriteLegacyLinks('#tab-' + sanitized);
         initColorManagers('#tab-' + sanitized);
 
@@ -859,6 +887,16 @@
             }
         });
 
+        $('.mg-group').on('click', function () {
+            const group = sanitizeTab($(this).data('group'));
+            const isCurrent = $(this).hasClass('is-active');
+            const target = sanitizeTab($(this).data('defaultTab'));
+            if (!target || (isCurrent && group)) {
+                return;
+            }
+            setActiveTab(target);
+        });
+
         $(document).on('change input', '.mg-panel input, .mg-panel select, .mg-panel textarea', function () {
             markDirty();
         });
@@ -881,5 +919,91 @@
         initModals();
         rewriteLegacyLinks(document);
         initColorManagers(document);
+        initProductEditorTabs();
+        initDesignReplace();
     });
+
+    // "Minta cseréje" modal a Dashboard soraiból: feltölti a javított mintát
+    // és sorba állítja az újragenerálást (mg_replace_design AJAX).
+    function initDesignReplace() {
+        $(document).on('click', '.mg-replace-design-trigger', function () {
+            $('#mg-replace-product-id').val($(this).data('productId') || '');
+            $('#mg-replace-product-name').text($(this).data('productTitle') || '');
+            $('#mg-replace-design-file').val('');
+            $('#mg-replace-design-status').text('');
+        });
+
+        $(document).on('click', '#mg-replace-design-submit', function () {
+            const $btn = $(this);
+            const pid = $('#mg-replace-product-id').val();
+            const fileInput = document.getElementById('mg-replace-design-file');
+            const $status = $('#mg-replace-design-status');
+            if (!pid || !fileInput || !fileInput.files || !fileInput.files.length) {
+                $status.text('Válaszd ki az új minta fájlt.');
+                return;
+            }
+            const ajaxCfg = window.MG_AJAX || {};
+            if (!ajaxCfg.ajax_url || !ajaxCfg.nonce) {
+                $status.text('Hiányzó AJAX konfiguráció – frissítsd az oldalt.');
+                return;
+            }
+            const form = new FormData();
+            form.append('action', 'mg_replace_design');
+            form.append('nonce', ajaxCfg.nonce);
+            form.append('product_id', pid);
+            form.append('design_file', fileInput.files[0]);
+            $btn.prop('disabled', true);
+            $status.text('Feltöltés és sorba állítás…');
+            $.ajax({
+                url: ajaxCfg.ajax_url,
+                method: 'POST',
+                data: form,
+                processData: false,
+                contentType: false,
+                dataType: 'json',
+            }).done(function (resp) {
+                if (resp && resp.success) {
+                    $status.text((resp.data && resp.data.message) || 'Sorba állítva.');
+                } else {
+                    $status.text('Hiba: ' + ((resp && resp.data && resp.data.message) || 'ismeretlen'));
+                }
+            }).fail(function (xhr) {
+                let msg = 'a kérés nem sikerült.';
+                if (xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+                    msg = xhr.responseJSON.data.message;
+                } else if (xhr && xhr.status === 413) {
+                    msg = 'a fájl túl nagy a szerver feltöltési limitjéhez (HTTP 413).';
+                } else if (xhr && xhr.status) {
+                    msg = 'a kérés nem sikerült (HTTP ' + xhr.status + ').';
+                }
+                $status.text('Hiba: ' + msg);
+            }).always(function () {
+                $btn.prop('disabled', false);
+            });
+        });
+    }
+
+    // Client-side section tabs of the product type editor. All panels stay in
+    // the DOM (the single form submits every field), only visibility changes.
+    function initProductEditorTabs() {
+        const $tabs = $('.mg-pst-tab');
+        if (!$tabs.length) {
+            return;
+        }
+        $tabs.on('click', function () {
+            const target = $(this).data('pst');
+            if (!target) {
+                return;
+            }
+            $('.mg-pst-tab').removeClass('is-active');
+            $(this).addClass('is-active');
+            $('.mg-pst-panel').removeClass('is-active').filter('[data-pst-panel="' + target + '"]').addClass('is-active');
+            // Nudge TinyMCE / lazy widgets after becoming visible.
+            try {
+                window.dispatchEvent(new Event('resize'));
+            } catch (err) {
+                // ignore
+            }
+        });
+    }
 })(jQuery);
