@@ -4,6 +4,66 @@ class MG_Generator {
 
     private $product_cache = null;
 
+    /**
+     * In-memory template cache shared across generator instances within one
+     * PHP process (a queue worker processes several jobs in a row). Each entry:
+     * width/height/filesize metadata plus, when it fits the memory budget, the
+     * decoded + prepared Imagick image ready to be cloned for compositing.
+     *
+     * @var array<string,array{width:int,height:int,filesize:int,alpha:?bool,image:?Imagick}>
+     */
+    private static $template_cache = array();
+
+    /** @var int Approximate decoded bytes currently held in the cache. */
+    private static $template_cache_bytes = 0;
+
+    /**
+     * Stores a prepared template image in the cache if it fits the memory
+     * budget (default 100 MB, filterable via mg_template_cache_limit_bytes;
+     * 0 disables caching).
+     */
+    private static function maybe_cache_template($template_path, Imagick $prepared, $has_alpha, $width, $height) {
+        $limit = (int) apply_filters('mg_template_cache_limit_bytes', 100 * 1024 * 1024);
+        if ($limit <= 0 || $width <= 0 || $height <= 0) {
+            return;
+        }
+        if (!isset(self::$template_cache[$template_path])) {
+            return;
+        }
+        if (self::$template_cache[$template_path]['image'] instanceof Imagick) {
+            return;
+        }
+        $bytes = $width * $height * 4;
+        if ($bytes <= 0 || (self::$template_cache_bytes + $bytes) > $limit) {
+            return;
+        }
+        try {
+            self::$template_cache[$template_path]['image'] = clone $prepared;
+            self::$template_cache[$template_path]['alpha'] = $has_alpha;
+            self::$template_cache_bytes += $bytes;
+        } catch (Throwable $e) {
+            // Cache-elés nélkül is működik minden, csak lassabban.
+        }
+    }
+
+    /**
+     * Frees every cached template image. Called after each worker batch.
+     */
+    public static function flush_template_cache() {
+        foreach (self::$template_cache as $entry) {
+            if (isset($entry['image']) && $entry['image'] instanceof Imagick) {
+                try {
+                    $entry['image']->clear();
+                    $entry['image']->destroy();
+                } catch (Throwable $e) {
+                    // ignore
+                }
+            }
+        }
+        self::$template_cache = array();
+        self::$template_cache_bytes = 0;
+    }
+
     private function get_product_definition($product_key) {
         if ($this->product_cache === null) {
             $raw_products = get_option('mg_products', array());
@@ -590,25 +650,44 @@ class MG_Generator {
         $resize_settings = get_option('mg_output_resize', array('enabled'=>false,'max_w'=>0,'max_h'=>0,'mode'=>'fit','filter'=>'lanczos','method'=>'resize'));
         $resize_filter = $this->resolve_imagick_resize_filter($resize_settings['filter'] ?? 'lanczos');
         $use_thumbnail = ($resize_settings['method'] ?? 'resize') === 'thumbnail';
-        try {
-            $probing = new Imagick();
-            $probing->pingImage($template_path);
-            $template_width = (int)$probing->getImageWidth();
-            $template_height = (int)$probing->getImageHeight();
-            $filesize = @filesize($template_path);
-        } catch (Throwable $e) {
+
+        $cache_entry = isset(self::$template_cache[$template_path]) ? self::$template_cache[$template_path] : null;
+
+        if (is_array($cache_entry)) {
+            // A template metaadatait (méret, fájlméret) már ismerjük, nem kell
+            // újra megnyitni a fájlt hozzá.
+            $template_width = (int)$cache_entry['width'];
+            $template_height = (int)$cache_entry['height'];
+            $filesize = (int)$cache_entry['filesize'];
+        } else {
+            try {
+                $probing = new Imagick();
+                $probing->pingImage($template_path);
+                $template_width = (int)$probing->getImageWidth();
+                $template_height = (int)$probing->getImageHeight();
+                $filesize = @filesize($template_path);
+            } catch (Throwable $e) {
+                if ($probing instanceof Imagick) {
+                    $probing->clear();
+                    $probing->destroy();
+                }
+                return new WP_Error('imagick_error', sprintf('A mockup háttér nem olvasható (%s): %s', basename($template_path), $e->getMessage()));
+            }
             if ($probing instanceof Imagick) {
                 $probing->clear();
                 $probing->destroy();
             }
-            return new WP_Error('imagick_error', sprintf('A mockup háttér nem olvasható (%s): %s', basename($template_path), $e->getMessage()));
+            self::$template_cache[$template_path] = array(
+                'width'    => $template_width,
+                'height'   => $template_height,
+                'filesize' => (int)$filesize,
+                'alpha'    => null,
+                'image'    => null,
+            );
+            $cache_entry = self::$template_cache[$template_path];
         }
 
         $area = $template_width > 0 && $template_height > 0 ? ($template_width * $template_height) : 0;
-        if ($probing instanceof Imagick) {
-            $probing->clear();
-            $probing->destroy();
-        }
 
         if ($filesize > 0) {
             $size_hint = sprintf(' (~%.2f MB)', $filesize / 1048576);
@@ -681,8 +760,17 @@ class MG_Generator {
         $design = null;
         $mockup_started_with_alpha = null;
         try {
-            $mockup = new Imagick($template_path);
-            $mockup_started_with_alpha = $this->imagick_image_has_alpha($mockup);
+            $mockup_from_cache = false;
+            if (is_array($cache_entry) && isset($cache_entry['image']) && $cache_entry['image'] instanceof Imagick) {
+                // A template már dekódolva és előkészítve van a memóriában –
+                // a lemezes újraolvasás + PNG-kicsomagolás megspórolható.
+                $mockup = clone $cache_entry['image'];
+                $mockup_started_with_alpha = $cache_entry['alpha'];
+                $mockup_from_cache = true;
+            } else {
+                $mockup = new Imagick($template_path);
+                $mockup_started_with_alpha = $this->imagick_image_has_alpha($mockup);
+            }
             $design = clone $design_base;
 
             if (method_exists('Imagick','setResourceLimit')) {
@@ -692,9 +780,12 @@ class MG_Generator {
                 $mockup->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
                 $design->setResourceLimit(Imagick::RESOURCETYPE_THREAD, $threads);
             }
-            if (method_exists($mockup,'stripImage')) $mockup->stripImage();
+            if (!$mockup_from_cache) {
+                if (method_exists($mockup,'stripImage')) $mockup->stripImage();
+                $this->prepare_imagick_image_for_compositing($mockup);
+                self::maybe_cache_template($template_path, $mockup, $mockup_started_with_alpha, $template_width, $template_height);
+            }
             if (method_exists($design,'stripImage')) $design->stripImage();
-            $this->prepare_imagick_image_for_compositing($mockup);
             $this->prepare_imagick_image_for_compositing($design);
 
             $placement_scale = 1.0;
@@ -876,6 +967,8 @@ class MG_Generator {
         }
     }
     public static function cleanup_imagick_temp_files() {
+        self::flush_template_cache();
+
         $temp_dir = sys_get_temp_dir();
         if (!$temp_dir || !is_dir($temp_dir)) {
             return;

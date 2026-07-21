@@ -19,6 +19,8 @@ class MG_Bulk_Queue {
     const MAX_JOBS_PER_WORKER = 10;
     const CRON_HOOK = 'mg_bulk_process_queue';
     const CRON_LOCK = 'mg_bulk_queue_lock';
+    const RECOVERY_THROTTLE = 'mg_bulk_recovery_throttle';
+    const RECOVERY_INTERVAL = 60; // seconds between full stalled-job sweeps
     const OPTION_BATCH_SIZE = 'mg_bulk_queue_batch_size';
     const OPTION_INTERVAL_MINUTES = 'mg_bulk_queue_interval_minutes';
     const DEFAULT_BATCH = 5;
@@ -749,6 +751,15 @@ class MG_Bulk_Queue {
     }
 
     private static function maybe_recover_stalled_jobs() {
+        // A 4 mp-enkénti státusz-poll is meghívja, de a teljes átvizsgálás
+        // (worker-lista karbantartás + jobonkénti option-olvasás) percenként
+        // egyszer bőven elég: egy job legkorábban STALE_TTL után minősülhet
+        // beragadtnak, a sűrűbb ellenőrzés csak az adatbázist terhelné.
+        if (false !== get_transient(self::RECOVERY_THROTTLE)) {
+            return;
+        }
+        set_transient(self::RECOVERY_THROTTLE, 1, self::RECOVERY_INTERVAL);
+
         self::prune_stale_workers();
 
         $order = get_option(self::ORDER_OPTION, array());
