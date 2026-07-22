@@ -4,6 +4,7 @@
 
 - A Pixel és a Conversions API ugyanazt a WooCommerce-rendelésszámot használja `event_id`-ként.
 - A Purchase csak a beállított, alapértelmezetten `processing` vagy `completed` rendeléseknél kerül mérésre.
+- A böngészős Pixel Advanced Matching adatai már az első Pixel-inicializáláskor rendelkezésre állnak; a Pixel nem inicializálódik kétszer ugyanazzal az azonosítóval.
 - A CAPI-küldés Action Schedulerrel, ennek hiányában WP-Cronnal fut, és legfeljebb hatszor próbálkozik.
 - Sikeresnek csak olyan Meta-válasz számít, amely legalább egy fogadott eseményt jelez.
 - A szerveroldali felhasználóadatok csak eltárolt `granted` marketing-consent esetén kerülnek elküldésre.
@@ -18,7 +19,7 @@ A Purchase tartalmazza a rendelés teljes értékét, pénznemét, kedvezményé
 
 ## Attribution és egyezési adatok
 
-A checkout a rendeléshez menti az `_fbp`, `_fbc` és `fbclid` adatokat, továbbá a hozzájárulási állapotot, az IP-címet és a user agentet. Ha az `_fbc` cookie még nem készült el, de van `fbclid`, a plugin szabványos `_fbc` értéket épít belőle. Consent nélkül ezek nem kerülnek a CAPI-ba.
+A checkout a rendeléshez menti az `_fbp`, `_fbc` és `fbclid` adatokat, továbbá a hozzájárulási állapotot, az IP-címet és a user agentet. Ha az `_fbc` cookie még nem készült el, de van `fbclid`, a plugin szabványos `_fbc` értéket épít belőle. Az egyezéshez e-mail, telefon, név, település, régió, irányítószám, ország és stabil külső azonosító használható. Consent nélkül ezek nem kerülnek a CAPI-ba.
 
 ## Üzembe helyezés
 

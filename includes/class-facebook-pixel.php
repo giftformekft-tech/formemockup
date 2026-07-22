@@ -50,6 +50,80 @@ class MG_Facebook_Pixel {
         return (string) $base_sku;
     }
 
+    /** Return the current order only when its private order key is present. */
+    private static function get_received_order() {
+        if (!function_exists('wc_get_order_id_by_order_key') || empty($_GET['key'])) {
+            return false;
+        }
+
+        $order_key = wc_clean(wp_unslash($_GET['key']));
+        $order_id = wc_get_order_id_by_order_key($order_key);
+        $order = $order_id ? wc_get_order($order_id) : false;
+        if (!$order || !hash_equals((string) $order->get_order_key(), (string) $order_key)) {
+            return false;
+        }
+        if (class_exists('MG_Facebook_Pixel_Reliability') && !MG_Facebook_Pixel_Reliability::is_order_eligible($order)) {
+            return false;
+        }
+        return $order;
+    }
+
+    private static function normalize_match_text($value) {
+        $value = function_exists('remove_accents') ? remove_accents((string) $value) : (string) $value;
+        $value = strtolower(trim($value));
+        return preg_replace('/[^a-z0-9]/', '', $value);
+    }
+
+    private static function normalize_match_phone($phone, $country) {
+        $digits = preg_replace('/[^0-9]/', '', (string) $phone);
+        if ($digits === '') {
+            return '';
+        }
+        if (strpos($digits, '00') === 0) {
+            $digits = substr($digits, 2);
+        } elseif (strtoupper((string) $country) === 'HU' && strpos($digits, '06') === 0) {
+            $digits = '36' . substr($digits, 2);
+        } elseif (strtoupper((string) $country) === 'HU' && strpos($digits, '36') !== 0) {
+            $digits = '36' . ltrim($digits, '0');
+        }
+        return strlen($digits) >= 8 && strlen($digits) <= 15 ? $digits : '';
+    }
+
+    private static function external_id_source($order) {
+        if ($order->get_customer_id()) {
+            return 'wc_user_' . $order->get_customer_id();
+        }
+        $email = strtolower(trim((string) $order->get_billing_email()));
+        return $email !== '' ? 'wc_guest_' . $email : '';
+    }
+
+    /** Hashed Advanced Matching data for the private order-received page. */
+    private static function build_advanced_matching($order) {
+        if (!$order instanceof WC_Order) {
+            return array();
+        }
+
+        $values = array(
+            'em' => strtolower(trim((string) $order->get_billing_email())),
+            'ph' => self::normalize_match_phone($order->get_billing_phone(), $order->get_billing_country()),
+            'fn' => self::normalize_match_text($order->get_billing_first_name()),
+            'ln' => self::normalize_match_text($order->get_billing_last_name()),
+            'ct' => self::normalize_match_text($order->get_billing_city()),
+            'st' => self::normalize_match_text($order->get_billing_state()),
+            'zp' => strtolower(preg_replace('/\s+/', '', (string) $order->get_billing_postcode())),
+            'country' => strtolower((string) $order->get_billing_country()),
+            'external_id' => self::external_id_source($order),
+        );
+
+        $hashed = array();
+        foreach ($values as $key => $value) {
+            if ($value !== '') {
+                $hashed[$key] = hash('sha256', $value);
+            }
+        }
+        return $hashed;
+    }
+
     /**
      * Betölti a Meta Pixel alap szkriptet Consent Mode-dal.
      * Alapból visszavont beleegyezéssel indul (GDPR-kompatibilis).
@@ -57,6 +131,7 @@ class MG_Facebook_Pixel {
      */
     public static function output_pixel_base() {
         $pixel_id = self::get_pixel_id();
+        $advanced_matching = self::build_advanced_matching(self::get_received_order());
         ?>
         <!-- Meta Pixel (Facebook Pixel) + Consent - Mockup Generator -->
         <script>
@@ -71,7 +146,7 @@ class MG_Facebook_Pixel {
 
         // GDPR: alapból visszavont beleegyezés – a cookie banner adja meg
         fbq('consent', 'revoke');
-        fbq('init', '<?php echo $pixel_id; ?>');
+        fbq('init', '<?php echo $pixel_id; ?>'<?php if ($advanced_matching): ?>, <?php echo wp_json_encode($advanced_matching, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?><?php endif; ?>);
 
         window.mgFbConsentGranted = false;
         window.mgFbSetConsent = function(granted) {
@@ -85,8 +160,19 @@ class MG_Facebook_Pixel {
             }
         };
 
-        document.addEventListener('mg_gads_consent', function() {
-            window.mgFbSetConsent(true);
+        document.addEventListener('mg_gads_consent', function(event) {
+            var detail = event ? event.detail : null;
+            var granted = true; // Visszafelé kompatibilis a korábbi, detail nélküli eseménnyel.
+            if (detail === false || detail === 'denied') {
+                granted = false;
+            } else if (detail && typeof detail === 'object') {
+                if (typeof detail.granted !== 'undefined') {
+                    granted = !!detail.granted;
+                } else if (typeof detail.marketing !== 'undefined') {
+                    granted = !!detail.marketing;
+                }
+            }
+            window.mgFbSetConsent(granted);
         });
         document.addEventListener('rcb:consent', function(event) {
             if (event.detail && typeof event.detail.acceptedAll !== 'undefined') {
@@ -137,6 +223,7 @@ class MG_Facebook_Pixel {
             var _mgFbViewData = {
                 content_ids: ['<?php echo esc_js($item_id); ?>'],
                 content_type: 'product',
+                content_name: '<?php echo esc_js($product->get_name()); ?>',
                 value: <?php echo number_format($price, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>'
             };
@@ -186,7 +273,6 @@ class MG_Facebook_Pixel {
             return;
         }
 
-        $pixel_id     = self::get_pixel_id();
         $value        = (float) $order->get_total();
         $currency     = $order->get_currency();
         $transaction_id = $order->get_order_number();
@@ -232,32 +318,6 @@ class MG_Facebook_Pixel {
             );
         }
 
-        // Advanced Matching mezők normalizálása és SHA-256 hash
-        $email      = strtolower(trim($order->get_billing_email()));
-        $phone_raw  = preg_replace('/[^0-9]/', '', $order->get_billing_phone());
-        // Magyar mobil- és vezetékes számok egységes nemzetközi formátumban.
-        if ($phone_raw !== '') {
-            if (substr($phone_raw, 0, 2) === '06') {
-                $phone_raw = '36' . substr($phone_raw, 2);
-            } elseif ($order->get_billing_country() === 'HU' && substr($phone_raw, 0, 2) !== '36') {
-                $phone_raw = '36' . ltrim($phone_raw, '0');
-            }
-        }
-        $first_name = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_first_name())));
-        $last_name  = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_last_name())));
-        $city       = strtolower(preg_replace('/[^a-z0-9]/', '', remove_accents($order->get_billing_city())));
-        $zip        = strtolower(preg_replace('/\s+/', '', $order->get_billing_postcode()));
-        $country    = strtolower($order->get_billing_country());
-
-        $hashed = array();
-        if (!empty($email))      { $hashed['em']      = hash('sha256', $email); }
-        if (!empty($phone_raw))  { $hashed['ph']      = hash('sha256', $phone_raw); }
-        if (!empty($first_name)) { $hashed['fn']      = hash('sha256', $first_name); }
-        if (!empty($last_name))  { $hashed['ln']      = hash('sha256', $last_name); }
-        if (!empty($city))       { $hashed['ct']      = hash('sha256', $city); }
-        if (!empty($zip))        { $hashed['zp']      = hash('sha256', $zip); }
-        if (!empty($country))    { $hashed['country'] = hash('sha256', $country); }
-
         $order->update_meta_data('_mg_fb_browser_rendered', time());
         $order->save();
         ?>
@@ -278,9 +338,6 @@ class MG_Facebook_Pixel {
                 if (_mgFbPurchaseSent) return;
                 if (window.mgFbConsentGranted !== true) return;
                 if (typeof window.fbq === 'function') {
-                    <?php if (!empty($hashed)): ?>
-                    window.fbq('init', '<?php echo $pixel_id; ?>', <?php echo wp_json_encode($hashed, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>);
-                    <?php endif; ?>
                     // Ugyanez az event ID kerül a tartós CAPI eseménybe is.
                     window.fbq('track', 'Purchase', _mgFbPurchaseData, {eventID: '<?php echo esc_js($transaction_id); ?>'});
                     _mgFbPurchaseSent = true;
@@ -392,11 +449,16 @@ class MG_Facebook_Pixel {
         $base_sku   = $product->get_sku() ? $product->get_sku() : 'ID_' . $product->get_id();
         $base_price = (float) $product->get_price();
         $type_prices = array();
+        $color_surcharges = array();
         $size_surcharges = array();
         if (class_exists('MG_Virtual_Variant_Manager')) {
             $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
             foreach ((array) ($config['types'] ?? array()) as $slug => $type) {
                 $type_prices[$slug] = !empty($type['price']) ? (float) $type['price'] : $base_price;
+                $color_surcharges[$slug] = array();
+                foreach ((array) ($type['colors'] ?? array()) as $color_slug => $color) {
+                    $color_surcharges[$slug][$color_slug] = (float) ($color['surcharge'] ?? 0);
+                }
                 $size_surcharges[$slug] = (array) ($type['size_surcharges'] ?? array());
             }
         }
@@ -406,6 +468,7 @@ class MG_Facebook_Pixel {
             var _mgFbAtcForm = document.querySelector('form.cart');
             if (!_mgFbAtcForm) return;
             var _mgFbTypePrices = <?php echo wp_json_encode($type_prices); ?>;
+            var _mgFbColorSurcharges = <?php echo wp_json_encode($color_surcharges); ?>;
             var _mgFbSizeSurcharges = <?php echo wp_json_encode($size_surcharges); ?>;
 
             _mgFbAtcForm.addEventListener('submit', function() {
@@ -415,17 +478,27 @@ class MG_Facebook_Pixel {
 
                 var qtyInput = _mgFbAtcForm.querySelector('[name="quantity"]');
                 var qty      = qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
+                var colorInput = _mgFbAtcForm.querySelector('[name="mg_color"]');
+                var colorValue = colorInput ? colorInput.value : '';
                 var sizeInput = _mgFbAtcForm.querySelector('[name="mg_size"]');
                 var sizeValue = sizeInput ? sizeInput.value : '';
+                if (_mgFbAtcForm.querySelector('[data-mg-virtual="1"]') && (!typeSlug || !colorValue || !sizeValue)) {
+                    return;
+                }
                 var unitPrice = Object.prototype.hasOwnProperty.call(_mgFbTypePrices, typeSlug) ? parseFloat(_mgFbTypePrices[typeSlug]) : <?php echo wp_json_encode($base_price); ?>;
+                if (_mgFbColorSurcharges[typeSlug] && Object.prototype.hasOwnProperty.call(_mgFbColorSurcharges[typeSlug], colorValue)) {
+                    unitPrice += parseFloat(_mgFbColorSurcharges[typeSlug][colorValue]) || 0;
+                }
                 if (_mgFbSizeSurcharges[typeSlug] && Object.prototype.hasOwnProperty.call(_mgFbSizeSurcharges[typeSlug], sizeValue)) {
                     unitPrice += parseFloat(_mgFbSizeSurcharges[typeSlug][sizeValue]) || 0;
                 }
+                unitPrice = Math.max(0, unitPrice);
 
                 var atcData = {
                     content_ids:  [itemId],
                     contents:     [{id: itemId, quantity: qty, item_price: unitPrice}],
                     content_type: 'product',
+                    content_name: <?php echo wp_json_encode($product->get_name(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
                     value:        unitPrice * qty,
                     currency:     '<?php echo esc_js(get_woocommerce_currency()); ?>',
                     quantity:     qty
