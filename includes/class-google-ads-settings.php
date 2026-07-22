@@ -66,7 +66,7 @@ class MG_Google_Ads_Settings {
         }
 
         $saved = array(
-            'conversion_id' => sanitize_text_field($input['conversion_id'] ?? ''),
+            'conversion_id' => self::conversion_id($input['conversion_id'] ?? ''),
             'purchase_label' => sanitize_text_field($input['purchase_label'] ?? ''),
             'eligible_statuses' => array_values($statuses),
             'server_side_enabled' => !empty($input['server_side_enabled']) ? 1 : 0,
@@ -118,6 +118,11 @@ class MG_Google_Ads_Settings {
         return preg_replace('/[^0-9]/', '', (string) $value);
     }
 
+    private static function conversion_id($value) {
+        $value = strtoupper(trim(sanitize_text_field((string) $value)));
+        return preg_match('/^AW-[0-9]+$/', $value) ? $value : '';
+    }
+
     public static function render_settings_page() {
         if (!current_user_can('manage_options')) {
             return;
@@ -141,7 +146,7 @@ class MG_Google_Ads_Settings {
                 <div class="notice notice-error"><p>A service account JSON hibás: a <code>client_email</code> és <code>private_key</code> mező kötelező.</p></div>
             <?php endif; ?>
 
-            <p>A böngészős Google tag és a WooCommerce-ből küldött szerveroldali rekord ugyanazt a rendelési azonosítót használja. A Google így deduplikálja a két forrást, a feldolgozást pedig a plugin utólag is ellenőrzi.</p>
+            <p><strong>A Google API nem szükséges a pontos alapméréshez.</strong> A böngészős Google tag Consent Mode v2-vel, Enhanced Conversions adatokkal, egyedi tranzakcióazonosítóval és teljes kosáradattal önállóan is működik. Ha nincs API-hozzáférésed, a szerveroldali részt hagyd kikapcsolva.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_gads_save">
@@ -168,11 +173,11 @@ class MG_Google_Ads_Settings {
                     </tr>
                 </table>
 
-                <h2>Szerveroldali kiegészítés – Google Data Manager API</h2>
+                <h2>Opcionális szerveroldali kiegészítés – Google Data Manager API</h2>
                 <table class="form-table">
                     <tr>
                         <th>Bekapcsolás</th>
-                        <td><label><input type="checkbox" name="mg_gads_settings[server_side_enabled]" value="1" <?php checked(!empty($settings['server_side_enabled'])); ?>> Tartós szerveroldali küldés, újrapróbálkozás és feldolgozás-ellenőrzés</label></td>
+                        <td><label><input type="checkbox" name="mg_gads_settings[server_side_enabled]" value="1" <?php checked(!empty($settings['server_side_enabled'])); ?>> Tartós szerveroldali küldés, újrapróbálkozás és feldolgozás-ellenőrzés</label><p class="description">Nem kötelező. API nélkül a Conversion ID és Purchase Label mezőkkel beállított böngészős mérés marad aktív.</p></td>
                     </tr>
                     <tr>
                         <th><label for="mg-gads-customer">Google Ads ügyfélazonosító</label></th>
@@ -253,7 +258,7 @@ class MG_Google_Ads_Settings {
             <?php endforeach; ?>
         </p>
         <table class="widefat striped">
-            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Server mérés</th><th>Korrekció</th><th>Consent</th><th>Click ID</th><th>Hiba / Request ID</th><th></th></tr></thead>
+            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Köszönőoldali tag</th><th>Server mérés</th><th>Korrekció</th><th>Consent</th><th>Click ID</th><th>Hiba / Request ID</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($orders as $order):
                 $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
@@ -263,6 +268,7 @@ class MG_Google_Ads_Settings {
                 <tr>
                     <td><a href="<?php echo esc_url($order->get_edit_order_url()); ?>"><strong>#<?php echo esc_html($order->get_order_number()); ?></strong></a><br><?php echo esc_html($order->get_date_created() ? $order->get_date_created()->date_i18n('Y-m-d H:i') : ''); ?></td>
                     <td><?php echo esc_html(wc_get_order_status_name($order->get_status())); ?></td>
+                    <td><?php echo $order->get_meta('_mg_gads_browser_rendered') ? 'renderelve' : 'nincs'; ?></td>
                     <td><code><?php echo esc_html($status); ?></code></td>
                     <td><code><?php echo esc_html($order->get_meta('_mg_gads_adjustment_status') ?: '—'); ?></code></td>
                     <td><?php echo esc_html($order->get_meta('_mg_gads_consent') ?: 'ismeretlen'); ?></td>

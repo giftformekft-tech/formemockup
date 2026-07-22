@@ -16,12 +16,7 @@ class MG_Google_Ads_Tracking {
             return;
         }
 
-        $settings = get_option('mg_gads_settings', array(
-            'conversion_id' => '',
-            'purchase_label' => ''
-        ));
-
-        if (empty($settings['conversion_id'])) {
+        if (self::get_conversion_id() === '') {
             return;
         }
 
@@ -46,6 +41,12 @@ class MG_Google_Ads_Tracking {
         add_action('woocommerce_before_cart', array(__CLASS__, 'output_view_cart_event'), 5);
     }
 
+    private static function get_conversion_id() {
+        $settings = get_option('mg_gads_settings', array());
+        $conversion_id = strtoupper(trim((string) ($settings['conversion_id'] ?? '')));
+        return preg_match('/^AW-[0-9]+$/', $conversion_id) ? $conversion_id : '';
+    }
+
     /**
      * @param bool $allow_request_fallback false on thank-you page to avoid URL-based type guessing
      */
@@ -68,11 +69,11 @@ class MG_Google_Ads_Tracking {
 
     /**
      * Injektálja a Google tag alap szkriptet Consent Mode v2-vel.
-     * A gtag.js az oldal elejesétől betöltődik, de csak beleegyezés után küld adatot.
+     * A gtag.js az oldal elejétől betöltődik. Tiltott consent mellett csak a
+     * Consent Mode modellezéséhez használható, cookie nélküli jeleket küldi.
      */
     public static function output_gtag_script() {
-        $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
         ?>
         <!-- Google tag (gtag.js) + Consent Mode v2 - Mockup Generator -->
         <script>
@@ -87,6 +88,9 @@ class MG_Google_Ads_Tracking {
               'analytics_storage':   'denied',
               'wait_for_update':     2000
           });
+          // Megőrzi a hirdetési kattintási paramétert az azonos domainen belüli
+          // navigációban akkor is, amikor hirdetési cookie nem írható.
+          gtag('set', 'url_passthrough', true);
           window.mgGadsConsentGranted = false;
 
           // Persist the choice so checkout can attach consent to the order.
@@ -101,8 +105,19 @@ class MG_Google_Ads_Tracking {
               });
               document.cookie = 'mg_gads_consent=' + state + ';path=/;max-age=31536000;SameSite=Lax' + (location.protocol === 'https:' ? ';Secure' : '');
           };
-          document.addEventListener('mg_gads_consent', function() {
-              window.mgGadsSetConsent(true);
+          document.addEventListener('mg_gads_consent', function(event) {
+              var detail = event ? event.detail : null;
+              var granted = true; // Visszafelé kompatibilis a korábbi, detail nélküli eseménnyel.
+              if (detail === false || detail === 'denied') {
+                  granted = false;
+              } else if (detail && typeof detail === 'object') {
+                  if (typeof detail.granted !== 'undefined') {
+                      granted = !!detail.granted;
+                  } else if (typeof detail.marketing !== 'undefined') {
+                      granted = !!detail.marketing;
+                  }
+              }
+              window.mgGadsSetConsent(granted);
           });
           document.addEventListener('rcb:consent', function(event) {
               if (event.detail && typeof event.detail.acceptedAll !== 'undefined') {
@@ -114,12 +129,12 @@ class MG_Google_Ads_Tracking {
               window.mgGadsSetConsent(mgConsentMatch[1] === 'granted');
           }
         </script>
-        <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo $conversion_id; ?>"></script>
+        <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo esc_attr($conversion_id); ?>"></script>
         <script>
           gtag('js', new Date());
           // allow_enhanced_conversions:true szükséges a Bővített konverziók működéséhez
           // send_page_view: true szükséges az Enhanced Conversions session-linkinghez
-          gtag('config', '<?php echo $conversion_id; ?>', {
+          gtag('config', '<?php echo esc_js($conversion_id); ?>', {
               'send_page_view': true,
               'allow_enhanced_conversions': true
           });
@@ -136,8 +151,7 @@ class MG_Google_Ads_Tracking {
             return;
         }
 
-        $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
 
         // Típus meghatározása: request → frontend config alapértelmezett → üres
         $type_slug = class_exists('MG_Virtual_Variant_Manager') ? MG_Virtual_Variant_Manager::get_type_from_request() : (isset($_GET['mg_type']) ? sanitize_text_field($_GET['mg_type']) : '');
@@ -168,10 +182,15 @@ class MG_Google_Ads_Tracking {
         <script>
         (function() {
             var _mgViewItemData = {
-                send_to: '<?php echo $conversion_id; ?>',
+                send_to: '<?php echo esc_js($conversion_id); ?>',
                 value: <?php echo number_format($price, 2, '.', ''); ?>,
+                currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 items: [{
                     id: '<?php echo esc_js($item_id); ?>',
+                    item_id: '<?php echo esc_js($item_id); ?>',
+                    item_name: '<?php echo esc_js($product->get_name()); ?>',
+                    price: <?php echo number_format($price, 2, '.', ''); ?>,
+                    quantity: 1,
                     google_business_vertical: 'retail'
                 }]
             };
@@ -218,7 +237,7 @@ class MG_Google_Ads_Tracking {
         }
 
         $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
         $purchase_label = esc_js(isset($settings['purchase_label']) ? $settings['purchase_label'] : '');
         
         $send_to = $conversion_id;
@@ -341,6 +360,7 @@ class MG_Google_Ads_Tracking {
         $last_name    = $order->get_billing_last_name();
         $street       = $order->get_billing_address_1();
         $city         = $order->get_billing_city();
+        $region       = $order->get_billing_state();
         $postal_code  = $order->get_billing_postcode();
         $country      = $order->get_billing_country(); // ISO 2-letter
         $event_extras = array('discount' => (float) $order->get_discount_total());
@@ -363,6 +383,7 @@ class MG_Google_Ads_Tracking {
             'last_name' => $last_name,
             'street' => $street,
             'city' => $city,
+            'region' => $region,
             'postal_code' => $postal_code,
             'country' => $country,
         ), 'strlen');
@@ -408,6 +429,7 @@ class MG_Google_Ads_Tracking {
                     if (!empty($last_name))   { $addr_fields[] = '"last_name": '  . json_encode($last_name); }
                     if (!empty($street))      { $addr_fields[] = '"street": '     . json_encode($street); }
                     if (!empty($city))        { $addr_fields[] = '"city": '       . json_encode($city); }
+                    if (!empty($region))      { $addr_fields[] = '"region": '     . json_encode($region); }
                     if (!empty($postal_code)) { $addr_fields[] = '"postal_code": '. json_encode($postal_code); }
                     if (!empty($country))     { $addr_fields[] = '"country": '    . json_encode($country); }
                     if (!empty($addr_fields)) { $ud_fields[] = '"address": {' . implode(',', $addr_fields) . '}'; }
@@ -447,7 +469,7 @@ class MG_Google_Ads_Tracking {
         }
 
         $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
 
         $items = array();
         $total = 0;
@@ -458,14 +480,19 @@ class MG_Google_Ads_Tracking {
 
             $type_slug = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
             $item_id = self::get_virtual_item_id($product, $type_slug);
-            $price = (float) $product->get_price();
-            $qty = (int) $cart_item['quantity'];
-            $total += $price * $qty;
+            $qty = max(1, (int) $cart_item['quantity']);
+            $line_total = isset($cart_item['line_total'])
+                ? (float) $cart_item['line_total']
+                : ((float) $product->get_price() * $qty);
+            $price = $line_total / $qty;
+            $total += $line_total;
 
             $items[] = array(
-                'id'                     => $item_id,
-                'price'                  => number_format($price, 2, '.', ''),
-                'quantity'               => $qty,
+                'id'                       => $item_id,
+                'item_id'                  => $item_id,
+                'item_name'                => $product->get_name(),
+                'price'                    => round($price, 2),
+                'quantity'                 => $qty,
                 'google_business_vertical' => 'retail',
             );
         }
@@ -477,7 +504,7 @@ class MG_Google_Ads_Tracking {
         <script>
         (function() {
             var _mgCheckoutData = {
-                send_to: '<?php echo $conversion_id; ?>',
+                send_to: '<?php echo esc_js($conversion_id); ?>',
                 value: <?php echo number_format($total, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 items: <?php echo wp_json_encode($items); ?>
@@ -517,10 +544,10 @@ class MG_Google_Ads_Tracking {
         }
 
         $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
         $base_sku = $product->get_sku() ? $product->get_sku() : 'ID_' . $product->get_id();
         $base_price = (float) $product->get_price();
-        $product_name = esc_js($product->get_name());
+        $product_name = $product->get_name();
         ?>
         <script>
         (function() {
@@ -534,13 +561,42 @@ class MG_Google_Ads_Tracking {
 
                 var qtyInput = _mgAtcForm.querySelector('[name="quantity"]');
                 var qty = qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
+                var colorInput = _mgAtcForm.querySelector('[name="mg_color"]');
+                var colorSlug = colorInput ? colorInput.value : '';
+                var sizeInput = _mgAtcForm.querySelector('[name="mg_size"]');
+                var sizeValue = sizeInput ? sizeInput.value : '';
+
+                // Virtuális terméknél csak teljes, érvényes kiválasztást mérünk.
+                if (_mgAtcForm.querySelector('[data-mg-virtual="1"]') && (!typeSlug || !colorSlug || !sizeValue)) {
+                    return;
+                }
+
+                var unitPrice = <?php echo wp_json_encode($base_price); ?>;
+                var config = window.MG_VIRTUAL_VARIANTS || null;
+                if (config && config.types && config.types[typeSlug]) {
+                    var typeMeta = config.types[typeSlug];
+                    var configuredPrice = parseFloat(typeMeta.price);
+                    if (!isNaN(configuredPrice) && configuredPrice > 0) {
+                        unitPrice = configuredPrice;
+                    }
+                    if (typeMeta.colors && typeMeta.colors[colorSlug]) {
+                        unitPrice += parseFloat(typeMeta.colors[colorSlug].surcharge) || 0;
+                    }
+                    if (typeMeta.size_surcharges && Object.prototype.hasOwnProperty.call(typeMeta.size_surcharges, sizeValue)) {
+                        unitPrice += parseFloat(typeMeta.size_surcharges[sizeValue]) || 0;
+                    }
+                }
+                unitPrice = Math.max(0, unitPrice);
 
                 var atcData = {
-                    send_to: '<?php echo $conversion_id; ?>',
-                    value: <?php echo $base_price; ?>,
+                    send_to: '<?php echo esc_js($conversion_id); ?>',
+                    value: unitPrice * qty,
                     currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                     items: [{
                         id: itemId,
+                        item_id: itemId,
+                        item_name: <?php echo wp_json_encode($product_name, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>,
+                        price: unitPrice,
                         quantity: qty,
                         google_business_vertical: 'retail'
                     }]
@@ -575,7 +631,7 @@ class MG_Google_Ads_Tracking {
         }
 
         $settings = get_option('mg_gads_settings');
-        $conversion_id = esc_js($settings['conversion_id']);
+        $conversion_id = self::get_conversion_id();
 
         $items = array();
         $total = 0;
@@ -586,13 +642,18 @@ class MG_Google_Ads_Tracking {
 
             $type_slug = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
             $item_id = self::get_virtual_item_id($product, $type_slug);
-            $price = (float) $product->get_price();
-            $qty = (int) $cart_item['quantity'];
-            $total += $price * $qty;
+            $qty = max(1, (int) $cart_item['quantity']);
+            $line_total = isset($cart_item['line_total'])
+                ? (float) $cart_item['line_total']
+                : ((float) $product->get_price() * $qty);
+            $price = $line_total / $qty;
+            $total += $line_total;
 
             $items[] = array(
                 'id'                       => $item_id,
-                'price'                    => number_format($price, 2, '.', ''),
+                'item_id'                  => $item_id,
+                'item_name'                => $product->get_name(),
+                'price'                    => round($price, 2),
                 'quantity'                 => $qty,
                 'google_business_vertical' => 'retail',
             );
@@ -605,7 +666,7 @@ class MG_Google_Ads_Tracking {
         <script>
         (function() {
             var _mgCartData = {
-                send_to: '<?php echo $conversion_id; ?>',
+                send_to: '<?php echo esc_js($conversion_id); ?>',
                 value: <?php echo number_format($total, 2, '.', ''); ?>,
                 currency: '<?php echo esc_js(get_woocommerce_currency()); ?>',
                 items: <?php echo wp_json_encode($items); ?>

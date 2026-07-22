@@ -317,6 +317,7 @@ class MG_Facebook_Pixel_Reliability {
             'fn' => self::normalize_text($order->get_billing_first_name()),
             'ln' => self::normalize_text($order->get_billing_last_name()),
             'ct' => self::normalize_text($order->get_billing_city()),
+            'st' => self::normalize_text($order->get_billing_state()),
             'zp' => strtolower(preg_replace('/\s+/', '', (string) $order->get_billing_postcode())),
             'country' => strtolower((string) $order->get_billing_country()),
         );
@@ -325,8 +326,11 @@ class MG_Facebook_Pixel_Reliability {
                 $data[$key] = hash('sha256', $value);
             }
         }
-        if ($order->get_customer_id()) {
-            $data['external_id'] = hash('sha256', 'wc_user_' . $order->get_customer_id());
+        $external_id = $order->get_customer_id()
+            ? 'wc_user_' . $order->get_customer_id()
+            : 'wc_guest_' . $email;
+        if ($external_id !== 'wc_guest_') {
+            $data['external_id'] = hash('sha256', $external_id);
         }
         foreach (array('fbp' => array('_mg_meta_fbp', '_mg_fbp'), 'fbc' => array('_mg_meta_fbc', '_mg_fbc')) as $key => $meta_keys) {
             $value = self::sanitize_meta_id($order->get_meta($meta_keys[0]) ?: $order->get_meta($meta_keys[1]));

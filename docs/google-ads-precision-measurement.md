@@ -1,6 +1,6 @@
-# Google Ads tűpontos vásárlásmérés – üzembe helyezés
+# Google Ads pontos vásárlásmérés – API nélkül is
 
-Ehhez a pluginban nincs külön előfizetés, a Google Ads API használata pedig díjmentes. A Google Ads hirdetési költés és a webáruház szokásos üzemeltetési költsége ettől független.
+A Google API nem feltétele a jó vásárlásmérésnek. Az elsődleges mérési út a böngészős Google tag: Consent Mode v2, Enhanced Conversions, egyedi tranzakcióazonosító és kosáradatok. A Data Manager API csak opcionális, tartós szerveroldali kiegészítés.
 
 ## 1. Böngészős konverzió
 
@@ -10,8 +10,12 @@ Ehhez a pluginban nincs külön előfizetés, a Google Ads API használata pedig
    - a Vásárlás konverziós címkéjét;
    - a mérhető WooCommerce-rendelésállapotokat.
 3. Ugyanahhoz a Purchase művelethez más plugin ne küldjön vásárlást.
+4. A Google Ads Google tag beállításainál engedélyezd a felhasználó által megadott adatok használatát és a bővített konverziókat.
+5. API nélküli használatnál hagyd kikapcsolva a **Szerveroldali kiegészítés** kapcsolót.
 
-## 2. Data Manager API
+## 2. Opcionális Data Manager API
+
+Ha a Google-fiókodban vagy a Cloud projektedben ez nem használható, ezt a teljes fejezetet hagyd ki. A böngészős vásárlásmérés ettől még aktív marad.
 
 1. Hozz létre vagy válassz Google Cloud projektet.
 2. Engedélyezd benne a **Google Data Manager API** szolgáltatást.
@@ -43,4 +47,6 @@ Végezz legalább három külön próbát:
 2. consent nélküli rendelés;
 3. sikeres rendelés, majd részleges és teljes refund.
 
-Az admin diagnosztika elvárt végállapota szerveroldali küldésnél `processed`. A `skipped_no_consent` nem technikai hiba: azt jelenti, hogy a szerveroldali felhasználóiadat-küldéshez nem volt eltárolt hozzájárulás. A böngészős Consent Mode mérés ettől még működhet modellezett/cookie nélküli módban.
+API nélküli módban az admin diagnosztikában a `browser_only` állapot és a `renderelve` köszönőoldali tag a várt eredmény. A tényleges hálózati küldést Google Tag Assistanttal ellenőrizd: a Purchase eseményben egyezzen a `send_to`, legyen egyedi `transaction_id`, valós `value`/`currency`, és a termékazonosítók egyezzenek a Merchant Center feed azonosítóival.
+
+Szerveroldali küldésnél az elvárt végállapot `processed`. A `skipped_no_consent` nem technikai hiba: azt jelenti, hogy a szerveroldali felhasználóiadat-küldéshez nem volt eltárolt hozzájárulás. A böngészős Consent Mode mérés ettől még működhet modellezett, cookie nélküli módban.

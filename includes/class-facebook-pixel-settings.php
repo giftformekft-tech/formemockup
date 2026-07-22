@@ -115,7 +115,7 @@ class MG_Facebook_Pixel_Settings {
                 <div class="notice notice-warning"><p><strong>Teszt mód aktív:</strong> a szerveroldali események a Meta Test Events nézetébe kerülnek. Élesítés előtt töröld a tesztkódot.</p></div>
             <?php endif; ?>
 
-            <p>A böngészős Pixel és a tartós CAPI ugyanazt a rendelésszámot használja <code>event_id</code>-ként. A CAPI csak engedélyezett consent és mérhető rendelésállapot esetén küld, a Meta válaszát ellenőrzi, hiba esetén pedig újrapróbálkozik.</p>
+            <p>A böngészős Pixel és a tartós CAPI ugyanazt a rendelésszámot használja <code>event_id</code>-ként. A CAPI pótolja az adblocker vagy megszakított köszönőoldal miatt elvesző böngészős Purchase eseményt; csak engedélyezett consent és mérhető rendelésállapot esetén küld.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_fb_pixel_save">
@@ -196,7 +196,7 @@ class MG_Facebook_Pixel_Settings {
             <?php endforeach; ?>
         </p>
         <table class="widefat striped">
-            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>CAPI</th><th>Consent</th><th>Attribution</th><th>Próba</th><th>Hiba / Trace ID</th><th></th></tr></thead>
+            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Köszönőoldali Pixel</th><th>CAPI</th><th>Consent</th><th>Attribution</th><th>Próba</th><th>Hiba / Trace ID</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($orders as $order):
                 $status = $order->get_meta(MG_Facebook_Pixel_Reliability::META_STATUS) ?: 'not_queued';
@@ -206,6 +206,7 @@ class MG_Facebook_Pixel_Settings {
                 <tr>
                     <td><a href="<?php echo esc_url($order->get_edit_order_url()); ?>"><strong>#<?php echo esc_html($order->get_order_number()); ?></strong></a></td>
                     <td><?php echo esc_html(wc_get_order_status_name($order->get_status())); ?></td>
+                    <td><?php echo $order->get_meta('_mg_fb_browser_rendered') ? 'renderelve' : 'nincs'; ?></td>
                     <td><code><?php echo esc_html($status); ?></code></td>
                     <td><?php echo esc_html($order->get_meta('_mg_meta_consent') ?: 'ismeretlen'); ?></td>
                     <td><?php echo ($order->get_meta('_mg_meta_fbc') || $order->get_meta('_mg_meta_fbp') || $order->get_meta('_mg_meta_fbclid')) ? 'igen' : 'nincs'; ?></td>
