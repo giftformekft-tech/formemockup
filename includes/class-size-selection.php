@@ -30,8 +30,12 @@ class MG_Size_Selection {
             return $passed;
         }
         $selected = isset($_POST[self::FIELD_NAME]) ? sanitize_text_field(wp_unslash($_POST[self::FIELD_NAME])) : '';
-        if ($selected === '' || !in_array($selected, $available_sizes, true)) {
-            wc_add_notice(__('Kérjük válassz méretet.', 'mgdtp'), 'error');
+        if ($selected === '') {
+            wc_add_notice(__('A méretválasztás kötelező.', 'mgdtp'), 'error');
+            return false;
+        }
+        if (!in_array($selected, $available_sizes, true)) {
+            wc_add_notice(__('A kiválasztott méret nem elérhető.', 'mgdtp'), 'error');
             return false;
         }
         return $passed;

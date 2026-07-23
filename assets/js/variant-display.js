@@ -674,7 +674,10 @@
     VariantDisplay.prototype.syncFromSelects = function (useDefaults) {
         var typeVal = this.$typeSelect.val() || (useDefaults && this.config.default ? this.config.default.type : '');
         var colorVal = this.$colorSelect.val() || (useDefaults && this.config.default ? this.config.default.color : '');
-        var sizeVal = this.$sizeSelect.val() || (useDefaults && this.config.default ? this.config.default.size : '');
+        if (useDefaults) {
+            this.$sizeSelect.val('');
+        }
+        var sizeVal = useDefaults ? '' : (this.$sizeSelect.val() || '');
 
         this.setType(typeVal, false);
         this.setColor(colorVal, false);
@@ -951,7 +954,7 @@
         var colorMeta = this.config.types[this.state.type].colors[this.state.color];
         var sizes = colorMeta.sizes || [];
         var self = this;
-        var fallbackSize = '';
+        var selectableSizes = [];
 
         if (!sizes.length) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noSizes', 'Ehhez a kombinációhoz nincs elérhető méret.')));
@@ -967,8 +970,8 @@
             var availability = self.getAvailability(self.state.type, self.state.color, sizeValue);
             if (!availability.in_stock && !availability.is_purchasable) {
                 $btn.addClass('is-disabled').attr('aria-disabled', 'true');
-            } else if (!fallbackSize) {
-                fallbackSize = sizeValue;
+            } else {
+                selectableSizes.push(sizeValue);
             }
             self.$sizeOptions.append($btn);
         });
@@ -982,8 +985,8 @@
         }
 
         if (!currentValidSize) {
-            if (fallbackSize) {
-                this.setSize(fallbackSize, shouldTriggerSizeChange);
+            if (selectableSizes.length === 1) {
+                this.setSize(selectableSizes[0], shouldTriggerSizeChange);
             } else {
                 this.setSize('', shouldTriggerSizeChange);
             }

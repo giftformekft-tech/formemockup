@@ -935,6 +935,8 @@
         var defaults = this.config.default || {};
         var urlType = this.getTypeFromUrl();
         var initialType = urlType || defaults.type || '';
+        this.state.size = '';
+        this.$sizeInput.val('');
         this.setType(initialType);
 
         // Always force update URL to ensure we push Virtual Permalinks if they are active,
@@ -942,9 +944,6 @@
         this.updateUrlForType(initialType);
         if (defaults.color) {
             this.setColor(defaults.color);
-        }
-        if (defaults.size) {
-            this.setSize(defaults.size);
         }
         this.refreshAddToCartState();
         this.refreshPreview();
@@ -1437,7 +1436,7 @@
         var colorMeta = this.config.types[this.state.type].colors[this.state.color];
         var sizes = colorMeta.sizes || [];
         var self = this;
-        var fallbackSize = '';
+        var selectableSizes = [];
         if (!sizes.length) {
             this.$sizeOptions.append($('<div class="mg-variant-placeholder" />').text(this.getText('noSizes', 'Ehhez a kombinációhoz nincs elérhető méret.')));
             this.updateAvailabilityText();
@@ -1450,14 +1449,17 @@
             var available = self.getAvailability(self.state.type, self.state.color, sizeValue);
             if (!available) {
                 $btn.addClass('is-disabled').attr('aria-disabled', 'true');
-            } else if (!fallbackSize) {
-                fallbackSize = sizeValue;
+            } else {
+                selectableSizes.push(sizeValue);
             }
             self.$sizeOptions.append($btn);
         });
 
-        if (!this.state.size && fallbackSize) {
-            this.setSize(fallbackSize);
+        if (this.state.size && selectableSizes.indexOf(this.state.size) === -1) {
+            this.setSize('');
+        }
+        if (!this.state.size && selectableSizes.length === 1) {
+            this.setSize(selectableSizes[0]);
         }
         this.updateAvailabilityText();
     };
@@ -1500,7 +1502,7 @@
         if (!this.$addToCart.length) {
             return;
         }
-        var ready = this.state.type && this.state.color && this.state.size;
+        var ready = this.state.type && this.state.color;
         this.$addToCart.prop('disabled', !ready);
         this.$addToCart.toggleClass('disabled', !ready);
     };

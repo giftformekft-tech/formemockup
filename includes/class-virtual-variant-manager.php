@@ -141,9 +141,10 @@ class MG_Virtual_Variant_Manager {
         $defaults = self::get_default_selection($product);
         $type = self::get_type_from_request() ?: $defaults['type'];
         $color = $defaults['color'];
-        $size = $defaults['size'];
+        $size = '';
 
-        // If a specific type is requested, recalculate the default color and size for that type
+        // If a specific type is requested, recalculate the default color for that type.
+        // Multiple sizes require an explicit choice; a true one-size product stays convenient.
         if ($type && isset($config['types'][$type])) {
             $type_meta = $config['types'][$type];
             $color_order = isset($type_meta['color_order']) ? $type_meta['color_order'] : array();
@@ -152,11 +153,9 @@ class MG_Virtual_Variant_Manager {
                 $keys = array_keys($type_meta['colors']);
                 $color = reset($keys);
             }
-            $size = '';
-            if ($color && !empty($type_meta['colors'][$color]['sizes'])) {
-                $size = reset($type_meta['colors'][$color]['sizes']);
-            } elseif (!empty($type_meta['size_order'])) {
-                $size = reset($type_meta['size_order']);
+            $available_sizes = self::sizes_for_color($type_meta, $color);
+            if (count($available_sizes) === 1) {
+                $size = reset($available_sizes);
             }
         }
 
@@ -828,8 +827,13 @@ class MG_Virtual_Variant_Manager {
         $color_slug = sanitize_title($_POST['mg_color'] ?? '');
         $size_value = sanitize_text_field($_POST['mg_size'] ?? '');
 
-        if ($type_slug === '' || $color_slug === '' || $size_value === '') {
-            wc_add_notice(__('Kérjük válassz terméktípust, színt és méretet.', 'mgdtp'), 'error');
+        if ($type_slug === '' || $color_slug === '') {
+            wc_add_notice(__('Kérjük válassz terméktípust és színt.', 'mgdtp'), 'error');
+            return false;
+        }
+
+        if ($size_value === '') {
+            wc_add_notice(__('A méretválasztás kötelező.', 'mgdtp'), 'error');
             return false;
         }
 
