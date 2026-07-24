@@ -92,11 +92,15 @@ class MG_Google_Ads_Tracking {
           // navigációban akkor is, amikor hirdetési cookie nem írható.
           gtag('set', 'url_passthrough', true);
           window.mgGadsConsentGranted = false;
+          // Külön jelzi, hogy a látogató *döntött*-e már: a granted=false önmagában
+          // nem különböztethető meg az alapértelmezett, még el nem dőlt állapottól.
+          window.mgGadsConsentDecided = false;
 
           // Persist the choice so checkout can attach consent to the order.
           window.mgGadsSetConsent = function(granted) {
               var state = granted ? 'granted' : 'denied';
               window.mgGadsConsentGranted = !!granted;
+              window.mgGadsConsentDecided = true;
               gtag('consent', 'update', {
                   'ad_storage': state,
                   'ad_user_data': state,
@@ -468,12 +472,21 @@ class MG_Google_Ads_Tracking {
             document.addEventListener('mg_gads_consent', mg_fire_purchase);
             document.addEventListener('rcb:consent', function() { setTimeout(mg_fire_purchase, 300); });
 
-            // Fallback: 1200ms elegendő lassú mobilon is (cookie banner betöltéséhez)
-            var fallback = function() { setTimeout(mg_fire_purchase, 1200); };
+            // A konverziót megvárjuk a hozzájárulási döntéssel: a `denied`
+            // állapotban kiküldött purchase-t a Consent Mode nem küldi újra,
+            // amikor később megérkezik a granted – az a konverzió véglegesen
+            // modellezett maradna, bővített konverziók nélkül.
+            var start = function() {
+                if (typeof window.mgWhenConsentDecided === 'function') {
+                    window.mgWhenConsentDecided(mg_fire_purchase, 3000);
+                } else {
+                    setTimeout(mg_fire_purchase, 1200);
+                }
+            };
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', fallback);
+                document.addEventListener('DOMContentLoaded', start);
             } else {
-                fallback();
+                start();
             }
         })();
         </script>

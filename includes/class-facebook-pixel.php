@@ -149,9 +149,12 @@ class MG_Facebook_Pixel {
         fbq('init', '<?php echo $pixel_id; ?>'<?php if ($advanced_matching): ?>, <?php echo wp_json_encode($advanced_matching, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?><?php endif; ?>);
 
         window.mgFbConsentGranted = false;
+        // Külön jelzi, hogy a látogató *döntött*-e már (lásd Google Ads modul).
+        window.mgFbConsentDecided = false;
         window.mgFbSetConsent = function(granted) {
             var state = granted ? 'granted' : 'denied';
             window.mgFbConsentGranted = !!granted;
+            window.mgFbConsentDecided = true;
             fbq('consent', granted ? 'grant' : 'revoke');
             document.cookie = 'mg_gads_consent=' + state + ';path=/;max-age=31536000;SameSite=Lax' + (location.protocol === 'https:' ? ';Secure' : '');
             if (granted && !window.mgFbPageViewSent) {

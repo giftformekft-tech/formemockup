@@ -185,7 +185,12 @@ class MG_Purchase_Recovery {
                 var timer = setInterval(function() {
                     attempts++;
 
-                    if (!googleDone && typeof window.gtag === 'function') {
+                    // 500 ms-onként fut, tehát 6 kör ~3 mp: eddig várunk a
+                    // hozzájárulási döntésre, hogy a konverzió ne cookie nélküli
+                    // pingként menjen ki (a Consent Mode nem küldi újra).
+                    var consentSettled = window.mgGadsConsentDecided === true || attempts >= 6;
+
+                    if (!googleDone && consentSettled && typeof window.gtag === 'function') {
                         if (window.mgGadsConsentGranted === true && entry.google.user_data && Object.keys(entry.google.user_data).length) {
                             window.gtag('set', 'user_data', entry.google.user_data);
                         }

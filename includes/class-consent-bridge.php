@@ -241,6 +241,43 @@ class MG_Consent_Bridge {
 
             function sync() { apply(cmpState()); }
 
+            /**
+             * Megvárja, amíg a látogató dönt a hozzájárulásról.
+             *
+             * A Consent Mode a `denied` állapotban elküldött eseményt cookie
+             * nélküli pingként továbbítja, és a később megérkező `granted`
+             * frissítéskor NEM küldi újra – az esemény véglegesen mért helyett
+             * modellezett marad, bővített konverziók nélkül. Ezért a vásárlást
+             * inkább megvárjuk, de csak korlátozott ideig, és ha a látogató
+             * közben elnavigál, azonnal elküldjük.
+             */
+            window.mgWhenConsentDecided = function(callback, timeoutMs) {
+                var done = false;
+                var timer = null;
+
+                function decided() {
+                    return window.mgGadsConsentDecided === true || window.mgFbConsentDecided === true;
+                }
+                function run() {
+                    if (done) return;
+                    done = true;
+                    if (timer) clearInterval(timer);
+                    callback();
+                }
+
+                if (decided()) { run(); return; }
+
+                var deadline = Date.now() + (timeoutMs || 3000);
+                timer = setInterval(function() {
+                    if (decided() || Date.now() >= deadline) run();
+                }, 100);
+
+                window.addEventListener('pagehide', run);
+                document.addEventListener('visibilitychange', function() {
+                    if (document.visibilityState === 'hidden') run();
+                });
+            };
+
             // 1. Azonnali állapot (visszatérő látogató, korábban eldöntött consent).
             sync();
 
