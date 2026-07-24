@@ -7,10 +7,46 @@ if ( ! defined( 'ABSPATH' ) ) {
 class MG_Gift_Finder {
     const OPTION_KEY = 'mg_gift_finder_settings';
     const STATS_KEY  = 'mg_gift_finder_no_results';
+    const CACHE_VERSION_KEY = 'mg_gift_finder_cache_version';
+    const CACHE_TTL = HOUR_IN_SECONDS;
 
     public static function init() {
         add_action( 'init', array( __CLASS__, 'register_block_and_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+
+        // A találati rangsor gyorsítótárát minden olyan változás elavulttá teszi,
+        // ami a termékkínálatot vagy a besorolást érinti.
+        foreach ( array(
+            'woocommerce_update_product',
+            'woocommerce_new_product',
+            'woocommerce_product_set_stock',
+            'woocommerce_variation_set_stock',
+            'edited_product_cat',
+            'created_product_cat',
+            'delete_product_cat',
+            'update_option_' . self::OPTION_KEY,
+        ) as $hook ) {
+            add_action( $hook, array( __CLASS__, 'bump_cache_version' ) );
+        }
+    }
+
+    /** A rangsor-gyorsítótár kulcsába épített verzió. */
+    private static function cache_version() {
+        return (int) get_option( self::CACHE_VERSION_KEY, 1 );
+    }
+
+    /**
+     * Elavulttá teszi a gyorsítótárat.
+     *
+     * Percenként legfeljebb egyszer ír, hogy egy több százas tömeges
+     * termékimport ne generáljon ugyanannyi option-írást.
+     */
+    public static function bump_cache_version() {
+        $current = self::cache_version();
+        if ( $current > time() - MINUTE_IN_SECONDS ) {
+            return;
+        }
+        update_option( self::CACHE_VERSION_KEY, time(), false );
     }
 
     public static function defaults() {
@@ -360,10 +396,11 @@ class MG_Gift_Finder {
                 <h1>Segítünk megtalálni az igazit</h1>
                 <p>Néhány gyors választás, és máris mutatjuk a leginkább hozzád illő ajándékokat.</p>
                 <div class="mg-gift-progress" aria-hidden="true"><?php for ( $i = 0; $i < $total_steps; $i++ ) echo '<span></span>'; ?></div>
+                <p class="mg-gift-status" role="status" aria-live="polite"></p>
             </header>
             <form method="get" action="<?php echo esc_url( self::get_finder_url() ); ?>" class="mg-gift-wizard">
                 <?php $step = 0; foreach ( $questions as $key => $question ) : $step++; ?>
-                    <fieldset class="mg-gift-step" data-step="<?php echo esc_attr( $step ); ?>">
+                    <fieldset class="mg-gift-step" tabindex="-1" data-step="<?php echo esc_attr( $step ); ?>" data-question="<?php echo esc_attr( $key ); ?>" data-title="<?php echo esc_attr( $question['title'] ); ?>">
                         <legend><small><?php echo esc_html( $step . '/' . $total_steps ); ?></small><?php echo esc_html( $question['title'] ); ?></legend>
                         <div class="mg-gift-options">
                             <?php foreach ( $question['options'] as $option ) :
@@ -508,7 +545,48 @@ class MG_Gift_Finder {
         return array_values( array_unique( $selected ) );
     }
 
-    private static function render_results( $choices, $term_ids, $settings ) {
+    /** A választásokból és a belépési kategóriából felépíti a pontozási alapot. */
+    private static function build_scoring_choices( $choices, $term_ids ) {
+        $scoring_choices = $choices;
+        foreach ( $term_ids as $term_id ) {
+            $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
+            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array(), 'priority_keywords' => array(), 'keyword_priority' => false );
+        }
+        return $scoring_choices;
+    }
+
+    /**
+     * A rangsor kiszámítása gyorsítótárral.
+     *
+     * A számítás több száz terméket kérdez le és pontoz, ezért ugyanazt a
+     * válaszkombinációt nem számoljuk újra minden oldalletöltésnél. A kulcs a
+     * választások aláírásából és egy verziószámból áll, amit minden
+     * termék-/kategóriaváltozás elavulttá tesz.
+     *
+     * @return array<int,array{product_id:int,score:int,tier:string}>
+     */
+    private static function get_ranked_results( array $scoring_choices ) {
+        $signature = array( 'v' => self::cache_version(), 'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ) );
+        foreach ( $scoring_choices as $choice ) {
+            $categories = array_values( array_filter( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) ) );
+            sort( $categories );
+            $keywords = self::get_option_keywords( $choice );
+            sort( $keywords );
+            $signature[] = array( $choice['question'] ?? '', $categories, $keywords );
+        }
+        $key = 'mg_gift_rank_' . md5( (string) wp_json_encode( $signature ) );
+
+        $cached = get_transient( $key );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+
+        $ranked = self::compute_ranked_results( $scoring_choices );
+        set_transient( $key, $ranked, self::CACHE_TTL );
+        return $ranked;
+    }
+
+    private static function compute_ranked_results( array $scoring_choices ) {
         $tax_query = array();
         if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
             $visibility = wc_get_product_visibility_term_ids();
@@ -529,12 +607,6 @@ class MG_Gift_Finder {
                 );
             }
         }
-        $scoring_choices = $choices;
-        foreach ( $term_ids as $term_id ) {
-            $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
-            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array(), 'priority_keywords' => array(), 'keyword_priority' => false );
-        }
-
         $candidate_ids = array();
         foreach ( $scoring_choices as $choice ) {
             $choice_filter = array( 'relation' => 'OR' );
@@ -563,8 +635,10 @@ class MG_Gift_Finder {
                 foreach ( $keywords as $keyword ) {
                     $title_where[] = $wpdb->prepare( 'post_title LIKE %s', '%' . $wpdb->esc_like( $keyword ) . '%' );
                 }
+                // Rendezés nélkül a LIMIT eredménye futásonként változhatna, a
+                // gyorsítótár pedig egy véletlen pillanatképet fagyasztana be.
                 $title_ids = $wpdb->get_col(
-                    "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND (" . implode( ' OR ', $title_where ) . ') LIMIT 500'
+                    "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND (" . implode( ' OR ', $title_where ) . ') ORDER BY ID DESC LIMIT 500'
                 );
                 if ( ! empty( $title_ids ) ) {
                     $title_query = new WP_Query( array(
@@ -587,6 +661,13 @@ class MG_Gift_Finder {
             $candidate_ids = array_map( 'intval', $query->posts );
         }
         $candidate_ids = array_values( array_unique( $candidate_ids ) );
+
+        // A jelölteket `fields => 'ids'` adja vissza, ami nem tölti fel a post
+        // cache-t – enélkül a pontozó ciklus `get_the_title()` hívása
+        // termékenként külön lekérdezést indítana.
+        foreach ( array_chunk( $candidate_ids, 200 ) as $chunk ) {
+            _prime_post_caches( $chunk, false, false );
+        }
 
         $product_categories = array_fill_keys( $candidate_ids, array() );
         if ( ! empty( $candidate_ids ) ) {
@@ -657,13 +738,32 @@ class MG_Gift_Finder {
         if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
         $ranked = self::compose_diverse_results( $ranked, $scoring_choices, 10, 10 );
         $ranked = array_slice( $ranked, 0, 50 );
+
+        // Csak a megjelenítéshez kellő mezőket tároljuk el: a pontozás közbeni
+        // egyezéstérképek nagyok, és a rendereléshez már nincs rájuk szükség.
+        return array_map( function( $item ) {
+            return array(
+                'product_id' => (int) $item['product_id'],
+                'score'      => (int) $item['score'],
+                'tier'       => (string) ( $item['tier'] ?? '' ),
+            );
+        }, $ranked );
+    }
+
+    private static function render_results( $choices, $term_ids, $settings ) {
+        $scoring_choices = self::build_scoring_choices( $choices, $term_ids );
+        $ranked = self::get_ranked_results( $scoring_choices );
         $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
-        foreach ( $ranked as &$item ) $item['post'] = get_post( $item['product_id'] );
-        unset( $item );
+        if ( ! empty( $ranked ) ) {
+            _prime_post_caches( array_column( $ranked, 'product_id' ), false, false );
+        }
         $virtual_types = self::get_virtual_type_options();
         ?>
-        <div class="mg-gift-results" id="mg-gift-results">
-            <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2>Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
+        <div class="mg-gift-results" id="mg-gift-results"
+             data-result-count="<?php echo esc_attr( count( $ranked ) ); ?>"
+             data-choice-count="<?php echo esc_attr( count( $scoring_choices ) ); ?>"
+             data-max-score="<?php echo esc_attr( $max_score ); ?>">
+            <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2 tabindex="-1">Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
             <?php if ( empty( $ranked ) ) : ?>
                 <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>
@@ -680,12 +780,12 @@ class MG_Gift_Finder {
                     </div>
                 <?php endif; ?>
                 <div class="mg-gift-product-grid">
-                <?php foreach ( $ranked as $index => $item ) : if ( empty( $item['post'] ) ) continue; $product = wc_get_product( $item['post']->ID ); if ( ! $product ) continue;
+                <?php foreach ( $ranked as $index => $item ) : $product = wc_get_product( $item['product_id'] ); if ( ! $product ) continue;
                     $default_image = wp_get_attachment_image_url( $product->get_image_id(), 'woocommerce_thumbnail' ) ?: wc_placeholder_img_src( 'woocommerce_thumbnail' );
                     $type_data = self::get_product_type_data( $product, $virtual_types );
                     $product_url = $product->get_permalink(); ?>
                     <article class="mg-gift-product-card" <?php echo $index >= 20 ? 'hidden' : ''; ?>>
-                        <a href="<?php echo esc_url( $product_url ); ?>" data-default-url="<?php echo esc_url( $product_url ); ?>" data-type-urls="<?php echo esc_attr( wp_json_encode( $type_data['urls'], JSON_UNESCAPED_SLASHES ) ); ?>">
+                        <a href="<?php echo esc_url( $product_url ); ?>" data-default-url="<?php echo esc_url( $product_url ); ?>" data-type-urls="<?php echo esc_attr( wp_json_encode( $type_data['urls'], JSON_UNESCAPED_SLASHES ) ); ?>" data-product-id="<?php echo esc_attr( $product->get_id() ); ?>" data-product-name="<?php echo esc_attr( $product->get_name() ); ?>" data-position="<?php echo esc_attr( $index + 1 ); ?>">
                             <span class="mg-gift-product-card__image"><img src="<?php echo esc_url( $default_image ); ?>" alt="<?php echo esc_attr( $product->get_name() ); ?>" loading="lazy" decoding="async" data-default-src="<?php echo esc_url( $default_image ); ?>" data-preview-base="<?php echo esc_url( $type_data['preview_base'] ); ?>" data-product-sku="<?php echo esc_attr( $type_data['sku'] ); ?>" /></span>
                             <?php if ( ( $item['tier'] ?? '' ) === 'related' ) : ?>
                                 <span class="mg-gift-match">Kapcsolódó ötlet</span>
