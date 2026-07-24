@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 class MG_Facebook_Pixel_Reliability {
     const API_VERSION = 'v25.0';
     const PROCESS_HOOK = 'mg_meta_process_purchase';
+    const SWEEP_HOOK = 'mg_meta_recovery_sweep';
     const ACTION_GROUP = 'mg-meta-capi';
     const MAX_ATTEMPTS = 6;
 
@@ -24,6 +25,8 @@ class MG_Facebook_Pixel_Reliability {
         add_action('woocommerce_payment_complete', array(__CLASS__, 'queue_purchase'), 20, 1);
         add_action('woocommerce_order_status_changed', array(__CLASS__, 'handle_status_change'), 20, 4);
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process_purchase'), 10, 1);
+        add_action(self::SWEEP_HOOK, array(__CLASS__, 'run_recovery_sweep'));
+        add_action('init', array(__CLASS__, 'ensure_recovery_sweep'), 20);
 
         add_action('add_meta_boxes', array(__CLASS__, 'register_order_meta_box'));
         add_action('add_meta_boxes_woocommerce_page_wc-orders', array(__CLASS__, 'register_hpos_order_meta_box'));
@@ -80,25 +83,52 @@ class MG_Facebook_Pixel_Reliability {
         if (is_admin() && !wp_doing_ajax()) {
             return;
         }
-        if (empty(self::get_settings()['pixel_id']) || empty($_GET['fbclid'])) {
+        if (empty(self::get_settings()['pixel_id'])) {
             return;
         }
-        $fbclid = self::sanitize_meta_id(wp_unslash($_GET['fbclid']));
-        if ($fbclid === '') {
-            return;
+
+        if (!empty($_GET['fbclid'])) {
+            $fbclid = self::sanitize_meta_id(wp_unslash($_GET['fbclid']));
+            if ($fbclid !== '') {
+                $timestamp = (string) round(microtime(true) * 1000);
+                self::set_cookie('mg_meta_fbclid', $fbclid, 90 * DAY_IN_SECONDS);
+                self::set_cookie('mg_meta_fbclid_time', $timestamp, 90 * DAY_IN_SECONDS);
+                self::set_cookie('mg_meta_landing_url', self::current_url(), 90 * DAY_IN_SECONDS);
+            }
         }
-        $timestamp = (string) round(microtime(true) * 1000);
-        self::set_cookie('mg_meta_fbclid', $fbclid, 90 * DAY_IN_SECONDS);
-        self::set_cookie('mg_meta_fbclid_time', $timestamp, 90 * DAY_IN_SECONDS);
-        self::set_cookie('mg_meta_landing_url', self::current_url(), 90 * DAY_IN_SECONDS);
+
+        self::ensure_browser_id();
     }
 
-    private static function set_cookie($name, $value, $lifetime) {
+    /**
+     * Első féltől származó `_fbp` böngészőazonosító biztosítása.
+     *
+     * Az `_fbp` cookie-t normál esetben az fbevents.js írja, de reklámblokkoló
+     * vagy blokkolt script mellett sosem jön létre – ilyenkor a CAPI-esemény a
+     * legerősebb egyezési jelét veszíti el. A Meta kifejezetten támogatja, hogy
+     * a szerver írja meg saját first-party cookie-ként. Csak megadott
+     * marketing-hozzájárulás mellett hozzuk létre.
+     */
+    private static function ensure_browser_id() {
+        if (!empty($_COOKIE['_fbp']) || headers_sent()) {
+            return;
+        }
+        $consent = class_exists('MG_Consent_Bridge') ? MG_Consent_Bridge::detect_server_consent() : '';
+        if ($consent !== 'granted') {
+            return;
+        }
+        $fbp = 'fb.1.' . round(microtime(true) * 1000) . '.' . wp_rand(1000000000, 2147483647);
+        // Nem httponly: az fbevents.js is ezt az azonosítót kell hogy lássa,
+        // különben saját, eltérő értéket generálna.
+        self::set_cookie('_fbp', $fbp, 90 * DAY_IN_SECONDS, false);
+    }
+
+    private static function set_cookie($name, $value, $lifetime, $httponly = true) {
         if ($value === '') {
             return;
         }
         if (function_exists('wc_setcookie')) {
-            wc_setcookie($name, $value, time() + $lifetime, is_ssl(), true);
+            wc_setcookie($name, $value, time() + $lifetime, is_ssl(), $httponly);
         }
         $_COOKIE[$name] = $value;
     }
@@ -142,7 +172,9 @@ class MG_Facebook_Pixel_Reliability {
             $order->update_meta_data('_mg_meta_landing_url', esc_url_raw(wp_unslash($_COOKIE['mg_meta_landing_url'])));
         }
 
-        $consent = !empty($_COOKIE['mg_gads_consent']) ? sanitize_key(wp_unslash($_COOKIE['mg_gads_consent'])) : '';
+        $consent = class_exists('MG_Consent_Bridge')
+            ? MG_Consent_Bridge::detect_server_consent()
+            : (!empty($_COOKIE['mg_gads_consent']) ? sanitize_key(wp_unslash($_COOKIE['mg_gads_consent'])) : '');
         if (in_array($consent, array('granted', 'denied'), true)) {
             $order->update_meta_data('_mg_meta_consent', $consent);
         }
@@ -471,6 +503,80 @@ class MG_Facebook_Pixel_Reliability {
             }
         }
         return $count;
+    }
+
+    /** Óránkénti önjavító futás regisztrálása. */
+    public static function ensure_recovery_sweep() {
+        if (empty(self::get_settings()['server_side_enabled'])) {
+            return;
+        }
+        if (function_exists('as_has_scheduled_action') && function_exists('as_schedule_recurring_action')) {
+            if (!as_has_scheduled_action(self::SWEEP_HOOK, array(), self::ACTION_GROUP)) {
+                as_schedule_recurring_action(time() + HOUR_IN_SECONDS, HOUR_IN_SECONDS, self::SWEEP_HOOK, array(), self::ACTION_GROUP, true);
+            }
+            return;
+        }
+        if (!wp_next_scheduled(self::SWEEP_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', self::SWEEP_HOOK);
+        }
+    }
+
+    /**
+     * Elakadt CAPI-események automatikus pótlása.
+     *
+     * A Meta a 7 napnál régebbi Purchase eseményeket eldobja, ezért a
+     * beragadt rendeléseket órás ütemben, önállóan kell újrapróbálni – nem
+     * várhatunk kézi beavatkozásra.
+     */
+    public static function run_recovery_sweep($days = 6) {
+        if (empty(self::get_settings()['server_side_enabled']) || !function_exists('wc_get_orders')) {
+            return 0;
+        }
+
+        $orders = wc_get_orders(array(
+            'limit' => 100,
+            'status' => self::get_eligible_statuses(),
+            'date_created' => '>' . (time() - (min(6, absint($days)) * DAY_IN_SECONDS)),
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        ));
+
+        $requeued = 0;
+        foreach ($orders as $order) {
+            if (!self::needs_recovery($order)) {
+                continue;
+            }
+            $order->delete_meta_data(self::META_STATUS);
+            $order->save();
+            self::queue_purchase($order->get_id());
+            $requeued++;
+        }
+        return $requeued;
+    }
+
+    /** Csak a valóban elakadt rendeléseket indítjuk újra. */
+    private static function needs_recovery($order) {
+        $status = (string) $order->get_meta(self::META_STATUS);
+        if (in_array($status, array('processed', 'test_processed'), true)) {
+            return false;
+        }
+        if ($status === 'skipped_no_consent') {
+            $consent = (string) ($order->get_meta('_mg_meta_consent') ?: $order->get_meta('_mg_gads_consent'));
+            return $consent === 'granted';
+        }
+        if ($status === 'failed' && (int) $order->get_meta(self::META_ATTEMPTS) >= self::MAX_ATTEMPTS) {
+            return false;
+        }
+        if ($status === 'waiting_configuration') {
+            // Csak akkor van értelme újrapróbálni, ha időközben teljes lett a konfiguráció.
+            return !empty(self::get_settings()['pixel_id']) && self::get_access_token() !== '';
+        }
+        if ($status === '' || $status === 'browser_only') {
+            return true;
+        }
+        $updated = (int) $order->get_meta(self::META_LAST_UPDATE);
+        return $updated > 0 && $updated < time() - (2 * HOUR_IN_SECONDS);
     }
 
     public static function register_order_meta_box() {

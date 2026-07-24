@@ -255,22 +255,20 @@ class MG_Facebook_Pixel {
     }
 
     /**
-     * Purchase esemény a köszönöm oldalon.
-     * Advanced Matching: SHA-256 hashelt vásárló adatok a pontosabb egyeztetéshez.
-     * Az eventID deduplication-t biztosít (rendelés száma).
+     * Összeállítja a Purchase esemény adatcsomagját.
+     *
+     * A köszönőoldali Pixel és a késleltetett (recovery) mérés is ezt használja,
+     * így mindkét úton azonos az `eventID`, ami garantálja a CAPI-val való
+     * deduplikációt.
+     *
+     * @return array{event_id: string, data: array}|array üres tömb, ha nem mérhető
      */
-    public static function output_purchase_event($order_id) {
-        if (!$order_id) {
-            return;
+    public static function build_purchase_payload($order) {
+        if (!$order instanceof WC_Order) {
+            $order = wc_get_order($order);
         }
-
-        $order = wc_get_order($order_id);
         if (!$order) {
-            return;
-        }
-
-        if (class_exists('MG_Facebook_Pixel_Reliability') && !MG_Facebook_Pixel_Reliability::is_order_eligible($order)) {
-            return;
+            return array();
         }
 
         $value        = (float) $order->get_total();
@@ -318,20 +316,63 @@ class MG_Facebook_Pixel {
             );
         }
 
+        return array(
+            'event_id' => (string) $transaction_id,
+            'data' => array(
+                'value' => round($value, 2),
+                'currency' => $currency,
+                'content_ids' => $content_ids,
+                'contents' => $contents,
+                'content_type' => 'product',
+                'order_id' => (string) $transaction_id,
+                'discount' => (float) $order->get_discount_total(),
+            ),
+        );
+    }
+
+    /**
+     * Purchase esemény a köszönöm oldalon.
+     * Advanced Matching: SHA-256 hashelt vásárló adatok a pontosabb egyeztetéshez.
+     * Az eventID deduplication-t biztosít (rendelés száma).
+     */
+    public static function output_purchase_event($order_id) {
+        if (!$order_id) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        if (class_exists('MG_Facebook_Pixel_Reliability') && !MG_Facebook_Pixel_Reliability::is_order_eligible($order)) {
+            // Még nem mérhető állapot (pl. átutalás): a késleltetett mérés pótolja.
+            if (class_exists('MG_Purchase_Recovery')) {
+                MG_Purchase_Recovery::remember_order($order);
+            }
+            return;
+        }
+
+        $payload = self::build_purchase_payload($order);
+        if (!$payload) {
+            return;
+        }
+
         $order->update_meta_data('_mg_fb_browser_rendered', time());
         $order->save();
+
+        $confirm = class_exists('MG_Purchase_Recovery')
+            ? sprintf(
+                "if (typeof window.mgConvFired === 'function') { window.mgConvFired('meta', %d, %s); }",
+                (int) $order->get_id(),
+                wp_json_encode((string) $order->get_order_key())
+            )
+            : '';
         ?>
         <script>
         (function() {
-            var _mgFbPurchaseData = {
-                value: <?php echo number_format($value, 2, '.', ''); ?>,
-                currency: '<?php echo esc_js($currency); ?>',
-                content_ids: <?php echo wp_json_encode($content_ids); ?>,
-                contents: <?php echo wp_json_encode($contents); ?>,
-                content_type: 'product',
-                order_id: '<?php echo esc_js($transaction_id); ?>',
-                discount: <?php echo wp_json_encode((float) $order->get_discount_total()); ?>
-            };
+            var _mgFbPurchaseData = <?php echo wp_json_encode($payload['data'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+            var _mgFbPurchaseEventId = <?php echo wp_json_encode($payload['event_id'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgFbPurchaseSent = false;
 
             function mg_fb_fire_purchase() {
@@ -339,8 +380,9 @@ class MG_Facebook_Pixel {
                 if (window.mgFbConsentGranted !== true) return;
                 if (typeof window.fbq === 'function') {
                     // Ugyanez az event ID kerül a tartós CAPI eseménybe is.
-                    window.fbq('track', 'Purchase', _mgFbPurchaseData, {eventID: '<?php echo esc_js($transaction_id); ?>'});
+                    window.fbq('track', 'Purchase', _mgFbPurchaseData, {eventID: _mgFbPurchaseEventId});
                     _mgFbPurchaseSent = true;
+                    <?php echo $confirm; // phpcs:ignore -- fixed, escaped payload built above ?>
                 }
             }
 

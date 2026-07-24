@@ -14,6 +14,7 @@ class MG_Google_Ads_Reliability {
     const PROCESS_HOOK = 'mg_gads_process_order';
     const STATUS_HOOK = 'mg_gads_check_request_status';
     const ADJUST_HOOK = 'mg_gads_process_adjustment';
+    const SWEEP_HOOK = 'mg_gads_recovery_sweep';
     const ACTION_GROUP = 'mg-google-ads';
     const MAX_ATTEMPTS = 6;
 
@@ -36,6 +37,8 @@ class MG_Google_Ads_Reliability {
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process_purchase'), 10, 1);
         add_action(self::STATUS_HOOK, array(__CLASS__, 'check_request_status'), 10, 1);
         add_action(self::ADJUST_HOOK, array(__CLASS__, 'process_adjustment'), 10, 3);
+        add_action(self::SWEEP_HOOK, array(__CLASS__, 'run_recovery_sweep'));
+        add_action('init', array(__CLASS__, 'ensure_recovery_sweep'), 20);
 
         add_action('woocommerce_order_refunded', array(__CLASS__, 'handle_refund'), 20, 2);
 
@@ -121,6 +124,28 @@ class MG_Google_Ads_Reliability {
         return preg_replace('/[^A-Za-z0-9._~-]/', '', $value);
     }
 
+    /**
+     * A gtag.js által írt `_gcl_*` cookie-kból nyeri ki a kattintásazonosítót.
+     * Formátum: `GCL.<timestamp>.<click id>`.
+     *
+     * @return array<string,string>
+     */
+    private static function google_click_cookies() {
+        $map = array('gclid' => '_gcl_aw', 'gbraid' => '_gcl_gb', 'wbraid' => '_gcl_gs');
+        $found = array();
+        foreach ($map as $key => $cookie) {
+            if (empty($_COOKIE[$cookie])) {
+                continue;
+            }
+            $parts = explode('.', (string) wp_unslash($_COOKIE[$cookie]));
+            $value = self::sanitize_click_id(end($parts));
+            if ($value !== '' && count($parts) >= 3) {
+                $found[$key] = $value;
+            }
+        }
+        return $found;
+    }
+
     private static function current_url() {
         if (empty($_SERVER['HTTP_HOST']) || empty($_SERVER['REQUEST_URI'])) {
             return '';
@@ -136,21 +161,35 @@ class MG_Google_Ads_Reliability {
             return;
         }
 
+        $click_ids = array();
         foreach (array('gclid', 'gbraid', 'wbraid') as $key) {
             $cookie_key = 'mg_gads_' . $key;
             if (!empty($_COOKIE[$cookie_key])) {
-                $order->update_meta_data('_mg_gads_' . $key, self::sanitize_click_id(wp_unslash($_COOKIE[$cookie_key])));
+                $click_ids[$key] = self::sanitize_click_id(wp_unslash($_COOKIE[$cookie_key]));
+            }
+        }
+        // Ha a landing oldalt teljes oldalgyorsítótárból szolgálta ki a szerver,
+        // a saját cookie-nk sosem készült el. A gtag.js viszont ilyenkor is
+        // megírja a `_gcl_*` cookie-kat, azokból pótolható a kattintásazonosító.
+        foreach (self::google_click_cookies() as $key => $value) {
+            if (empty($click_ids[$key])) {
+                $click_ids[$key] = $value;
+            }
+        }
+        foreach ($click_ids as $key => $value) {
+            if ($value !== '') {
+                $order->update_meta_data('_mg_gads_' . $key, $value);
             }
         }
 
         if (!empty($_COOKIE['mg_gads_landing_url'])) {
             $order->update_meta_data('_mg_gads_landing_url', esc_url_raw(wp_unslash($_COOKIE['mg_gads_landing_url'])));
         }
-        if (!empty($_COOKIE['mg_gads_consent'])) {
-            $consent = sanitize_key(wp_unslash($_COOKIE['mg_gads_consent']));
-            if (in_array($consent, array('granted', 'denied'), true)) {
-                $order->update_meta_data('_mg_gads_consent', $consent);
-            }
+        $consent = class_exists('MG_Consent_Bridge')
+            ? MG_Consent_Bridge::detect_server_consent()
+            : (!empty($_COOKIE['mg_gads_consent']) ? sanitize_key(wp_unslash($_COOKIE['mg_gads_consent'])) : '');
+        if (in_array($consent, array('granted', 'denied'), true)) {
+            $order->update_meta_data('_mg_gads_consent', $consent);
         }
         if (!empty($_SERVER['HTTP_USER_AGENT'])) {
             $order->update_meta_data('_mg_gads_user_agent', substr(sanitize_text_field(wp_unslash($_SERVER['HTTP_USER_AGENT'])), 0, 500));
@@ -782,6 +821,82 @@ class MG_Google_Ads_Reliability {
             $count++;
         }
         return $count;
+    }
+
+    /** Óránkénti önjavító futás regisztrálása. */
+    public static function ensure_recovery_sweep() {
+        if (empty(self::get_settings()['server_side_enabled'])) {
+            return;
+        }
+        if (function_exists('as_has_scheduled_action') && function_exists('as_schedule_recurring_action')) {
+            if (!as_has_scheduled_action(self::SWEEP_HOOK, array(), self::ACTION_GROUP)) {
+                as_schedule_recurring_action(time() + HOUR_IN_SECONDS, HOUR_IN_SECONDS, self::SWEEP_HOOK, array(), self::ACTION_GROUP, true);
+            }
+            return;
+        }
+        if (!wp_next_scheduled(self::SWEEP_HOOK)) {
+            wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', self::SWEEP_HOOK);
+        }
+    }
+
+    /**
+     * Beragadt vagy sosem sorba állított rendelések automatikus pótlása.
+     *
+     * Enélkül egy elmaradt cron-futás vagy egy időszakos Google-hiba után a
+     * rendelés örökre `queued`/`retrying` állapotban maradna, és senki sem
+     * venné észre, amíg valaki kézzel újra nem menti a beállításokat.
+     */
+    public static function run_recovery_sweep($days = 30) {
+        if (empty(self::get_settings()['server_side_enabled']) || !function_exists('wc_get_orders')) {
+            return 0;
+        }
+
+        $orders = wc_get_orders(array(
+            'limit' => 100,
+            'status' => self::get_eligible_statuses(),
+            'date_created' => '>' . (time() - (absint($days) * DAY_IN_SECONDS)),
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+        ));
+
+        $requeued = 0;
+        foreach ($orders as $order) {
+            if (!self::needs_recovery($order)) {
+                continue;
+            }
+            $order->delete_meta_data(self::META_STATUS);
+            $order->save();
+            self::queue_purchase($order->get_id());
+            $requeued++;
+        }
+        return $requeued;
+    }
+
+    /** Csak a valóban elakadt rendeléseket indítjuk újra. */
+    private static function needs_recovery($order) {
+        $status = (string) $order->get_meta(self::META_STATUS);
+        if (in_array($status, array('accepted', 'processing', 'processed', 'validated'), true)) {
+            return false;
+        }
+        // A hozzájárulás hiánya nem technikai hiba: csak akkor próbáljuk újra,
+        // ha időközben megérkezett a marketing consent.
+        if ($status === 'skipped_no_consent') {
+            return (string) $order->get_meta('_mg_gads_consent') === 'granted';
+        }
+        if ($status === 'failed' && (int) $order->get_meta(self::META_ATTEMPTS) >= self::MAX_ATTEMPTS) {
+            return false;
+        }
+        if ($status === 'waiting_configuration') {
+            // Csak akkor van értelme újrapróbálni, ha időközben teljes lett a konfiguráció.
+            return self::server_configuration_error(self::get_settings()) === '';
+        }
+        if ($status === '' || $status === 'browser_only') {
+            return true;
+        }
+        // queued / sending / retrying: csak ha az ütemező láthatóan megállt.
+        $updated = (int) $order->get_meta(self::META_LAST_UPDATE);
+        return $updated > 0 && $updated < time() - (6 * HOUR_IN_SECONDS);
     }
 
     public static function register_order_meta_box() {

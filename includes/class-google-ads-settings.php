@@ -145,6 +145,9 @@ class MG_Google_Ads_Settings {
             <?php if (($_GET['error'] ?? '') === 'credentials'): ?>
                 <div class="notice notice-error"><p>A service account JSON hibás: a <code>client_email</code> és <code>private_key</code> mező kötelező.</p></div>
             <?php endif; ?>
+            <?php if (!empty($settings['conversion_id']) && empty($settings['purchase_label'])): ?>
+                <div class="notice notice-error"><p><strong>Nincs Purchase Label.</strong> Címke nélkül a <code>send_to</code> csak a Google tag azonosítóját tartalmazza, így a Google Ads egyetlen vásárlást sem könyvel el konverzióként. Másold be a Vásárlás konverziós művelet címkéjét.</p></div>
+            <?php endif; ?>
 
             <p><strong>A Google API nem szükséges a pontos alapméréshez.</strong> A böngészős Google tag Consent Mode v2-vel, Enhanced Conversions adatokkal, egyedi tranzakcióazonosítóval és teljes kosáradattal önállóan is működik. Ha nincs API-hozzáférésed, a szerveroldali részt hagyd kikapcsolva.</p>
 
@@ -245,30 +248,55 @@ class MG_Google_Ads_Settings {
             'return' => 'objects',
         ));
         $counts = array();
+        $unmeasured = 0;
+        $consent_unknown = 0;
         foreach ($orders as $order) {
             $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
             $counts[$status] = ($counts[$status] ?? 0) + 1;
+            if (!$order->get_meta('_mg_gads_browser_fired') && !in_array($status, array('accepted', 'processing', 'processed', 'validated'), true)) {
+                $unmeasured++;
+            }
+            if (!in_array((string) $order->get_meta('_mg_gads_consent'), array('granted', 'denied'), true)) {
+                $consent_unknown++;
+            }
         }
+        $total = max(1, count($orders));
         ?>
         <hr>
         <h2>Utolsó 30 rendelés mérési diagnosztikája</h2>
+        <?php if ($unmeasured > 0): ?>
+            <div class="notice notice-warning inline"><p><strong><?php echo absint($unmeasured); ?> rendelésnél nincs igazolt vásárlásmérés.</strong> Se böngészős elküldés, se elfogadott szerveroldali feltöltés nem történt – ezek a konverziók hiányoznak a Google Adsből.</p></div>
+        <?php endif; ?>
+        <?php if ($consent_unknown === count($orders) && count($orders) > 0): ?>
+            <div class="notice notice-error inline"><p><strong>Egyetlen rendelésnél sincs eltárolt hozzájárulási állapot.</strong> Ez általában azt jelenti, hogy a sütikezelő nem jut el a mérőmodulokhoz. A consent híd a bevett sütikezelőket (WP Consent API, Complianz, CookieYes, Cookiebot, Borlabs, Iubenda, Moove, Cookie Notice) automatikusan felismeri; ha egyedi bannert használsz, az elfogadáskor küldjön <code>mg_gads_consent</code> eseményt.</p></div>
+        <?php endif; ?>
         <p>
             <?php foreach ($counts as $status => $count): ?>
                 <span style="display:inline-block;padding:5px 9px;margin:0 6px 6px 0;background:#fff;border:1px solid #ccd0d4;border-radius:3px"><code><?php echo esc_html($status); ?></code>: <strong><?php echo absint($count); ?></strong></span>
             <?php endforeach; ?>
+            <span style="display:inline-block;padding:5px 9px;margin:0 6px 6px 0;background:#fff;border:1px solid #ccd0d4;border-radius:3px">ismeretlen consent: <strong><?php echo absint($consent_unknown); ?></strong> / <?php echo absint($total); ?></span>
         </p>
         <table class="widefat striped">
-            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Köszönőoldali tag</th><th>Server mérés</th><th>Korrekció</th><th>Consent</th><th>Click ID</th><th>Hiba / Request ID</th><th></th></tr></thead>
+            <thead><tr><th>Rendelés</th><th>WC állapot</th><th>Böngészős mérés</th><th>Server mérés</th><th>Korrekció</th><th>Consent</th><th>Click ID</th><th>Hiba / Request ID</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($orders as $order):
                 $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
+                if ($order->get_meta('_mg_conv_recovered_google')) {
+                    $browser_state = 'pótolva';
+                } elseif ($order->get_meta('_mg_gads_browser_fired')) {
+                    $browser_state = 'elküldve';
+                } elseif ($order->get_meta('_mg_gads_browser_rendered')) {
+                    $browser_state = 'kiírva';
+                } else {
+                    $browser_state = 'nincs';
+                }
                 $detail = $order->get_meta(MG_Google_Ads_Reliability::META_LAST_ERROR) ?: $order->get_meta(MG_Google_Ads_Reliability::META_REQUEST_ID);
                 $retry_url = wp_nonce_url(admin_url('admin-post.php?action=mg_gads_retry_order&order_id=' . $order->get_id()), 'mg_gads_retry_' . $order->get_id());
                 ?>
                 <tr>
                     <td><a href="<?php echo esc_url($order->get_edit_order_url()); ?>"><strong>#<?php echo esc_html($order->get_order_number()); ?></strong></a><br><?php echo esc_html($order->get_date_created() ? $order->get_date_created()->date_i18n('Y-m-d H:i') : ''); ?></td>
                     <td><?php echo esc_html(wc_get_order_status_name($order->get_status())); ?></td>
-                    <td><?php echo $order->get_meta('_mg_gads_browser_rendered') ? 'renderelve' : 'nincs'; ?></td>
+                    <td><?php echo esc_html($browser_state); ?></td>
                     <td><code><?php echo esc_html($status); ?></code></td>
                     <td><code><?php echo esc_html($order->get_meta('_mg_gads_adjustment_status') ?: '—'); ?></code></td>
                     <td><?php echo esc_html($order->get_meta('_mg_gads_consent') ?: 'ismeretlen'); ?></td>

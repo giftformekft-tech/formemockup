@@ -13,6 +13,16 @@ A Google API nem feltétele a jó vásárlásmérésnek. Az elsődleges mérési
 4. A Google Ads Google tag beállításainál engedélyezd a felhasználó által megadott adatok használatát és a bővített konverziókat.
 5. API nélküli használatnál hagyd kikapcsolva a **Szerveroldali kiegészítés** kapcsolót.
 
+A **Purchase Label kitöltése kötelező**: címke nélkül a `send_to` csak a Google tag azonosítóját tartalmazza, így a Google Ads egyetlen vásárlást sem könyvel el konverzióként. A beállítási oldal ezt külön hibaüzenettel jelzi.
+
+## 1/b. Hozzájárulás és kimaradt konverziók
+
+- A consent híd (`MG_Consent_Bridge`) automatikusan felismeri a WP Consent API-t, a Complianzot, a CookieYes-t, a Cookiebotot, a Borlabs Cookie-t, az Iubendát, a Moove GDPR-t, a Cookie Notice-t és a Real Cookie Bannert, valamint bármely `dataLayer`-be írt Consent Mode frissítést. Enélkül a bővített konverziók és a szerveroldali küldés hozzájárulás híján kimaradnának.
+- Ha a rendelés a köszönőoldalon még nem mérhető állapotú (átutalás, késve visszaigazolt fizetés), a böngészős Purchase kimarad. A plugin ilyenkor first-party cookie-ba jegyzi a rendelést, és a vásárló következő oldalletöltésekor pótolja a konverziót ugyanazzal a `transaction_id`-val – a Google duplikációvédelme miatt dupla mérés nem keletkezhet. Ez API nélküli üzemmódban is működik.
+- A köszönőoldal soha nem kerül statikus gyorsítótárba.
+- Teljes oldalgyorsítótár mellett a saját landing-cookie-nk elmaradhat; ilyenkor a kattintásazonosítót a gtag.js `_gcl_aw` / `_gcl_gb` / `_gcl_gs` cookie-jából pótoljuk.
+- Bekapcsolt szerveroldali küldésnél óránkénti önjavító futás állítja újra sorba a beragadt rendeléseket.
+
 ## 2. Opcionális Data Manager API
 
 Ha a Google-fiókodban vagy a Cloud projektedben ez nem használható, ezt a teljes fejezetet hagyd ki. A böngészős vásárlásmérés ettől még aktív marad.

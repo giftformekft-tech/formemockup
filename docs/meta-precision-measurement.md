@@ -21,6 +21,20 @@ A Purchase tartalmazza a rendelés teljes értékét, pénznemét, kedvezményé
 
 A checkout a rendeléshez menti az `_fbp`, `_fbc` és `fbclid` adatokat, továbbá a hozzájárulási állapotot, az IP-címet és a user agentet. Ha az `_fbc` cookie még nem készült el, de van `fbclid`, a plugin szabványos `_fbc` értéket épít belőle. Az egyezéshez e-mail, telefon, név, település, régió, irányítószám, ország és stabil külső azonosító használható. Consent nélkül ezek nem kerülnek a CAPI-ba.
 
+## Hozzájárulás felismerése
+
+A Pixel minden eseménye és a CAPI-küldés is megadott marketing-hozzájáruláshoz kötött. A consent híd (`MG_Consent_Bridge`) automatikusan felismeri a WP Consent API-t, a Complianzot, a CookieYes-t, a Cookiebotot, a Borlabs Cookie-t, az Iubendát, a Moove GDPR-t, a Cookie Notice-t és a Real Cookie Bannert, továbbá bármely Consent Mode `ad_storage` frissítést a `dataLayer`-ben. Egyedi banner esetén elég `mg_gads_consent` eseményt küldeni `{granted: true}` detaillel.
+
+Ha a diagnosztikában minden rendelésnél „ismeretlen” a consent, akkor a sütikezelő nem jut el a mérőmodulokhoz – ilyenkor gyakorlatilag egyetlen Meta-esemény sem megy ki.
+
+## Kimaradt Purchase pótlása
+
+- Ha a rendelés a köszönőoldal betöltésekor még nem mérhető állapotú (átutalás, késve érkező fizetési visszaigazolás), a Pixel Purchase kimarad. A plugin ilyenkor first-party cookie-ba jegyzi a rendelést, és a vásárló következő oldalletöltésekor pótolja az eseményt – ugyanazzal az `eventID`-val, így duplikáció nem keletkezik.
+- A köszönőoldal soha nem kerül statikus gyorsítótárba.
+- A CAPI-sor óránként önjavító futással ellenőrzi a beragadt rendeléseket (a Meta 7 napos eseményablakán belül), így egy kimaradt cron vagy egy átmeneti Meta-hiba nem jelent végleges veszteséget.
+- Reklámblokkoló mellett az `_fbp` böngészőazonosítót – hozzájárulás esetén – a szerver írja meg first-party cookie-ként, hogy a CAPI-esemény egyezési minősége ne essen vissza.
+- A diagnosztikában a böngészős oszlop `elküldve` / `pótolva` / `kiírva` / `nincs` értéket mutat; a `kiírva` azt jelenti, hogy a tag kikerült, de a küldés nem igazolt vissza.
+
 ## Üzembe helyezés
 
 1. Nyisd meg a **Mockup Generator → Meta mérés** oldalt.

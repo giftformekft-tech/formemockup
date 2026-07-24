@@ -220,26 +220,26 @@ class MG_Google_Ads_Tracking {
     }
 
     /**
-     * Injektálja a 'purchase' eseményt a köszönöm oldalra, végigiterálva a kosáron.
+     * Összeállítja a 'purchase' esemény teljes adatcsomagját.
+     *
+     * A köszönőoldali tag és a késleltetett (recovery) mérés is ezt használja,
+     * így a két úton pontosan ugyanaz az érték, tranzakcióazonosító és
+     * kosáradat megy ki.
+     *
+     * @return array{event: array, user_data: array}|array üres tömb, ha nem mérhető
      */
-    public static function output_purchase_event($order_id) {
-        if (!$order_id) {
-            return;
+    public static function build_purchase_payload($order) {
+        if (!$order instanceof WC_Order) {
+            $order = wc_get_order($order);
         }
-
-        $order = wc_get_order($order_id);
-        if (!$order) {
-            return;
-        }
-
-        if (class_exists('MG_Google_Ads_Reliability') && !MG_Google_Ads_Reliability::is_order_eligible($order)) {
-            return;
+        if (!$order || self::get_conversion_id() === '') {
+            return array();
         }
 
         $settings = get_option('mg_gads_settings');
         $conversion_id = self::get_conversion_id();
-        $purchase_label = esc_js(isset($settings['purchase_label']) ? $settings['purchase_label'] : '');
-        
+        $purchase_label = trim((string) ($settings['purchase_label'] ?? ''));
+
         $send_to = $conversion_id;
         if (!empty($purchase_label)) {
             $send_to .= '/' . $purchase_label;
@@ -391,57 +391,77 @@ class MG_Google_Ads_Tracking {
             $user_data['address'] = $user_address;
         }
 
+        $event = array(
+            'send_to' => $send_to,
+            'transaction_id' => (string) $transaction_id,
+            'value' => round($value, 2),
+            'currency' => $currency,
+            'items' => $items,
+            'discount' => $event_extras['discount'],
+        );
+        foreach (array('aw_merchant_id', 'aw_feed_country', 'aw_feed_language') as $key) {
+            if (isset($event_extras[$key])) {
+                $event[$key] = $event_extras[$key];
+            }
+        }
+
+        return array('event' => $event, 'user_data' => $user_data);
+    }
+
+    /**
+     * Injektálja a 'purchase' eseményt a köszönöm oldalra.
+     */
+    public static function output_purchase_event($order_id) {
+        if (!$order_id) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return;
+        }
+
+        if (class_exists('MG_Google_Ads_Reliability') && !MG_Google_Ads_Reliability::is_order_eligible($order)) {
+            // Átutalás vagy késve visszaigazolt fizetés: a rendelés még nem mérhető
+            // állapotú. A késleltetett mérés pótolja, amint azzá válik.
+            if (class_exists('MG_Purchase_Recovery')) {
+                MG_Purchase_Recovery::remember_order($order);
+            }
+            return;
+        }
+
+        $payload = self::build_purchase_payload($order);
+        if (!$payload) {
+            return;
+        }
+
         $order->update_meta_data('_mg_gads_browser_rendered', time());
         $order->save();
 
+        $confirm = class_exists('MG_Purchase_Recovery')
+            ? sprintf(
+                "if (typeof window.mgConvFired === 'function') { window.mgConvFired('google', %d, %s); }",
+                (int) $order->get_id(),
+                wp_json_encode((string) $order->get_order_key())
+            )
+            : '';
         ?>
         <script>
         (function() {
-            var _mgPurchaseData = {
-                send_to: '<?php echo $send_to; ?>',
-                transaction_id: '<?php echo esc_js($transaction_id); ?>',
-                value: <?php echo number_format($value, 2, '.', ''); ?>,
-                currency: '<?php echo esc_js($currency); ?>',
-                items: <?php echo wp_json_encode($items); ?>,
-                discount: <?php echo wp_json_encode($event_extras['discount']); ?>
-                <?php if (isset($event_extras['aw_merchant_id'])): ?>,
-                aw_merchant_id: <?php echo wp_json_encode($event_extras['aw_merchant_id']); ?>
-                <?php endif; ?>
-                <?php if (isset($event_extras['aw_feed_country'])): ?>,
-                aw_feed_country: <?php echo wp_json_encode($event_extras['aw_feed_country']); ?>
-                <?php endif; ?>
-                <?php if (isset($event_extras['aw_feed_language'])): ?>,
-                aw_feed_language: <?php echo wp_json_encode($event_extras['aw_feed_language']); ?>
-                <?php endif; ?>
-            };
+            var _mgPurchaseData = <?php echo wp_json_encode($payload['event'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
+            var _mgPurchaseUserData = <?php echo wp_json_encode((object) $payload['user_data'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgSent = false;
 
             function mg_fire_purchase() {
                 if (_mgSent) return;
                 if (typeof window.gtag === 'function') {
-                    <?php
-                    // Felépítjük a user_data objektumot (Google majd normalizálja/hasheli)
-                    $ud_fields = [];
-                    if (!empty($customer_email))  { $ud_fields[] = '"email": ' . json_encode($customer_email); }
-                    if (!empty($phone_e164))      { $ud_fields[] = '"phone_number": ' . json_encode($phone_e164); }
-                    $addr_fields = [];
-                    if (!empty($first_name))  { $addr_fields[] = '"first_name": ' . json_encode($first_name); }
-                    if (!empty($last_name))   { $addr_fields[] = '"last_name": '  . json_encode($last_name); }
-                    if (!empty($street))      { $addr_fields[] = '"street": '     . json_encode($street); }
-                    if (!empty($city))        { $addr_fields[] = '"city": '       . json_encode($city); }
-                    if (!empty($region))      { $addr_fields[] = '"region": '     . json_encode($region); }
-                    if (!empty($postal_code)) { $addr_fields[] = '"postal_code": '. json_encode($postal_code); }
-                    if (!empty($country))     { $addr_fields[] = '"country": '    . json_encode($country); }
-                    if (!empty($addr_fields)) { $ud_fields[] = '"address": {' . implode(',', $addr_fields) . '}'; }
-                    ?>
-                    <?php if (!empty($ud_fields)): ?>
                     // Enhanced Conversions: user_data globálisan (Google ajánlás)
-                    if (window.mgGadsConsentGranted === true) {
-                        window.gtag('set', 'user_data', <?php echo wp_json_encode($user_data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>);
+                    if (window.mgGadsConsentGranted === true && Object.keys(_mgPurchaseUserData).length) {
+                        window.gtag('set', 'user_data', _mgPurchaseUserData);
                     }
-                    <?php endif; ?>
                     window.gtag('event', 'purchase', _mgPurchaseData);
                     _mgSent = true;
+                    <?php echo $confirm; // phpcs:ignore -- fixed, escaped payload built above ?>
                 }
             }
 
