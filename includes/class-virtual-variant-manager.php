@@ -121,6 +121,15 @@ class MG_Virtual_Variant_Manager {
             $config['product'] = $product_extras;
         }
 
+        // A méretet a vevőnek kell kiválasztania, hogy ne vegyen véletlenül
+        // rosszat. A böngésző ezért nem is kap alapértelmezett méretet: így egy
+        // gyorsítótárból betöltődő, régebbi szkript sem tud előre kijelölni.
+        // A szerveroldali fogyasztók (cross-sell, felár, csomagsáv) továbbra is
+        // a get_default_selection() teljes értékét kapják.
+        if (isset($config['default']) && is_array($config['default'])) {
+            $config['default']['size'] = '';
+        }
+
         wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', $config);
     }
 

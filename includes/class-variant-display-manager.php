@@ -78,6 +78,13 @@ class MG_Variant_Display_Manager {
             true
         );
 
+        // A méretet a vevőnek kell kiválasztania, hogy ne vegyen véletlenül
+        // rosszat. A böngésző ezért nem is kap alapértelmezett méretet: így egy
+        // gyorsítótárból betöltődő, régebbi szkript sem tud előre kijelölni.
+        if (isset($config['default']) && is_array($config['default'])) {
+            $config['default']['size'] = '';
+        }
+
         wp_localize_script('mg-variant-display', 'MG_VARIANT_DISPLAY', $config);
     }
 

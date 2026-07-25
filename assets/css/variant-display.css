@@ -48,6 +48,30 @@ html.mg-variant-ready .woocommerce-Price-currencySymbol {
     margin-bottom: 0.75em;
 }
 
+/* Kosárba tevés méret nélkül: helyben jelezzük, mi hiányzik. */
+.mg-variant-section--missing {
+    border-radius: 8px;
+    outline: 2px solid #b00020;
+    outline-offset: 6px;
+    animation: mgVariantSizeMissing 0.32s ease-in-out;
+}
+
+.mg-variant-section--missing .mg-variant-availability__value {
+    color: #b00020;
+    font-weight: 700;
+}
+
+@keyframes mgVariantSizeMissing {
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mg-variant-section--missing {
+        animation: none;
+    }
+}
+
 .mg-variant-section--custom {
     margin-top: 1.25em;
     padding-top: 1em;

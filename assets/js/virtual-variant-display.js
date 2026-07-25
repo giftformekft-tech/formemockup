@@ -726,6 +726,7 @@
 
     VirtualVariantDisplay.prototype.bindEvents = function () {
         var self = this;
+        this.bindSizeGuard();
         this.$typeOptions.on('click', '.mg-variant-type-option', function (e) {
             e.preventDefault();
             var value = $(this).attr('data-value') || '';
@@ -1505,6 +1506,65 @@
         var ready = this.state.type && this.state.color;
         this.$addToCart.prop('disabled', !ready);
         this.$addToCart.toggleClass('disabled', !ready);
+    };
+
+    /**
+     * True, ha van mit választani, de a vevő még nem választott méretet.
+     * Ha a kombinációhoz egyáltalán nincs elérhető méret, nem tartjuk vissza a
+     * küldést – ott a szerver tud érdemi üzenetet adni.
+     */
+    VirtualVariantDisplay.prototype.pendingSizeChoice = function () {
+        if (!this.$sizeOptions.length) {
+            return false;
+        }
+        if (!this.$sizeOptions.find('.mg-variant-option').not('.is-disabled').length) {
+            return false;
+        }
+        return !(this.$sizeInput.val() || '');
+    };
+
+    /**
+     * A hiányzó méretet helyben jelezzük: a kosárba gomb szándékosan aktív
+     * marad (a letiltott gomb nem árulja el, mi hiányzik), de a küldés helyett
+     * a méretválasztóhoz navigálunk. Enélkül a szerveroldali ellenőrzés teljes
+     * oldalújratöltéssel válaszolna, és a hibaüzenet mobilon a termékűrlap fölé,
+     * gyakran a látótéren kívülre kerülne.
+     */
+    VirtualVariantDisplay.prototype.promptSizeChoice = function () {
+        var $section = this.$form.find('.mg-variant-section--size').first();
+        if (!$section.length) {
+            $section = this.$sizeOptions;
+        }
+        $section.addClass('mg-variant-section--missing');
+        window.setTimeout(function () { $section.removeClass('mg-variant-section--missing'); }, 2000);
+
+        this.updateAvailabilityText();
+
+        if ($section[0] && $section[0].scrollIntoView) {
+            $section[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        var $first = this.$sizeOptions.find('.mg-variant-option').not('.is-disabled').first();
+        if ($first.length && $first[0].focus) {
+            $first[0].focus({ preventScroll: true });
+        }
+    };
+
+    VirtualVariantDisplay.prototype.bindSizeGuard = function () {
+        var self = this;
+        function guard(event) {
+            if (!self.pendingSizeChoice()) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            self.promptSizeChoice();
+        }
+
+        this.$form.on('submit', guard);
+        // Capture fázis: a sablonok AJAX-os kosárba tevése is a gombra köt.
+        if (this.$addToCart.length && this.$addToCart[0].addEventListener) {
+            this.$addToCart[0].addEventListener('click', guard, true);
+        }
     };
 
     /**

@@ -523,7 +523,66 @@
         });
     };
 
+    /**
+     * True, ha van mit választani, de a vevő még nem választott méretet.
+     * Ha a kombinációhoz egyáltalán nincs elérhető méret, nem tartjuk vissza a
+     * küldést – ott a szerver tud érdemi üzenetet adni.
+     */
+    VariantDisplay.prototype.pendingSizeChoice = function () {
+        if (!this.$sizeOptions || !this.$sizeOptions.length) {
+            return false;
+        }
+        if (!this.$sizeOptions.find('.mg-variant-option').not('.is-disabled').length) {
+            return false;
+        }
+        return !(this.$sizeSelect.val() || '');
+    };
+
+    /**
+     * A hiányzó méretet helyben jelezzük, szerverkérés nélkül: enélkül a
+     * validáció teljes oldalújratöltéssel válaszolna, és a hibaüzenet mobilon a
+     * termékűrlap fölé, gyakran a látótéren kívülre kerülne.
+     */
+    VariantDisplay.prototype.promptSizeChoice = function () {
+        var $section = this.$form.find('.mg-variant-section--size').first();
+        if (!$section.length) {
+            $section = this.$sizeOptions;
+        }
+        $section.addClass('mg-variant-section--missing');
+        window.setTimeout(function () { $section.removeClass('mg-variant-section--missing'); }, 2000);
+
+        this.updateAvailabilityText();
+
+        if ($section[0] && $section[0].scrollIntoView) {
+            $section[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        var $first = this.$sizeOptions.find('.mg-variant-option').not('.is-disabled').first();
+        if ($first.length && $first[0].focus) {
+            $first[0].focus({ preventScroll: true });
+        }
+    };
+
+    VariantDisplay.prototype.bindSizeGuard = function () {
+        var self = this;
+        function guard(event) {
+            if (!self.pendingSizeChoice()) {
+                return;
+            }
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            self.promptSizeChoice();
+        }
+
+        this.$form.on('submit', guard);
+        // Capture fázis: a sablonok AJAX-os kosárba tevése is a gombra köt.
+        var $addToCart = this.$form.find('.single_add_to_cart_button').first();
+        if ($addToCart.length && $addToCart[0].addEventListener) {
+            $addToCart[0].addEventListener('click', guard, true);
+        }
+    };
+
     VariantDisplay.prototype.bindEvents = function () {
+        this.bindSizeGuard();
         var self = this;
 
         if (this.typeModal.$trigger) {
