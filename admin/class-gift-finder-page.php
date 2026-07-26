@@ -120,6 +120,45 @@ class MG_Gift_Finder_Page {
                 </div>
                 <button type="button" class="button mg-add-row" data-template="mg-bundle-template" data-target="mg-gift-bundles">+ Ajándékcsomag</button>
 
+                <h2>7. Kemény szűrés és lazítás</h2>
+                <p class="description">A válaszok metszetként (ÉS-kapcsolattal) szűrnek: a termékhez mindegyik megadott válasznak illenie kell. Ha így a küszöbnél kevesebb találat marad, a kereső feloldja a legmagasabb szintű feloldható szűrőt, és újra próbálkozik. A feloldott szűrő nem vész el: a rangsorban továbbra is előre hozza a neki megfelelő termékeket, és a vevő a találatok fölötti chipre kattintva visszakapcsolhatja.</p>
+                <p class="description"><strong>Mielőtt bekapcsolod:</strong> nézd meg a lenti <em>9. Szűrő-diagnosztika</em> táblázatot. Ahol az alkalom 0%-kal szűkít, ott a metszetes szűrésnek nincs hatása – azon az útvonalon a katalógus besorolásán kell változtatni.</p>
+                <?php $facets = $settings['facets']; ?>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">Metszetes szűrés</th>
+                        <td>
+                            <label><input type="checkbox" name="settings[facets][enabled]" value="1" <?php checked( ! empty( $facets['enabled'] ) ); ?> /> A válaszok metszetként szűrjenek</label>
+                            <p class="description">Kikapcsolva a kereső a korábbi, unió (VAGY) szerinti viselkedésre vált, és lazítás sem történik.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="mg-gift-threshold">Lazítási küszöb</label></th>
+                        <td>
+                            <input type="number" min="1" max="100" step="1" class="small-text" id="mg-gift-threshold" name="settings[facets][threshold]" value="<?php echo esc_attr( (int) $facets['threshold'] ); ?>" /> találat
+                            <p class="description">Ennyi találat alatt old fel a kereső egy szintet. Alapérték: 12.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Feloldási sorrend</th>
+                        <td>
+                            <p class="description">A magasabb szint oldódik fel előbb. Az azonos szintű kérdések együtt mozognak – az alkalom és a hozzá tartozó esemény ezért alapból közös szinten van. A címzett soha nem oldható fel.</p>
+                            <table class="widefat striped" style="max-width:640px">
+                                <thead><tr><th>Kérdés</th><th style="width:150px">Szint</th></tr></thead>
+                                <tbody>
+                                <tr><td><?php echo esc_html( $settings['questions']['recipient']['title'] ); ?></td><td><em>1 – sosem oldódik fel</em></td></tr>
+                                <?php foreach ( array( 'occasion', 'wedding_type', 'interest', 'occupation' ) as $facet_key ) : ?>
+                                    <tr>
+                                        <td><?php echo esc_html( $settings['questions'][ $facet_key ]['title'] ); ?></td>
+                                        <td><input type="number" min="2" max="9" step="1" class="small-text" name="settings[facets][levels][<?php echo esc_attr( $facet_key ); ?>]" value="<?php echo esc_attr( (int) ( $facets['levels'][ $facet_key ] ?? 2 ) ); ?>" /></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                </table>
+
                 <?php submit_button( 'Ajándékkereső mentése' ); ?>
             </form>
 
@@ -199,11 +238,20 @@ class MG_Gift_Finder_Page {
     private static function render_stats() {
         $stats = MG_Gift_Finder::get_no_result_stats(); ?>
         <section class="mg-gift-stats">
-            <h2>7. Eredménytelen keresések</h2>
-            <p class="description">Egy látogató azonos keresését 30 percenként legfeljebb egyszer számoljuk.</p>
-            <?php if ( empty( $stats ) ) : ?><p>Még nincs eredménytelen keresés.</p><?php else : ?>
-                <table class="widefat striped"><thead><tr><th>Választott kategóriák</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
-                    <?php foreach ( $stats as $row ) : ?><tr><td><?php echo esc_html( ! empty( $row['terms'] ) ? implode( ', ', $row['terms'] ) : 'Nincs kategóriaszűrés' ); ?></td><td><?php echo esc_html( (int) $row['count'] ); ?>×</td><td><?php echo esc_html( $row['last_seen'] ); ?></td></tr><?php endforeach; ?>
+            <h2>8. Lazítás és eredménytelen keresések</h2>
+            <p class="description">Azok a keresések, ahol fel kellett oldani legalább egy szűrőt, vagy egyáltalán nem lett találat. Ez mutatja meg, milyen termék hiányzik a kínálatból. Egy látogató azonos keresését 30 percenként legfeljebb egyszer számoljuk. A 2026 nyara előtt rögzített sorok még feloldás nélküli, régi formátumúak.</p>
+            <?php if ( empty( $stats ) ) : ?><p>Még nincs rögzített keresés.</p><?php else : ?>
+                <table class="widefat striped"><thead><tr><th>Válaszok</th><th>Feloldott szűrők</th><th>Szigorú találat</th><th>Végső találat</th><th>Darabszám</th><th>Utolsó keresés</th></tr></thead><tbody>
+                    <?php foreach ( $stats as $row ) : $released = array_map( array( __CLASS__, 'question_label' ), array_filter( (array) ( $row['released'] ?? array() ) ) ); ?>
+                        <tr>
+                            <td><?php echo esc_html( ! empty( $row['terms'] ) ? implode( ', ', (array) $row['terms'] ) : 'Nincs kategóriaszűrés' ); ?></td>
+                            <td><?php echo esc_html( $released ? implode( ', ', $released ) : '–' ); ?></td>
+                            <td><?php echo isset( $row['strict_count'] ) ? esc_html( (int) $row['strict_count'] ) : '–'; ?></td>
+                            <td><?php echo isset( $row['result_count'] ) ? esc_html( (int) $row['result_count'] ) : '0'; ?></td>
+                            <td><?php echo esc_html( (int) $row['count'] ); ?>×</td>
+                            <td><?php echo esc_html( $row['last_seen'] ?? '' ); ?></td>
+                        </tr>
+                    <?php endforeach; ?>
                 </tbody></table>
                 <form method="post"><?php wp_nonce_field( 'mg_clear_gift_stats', 'mg_gift_stats_nonce' ); ?><?php submit_button( 'Statisztika törlése', 'delete', 'submit', false ); ?></form>
             <?php endif; ?>
@@ -217,6 +265,19 @@ class MG_Gift_Finder_Page {
      * Ahol az alkalom ugyanazokra a kategóriákra mutat, mint a címzett, ott a
      * szigorú szűrésnek nincs értelme – ezt a táblázat külön jelzi.
      */
+    /** Rövid, adminban olvasható kérdésnév. */
+    private static function question_label( $key ) {
+        $labels = array(
+            'recipient'    => 'Címzett',
+            'occasion'     => 'Alkalom',
+            'wedding_type' => 'Esemény',
+            'interest'     => 'Érdeklődés',
+            'occupation'   => 'Foglalkozás',
+            'start'        => 'Kiindulás',
+        );
+        return $labels[ $key ] ?? (string) $key;
+    }
+
     private static function render_facet_diagnostics() {
         if ( ! class_exists( 'MG_Gift_Finder_Facets' ) ) return;
         $matrix = MG_Gift_Finder_Facets::recipient_occasion_matrix();
@@ -224,7 +285,7 @@ class MG_Gift_Finder_Page {
         $no_op_count = count( array_filter( $rows, function( $row ) { return ! empty( $row['no_op'] ); } ) );
         ?>
         <section class="mg-gift-stats mg-gift-diagnostics">
-            <h2>8. Szűrő-diagnosztika (címzett × alkalom)</h2>
+            <h2>9. Szűrő-diagnosztika (címzett × alkalom)</h2>
             <p class="description">Csak olvasható kimutatás: a keresőn semmit nem változtat. A „mai unió” a jelenlegi OR-alapú jelöltszám, a „szigorú metszet” pedig az, amennyi termék mindkét válasznak egyszerre megfelel. A szűkítés azt mutatja, hogy az alkalom hány százalékkal csökkenti a címzett önmagában adott termékkörét. A számok a találati gyorsítótárral közös, verzióhoz kötött cache-ből jönnek, és termékmentéskor frissülnek.</p>
             <?php if ( empty( $rows ) ) : ?>
                 <p>Még nincs kiszámítható címzett–alkalom pár. Adj hozzá válaszokat a címzett és az alkalom kérdéshez.</p>
@@ -320,6 +381,15 @@ class MG_Gift_Finder_Page {
         foreach ( $clean['colors'] as $key => $fallback ) {
             $clean['colors'][ $key ] = sanitize_hex_color( $raw['colors'][ $key ] ?? '' ) ?: $fallback;
         }
+        $raw_facets = (array) ( $raw['facets'] ?? array() );
+        $clean['facets']['enabled']   = ! empty( $raw_facets['enabled'] ) ? 1 : 0;
+        $clean['facets']['threshold'] = max( 1, min( 100, absint( $raw_facets['threshold'] ?? 12 ) ) );
+        $raw_levels = (array) ( $raw_facets['levels'] ?? array() );
+        foreach ( $clean['facets']['levels'] as $facet_key => $level ) {
+            $clean['facets']['levels'][ $facet_key ] = max( 1, min( 9, (int) ( $raw_levels[ $facet_key ] ?? $level ) ) );
+        }
+        // A címzett szintje kötött: enélkül a lazítás a teljes kínálatig tágulhatna.
+        $clean['facets']['levels']['recipient'] = 1;
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {
             $term_id = absint( $card['category_id'] ?? 0 );
             if ( ! $term_id || ! term_exists( $term_id, 'product_cat' ) ) continue;

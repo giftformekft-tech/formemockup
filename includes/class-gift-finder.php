@@ -10,6 +10,9 @@ class MG_Gift_Finder {
     const CACHE_VERSION_KEY = 'mg_gift_finder_cache_version';
     const CACHE_TTL = HOUR_IN_SECONDS;
 
+    /** Ennyi terméket pontoz egy kemény facet-szűrés utáni találati oldal. */
+    const RANK_CANDIDATE_LIMIT = 1000;
+
     public static function init() {
         add_action( 'init', array( __CLASS__, 'register_block_and_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
@@ -66,6 +69,20 @@ class MG_Gift_Finder {
                 'panel'       => '#f7f2e9',
                 'card'        => '#ffffff',
             ),
+            // A kemény facet-szűrés szintjei. Az 1. szint sosem oldható fel, a
+            // többit a lazítás a legmagasabbtól lefelé engedi el, amíg a
+            // találatszám el nem éri a küszöböt.
+            'facets'    => array(
+                'enabled'   => 1,
+                'threshold' => 12,
+                'levels'    => array(
+                    'recipient'    => 1,
+                    'occasion'     => 2,
+                    'wedding_type' => 2,
+                    'interest'     => 3,
+                    'occupation'   => 4,
+                ),
+            ),
             'questions' => array(
                 'recipient' => array( 'title' => 'Kinek keresel ajándékot?', 'options' => array() ),
                 'occasion'  => array( 'title' => 'Milyen alkalomra?', 'options' => array() ),
@@ -86,6 +103,19 @@ class MG_Gift_Finder {
         }
         $settings = self::add_work_recipient_routes( $settings );
         $settings['colors'] = wp_parse_args( is_array( $settings['colors'] ?? null ) ? $settings['colors'] : array(), self::defaults()['colors'] );
+        $facet_defaults = self::defaults()['facets'];
+        $facets = wp_parse_args( is_array( $settings['facets'] ?? null ) ? $settings['facets'] : array(), $facet_defaults );
+        $facets['enabled']   = ! empty( $facets['enabled'] ) ? 1 : 0;
+        $facets['threshold'] = max( 1, min( 100, (int) $facets['threshold'] ) );
+        $levels = is_array( $facets['levels'] ?? null ) ? $facets['levels'] : array();
+        $facets['levels'] = array();
+        foreach ( $facet_defaults['levels'] as $key => $level ) {
+            $facets['levels'][ $key ] = max( 1, min( 9, (int) ( $levels[ $key ] ?? $level ) ) );
+        }
+        // A címzett soha nem oldható fel: enélkül a lazítás a bolt teljes
+        // kínálatáig tágulhatna, és a találat elveszítené a személyre szólását.
+        $facets['levels']['recipient'] = 1;
+        $settings['facets'] = $facets;
         $settings['budgets'] = array();
         return $settings;
     }
@@ -630,8 +660,14 @@ class MG_Gift_Finder {
      *
      * @return array<int,array{product_id:int,score:int,tier:string}>
      */
-    private static function get_ranked_results( array $scoring_choices ) {
-        $signature = array( 'v' => self::cache_version(), 'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ) );
+    private static function get_ranked_results( array $scoring_choices, $candidate_ids = null ) {
+        $signature = array(
+            'v'   => self::cache_version(),
+            'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ),
+            // A kemény facet jelöltköre a kulcs része: ugyanaz a
+            // válaszkombináció más lazítási szinten más listát ad.
+            'facet' => is_array( $candidate_ids ) ? md5( implode( ',', $candidate_ids ) ) : '',
+        );
         foreach ( $scoring_choices as $choice ) {
             $categories = array_values( array_filter( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) ) );
             sort( $categories );
@@ -646,12 +682,24 @@ class MG_Gift_Finder {
             return $cached;
         }
 
-        $ranked = self::compute_ranked_results( $scoring_choices );
+        $ranked = self::compute_ranked_results( $scoring_choices, $candidate_ids );
         set_transient( $key, $ranked, self::CACHE_TTL );
         return $ranked;
     }
 
-    private static function compute_ranked_results( array $scoring_choices ) {
+    /**
+     * @param array      $scoring_choices A pontozás alapja – a feloldott feltételek is itt maradnak.
+     * @param int[]|null $candidate_ids   Kemény facet-szűrés jelöltköre, vagy null a régi, unió szerinti gyűjtéshez.
+     */
+    private static function compute_ranked_results( array $scoring_choices, $candidate_ids = null ) {
+        if ( is_array( $candidate_ids ) ) {
+            // A pontozás termékenként címet és kategóriákat olvas, ezért a
+            // jelöltkör felső korláttal fut. A halmaz ID szerint csökkenő
+            // sorrendű, tehát a csonkolás determinisztikus, és az újabb
+            // termékek maradnak bent.
+            $candidate_ids = array_slice( array_values( array_unique( array_map( 'intval', $candidate_ids ) ) ), 0, self::RANK_CANDIDATE_LIMIT );
+            return self::rank_candidates( $candidate_ids, $scoring_choices );
+        }
         $tax_query = array();
         if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
             $visibility = wc_get_product_visibility_term_ids();
@@ -725,8 +773,11 @@ class MG_Gift_Finder {
             $query = new WP_Query( array( 'post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => 48, 'fields' => 'ids', 'no_found_rows' => true ) );
             $candidate_ids = array_map( 'intval', $query->posts );
         }
-        $candidate_ids = array_values( array_unique( $candidate_ids ) );
+        return self::rank_candidates( array_values( array_unique( $candidate_ids ) ), $scoring_choices );
+    }
 
+    /** A jelöltek pontozása és sorba rendezése. */
+    private static function rank_candidates( array $candidate_ids, array $scoring_choices ) {
         // A jelölteket `fields => 'ids'` adja vissza, ami nem tölti fel a post
         // cache-t – enélkül a pontozó ciklus `get_the_title()` hívása
         // termékenként külön lekérdezést indítana.
@@ -824,8 +875,19 @@ class MG_Gift_Finder {
         }
         $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
         if ( $start ) $args['mg_gift_start'] = $start;
+        $locked = class_exists( 'MG_Gift_Finder_Facets' ) ? MG_Gift_Finder_Facets::get_locked_questions() : array();
+        if ( ! empty( $locked ) ) $args['mg_gift_keep'] = implode( ',', $locked );
         $args['mg_gift_submitted'] = 1;
         return $args;
+    }
+
+    /** Visszakapcsolja a lazítással feloldott szűrőt: a kérdés bekerül a `mg_gift_keep` listába. */
+    private static function get_chip_restore_url( $question_key, $settings ) {
+        $args = self::get_active_query_args( $settings );
+        $locked = class_exists( 'MG_Gift_Finder_Facets' ) ? MG_Gift_Finder_Facets::get_locked_questions() : array();
+        $locked[] = $question_key;
+        $args['mg_gift_keep'] = implode( ',', array_values( array_unique( $locked ) ) );
+        return add_query_arg( $args, self::get_finder_url() );
     }
 
     /**
@@ -839,6 +901,11 @@ class MG_Gift_Finder {
         $args = self::get_active_query_args( $settings );
         unset( $args[ 'mg_gift_' . $question_key ] );
         if ( $question_key === 'start' ) unset( $args['mg_gift_start'] );
+        if ( isset( $args['mg_gift_keep'] ) ) {
+            $locked = array_values( array_diff( explode( ',', $args['mg_gift_keep'] ), array( $question_key ) ) );
+            if ( empty( $locked ) ) unset( $args['mg_gift_keep'] );
+            else $args['mg_gift_keep'] = implode( ',', $locked );
+        }
 
         $removed = array();
         foreach ( $choices as $choice ) {
@@ -872,16 +939,20 @@ class MG_Gift_Finder {
         return $prefixes[ $question_key ] ?? '';
     }
 
-    private static function build_chips( $choices, $settings ) {
+    private static function build_chips( $choices, $settings, $facet = array() ) {
+        $released = array_map( 'strval', (array) ( $facet['released'] ?? array() ) );
         $chips = array();
         foreach ( $choices as $choice ) {
             $key = $choice['question'] ?? '';
             if ( $key === '' || ( $choice['label'] ?? '' ) === '' ) continue;
+            $is_released = in_array( (string) $key, $released, true );
             $chips[] = array(
-                'question'   => $key,
-                'prefix'     => self::get_chip_prefix( $key ),
-                'label'      => $choice['label'],
-                'remove_url' => self::get_chip_remove_url( $key, $choices, $settings ),
+                'question'    => $key,
+                'prefix'      => self::get_chip_prefix( $key ),
+                'label'       => $choice['label'],
+                'remove_url'  => self::get_chip_remove_url( $key, $choices, $settings ),
+                'released'    => $is_released,
+                'restore_url' => $is_released ? self::get_chip_restore_url( $key, $settings ) : '',
             );
         }
 
@@ -895,11 +966,14 @@ class MG_Gift_Finder {
                 break;
             }
             if ( $label !== '' ) {
+                $is_released = in_array( 'start', $released, true );
                 $chips[] = array(
-                    'question'   => 'start',
-                    'prefix'     => self::get_chip_prefix( 'start' ),
-                    'label'      => $label,
-                    'remove_url' => self::get_chip_remove_url( 'start', $choices, $settings ),
+                    'question'    => 'start',
+                    'prefix'      => self::get_chip_prefix( 'start' ),
+                    'label'       => $label,
+                    'remove_url'  => self::get_chip_remove_url( 'start', $choices, $settings ),
+                    'released'    => $is_released,
+                    'restore_url' => $is_released ? self::get_chip_restore_url( 'start', $settings ) : '',
                 );
             }
         }
@@ -919,9 +993,13 @@ class MG_Gift_Finder {
         <div class="mg-gift-chips" role="group" aria-label="A választásaid">
             <span class="mg-gift-chips__intro">A válaszaid:</span>
             <?php foreach ( $chips as $chip ) : ?>
-                <span class="mg-gift-chip">
+                <span class="mg-gift-chip<?php echo ! empty( $chip['released'] ) ? ' mg-gift-chip--released' : ''; ?>">
                     <?php if ( $chip['prefix'] !== '' ) : ?><span class="mg-gift-chip__question"><?php echo esc_html( $chip['prefix'] ); ?></span><?php endif; ?>
-                    <span class="mg-gift-chip__label"><?php echo esc_html( $chip['label'] ); ?></span>
+                    <?php if ( ! empty( $chip['released'] ) ) : ?>
+                        <a class="mg-gift-chip__label mg-gift-chip__restore" href="<?php echo esc_url( $chip['restore_url'] ); ?>" data-question="<?php echo esc_attr( $chip['question'] ); ?>" title="Visszakapcsolom ezt a szűrőt" aria-label="<?php echo esc_attr( $chip['label'] . ' szűrő visszakapcsolása' ); ?>"><?php echo esc_html( $chip['label'] ); ?></a>
+                    <?php else : ?>
+                        <span class="mg-gift-chip__label"><?php echo esc_html( $chip['label'] ); ?></span>
+                    <?php endif; ?>
                     <a class="mg-gift-chip__remove" href="<?php echo esc_url( $chip['remove_url'] ); ?>" data-question="<?php echo esc_attr( $chip['question'] ); ?>" aria-label="<?php echo esc_attr( $chip['label'] . ' szűrő elhagyása' ); ?>"><span aria-hidden="true">×</span></a>
                 </span>
             <?php endforeach; ?>
@@ -931,26 +1009,36 @@ class MG_Gift_Finder {
 
     private static function render_results( $choices, $term_ids, $settings ) {
         $scoring_choices = self::build_scoring_choices( $choices, $term_ids );
-        $ranked = self::get_ranked_results( $scoring_choices );
+        $facet = MG_Gift_Finder_Facets::resolve( $scoring_choices, $settings, MG_Gift_Finder_Facets::get_locked_questions() );
+        $ranked = self::get_ranked_results( $scoring_choices, ! empty( $facet['enabled'] ) ? $facet['ids'] : null );
         $max_score = empty( $ranked ) ? 0 : max( array_column( $ranked, 'score' ) );
         if ( ! empty( $ranked ) ) {
             _prime_post_caches( array_column( $ranked, 'product_id' ), false, false );
         }
+        $relaxation_note = self::get_relaxation_note( $facet, $settings );
+        // A lazítás nélküli, „x/y feltételhez illő” szöveg csak akkor marad,
+        // ha nincs kemény szűrés – különben a lazítás magyarázata lép a helyére.
+        $show_fallback_note = empty( $facet['enabled'] ) && count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices );
         $virtual_types = self::get_virtual_type_options();
         ?>
         <div class="mg-gift-results" id="mg-gift-results"
              data-result-count="<?php echo esc_attr( count( $ranked ) ); ?>"
              data-choice-count="<?php echo esc_attr( count( $scoring_choices ) ); ?>"
-             data-max-score="<?php echo esc_attr( $max_score ); ?>">
+             data-max-score="<?php echo esc_attr( $max_score ); ?>"
+             data-strict-count="<?php echo esc_attr( (int) ( $facet['strict_count'] ?? 0 ) ); ?>"
+             data-released-count="<?php echo esc_attr( count( (array) ( $facet['released'] ?? array() ) ) ); ?>"
+             data-released-questions="<?php echo esc_attr( implode( ',', (array) ( $facet['released'] ?? array() ) ) ); ?>">
             <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2 tabindex="-1">Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
-            <?php self::render_chip_bar( self::build_chips( $choices, $settings ) ); ?>
+            <?php self::render_chip_bar( self::build_chips( $choices, $settings, $facet ) ); ?>
+            <?php self::log_search( $choices, $term_ids, $facet, count( $ranked ) ); ?>
             <?php if ( empty( $ranked ) ) : ?>
-                <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>
             <?php else : ?>
-                <?php if ( ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) || ! empty( $virtual_types ) ) : ?>
+                <?php if ( $show_fallback_note || $relaxation_note !== '' || ! empty( $virtual_types ) ) : ?>
                     <div class="mg-gift-results-controls">
-                        <?php if ( count( $scoring_choices ) >= 3 && $max_score < count( $scoring_choices ) ) : ?>
+                        <?php if ( $relaxation_note !== '' ) : ?>
+                            <p class="mg-gift-fallback-note mg-gift-relaxation-note"><?php echo esc_html( $relaxation_note ); ?></p>
+                        <?php elseif ( $show_fallback_note ) : ?>
                             <p class="mg-gift-fallback-note">Nincs olyan termék, amely mindegyik választásnak pontosan megfelel. A legközelebbi, <?php echo esc_html( $max_score . '/' . count( $scoring_choices ) ); ?> feltételhez illő találatokat mutatjuk.</p>
                         <?php endif; ?>
                         <?php if ( ! empty( $virtual_types ) ) : ?>
@@ -1142,27 +1230,70 @@ class MG_Gift_Finder {
         </section><?php
     }
 
-    private static function log_no_results( $term_ids ) {
+    /**
+     * Lazítás-statisztika.
+     *
+     * A korábbi „eredménytelen keresés” napló helyére lép. Nem csak az
+     * érdekes, hol nincs találat, hanem az is, mely kombinációknál mit kellett
+     * feloldani: ez mondja meg, milyen termék hiányzik a kínálatból. A régi
+     * formátumú sorok (feloldás nélkül) továbbra is olvashatók maradnak.
+     */
+    private static function log_search( $choices, $term_ids, $facet, $result_count ) {
+        $released = array_values( array_filter( array_map( 'strval', (array) ( $facet['released'] ?? array() ) ) ) );
+        if ( $result_count > 0 && empty( $released ) ) return;
+
+        $term_ids = array_map( 'intval', (array) $term_ids );
         sort( $term_ids );
-        $hash = md5( implode( ',', $term_ids ) );
+        $hash = md5( (string) wp_json_encode( array( $term_ids, $released ) ) );
         $remote = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
         $dedupe = 'mg_gift_no_result_' . md5( $hash . '|' . $remote );
         if ( get_transient( $dedupe ) ) return;
         set_transient( $dedupe, 1, 30 * MINUTE_IN_SECONDS );
 
+        $labels = array_values( array_filter( array_map( function( $choice ) {
+            return sanitize_text_field( $choice['label'] ?? '' );
+        }, (array) $choices ) ) );
+        if ( empty( $labels ) ) {
+            foreach ( $term_ids as $term_id ) {
+                $term = get_term( $term_id, 'product_cat' );
+                if ( $term && ! is_wp_error( $term ) ) $labels[] = $term->name;
+            }
+        }
+
         $stats = self::get_no_result_stats();
-        $labels = array();
-        foreach ( $term_ids as $term_id ) {
-            $term = get_term( $term_id, 'product_cat' );
-            if ( $term && ! is_wp_error( $term ) ) $labels[] = $term->name;
-        }
         if ( ! isset( $stats[ $hash ] ) ) {
-            $stats[ $hash ] = array( 'terms' => $labels, 'budget' => '', 'count' => 0, 'last_seen' => '' );
+            $stats[ $hash ] = array( 'terms' => $labels, 'count' => 0, 'last_seen' => '' );
         }
+        $stats[ $hash ]['terms']        = $labels;
+        $stats[ $hash ]['released']     = $released;
+        $stats[ $hash ]['strict_count'] = (int) ( $facet['strict_count'] ?? 0 );
+        $stats[ $hash ]['result_count'] = (int) $result_count;
         $stats[ $hash ]['count']++;
         $stats[ $hash ]['last_seen'] = current_time( 'mysql' );
-        uasort( $stats, function( $a, $b ) { return strcmp( $b['last_seen'], $a['last_seen'] ); } );
+        uasort( $stats, function( $a, $b ) { return strcmp( $b['last_seen'] ?? '', $a['last_seen'] ?? '' ); } );
         update_option( self::STATS_KEY, array_slice( $stats, 0, 100, true ), false );
+    }
+
+    /** A lazítás emberi nyelvű magyarázata a találatok fölé. */
+    private static function get_relaxation_note( $facet, $settings ) {
+        $released = array_values( array_filter( array_map( 'strval', (array) ( $facet['released'] ?? array() ) ) ) );
+        if ( empty( $facet['enabled'] ) || empty( $released ) ) return '';
+
+        $labels = array();
+        foreach ( $released as $question_key ) {
+            $prefix = self::get_chip_prefix( $question_key );
+            if ( $prefix !== '' ) $labels[] = mb_strtolower( $prefix );
+        }
+        $labels = array_values( array_unique( $labels ) );
+        $numerals = array( 1 => 'Egy', 2 => 'Két', 3 => 'Három', 4 => 'Négy', 5 => 'Öt' );
+        $count = count( $released );
+        $numeral = $numerals[ $count ] ?? (string) $count;
+        $strict = (int) ( $facet['strict_count'] ?? 0 );
+        $tail = $strict > 0
+            ? sprintf( 'különben csak %d ötletet találtunk volna.', $strict )
+            : 'különben egyetlen ötletet sem találtunk volna.';
+        $what = empty( $labels ) ? '' : sprintf( ' (%s)', implode( ', ', $labels ) );
+        return sprintf( '%s szűrőt feloldottunk%s, %s Kattints a szűrőre a chipek között, ha mégis ragaszkodsz hozzá.', $numeral, $what, $tail );
     }
 
     public static function get_no_result_stats() {

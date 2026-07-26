@@ -26,6 +26,126 @@ class MG_Gift_Finder_Facets {
     /** A diagnosztikai táblázat legfeljebb ennyi párt számol ki egy oldalletöltésen. */
     const MAX_DIAGNOSTIC_PAIRS = 400;
 
+    public static function get_config( $settings = null ) {
+        $settings = is_array( $settings ) ? $settings : MG_Gift_Finder::get_settings();
+        return is_array( $settings['facets'] ?? null ) ? $settings['facets'] : MG_Gift_Finder::defaults()['facets'];
+    }
+
+    public static function is_enabled( $settings = null ) {
+        $config = self::get_config( $settings );
+        return ! empty( $config['enabled'] );
+    }
+
+    public static function get_threshold( $settings = null ) {
+        $config = self::get_config( $settings );
+        return max( 1, (int) ( $config['threshold'] ?? 12 ) );
+    }
+
+    /**
+     * Egy kérdés facet-szintje.
+     *
+     * A szezonális kártyáról érkező belépési kategória (`start`) az alkalommal
+     * azonos szinten mozog: mindkettő ugyanazt a „mire” kérdést válaszolja meg.
+     */
+    public static function level_for( $question_key, $settings = null ) {
+        $levels = (array) ( self::get_config( $settings )['levels'] ?? array() );
+        if ( $question_key === 'start' ) $question_key = 'occasion';
+        return max( 1, (int) ( $levels[ $question_key ] ?? 2 ) );
+    }
+
+    /** Az URL-ben visszakapcsolt (lazításból kizárt) kérdések. */
+    public static function get_locked_questions() {
+        $raw = sanitize_text_field( wp_unslash( $_GET['mg_gift_keep'] ?? '' ) );
+        if ( $raw === '' ) return array();
+        $keys = array_filter( array_map( 'sanitize_key', preg_split( '/[,\s]+/', $raw ) ) );
+        $known = array_keys( MG_Gift_Finder::defaults()['questions'] );
+        $known[] = 'start';
+        return array_values( array_unique( array_intersect( $keys, $known ) ) );
+    }
+
+    /**
+     * Kemény facet-szűrés progresszív lazítással.
+     *
+     * A válaszok metszetként szűrnek – enélkül a 3–5. kérdés alig változtatna a
+     * látható első képernyőn, mert az unió találatait az első válasz tölti ki.
+     * Ha a metszet a küszöb alá esik, a legkevésbé fontos (legmagasabb szintű)
+     * szintet feloldjuk, és újrapróbáljuk. A feloldott feltétel nem tűnik el:
+     * a rangsorban továbbra is pontot ad, csak nem zár ki termékeket.
+     *
+     * Egy szint atomi: az `occasion` és a `wedding_type` együtt mozog, mert az
+     * alkalom feloldása a hozzá tartozó altípus nélkül értelmetlen állapot.
+     *
+     * @param array $choices A pontozási választások (a `start` belépéssel együtt).
+     * @param array $locked  Kérdéskulcsok, amelyeken tilos lazítani.
+     * @return array{enabled:bool,ids:?array,released:array,locked:array,strict_count:int,count:int,threshold:int}
+     */
+    public static function resolve( array $choices, $settings = null, array $locked = array() ) {
+        $settings = is_array( $settings ) ? $settings : MG_Gift_Finder::get_settings();
+        $result = array(
+            'enabled'      => self::is_enabled( $settings ),
+            'ids'          => null,
+            'released'     => array(),
+            'locked'       => array_values( $locked ),
+            'strict_count' => 0,
+            'count'        => 0,
+            'threshold'    => self::get_threshold( $settings ),
+        );
+
+        $filtering = array();
+        foreach ( $choices as $index => $choice ) {
+            if ( empty( self::choice_categories( $choice ) ) && empty( self::choice_keywords( $choice ) ) ) continue;
+            $filtering[ $index ] = $choice;
+        }
+        if ( ! $result['enabled'] || empty( $filtering ) ) return $result;
+
+        $active = array_keys( $filtering );
+        $ids = self::intersect_choices( $filtering );
+        $result['strict_count'] = count( $ids );
+
+        while ( count( $ids ) < $result['threshold'] ) {
+            $level = self::next_releasable_level( $filtering, $active, $locked, $settings );
+            if ( $level === 0 ) break;
+            foreach ( $active as $position => $index ) {
+                if ( self::level_for( $filtering[ $index ]['question'] ?? '', $settings ) !== $level ) continue;
+                unset( $active[ $position ] );
+                $result['released'][] = (string) ( $filtering[ $index ]['question'] ?? '' );
+            }
+            $active = array_values( $active );
+            $remaining = array_intersect_key( $filtering, array_flip( $active ) );
+            $ids = empty( $remaining ) ? array() : self::intersect_choices( $remaining );
+        }
+
+        $result['ids'] = $ids;
+        $result['count'] = count( $ids );
+        $result['released'] = array_values( array_unique( array_filter( $result['released'] ) ) );
+        return $result;
+    }
+
+    /**
+     * A következőként feloldható szint.
+     *
+     * A legmagasabb szinttől lefelé keres. Egy szint akkor oldható fel, ha nem
+     * az 1. szint, és egyetlen benne lévő kérdés sincs visszakapcsolva – így az
+     * `occasion` és a `wedding_type` sosem válik szét.
+     */
+    private static function next_releasable_level( array $filtering, array $active, array $locked, $settings ) {
+        $levels = array();
+        $blocked = array();
+        foreach ( $active as $index ) {
+            $question = (string) ( $filtering[ $index ]['question'] ?? '' );
+            $level = self::level_for( $question, $settings );
+            if ( $level <= 1 ) continue;
+            $levels[] = $level;
+            if ( in_array( $question, $locked, true ) ) $blocked[ $level ] = true;
+        }
+        $levels = array_values( array_unique( $levels ) );
+        rsort( $levels );
+        foreach ( $levels as $level ) {
+            if ( empty( $blocked[ $level ] ) ) return $level;
+        }
+        return 0;
+    }
+
     /**
      * Egy válaszhoz tartozó termékhalmaz.
      *

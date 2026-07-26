@@ -59,9 +59,28 @@ Ha egy elhagyott válaszra függő válasz épült (például az „Anyák napja
 
 Mivel a chipek hivatkozások, a szűrt találati oldalak `noindex,follow` fejlécet és az alap keresőoldalra mutató canonicalt kapnak. Enélkül a válaszkombinációk bejárható, azonos tartalmú URL-teret nyitnának a keresőrobotok előtt.
 
-Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. Az eredménytelen kereséseket a rendszer összesítve tárolja; ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja.
+Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. A lazítást igénylő és az eredménytelen kereséseket a rendszer összesítve tárolja (adminoldal, 8. szakasz); ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja. A tábla a korábbi, feloldás nélküli sorokat is megjeleníti.
 
 A rangsor kiszámítása gyorsítótárba kerül (kombinációnként, egy órára). A gyorsítótárat automatikusan elavulttá teszi minden termékmentés, készletváltozás, termékkategória-módosítás és az Ajándékkereső beállításainak mentése.
+
+## Kemény szűrés és progresszív lazítás
+
+A válaszok **metszetként** (ÉS-kapcsolattal) szűrnek: a találatnak mindegyik megadott válasznak meg kell felelnie. Enélkül – unióban összeadva – a látható első képernyőt gyakorlatilag az első válasz (a címzett) töltötte ki, és a 3–5. kérdés alig változtatott az eredményen.
+
+Ha a metszet a **lazítási küszöbnél** (alapérték: 12) kevesebb terméket ad, a kereső feloldja a legmagasabb szintű feloldható szűrőt, és újra próbálkozik. Ezt addig ismétli, amíg elég találat lesz, vagy amíg csak a címzett marad.
+
+| Szint | Kérdés | Feloldás |
+|---|---|---|
+| 1 | Címzett | soha |
+| 2 | Alkalom + házassághoz kapcsolódó esemény + szezonális kiindulás | utolsóként, együtt |
+| 3 | Érdeklődés | másodikként |
+| 4 | Foglalkozás | elsőként |
+
+A szintek az adminoldal **7. Kemény szűrés és lazítás** szakaszában módosíthatók, a küszöbbel együtt. Az azonos szintű kérdések mindig együtt oldódnak fel: az alkalom feloldása a hozzá tartozó esemény feloldása nélkül értelmetlen állapot lenne. A címzett szintje kötött.
+
+**A feloldott feltétel nem tűnik el, csak lefokozódik szűrőből rangsorjellé:** a neki megfelelő termékek továbbra is előre kerülnek a listában. A találatok fölött a feloldott válasz chipje áthúzva látszik, mellette rövid magyarázat („Két szűrőt feloldottunk (foglalkozás, érdeklődés), különben csak 1 ötletet találtunk volna."). Az áthúzott chip címkéjére kattintva a szűrő visszakapcsolható – ilyenkor az URL `mg_gift_keep` paramétere tiltja rá a lazítást, és a vevő látja a valóban szűk találati listát.
+
+A metszetes szűrés a **7. szakaszban** kikapcsolható; ekkor a kereső a korábbi, unió szerinti viselkedésre vált, és lazítás sem történik.
 
 ## Szűrő-diagnosztika
 
@@ -91,5 +110,6 @@ A kereső minden lépése méri magát, így a lemorzsolódás végigkövethető
 | `gift_finder_load_more` | a „Mutass még ötleteket" gombra | `gift_revealed` |
 | `gift_finder_restart` | az „Újrakezdem" gombra | – |
 | `gift_finder_chip_removed` | egy válasz-chip elhagyásakor | `gift_question` |
+| `gift_finder_relaxed` | ha a lazítás legalább egy szűrőt feloldott | `gift_relaxed_count`, `gift_relaxed_questions`, `gift_strict_count`, `gift_result_count` |
 
 A Meta felé ugyanezek egyedi eseményként mennek (`GiftFinderStart`, `GiftFinderStep`, …), hozzájárulás nélkül nem.

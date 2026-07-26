@@ -262,6 +262,18 @@ class MG_Gift_Finder_Transfer {
             $clean['colors'][ $key ] = sanitize_hex_color( $source_colors[ $key ] ?? '' ) ?: $fallback;
         }
 
+        // A facet-beállítások hiánya nem törölheti a meglévőket: egy régi,
+        // még facetek nélküli export visszatöltése különben csendben
+        // visszaállítaná a kemény szűrés alapértékeit.
+        $source_facets = is_array( $raw['facets'] ?? null ) ? $raw['facets'] : ( $current['facets'] ?? array() );
+        $clean['facets']['enabled']   = ! empty( $source_facets['enabled'] ) ? 1 : 0;
+        $clean['facets']['threshold'] = max( 1, min( 100, absint( $source_facets['threshold'] ?? $clean['facets']['threshold'] ) ) );
+        $source_levels = is_array( $source_facets['levels'] ?? null ) ? $source_facets['levels'] : array();
+        foreach ( $clean['facets']['levels'] as $facet_key => $level ) {
+            $clean['facets']['levels'][ $facet_key ] = max( 1, min( 9, (int) ( $source_levels[ $facet_key ] ?? $level ) ) );
+        }
+        $clean['facets']['levels']['recipient'] = 1;
+
         $clean['cards'] = array();
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {
             $category_id = absint( $card['category_id'] ?? 0 );

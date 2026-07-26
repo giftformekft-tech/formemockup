@@ -295,6 +295,18 @@
                     gift_choice_count: choiceCount,
                     gift_match_max: maxScore
                 });
+
+                // A lazítás azt méri, hol nincs elég termék a kínálatban:
+                // melyik kombinációnál mit kellett feloldani.
+                var releasedCount = parseInt(results.dataset.releasedCount || '0', 10);
+                if (releasedCount > 0) {
+                    track('gift_finder_relaxed', {
+                        gift_relaxed_count: releasedCount,
+                        gift_relaxed_questions: results.dataset.releasedQuestions || '',
+                        gift_strict_count: parseInt(results.dataset.strictCount || '0', 10),
+                        gift_result_count: resultCount
+                    });
+                }
                 if (resultCount) {
                     var items = Array.prototype.slice.call(results.querySelectorAll('a[data-product-id]')).slice(0, 20).map(function (link) {
                         return {

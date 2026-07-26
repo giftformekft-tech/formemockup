@@ -36,6 +36,17 @@ Az importfájl gyökérstruktúrája:
       "card": "#ffffff"
     },
     "cards": [],
+    "facets": {
+      "enabled": 1,
+      "threshold": 12,
+      "levels": {
+        "recipient": 1,
+        "occasion": 2,
+        "wedding_type": 2,
+        "interest": 3,
+        "occupation": 4
+      }
+    },
     "questions": {
       "recipient": { "title": "Kinek keresel ajándékot?", "options": [] },
       "occasion": { "title": "Milyen alkalomra?", "options": [] },
@@ -49,6 +60,8 @@ Az importfájl gyökérstruktúrája:
 ```
 
 A `colors` mező opcionális. Ha kimarad, az import megőrzi a webhely jelenlegi ajándékkereső-színeit. Árkeret nincs a keresőben.
+
+A `facets` mező a kemény (metszetes) szűrés beállítása: `enabled` a be-/kikapcsolás, `threshold` a lazítási küszöb (1–100), `levels` pedig a kérdésenkénti feloldási szint (2–9; a magasabb oldódik fel előbb). A `recipient` szintje mindig 1, tehát sosem oldódik fel – az importált érték itt figyelmen kívül marad. Ha a `facets` mező kimarad, az import megőrzi a webhely jelenlegi facet-beállításait; enélkül egy régi JSON visszatöltése csendben visszaállítaná az alapértékeket.
 
 Egy függő válasz formátuma:
 
