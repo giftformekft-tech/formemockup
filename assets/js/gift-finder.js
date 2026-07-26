@@ -74,7 +74,13 @@
                 if (!checked) return '';
                 var label = checked.closest('.mg-gift-option');
                 var text = label ? label.querySelector('span') : null;
-                return text ? text.textContent.trim() : checked.value;
+                if (!text) return checked.value;
+                // Az élő találatszám a válasz címkéjén belül van, de nem része a
+                // válasznak – enélkül „Anyának12 ötlet" menne ki a mérésbe.
+                var clone = text.cloneNode(true);
+                var badge = clone.querySelector('.mg-gift-option__count');
+                if (badge) badge.parentNode.removeChild(badge);
+                return clone.textContent.trim();
             }
 
             function filterOptions(index) {
