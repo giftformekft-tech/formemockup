@@ -2,6 +2,7 @@
     'use strict';
 
     var LIST_NAME = 'Ajándékkereső';
+    var CONFIG = window.MG_GIFT_FINDER || {};
 
     /** A Meta egyedi eseménynevei CamelCase alakúak. */
     function metaEventName(name) {
@@ -96,12 +97,110 @@
                 });
             }
 
+            var countCache = {};
+            var stepCounts = {};
+            var countController = null;
+
+            /**
+             * A lépéshez tartozó élő találatszám lekérése.
+             *
+             * A szigorú (lazítás előtti) számot kérdezi le: a lazítás utáni
+             * mindig a küszöb fölött lenne, tehát semmit nem mondana. A küszöb
+             * alatt szám helyett szöveges jelzés megy ki, így sosem ígérünk
+             * darabszámot, amit a találati oldal nem tart be.
+             */
+            function requestCounts(index) {
+                if (results || !CONFIG.ajaxUrl || !CONFIG.enabled || typeof window.fetch !== 'function') return;
+                var step = steps[index];
+                if (!step || !step.dataset.question) return;
+
+                var query = ['action=' + encodeURIComponent(CONFIG.action || 'mg_gift_counts'),
+                    'question=' + encodeURIComponent(step.dataset.question)];
+                steps.slice(0, index).forEach(function (previous) {
+                    var checked = previous.querySelector('input[type=radio]:checked');
+                    if (checked && checked.value !== '0') {
+                        query.push(encodeURIComponent(checked.name) + '=' + encodeURIComponent(checked.value));
+                    }
+                });
+                var startInput = finder.querySelector('input[name="mg_gift_start"]');
+                if (startInput && startInput.value) query.push('mg_gift_start=' + encodeURIComponent(startInput.value));
+
+                var url = CONFIG.ajaxUrl + (CONFIG.ajaxUrl.indexOf('?') === -1 ? '?' : '&') + query.join('&');
+                if (countCache[url]) {
+                    applyCounts(index, countCache[url]);
+                    return;
+                }
+                if (countController) countController.abort();
+                countController = window.AbortController ? new window.AbortController() : null;
+                window.fetch(url, {
+                    credentials: 'same-origin',
+                    signal: countController ? countController.signal : undefined
+                }).then(function (response) {
+                    return response.ok ? response.json() : null;
+                }).then(function (payload) {
+                    if (!payload || !payload.success || !payload.data) return;
+                    countCache[url] = payload.data;
+                    applyCounts(index, payload.data);
+                }).catch(function () {});
+            }
+
+            function countLabel(count, threshold) {
+                if (count === null || count === undefined) return '';
+                return count >= threshold ? count + ' ' + (CONFIG.unitLabel || 'ötlet') : (CONFIG.fewLabel || 'kevés ötlet');
+            }
+
+            function applyCounts(index, data) {
+                var step = steps[index];
+                if (!step || (data.question || '') !== (step.dataset.question || '')) return;
+                stepCounts[index] = data;
+                var threshold = parseInt(data.threshold || CONFIG.threshold || 0, 10);
+                step.querySelectorAll('.mg-gift-option').forEach(function (option) {
+                    var input = option.querySelector('input[type=radio]');
+                    var text = option.querySelector('span');
+                    if (!input || !text) return;
+                    var count = input.value === '0' ? data.skip : (data.options || {})[input.value];
+                    var badge = text.querySelector('.mg-gift-option__count');
+                    if (count === null || count === undefined) {
+                        if (badge) badge.parentNode.removeChild(badge);
+                        option.classList.remove('mg-gift-option--few');
+                        return;
+                    }
+                    if (!badge) {
+                        badge = document.createElement('small');
+                        badge.className = 'mg-gift-option__count';
+                        text.appendChild(badge);
+                    }
+                    badge.textContent = countLabel(count, threshold);
+                    option.classList.toggle('mg-gift-option--few', count < threshold);
+                });
+                updateActionLabel(index);
+            }
+
+            /** A továbblépés gombja a kiválasztott válasz találatszámát mutatja. */
+            function updateActionLabel(index) {
+                var step = steps[index];
+                var data = stepCounts[index];
+                if (!step) return;
+                var button = step.querySelector('.mg-gift-next') || step.querySelector('.mg-gift-step__actions button[type=submit]');
+                if (!button) return;
+                if (!button.dataset.baseLabel) button.dataset.baseLabel = button.textContent.trim();
+                var checked = step.querySelector('input[type=radio]:checked');
+                var count = null;
+                if (data && checked) {
+                    count = checked.value === '0' ? data.skip : (data.options || {})[checked.value];
+                }
+                var threshold = data ? parseInt(data.threshold || CONFIG.threshold || 0, 10) : 0;
+                var suffix = count === null || count === undefined ? '' : ' – ' + countLabel(count, threshold);
+                button.textContent = button.dataset.baseLabel + suffix;
+            }
+
             function show(index, moveFocus) {
                 current = Math.max(0, Math.min(index, steps.length - 1));
                 filterOptions(current);
                 steps.forEach(function (step, i) { step.hidden = i !== current; });
                 progress.forEach(function (dot, i) { dot.classList.toggle('is-active', i <= current); });
                 announce(stepLabel(current));
+                requestCounts(current);
                 // Billentyűzettel és képernyőolvasóval a fókusz különben az
                 // előző, már elrejtett lépésen ragadna.
                 if (moveFocus && steps[current]) {
@@ -213,6 +312,7 @@
 
             finder.addEventListener('change', function (event) {
                 if (event.target.matches('.mg-gift-option input[type="radio"]')) {
+                    updateActionLabel(current);
                     if (!started) {
                         started = true;
                         track('gift_finder_start', {

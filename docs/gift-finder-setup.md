@@ -82,6 +82,12 @@ A szintek az adminoldal **7. Kemény szűrés és lazítás** szakaszában módo
 
 A metszetes szűrés a **7. szakaszban** kikapcsolható; ekkor a kereső a korábbi, unió szerinti viselkedésre vált, és lazítás sem történik.
 
+### Élő találatszám a kérdéseknél
+
+A varázsló minden lépésénél az egyes válaszok alatt megjelenik, hány ötlet vár az addigi válaszok fényében, és ugyanez kerül a „Tovább” gomb feliratába is. A szám a **szigorú**, lazítás előtti találatszám: a lazítás utáni mindig a küszöb fölött lenne, tehát semmit nem mondana. A küszöb alatt szám helyett a „kevés ötlet” jelzés jelenik meg, így a kereső sosem ígér konkrét darabszámot, amit a találati oldal nem tart be.
+
+A számokat egy `admin-ajax.php` végpont adja (`action=mg_gift_counts`). Nem futtat rangsorolást: a válaszonként gyorsítótárazott termékhalmazok metszetét számolja, és a teljes választ egyetlen, verzióhoz kötött tranziensbe teszi – az ismételt hívás így nem indít új számítást. A végpont IP-nként 5 percenként 60 hívásig szolgál ki, hogy a bejárók forgalma ne terhelje a boltot. Kikapcsolt metszetes szűrésnél nincs élő találatszám, mert ott a szigorú szám nem a megjelenő listát írná le.
+
 ## Szűrő-diagnosztika
 
 Az adminoldal **8. Szűrő-diagnosztika (címzett × alkalom)** táblázata minden lehetséges címzett–alkalom párra megmutatja:

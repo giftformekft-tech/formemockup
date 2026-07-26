@@ -13,10 +13,17 @@ class MG_Gift_Finder {
     /** Ennyi terméket pontoz egy kemény facet-szűrés utáni találati oldal. */
     const RANK_CANDIDATE_LIMIT = 1000;
 
+    /** Az élő találatszámláló végpontja és ütemkorlátja (kérés / ablak, másodpercben). */
+    const COUNT_ACTION = 'mg_gift_counts';
+    const COUNT_RATE_LIMIT = 60;
+    const COUNT_RATE_WINDOW = 300;
+
     public static function init() {
         add_action( 'init', array( __CLASS__, 'register_block_and_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
         add_action( 'wp', array( __CLASS__, 'maybe_mark_results_noindex' ) );
+        add_action( 'wp_ajax_' . self::COUNT_ACTION, array( __CLASS__, 'ajax_counts' ) );
+        add_action( 'wp_ajax_nopriv_' . self::COUNT_ACTION, array( __CLASS__, 'ajax_counts' ) );
 
         // A találati rangsor gyorsítótárát minden olyan változás elavulttá teszi,
         // ami a termékkínálatot vagy a besorolást érinti.
@@ -236,7 +243,18 @@ class MG_Gift_Finder {
         $base = plugins_url( '', dirname( __DIR__ ) . '/mockup-generator.php' );
         wp_register_style( 'mg-gift-finder', $base . '/assets/css/gift-finder.css', array(), MG_VERSION );
         wp_register_script( 'mg-gift-finder', $base . '/assets/js/gift-finder.js', array(), MG_VERSION, true );
-        $colors = self::get_settings()['colors'];
+        $settings = self::get_settings();
+        wp_localize_script( 'mg-gift-finder', 'MG_GIFT_FINDER', array(
+            'ajaxUrl'   => admin_url( 'admin-ajax.php' ),
+            'action'    => self::COUNT_ACTION,
+            // Kemény szűrés nélkül a szigorú szám nem a megjelenő listát írná le,
+            // ezért olyankor nem is mutatunk élő találatszámot.
+            'enabled'   => MG_Gift_Finder_Facets::is_enabled( $settings ) ? 1 : 0,
+            'threshold' => MG_Gift_Finder_Facets::get_threshold( $settings ),
+            'fewLabel'  => 'kevés ötlet',
+            'unitLabel' => 'ötlet',
+        ) );
+        $colors = $settings['colors'];
         $variables = array();
         foreach ( self::defaults()['colors'] as $key => $fallback ) {
             $value = sanitize_hex_color( $colors[ $key ] ?? '' ) ?: $fallback;
@@ -864,6 +882,92 @@ class MG_Gift_Finder {
                 'tier'       => (string) ( $item['tier'] ?? '' ),
             );
         }, $ranked );
+    }
+
+    /**
+     * Élő találatszám a következő lépés válaszaihoz.
+     *
+     * A szigorú (lazítás előtti) számot adja vissza: a lazítás után a
+     * találatszám mindig a küszöb fölött van, tehát semmit nem mondana. A
+     * küszöb alatti számot a frontend nem írja ki – „kevés ötlet” lép a
+     * helyére –, így sosem ígérünk konkrét darabszámot, amit aztán nem tartunk.
+     *
+     * Nem futtat rangsorolást: a válaszonként cache-elt termékhalmazok
+     * metszetét számolja, a teljes válasz pedig egyetlen tranziensbe kerül,
+     * ugyanabba a verzióhoz kötött sémába, mint a rangsor.
+     */
+    public static function ajax_counts() {
+        if ( ! self::check_count_rate_limit() ) {
+            wp_send_json_error( array( 'message' => 'Túl sok kérés.' ), 429 );
+        }
+        $settings = self::get_settings();
+        $question = sanitize_key( wp_unslash( $_GET['question'] ?? '' ) );
+        if ( ! isset( $settings['questions'][ $question ] ) ) {
+            wp_send_json_error( array( 'message' => 'Ismeretlen kérdés.' ), 400 );
+        }
+
+        $signature = array(
+            'v'   => self::cache_version(),
+            'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ),
+            'q'   => $question,
+            'a'   => array(),
+        );
+        foreach ( array_keys( $settings['questions'] ) as $key ) {
+            $value = sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) );
+            if ( $value !== '' && $value !== '0' ) $signature['a'][ $key ] = $value;
+        }
+        $signature['start'] = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
+        $cache_key = 'mg_gift_count_' . md5( (string) wp_json_encode( $signature ) );
+        $cached = get_transient( $cache_key );
+        if ( is_array( $cached ) ) {
+            wp_send_json_success( $cached );
+        }
+
+        $order = array_keys( $settings['questions'] );
+        $position = array_search( $question, $order, true );
+        $prior = array();
+        foreach ( self::get_selected_choices( $settings ) as $choice ) {
+            $index = array_search( $choice['question'] ?? '', $order, true );
+            if ( $index !== false && $position !== false && $index < $position ) $prior[] = $choice;
+        }
+        $base = self::build_scoring_choices( $prior, self::get_selected_terms( $prior, $settings ) );
+
+        $options = array();
+        foreach ( (array) $settings['questions'][ $question ]['options'] as $option ) {
+            $value = self::get_option_value( $option );
+            if ( $value === '' || isset( $options[ $value ] ) ) continue;
+            $options[ $value ] = MG_Gift_Finder_Facets::strict_count(
+                array_merge( $base, array( self::build_choice( $question, $option ) ) )
+            );
+        }
+
+        $payload = array(
+            'question'  => $question,
+            'threshold' => MG_Gift_Finder_Facets::get_threshold( $settings ),
+            'options'   => $options,
+        );
+        // A „Mindegy” válasz az addigi szűrőkkel egyezik. Az első kérdésnél nincs
+        // mit számolni: ott a teljes kínálat a válasz, nem egy szűrt darabszám.
+        if ( ! empty( $base ) ) $payload['skip'] = MG_Gift_Finder_Facets::strict_count( $base );
+
+        set_transient( $cache_key, $payload, self::CACHE_TTL );
+        wp_send_json_success( $payload );
+    }
+
+    /**
+     * Egyszerű ütemkorlát a számlálóvégpontra.
+     *
+     * A végpontot bejárók is hívhatják, lépésenként több lekérdezéssel – cache
+     * ide-oda a korlát nélkül valós terhelés lenne.
+     */
+    private static function check_count_rate_limit() {
+        $remote = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
+        if ( $remote === '' ) return true;
+        $key = 'mg_gift_rate_' . md5( $remote );
+        $hits = (int) get_transient( $key );
+        if ( $hits >= self::COUNT_RATE_LIMIT ) return false;
+        set_transient( $key, $hits + 1, self::COUNT_RATE_WINDOW );
+        return true;
     }
 
     /** A jelenlegi keresés URL-paraméterei, fertőtlenítve. */
