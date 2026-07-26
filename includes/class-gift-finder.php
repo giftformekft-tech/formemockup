@@ -11,7 +11,11 @@ class MG_Gift_Finder {
     const CACHE_TTL = HOUR_IN_SECONDS;
 
     /** Ennyi terméket pontoz egy kemény facet-szűrés utáni találati oldal. */
-    const RANK_CANDIDATE_LIMIT = 1000;
+    const RANK_CANDIDATE_LIMIT = 1200;
+
+    /** Ennyi termék jöhet a kemény (metszetes) találatokból, és válaszonként ennyi a kapcsolódó ötletekhez. */
+    const HARD_CANDIDATE_LIMIT = 600;
+    const RELATED_PER_CHOICE = 120;
 
     /** Az élő találatszámláló végpontja és ütemkorlátja (kérés / ablak, másodpercben). */
     const COUNT_ACTION = 'mg_gift_counts';
@@ -678,13 +682,13 @@ class MG_Gift_Finder {
      *
      * @return array<int,array{product_id:int,score:int,tier:string}>
      */
-    private static function get_ranked_results( array $scoring_choices, $candidate_ids = null ) {
+    private static function get_ranked_results( array $scoring_choices, $hard_ids = null ) {
         $signature = array(
             'v'   => self::cache_version(),
             'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ),
-            // A kemény facet jelöltköre a kulcs része: ugyanaz a
+            // A kemény facet találatköre a kulcs része: ugyanaz a
             // válaszkombináció más lazítási szinten más listát ad.
-            'facet' => is_array( $candidate_ids ) ? md5( implode( ',', $candidate_ids ) ) : '',
+            'facet' => is_array( $hard_ids ) ? md5( implode( ',', $hard_ids ) ) : '',
         );
         foreach ( $scoring_choices as $choice ) {
             $categories = array_values( array_filter( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) ) );
@@ -700,23 +704,19 @@ class MG_Gift_Finder {
             return $cached;
         }
 
-        $ranked = self::compute_ranked_results( $scoring_choices, $candidate_ids );
+        $ranked = self::compute_ranked_results( $scoring_choices, $hard_ids );
         set_transient( $key, $ranked, self::CACHE_TTL );
         return $ranked;
     }
 
     /**
      * @param array      $scoring_choices A pontozás alapja – a feloldott feltételek is itt maradnak.
-     * @param int[]|null $candidate_ids   Kemény facet-szűrés jelöltköre, vagy null a régi, unió szerinti gyűjtéshez.
+     * @param int[]|null $hard_ids        A kemény (metszetes) találatok, vagy null a régi, unió szerinti gyűjtéshez.
      */
-    private static function compute_ranked_results( array $scoring_choices, $candidate_ids = null ) {
-        if ( is_array( $candidate_ids ) ) {
-            // A pontozás termékenként címet és kategóriákat olvas, ezért a
-            // jelöltkör felső korláttal fut. A halmaz ID szerint csökkenő
-            // sorrendű, tehát a csonkolás determinisztikus, és az újabb
-            // termékek maradnak bent.
-            $candidate_ids = array_slice( array_values( array_unique( array_map( 'intval', $candidate_ids ) ) ), 0, self::RANK_CANDIDATE_LIMIT );
-            return self::rank_candidates( $candidate_ids, $scoring_choices );
+    private static function compute_ranked_results( array $scoring_choices, $hard_ids = null ) {
+        if ( is_array( $hard_ids ) ) {
+            $pool = self::build_candidate_pool( $scoring_choices, $hard_ids );
+            return self::rank_candidates( $pool['candidates'], $scoring_choices, $pool['hard'] );
         }
         $tax_query = array();
         if ( function_exists( 'wc_get_product_visibility_term_ids' ) ) {
@@ -794,8 +794,39 @@ class MG_Gift_Finder {
         return self::rank_candidates( array_values( array_unique( $candidate_ids ) ), $scoring_choices );
     }
 
+    /**
+     * A pontozandó jelöltek kemény szűrés mellett.
+     *
+     * A metszet találatai adják a lista elejét, de nem ez az egész lista:
+     * minden válasz hoz még néhány saját jelöltet is. Enélkül a „tesómnak +
+     * ballagásra” úton csak a néhány tesós cucc látszana, egyetlen ballagási
+     * termék nélkül – pedig épp azokat keresi a vevő.
+     *
+     * @return array{candidates:int[],hard:int[]}
+     */
+    private static function build_candidate_pool( array $scoring_choices, array $hard_ids ) {
+        // A halmazok ID szerint csökkenő sorrendűek, tehát a csonkolás
+        // determinisztikus, és az újabb termékek maradnak bent.
+        $hard = array_slice( array_values( array_unique( array_map( 'intval', $hard_ids ) ) ), 0, self::HARD_CANDIDATE_LIMIT );
+        $candidates = $hard;
+        $seen = array_fill_keys( $hard, true );
+        foreach ( $scoring_choices as $choice ) {
+            $added = 0;
+            foreach ( MG_Gift_Finder_Facets::facet_product_ids( $choice ) as $product_id ) {
+                if ( isset( $seen[ $product_id ] ) ) continue;
+                $candidates[] = (int) $product_id;
+                $seen[ $product_id ] = true;
+                if ( ++$added >= self::RELATED_PER_CHOICE ) break;
+            }
+        }
+        return array(
+            'candidates' => array_slice( $candidates, 0, self::RANK_CANDIDATE_LIMIT ),
+            'hard'       => $hard,
+        );
+    }
+
     /** A jelöltek pontozása és sorba rendezése. */
-    private static function rank_candidates( array $candidate_ids, array $scoring_choices ) {
+    private static function rank_candidates( array $candidate_ids, array $scoring_choices, $hard_ids = null ) {
         // A jelölteket `fields => 'ids'` adja vissza, ami nem tölti fel a post
         // cache-t – enélkül a pontozó ciklus `get_the_title()` hívása
         // termékenként külön lekérdezést indítana.
@@ -870,7 +901,7 @@ class MG_Gift_Finder {
         }
 
         if ( ! empty( $ranked ) ) update_meta_cache( 'post', array_column( $ranked, 'product_id' ) );
-        $ranked = self::compose_diverse_results( $ranked, $scoring_choices, 10, 10 );
+        $ranked = self::compose_diverse_results( $ranked, $scoring_choices, 10, 10, $hard_ids );
         $ranked = array_slice( $ranked, 0, 50 );
 
         // Csak a megjelenítéshez kellő mezőket tároljuk el: a pontozás közbeni
@@ -1221,25 +1252,41 @@ class MG_Gift_Finder {
         return $data;
     }
 
-    private static function compose_diverse_results( $all_items, $choices, $primary_limit, $related_limit ) {
+    /**
+     * @param int[]|null $hard_ids Kemény szűrés esetén ezek adják a lista elejét; a
+     *                             többi találat kapcsolódó ötletként kerül alájuk.
+     */
+    private static function compose_diverse_results( $all_items, $choices, $primary_limit, $related_limit, $hard_ids = null ) {
         if ( empty( $all_items ) ) return array();
         $choice_indexes = array_keys( $choices );
         self::sort_ranked_items( $all_items );
-        $primary_index = reset( $choice_indexes );
-        $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
-            return ! empty( $item['category_matches'][ $primary_index ] );
-        } ) );
-        if ( empty( $primary ) ) {
-            $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
-                return ! empty( $item['keyword_matches'][ $primary_index ] );
+
+        if ( is_array( $hard_ids ) ) {
+            // Kemény szűrésnél a metszet a lista eleje, és minden válasz –
+            // a címzett is – adhat kapcsolódó ötletet a metszeten kívülről.
+            $hard_lookup = array_fill_keys( array_map( 'intval', $hard_ids ), true );
+            $primary = array_values( array_filter( $all_items, function( $item ) use ( $hard_lookup ) {
+                return isset( $hard_lookup[ (int) $item['product_id'] ] );
             } ) );
+            $bucket_indexes = $choice_indexes;
+        } else {
+            $primary_index = reset( $choice_indexes );
+            $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
+                return ! empty( $item['category_matches'][ $primary_index ] );
+            } ) );
+            if ( empty( $primary ) ) {
+                $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
+                    return ! empty( $item['keyword_matches'][ $primary_index ] );
+                } ) );
+            }
+            if ( empty( $primary ) ) $primary = $all_items;
+            $bucket_indexes = array_slice( $choice_indexes, 1 );
         }
-        if ( empty( $primary ) ) $primary = $all_items;
         self::sort_ranked_items( $primary );
         $primary_ids = array_fill_keys( array_map( 'intval', array_column( $primary, 'product_id' ) ), true );
 
         $buckets = array();
-        foreach ( array_slice( $choice_indexes, 1 ) as $choice_index ) {
+        foreach ( $bucket_indexes as $choice_index ) {
             $keyword_first = ! empty( $choices[ $choice_index ]['keyword_priority'] );
             $category_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids, $keyword_first ) {
                 return empty( $primary_ids[ (int) $item['product_id'] ] )
@@ -1397,7 +1444,12 @@ class MG_Gift_Finder {
             ? sprintf( 'különben csak %d ötletet találtunk volna.', $strict )
             : 'különben egyetlen ötletet sem találtunk volna.';
         $what = empty( $labels ) ? '' : sprintf( ' (%s)', implode( ', ', $labels ) );
-        return sprintf( '%s szűrőt feloldottunk%s, %s Kattints a szűrőre a chipek között, ha mégis ragaszkodsz hozzá.', $numeral, $what, $tail );
+        return sprintf(
+            '%s szűrőt feloldottunk%s, %s A lista elején a legpontosabb találatok állnak, alattuk a többi válaszodhoz illő kapcsolódó ötletek. Az áthúzott chipre kattintva visszakapcsolhatod a szűrőt.',
+            $numeral,
+            $what,
+            $tail
+        );
     }
 
     public static function get_no_result_stats() {

@@ -78,6 +78,16 @@ Ha a metszet a **lazítási küszöbnél** (alapérték: 12) kevesebb terméket 
 
 A szintek az adminoldal **7. Kemény szűrés és lazítás** szakaszában módosíthatók, a küszöbbel együtt. Az azonos szintű kérdések mindig együtt oldódnak fel: az alkalom feloldása a hozzá tartozó esemény feloldása nélkül értelmetlen állapot lenne. A címzett szintje kötött.
 
+### A metszet a lista eleje, nem a teljes lista
+
+A kemény szűrés csak a találati lista **elejét** határozza meg. Alatta minden válasz hoz még kapcsolódó ötleteket – azokat is, amelyek a metszetbe nem fértek bele.
+
+Példa: **Tesómnak → ballagásra**, ahol egyetlen „tesós ballagási" termék sincs. A kereső feloldja az alkalmat, tehát a lista elején a tesós termékek állnak, **de alattuk megjelennek a ballagási ötletek is** „Kapcsolódó ötlet" jelöléssel. Enélkül a vevő csak néhány tesós cuccot látna, egyetlen ballagási termék nélkül – pedig épp azt keresi.
+
+Ugyanígy az **Apának → karácsonyra → gamer** úton: ha van karácsonyi gamer apás termék, az áll legelöl (mindhárom válasznak megfelel); ha nincs, akkor a karácsonyi apás ajándékok jönnek elöl, alattuk pedig a gamer ötletek. A kereső egyik esetben sem marad néma.
+
+Ha a címzettre egyáltalán nincs termék, a lista akkor sem ürül ki: a többi válasz találatai jelennek meg.
+
 **A feloldott feltétel nem tűnik el, csak lefokozódik szűrőből rangsorjellé:** a neki megfelelő termékek továbbra is előre kerülnek a listában. A találatok fölött a feloldott válasz chipje áthúzva látszik, mellette rövid magyarázat („Két szűrőt feloldottunk (foglalkozás, érdeklődés), különben csak 1 ötletet találtunk volna."). Az áthúzott chip címkéjére kattintva a szűrő visszakapcsolható – ilyenkor az URL `mg_gift_keep` paramétere tiltja rá a lazítást, és a vevő látja a valóban szűk találati listát.
 
 A metszetes szűrés a **7. szakaszban** kikapcsolható; ekkor a kereső a korábbi, unió szerinti viselkedésre vált, és lazítás sem történik.
