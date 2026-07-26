@@ -63,6 +63,19 @@ Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák 
 
 A rangsor kiszámítása gyorsítótárba kerül (kombinációnként, egy órára). A gyorsítótárat automatikusan elavulttá teszi minden termékmentés, készletváltozás, termékkategória-módosítás és az Ajándékkereső beállításainak mentése.
 
+## Szűrő-diagnosztika
+
+Az adminoldal **8. Szűrő-diagnosztika (címzett × alkalom)** táblázata minden lehetséges címzett–alkalom párra megmutatja:
+
+- **Címzett önmagában:** hány termék felel meg a címzettnek;
+- **Mai unió (OR):** a jelenlegi, OR-alapú jelöltszám a két válaszra;
+- **Szigorú metszet (AND):** hány termék felel meg egyszerre mindkét válasznak;
+- **Szűkítés:** az alkalom hány százalékkal csökkenti a címzett termékkörét.
+
+A 0%-os sorok pirosan látszanak: ott az alkalom ugyanazokra a kategóriákra mutat, mint a címzett, tehát a szigorú (metszetes) szűrés nem szűkít semmit. Ezeken az útvonalakon a katalógus besorolásán kell változtatni, nem a keresőn. A táblázat külön jelzi az **átfedő kategóriafát** is: ha az alkalom és a címzett közös kategóriaágon él, az `include_children` miatt a „szigorú” szint sem lesz igazán szigorú.
+
+A számok a találati rangsorral közös, verzióhoz kötött gyorsítótárból jönnek: válaszonként egy termékhalmaz, amiből minden pár metszete adatbázis-lekérdezés nélkül számolható.
+
 ## Mérés
 
 A kereső minden lépése méri magát, így a lemorzsolódás végigkövethető. Az események a `dataLayer`-be (GTM/GA4), a Google taghez és – megadott marketing-hozzájárulás mellett – a Meta Pixelhez is kimennek:

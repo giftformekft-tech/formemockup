@@ -31,8 +31,8 @@ class MG_Gift_Finder {
         }
     }
 
-    /** A rangsor-gyorsítótár kulcsába épített verzió. */
-    private static function cache_version() {
+    /** A rangsor-gyorsítótár kulcsába épített verzió. A facet-halmazok is ezt használják. */
+    public static function cache_version() {
         return (int) get_option( self::CACHE_VERSION_KEY, 1 );
     }
 
@@ -562,6 +562,25 @@ class MG_Gift_Finder {
         return $variants;
     }
 
+    /**
+     * Egy adminban felvett válaszlehetőségből a találatszámításban használt
+     * választás. A frontend és az admin diagnosztikája ugyanezt az alakot
+     * használja, különben a diagnosztika mást mérne, mint amit a vevő lát.
+     */
+    public static function build_choice( $question_key, $option ) {
+        $category_ids = self::get_option_category_ids( $option );
+        return array(
+            'question'            => $question_key,
+            'label'               => sanitize_text_field( $option['label'] ?? '' ),
+            'category_id'         => (int) ( $category_ids[0] ?? 0 ),
+            'category_ids'        => $category_ids,
+            'parent_category_ids' => array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),
+            'keywords'            => self::get_option_keywords( $option ),
+            'priority_keywords'   => self::get_explicit_keywords( $option ),
+            'keyword_priority'    => ! empty( $option['keywords'] ),
+        );
+    }
+
     private static function get_selected_choices( $settings ) {
         $selected = array();
         $prior = array();
@@ -572,18 +591,9 @@ class MG_Gift_Finder {
                 if ( ! self::option_matches_value( $option, $value ) ) continue;
                 $parents = array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) );
                 if ( empty( $parents ) || array_intersect( $parents, $prior ) ) {
-                    $category_ids = self::get_option_category_ids( $option );
-                    $selected[] = array(
-                        'question'   => $key,
-                        'label'      => sanitize_text_field( $option['label'] ?? '' ),
-                        'category_id'=> (int) ( $category_ids[0] ?? 0 ),
-                        'category_ids'=> $category_ids,
-                        'parent_category_ids' => $parents,
-                        'keywords'    => self::get_option_keywords( $option ),
-                        'priority_keywords' => self::get_explicit_keywords( $option ),
-                        'keyword_priority' => ! empty( $option['keywords'] ),
-                    );
-                    $prior = array_merge( $prior, $category_ids );
+                    $choice = self::build_choice( $key, $option );
+                    $selected[] = $choice;
+                    $prior = array_merge( $prior, $choice['category_ids'] );
                 }
                 break;
             }

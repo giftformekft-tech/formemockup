@@ -124,6 +124,7 @@ class MG_Gift_Finder_Page {
             </form>
 
             <?php self::render_stats(); ?>
+            <?php self::render_facet_diagnostics(); ?>
         </div>
 
         <script type="text/html" id="mg-gift-card-template"><?php self::card_row( '__INDEX__', array(), $categories ); ?></script>
@@ -205,6 +206,52 @@ class MG_Gift_Finder_Page {
                     <?php foreach ( $stats as $row ) : ?><tr><td><?php echo esc_html( ! empty( $row['terms'] ) ? implode( ', ', $row['terms'] ) : 'Nincs kategóriaszűrés' ); ?></td><td><?php echo esc_html( (int) $row['count'] ); ?>×</td><td><?php echo esc_html( $row['last_seen'] ); ?></td></tr><?php endforeach; ?>
                 </tbody></table>
                 <form method="post"><?php wp_nonce_field( 'mg_clear_gift_stats', 'mg_gift_stats_nonce' ); ?><?php submit_button( 'Statisztika törlése', 'delete', 'submit', false ); ?></form>
+            <?php endif; ?>
+        </section><?php
+    }
+
+    /**
+     * Címzett × alkalom szűrő-diagnosztika.
+     *
+     * Azt méri ki, hogy a metszet szerinti (AND) szűrés egyáltalán szűkít-e.
+     * Ahol az alkalom ugyanazokra a kategóriákra mutat, mint a címzett, ott a
+     * szigorú szűrésnek nincs értelme – ezt a táblázat külön jelzi.
+     */
+    private static function render_facet_diagnostics() {
+        if ( ! class_exists( 'MG_Gift_Finder_Facets' ) ) return;
+        $matrix = MG_Gift_Finder_Facets::recipient_occasion_matrix();
+        $rows = $matrix['rows'];
+        $no_op_count = count( array_filter( $rows, function( $row ) { return ! empty( $row['no_op'] ); } ) );
+        ?>
+        <section class="mg-gift-stats mg-gift-diagnostics">
+            <h2>8. Szűrő-diagnosztika (címzett × alkalom)</h2>
+            <p class="description">Csak olvasható kimutatás: a keresőn semmit nem változtat. A „mai unió” a jelenlegi OR-alapú jelöltszám, a „szigorú metszet” pedig az, amennyi termék mindkét válasznak egyszerre megfelel. A szűkítés azt mutatja, hogy az alkalom hány százalékkal csökkenti a címzett önmagában adott termékkörét. A számok a találati gyorsítótárral közös, verzióhoz kötött cache-ből jönnek, és termékmentéskor frissülnek.</p>
+            <?php if ( empty( $rows ) ) : ?>
+                <p>Még nincs kiszámítható címzett–alkalom pár. Adj hozzá válaszokat a címzett és az alkalom kérdéshez.</p>
+            <?php else : ?>
+                <p><strong><?php echo esc_html( count( $rows ) ); ?></strong> lehetséges pár közül <strong><?php echo esc_html( $no_op_count ); ?></strong> esetben az alkalom egyáltalán nem szűkít (0%). Ezeken az útvonalakon a szigorú szűrésnek nincs hatása – ott a katalógus besorolásán kell változtatni, nem a keresőn.</p>
+                <?php if ( ! empty( $matrix['truncated'] ) ) : ?>
+                    <p class="description"><em>A lista <?php echo esc_html( MG_Gift_Finder_Facets::MAX_DIAGNOSTIC_PAIRS ); ?> párnál elvágva.</em></p>
+                <?php endif; ?>
+                <table class="widefat striped">
+                    <thead><tr><th>Címzett</th><th>Alkalom</th><th>Címzett önmagában</th><th>Mai unió (OR)</th><th>Szigorú metszet (AND)</th><th>Szűkítés</th><th>Megjegyzés</th></tr></thead>
+                    <tbody>
+                    <?php foreach ( $rows as $row ) : ?>
+                        <tr<?php echo ! empty( $row['no_op'] ) ? ' style="background:#fcf0f1"' : ''; ?>>
+                            <td><?php echo esc_html( $row['recipient'] ); ?></td>
+                            <td><?php echo esc_html( $row['occasion'] ); ?></td>
+                            <td><?php echo esc_html( $row['recipient_count'] ); ?></td>
+                            <td><?php echo esc_html( $row['union_count'] ); ?></td>
+                            <td><?php echo esc_html( $row['strict_count'] ); ?></td>
+                            <td><strong><?php echo esc_html( $row['narrowing_percent'] ); ?>%</strong></td>
+                            <td>
+                                <?php if ( ! empty( $row['no_op'] ) ) : ?><span style="color:#b32d2e;font-weight:700">Az AND itt hatástalan</span><?php endif; ?>
+                                <?php if ( ! empty( $row['overlapping_tree'] ) ) : ?><br /><span class="description">Átfedő kategóriafa: az alkalom és a címzett közös kategóriaágon él, ezért az <code>include_children</code> miatt a „szigorú” szint sem igazán szigorú.</span><?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             <?php endif; ?>
         </section><?php
     }
