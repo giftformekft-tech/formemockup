@@ -363,6 +363,16 @@
                     updateProductPreviews(typeSelect.value, colorSelect.value);
                 }
             });
+            // Vissza gomb (bfcache) után a böngésző visszaállíthatja a
+            // legördülő értékét, change esemény nélkül – a hozzá tartozó
+            // színlista ilyenkor üresen maradna.
+            var restoredTypeSelect = finder.querySelector('.mg-gift-type-select');
+            if (restoredTypeSelect && restoredTypeSelect.value) {
+                try {
+                    restoredTypeSelect.dispatchEvent(new Event('change', {bubbles: true}));
+                } catch (error) {}
+            }
+
             finder.querySelectorAll('.mg-gift-product-card img[data-default-src]').forEach(function (image) {
                 image.addEventListener('load', function () { image.classList.remove('is-loading'); });
                 image.addEventListener('error', function () {
