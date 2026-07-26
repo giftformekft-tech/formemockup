@@ -51,6 +51,14 @@ Az Ajándékkereső adminoldalán a **Katalógus JSON letöltése** gombbal kés
 
 A kereső minden válaszhoz egy vagy több WooCommerce-kategóriát rendel. A termékek annyi pontot kapnak, ahány választott logikai kategóriacsoportnak megfelelnek; csak a legmagasabb egyezésű csoport kerül a találatok közé. Az érdeklődési lépés csak születésnapnál és az általános „csak úgy” alkalomnál jelenik meg, ezért például az `Anyának → Karácsonyra` útvonalat nem írhatja felül egy nem igazolható „vicces” vagy „horgász” szűrés. Ha a vásárló a találatból kosárba tesz egy terméket, a már meglévő Mockup Generator cross-sell szabályok továbbra is automatikusan működnek a kosárban.
 
+### Válasz-chipek a találatok fölött
+
+A találati lista fölött chipként megjelenik minden megadott válasz, a kérdések sorrendjében, a végén a főoldali szezonális kártyáról érkező kiindulási kategóriával. Minden chip „×” gombja egy hivatkozás, amely ugyanazt az oldalt tölti be az adott válasz nélkül. Így a találat kiindulópont marad: nem kell elölről kezdeni a keresőt egyetlen válasz módosításához.
+
+Ha egy elhagyott válaszra függő válasz épült (például az „Anyák napja” az „Anyának” címzettre), a link a függő választ is elhagyja.
+
+Mivel a chipek hivatkozások, a szűrt találati oldalak `noindex,follow` fejlécet és az alap keresőoldalra mutató canonicalt kapnak. Enélkül a válaszkombinációk bejárható, azonos tartalmú URL-teret nyitnának a keresőrobotok előtt.
+
 Az adminban összeállított ajándékcsomagok a hozzájuk rendelt kategóriák egyezésekor jelennek meg. Az eredménytelen kereséseket a rendszer összesítve tárolja; ugyanattól a látogatótól ugyanazt a kombinációt 30 percen belül csak egyszer számolja.
 
 A rangsor kiszámítása gyorsítótárba kerül (kombinációnként, egy órára). A gyorsítótárat automatikusan elavulttá teszi minden termékmentés, készletváltozás, termékkategória-módosítás és az Ajándékkereső beállításainak mentése.
@@ -69,5 +77,6 @@ A kereső minden lépése méri magát, így a lemorzsolódás végigkövethető
 | `select_item` | termékkártyára kattintáskor | GA4 `items` |
 | `gift_finder_load_more` | a „Mutass még ötleteket" gombra | `gift_revealed` |
 | `gift_finder_restart` | az „Újrakezdem" gombra | – |
+| `gift_finder_chip_removed` | egy válasz-chip elhagyásakor | `gift_question` |
 
 A Meta felé ugyanezek egyedi eseményként mennek (`GiftFinderStart`, `GiftFinderStep`, …), hozzájárulás nélkül nem.

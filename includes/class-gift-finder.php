@@ -13,6 +13,7 @@ class MG_Gift_Finder {
     public static function init() {
         add_action( 'init', array( __CLASS__, 'register_block_and_shortcodes' ) );
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'register_assets' ) );
+        add_action( 'wp', array( __CLASS__, 'maybe_mark_results_noindex' ) );
 
         // A találati rangsor gyorsítótárát minden olyan változás elavulttá teszi,
         // ami a termékkínálatot vagy a besorolást érinti.
@@ -146,6 +147,59 @@ class MG_Gift_Finder {
         $settings = self::get_settings();
         $url = $settings['page_id'] ? get_permalink( (int) $settings['page_id'] ) : '';
         return $url ?: home_url( '/ajandekkereso/' );
+    }
+
+    /**
+     * A szűrt találati oldalak kikerülnek az indexből.
+     *
+     * A válasz-chipek eltávolító linkjei bejárható URL-teret nyitnak: minden
+     * válaszkombináció külön cím ugyanazzal a tartalommal. A `follow` marad,
+     * hogy a termékkártyák linkjei tovább öröklődjenek.
+     */
+    public static function maybe_mark_results_noindex() {
+        if ( is_admin() || ! isset( $_GET['mg_gift_submitted'] ) || ! self::is_finder_request() ) {
+            return;
+        }
+        add_filter( 'wp_robots', array( __CLASS__, 'filter_results_robots' ) );
+        // A saját canonical az alap keresőoldalra mutat, ezért a WordPress és a
+        // Yoast saját, paraméteres canonicalját is le kell cserélni. Ahol a
+        // Yoast aktív, ő írja ki a fejlécet – enélkül két canonical kerülne ki.
+        remove_action( 'wp_head', 'rel_canonical' );
+        if ( defined( 'WPSEO_VERSION' ) ) {
+            add_filter( 'wpseo_canonical', array( __CLASS__, 'filter_results_canonical' ) );
+            add_filter( 'wpseo_robots', array( __CLASS__, 'filter_results_yoast_robots' ) );
+        } else {
+            add_action( 'wp_head', array( __CLASS__, 'render_results_canonical' ), 1 );
+        }
+    }
+
+    /** Igaz, ha a jelenlegi kérés az ajándékkereső oldala. */
+    private static function is_finder_request() {
+        if ( ! is_singular() ) return false;
+        $post = get_post();
+        if ( ! $post ) return false;
+        $page_id = (int) self::get_settings()['page_id'];
+        if ( $page_id && (int) $post->ID === $page_id ) return true;
+        return has_shortcode( (string) $post->post_content, 'mg_gift_finder' );
+    }
+
+    public static function filter_results_robots( $robots ) {
+        $robots['noindex'] = true;
+        $robots['follow']  = true;
+        unset( $robots['index'], $robots['nofollow'] );
+        return $robots;
+    }
+
+    public static function filter_results_canonical( $canonical ) {
+        return self::get_finder_url();
+    }
+
+    public static function filter_results_yoast_robots( $robots ) {
+        return 'noindex, follow';
+    }
+
+    public static function render_results_canonical() {
+        echo '<link rel="canonical" href="' . esc_url( self::get_finder_url() ) . '" />' . "\n";
     }
 
     public static function register_assets() {
@@ -524,6 +578,7 @@ class MG_Gift_Finder {
                         'label'      => sanitize_text_field( $option['label'] ?? '' ),
                         'category_id'=> (int) ( $category_ids[0] ?? 0 ),
                         'category_ids'=> $category_ids,
+                        'parent_category_ids' => $parents,
                         'keywords'    => self::get_option_keywords( $option ),
                         'priority_keywords' => self::get_explicit_keywords( $option ),
                         'keyword_priority' => ! empty( $option['keywords'] ),
@@ -750,6 +805,120 @@ class MG_Gift_Finder {
         }, $ranked );
     }
 
+    /** A jelenlegi keresés URL-paraméterei, fertőtlenítve. */
+    private static function get_active_query_args( $settings ) {
+        $args = array();
+        foreach ( array_keys( $settings['questions'] ) as $key ) {
+            $value = sanitize_text_field( wp_unslash( $_GET[ 'mg_gift_' . $key ] ?? '' ) );
+            if ( $value !== '' && $value !== '0' ) $args[ 'mg_gift_' . $key ] = $value;
+        }
+        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
+        if ( $start ) $args['mg_gift_start'] = $start;
+        $args['mg_gift_submitted'] = 1;
+        return $args;
+    }
+
+    /**
+     * Egy válasz elhagyásával képzett találati URL.
+     *
+     * A rá épülő függő válaszokat is elhagyja: az „Anyák napja” önmagában
+     * értelmetlen az „Anyának” címzett nélkül, és a kereső úgyis kiszűrné –
+     * de az URL-ben ottfelejtve zavaros állapotot hagyna.
+     */
+    private static function get_chip_remove_url( $question_key, $choices, $settings ) {
+        $args = self::get_active_query_args( $settings );
+        unset( $args[ 'mg_gift_' . $question_key ] );
+        if ( $question_key === 'start' ) unset( $args['mg_gift_start'] );
+
+        $removed = array();
+        foreach ( $choices as $choice ) {
+            if ( ( $choice['question'] ?? '' ) !== $question_key ) continue;
+            $removed = array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) );
+        }
+        if ( $question_key === 'start' && isset( $_GET['mg_gift_start'] ) ) $removed = array( (int) $_GET['mg_gift_start'] );
+        if ( ! empty( $removed ) ) {
+            $seen_current = false;
+            foreach ( $choices as $choice ) {
+                $key = $choice['question'] ?? '';
+                if ( $key === $question_key ) { $seen_current = true; continue; }
+                if ( ! $seen_current ) continue;
+                $parents = array_map( 'intval', (array) ( $choice['parent_category_ids'] ?? array() ) );
+                if ( $parents && array_intersect( $parents, $removed ) ) unset( $args[ 'mg_gift_' . $key ] );
+            }
+        }
+        return add_query_arg( $args, self::get_finder_url() );
+    }
+
+    /** Rövid, chipre férő kérdésnév. */
+    private static function get_chip_prefix( $question_key ) {
+        $prefixes = array(
+            'recipient'    => 'Kinek',
+            'occasion'     => 'Alkalom',
+            'wedding_type' => 'Esemény',
+            'interest'     => 'Érdeklődés',
+            'occupation'   => 'Foglalkozás',
+            'start'        => 'Kiindulás',
+        );
+        return $prefixes[ $question_key ] ?? '';
+    }
+
+    private static function build_chips( $choices, $settings ) {
+        $chips = array();
+        foreach ( $choices as $choice ) {
+            $key = $choice['question'] ?? '';
+            if ( $key === '' || ( $choice['label'] ?? '' ) === '' ) continue;
+            $chips[] = array(
+                'question'   => $key,
+                'prefix'     => self::get_chip_prefix( $key ),
+                'label'      => $choice['label'],
+                'remove_url' => self::get_chip_remove_url( $key, $choices, $settings ),
+            );
+        }
+
+        $start = isset( $_GET['mg_gift_start'] ) ? (int) $_GET['mg_gift_start'] : 0;
+        if ( $start ) {
+            $label = '';
+            foreach ( $settings['cards'] as $card ) {
+                if ( (int) ( $card['category_id'] ?? 0 ) !== $start ) continue;
+                $term = get_term( $start, 'product_cat' );
+                $label = sanitize_text_field( $card['label'] ?? '' ) ?: ( $term && ! is_wp_error( $term ) ? $term->name : '' );
+                break;
+            }
+            if ( $label !== '' ) {
+                $chips[] = array(
+                    'question'   => 'start',
+                    'prefix'     => self::get_chip_prefix( 'start' ),
+                    'label'      => $label,
+                    'remove_url' => self::get_chip_remove_url( 'start', $choices, $settings ),
+                );
+            }
+        }
+        return $chips;
+    }
+
+    /**
+     * A megadott válaszok chipsávja a találatok fölött.
+     *
+     * A találat így kiindulópont lesz, nem végállapot: egyetlen válasz is
+     * levehető anélkül, hogy a vevőnek elölről kellene kezdenie. A chipek
+     * hétköznapi linkek, ezért a vissza gomb és a megosztott URL is működik.
+     */
+    private static function render_chip_bar( $chips ) {
+        if ( empty( $chips ) ) return;
+        ?>
+        <div class="mg-gift-chips" role="group" aria-label="A választásaid">
+            <span class="mg-gift-chips__intro">A válaszaid:</span>
+            <?php foreach ( $chips as $chip ) : ?>
+                <span class="mg-gift-chip">
+                    <?php if ( $chip['prefix'] !== '' ) : ?><span class="mg-gift-chip__question"><?php echo esc_html( $chip['prefix'] ); ?></span><?php endif; ?>
+                    <span class="mg-gift-chip__label"><?php echo esc_html( $chip['label'] ); ?></span>
+                    <a class="mg-gift-chip__remove" href="<?php echo esc_url( $chip['remove_url'] ); ?>" data-question="<?php echo esc_attr( $chip['question'] ); ?>" aria-label="<?php echo esc_attr( $chip['label'] . ' szűrő elhagyása' ); ?>"><span aria-hidden="true">×</span></a>
+                </span>
+            <?php endforeach; ?>
+        </div>
+        <?php
+    }
+
     private static function render_results( $choices, $term_ids, $settings ) {
         $scoring_choices = self::build_scoring_choices( $choices, $term_ids );
         $ranked = self::get_ranked_results( $scoring_choices );
@@ -764,6 +933,7 @@ class MG_Gift_Finder {
              data-choice-count="<?php echo esc_attr( count( $scoring_choices ) ); ?>"
              data-max-score="<?php echo esc_attr( $max_score ); ?>">
             <div class="mg-gift-results__heading"><div><span class="mg-gift-eyebrow">Személyre szabott találatok</span><h2 tabindex="-1">Ezeket neked válogattuk</h2></div><button type="button" class="mg-gift-restart">Újrakezdem</button></div>
+            <?php self::render_chip_bar( self::build_chips( $choices, $settings ) ); ?>
             <?php if ( empty( $ranked ) ) : ?>
                 <?php self::log_no_results( $term_ids ); ?>
                 <p class="mg-gift-empty">Erre a kombinációra még nincs találat. Válassz másik lehetőséget, vagy nézd meg az összes ajándékot.</p>

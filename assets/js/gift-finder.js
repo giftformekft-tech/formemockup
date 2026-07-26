@@ -132,6 +132,17 @@
                 return 0;
             }
             finder.addEventListener('click', function (event) {
+                // A chip elhagyása navigáció, ezért az eseményt még a lapváltás
+                // előtt kell kiküldeni – enélkül a mérés elveszne.
+                var chipRemove = event.target.closest('.mg-gift-chip__remove');
+                if (chipRemove) {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                    event.preventDefault();
+                    track('gift_finder_chip_removed', {gift_question: chipRemove.dataset.question || ''});
+                    var chipTarget = chipRemove.href;
+                    window.setTimeout(function () { window.location.href = chipTarget; }, 120);
+                    return;
+                }
                 var loadMore = event.target.closest('.mg-gift-load-more');
                 if (loadMore) {
                     var hiddenCards = Array.prototype.slice.call(results.querySelectorAll('.mg-gift-product-card[hidden]'));
