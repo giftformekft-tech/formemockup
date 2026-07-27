@@ -10,6 +10,20 @@ class MG_Virtual_Variant_Manager {
     protected static $generated_preview_cache = array();
 
     /**
+     * True while egy WooCommerce rendelés-email tábláját rendereljük.
+     * Az adminból indított státuszváltás (pl. "gyártás alatt") is admin
+     * kontextusban fut, ezért a levélben külön kell szűrni a tétel metákat.
+     *
+     * @var bool
+     */
+    protected static $rendering_email = false;
+
+    /**
+     * A vevőnek/gyártásnak szóló levélben megjelenő tétel meták.
+     */
+    protected static $email_meta_whitelist = array('hónap', 'terméktípus', 'szín', 'méret');
+
+    /**
      * Return wp_upload_dir() result, cached for the lifetime of this request.
      * Prevents repeated filesystem/filter overhead when multiple methods call
      * wp_upload_dir() during the same page load.
@@ -45,6 +59,8 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
+        add_action('woocommerce_email_before_order_table', array(__CLASS__, 'start_email_rendering'), -PHP_INT_MAX);
+        add_action('woocommerce_email_after_order_table', array(__CLASS__, 'stop_email_rendering'), PHP_INT_MAX);
         add_filter('woocommerce_get_order_item_totals', array(__CLASS__, 'clean_payment_method_label'), 999, 3);
         add_filter('woocommerce_product_get_image', array(__CLASS__, 'filter_product_image_on_cart'), 999, 5);
         add_filter('woocommerce_order_item_name', array(__CLASS__, 'add_thumbnail_to_order_item_name'), 10, 2);
@@ -1685,7 +1701,37 @@ class MG_Virtual_Variant_Manager {
         return $total_rows;
     }
 
+    public static function start_email_rendering() {
+        self::$rendering_email = true;
+    }
+
+    public static function stop_email_rendering() {
+        self::$rendering_email = false;
+    }
+
+    /**
+     * Levélben csak a vevő/gyártás számára értelmes sorok maradnak
+     * (Hónap, Terméktípus, Szín, Méret), minden más metát elrejtünk.
+     */
+    protected static function filter_email_meta_display($formatted_meta) {
+        foreach ($formatted_meta as $meta_id => $meta) {
+            $label = isset($meta->display_key) && $meta->display_key !== '' ? $meta->display_key : $meta->key;
+            $label = trim(wp_strip_all_tags(html_entity_decode((string) $label, ENT_QUOTES, 'UTF-8')));
+            $label = function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
+
+            if (!in_array($label, self::$email_meta_whitelist, true)) {
+                unset($formatted_meta[$meta_id]);
+            }
+        }
+
+        return $formatted_meta;
+    }
+
     public static function filter_order_item_meta_display($formatted_meta, $item) {
+        if (self::$rendering_email) {
+            return self::filter_email_meta_display($formatted_meta);
+        }
+
         // Always show everything in Admin edit screens (unless AJAX) to allow debugging
         if (is_admin() && !wp_doing_ajax()) {
             return $formatted_meta;
