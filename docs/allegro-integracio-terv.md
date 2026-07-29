@@ -10,12 +10,13 @@ Fejlesztési terv. Önállóan végrehajtható, előzetes kontextus nélkül.
 - **Nincs EAN/GTIN, és nem is lesz.** Ez a terv központi megkötése – lásd 7. fejezet.
 - **Csak a magyar piac** (allegro.hu). Nincs PL/CZ/SK értékesítés.
 
-**Források.** A 6. és 7. fejezet a hivatalos fejlesztői portál két oldalán
-alapul, amit PDF-ben kaptunk: az „Alapvető információk" (magyar) és a
-„Dokumentacja" OpenAPI-referencia (az ajánlat- és katalógus-szekció).
-A **rendelés- és számla-végpontok** (8. fejezet) nem szerepeltek ezekben,
-azok forrása a súgó és a GitHub issue-k – ezeket implementáció előtt
-ellenőrizni kell.
+**Források.** A terv a hivatalos fejlesztői portál dokumentációján alapul:
+az „Alapvető információk" oldal (magyar) és a **teljes, 473 oldalas
+OpenAPI-referencia** (279 végpont), amely a
+`giftformekft-tech/allegro-sync` repóban van
+(`Allegro Developer Portal - baza wiedzy o Allegro REST API.pdf`).
+Ezzel a 6., 7. és 8. fejezet végpontjai és mezői **ellenőrzöttek**, nem
+becslésen alapulnak.
 
 ---
 
@@ -421,19 +422,53 @@ Az ajánlat további releváns mezői: `external.id` (a mi SKU-nk),
 
 ### 6.4 Rendelés és számla
 
-> ⚠️ Ez a szekció **nem** szerepelt a kapott PDF-ekben. A végpontok a súgó és a
-> GitHub issue-k alapján valószínűek, de implementáció előtt ellenőrizni kell.
-
 | Végpont | Szerep |
 |---|---|
-| `GET /order/events` | rendelés-eseményfolyam – inkrementális lehúzáshoz |
-| `GET /order/checkout-forms/{id}` | rendelés részletei |
+| `GET /order/events` | **rendelés-eseményfolyam** – inkrementális lehúzás |
+| `GET /order/event-stats` | eseményfolyam-statisztika |
+| `GET /order/checkout-forms`, `/{id}` | rendeléslista és részletek |
+| `PUT /order/checkout-forms/{id}/fulfillment` | eladói állapot |
 | `POST /order/checkout-forms/{id}/shipments` | csomagszám visszaírás |
-| `POST /order/checkout-forms/{id}/invoices` | számlaobjektum létrehozása |
+| `GET /order/carriers`, `/order/carriers/{id}/tracking` | futárszolgálatok, követés |
+| `POST /order/checkout-forms/{id}/invoices` | számla-metaadat |
 | `PUT /order/checkout-forms/{id}/invoices/{invoiceId}/file` | PDF feltöltés |
+| `GET /order/customer-returns` | vevői visszaküldések |
+| `GET/POST /order/refund-claims` | visszatérítési igények |
+| `GET/POST /payments/refunds`, `GET /payments/payment-operations` | fizetések, visszatérítés |
+| `GET /billing/billing-entries`, `/billing/billing-types` | **jutalék- és díjtételek** |
 
-A feltöltött számla ellenőrzési státuszt kap: `WAITING` → `ACCEPTED` / `REJECTED`.
-A `REJECTED` esetet kezelni kell (értesítés).
+**Eseményfolyam.** A `GET /order/events` kurzoros: a `from` paraméterbe az
+utolsó feldolgozott **esemény ID-ja** megy, `limit` 1–1000 (alap 100).
+Az események típusai:
+
+| Típus | Jelentés |
+|---|---|
+| `BOUGHT` | vásárlás, kitöltött űrlap nélkül |
+| `FILLED_IN` | űrlap kitöltve, de a fizetés még nincs kész – **az adat még változhat** |
+| `READY_FOR_PROCESSING` | **fizetés teljesítve, feldolgozásra kész** |
+| `BUYER_CANCELLED` | a vevő lemondta |
+| `FULFILLMENT_STATUS_CHANGED` | eladói állapot változott |
+| `AUTO_CANCELLED` | az Allegro automatikusan lemondta |
+
+**A számlázás kizárólag `READY_FOR_PROCESSING`-re indulhat.** A `FILLED_IN`
+állapotban a dokumentáció szerint az adat még változhat – ha ott számlázunk,
+rossz vevőadattal állítunk ki számlát, amit utána sztornózni kell.
+
+**Eladói állapot.** A `PUT …/fulfillment` `status` értékei: `NEW`,
+`PROCESSING`, `READY_FOR_SHIPMENT`, `READY_FOR_PICKUP`, `SENT`, `PICKED_UP`,
+`CANCELLED`, `SUSPENDED`, `RETURNED`. Két fontos részlet:
+
+- A `RETURNED` **nem állítható be eladóként** – automatikusan vált.
+- A hívás **revíziót használ**: elavult revízióval `409 Conflict`. Tehát
+  módosítás előtt friss állapotot kell olvasni, és ütközésnél újrapróbálni.
+- A `SENT` automatikusan beáll csomagszám hozzáadásakor, ha a fiókban be van
+  kapcsolva a megfelelő beállítás – érdemes ezt bekapcsolni, akkor a
+  `shipments` hívás elég.
+
+**Jutalék.** A `GET /billing/billing-entries` szűrhető `offer.id`-ra és
+`order.id`-ra, `type.id`-val (pl. `LIS` listázás, `SUC` sikerdíj). Tehát
+**rendelésenként és ajánlatonként visszaolvasható a tényleges díj** – ezzel a
+valós árrés kiszámolható, nem kell becsülni. Lásd a 10. fejezet 4. kérdését.
 
 ---
 
@@ -608,15 +643,42 @@ fix 27% ÁFA, magyar vevő, nincs OSS-logika.
 
 Folyamat:
 
-1. `OrderSync` lehúzza az új, **kifizetett** rendelést (`GET /order/events`).
+1. `OrderSync` lehúzza a `READY_FOR_PROCESSING` eseményt (`GET /order/events`).
 2. Leképezzük a szamlazz.hu számla-XML-re: vevő adatai, tételek, 27% ÁFA, HUF.
 3. Számla Agent hívás → válaszban számlaszám + PDF.
-4. PDF elmentése, majd feltöltés az Allegróra
-   (`POST …/invoices`, majd `PUT …/invoices/{id}/file`).
-5. Számlaszám + Allegro `invoiceId` rögzítése az állapottárban.
+4. `POST /order/checkout-forms/{id}/invoices` – **csak metaadat**:
+   ```json
+   { "file": { "name": "invoice.pdf" }, "invoiceNumber": "2026/00123" }
+   ```
+   Válasz `201`: `{ "id": "56ae349d-…" }` – ez az `invoiceId`.
+5. `PUT /order/checkout-forms/{id}/invoices/{invoiceId}/file` –
+   `Content-Type: application/pdf`, bináris törzs.
+6. Számlaszám + Allegro `invoiceId` rögzítése az állapottárban.
 
-Idempotencia: rendelésazonosítónként **pontosan egy** számla. Az állapottár
-`orders` táblája őrzi, hogy kiállítottuk-e már – újrafuttatásnál nem duplázunk.
+### 8.1 Három megkötés, ami a ciklus alakját meghatározza
+
+**A metaadat és a fájl párban megy, sorosan.** A `POST …/invoices` `429`-cel
+válaszol ezzel az üzenettel: *„You're trying to add another metadata too fast.
+Upload a file to previously added metadata or wait a few seconds before adding
+next metadata."* Tehát **nem szabad** előbb legyártani az összes metaadatot,
+majd utána feltölteni a fájlokat. A helyes ciklus rendelésenként:
+metaadat → azonnal PDF → következő rendelés.
+
+**Max. 3 MB a PDF.** Túllépésnél `413`. A szamlazz.hu PDF-je jellemzően jóval
+kisebb, de a feltöltés előtt ellenőrizni kell, és ha valamiért nagyobb
+(pl. sok tétel), akkor jelezni.
+
+**A `409`-ek ingyen idempotenciát adnak.** A `POST …/invoices` `409`-et ad, ha
+a rendelésnek **már van eladói számlája**; a `PUT …/file` `409`-et, ha a
+számlához **már van feltöltött fájl**. Újrafuttatásnál tehát nem duplázunk,
+és a `409` nem hiba, hanem „ez már kész" – így kell kezelni.
+
+Ezen felül az állapottár `orders` táblája is őrzi, hogy kiállítottuk-e már a
+számlát, hogy a szamlazz.hu oldalán se duplázzunk.
+
+Kezelendő hibaágak: `422` – a rendelés nem enged számlát, a fizetés
+elutasított, vagy **az előzőleg feltöltött fájl még vírusellenőrzés alatt van**.
+Ez utóbbi átmeneti, tehát újrapróbálandó, nem végleges hiba.
 
 > **Megjegyzés a pontosságról:** a `docs.szamlazz.hu` domaint a fejlesztői
 > környezet proxyja blokkolja (403), így a szamlazz.hu XML mezőneveit
@@ -658,19 +720,25 @@ Ami még nyitott:
 3. **Szállítás:** ki szállít belföldön, milyen díjszabással?
    Allegro Shipping / DPD, vagy saját futár?
 4. **Árazás:** a HUF-ár honnan jön – a WooCommerce ár + szorzó, vagy külön
-   Allegro-árlista? A jutalékot és a szállítást be kell építeni.
+   Allegro-árlista? A jutalékot **nem kell becsülni**: a
+   `GET /billing/billing-entries` rendelésenként visszaadja a tényleges
+   díjtételeket, tehát az induló árazás után a valós árrés kimérhető, és
+   a szorzó ez alapján hangolható. Az induló szorzóhoz viszont kell egy
+   döntés – a 180 napos 0% jutalékos időszak ezt torzítja, arra figyelni kell.
 5. **szamlazz.hu:** a forme.hu ma is ezt használja? Van Agent kulcs?
 6. **Elállási jog:** a kínálat előre gyártott mintás termék (elállás jár),
    vagy vevő által személyre szabott (nem jár)? Lásd 2.3.
 7. **AI-tartalom:** a leírások mekkora része készül AI-val? Az
    `aiCoCreatedContent` mezőt ennek megfelelően kell kitölteni (2.4).
 
-**Kérés:** a fejlesztői portál kínál egy letölthető **`swagger.yaml`**-t a teljes
-erőforrás-dokumentációval. A `developer.allegro.pl` domaint a fejlesztői
-környezet proxyja blokkolja, így közvetlenül nem tudom lehúzni. Ha ezt is
-elküldöd, a `product-offers` és a rendelés-erőforrások **teljes** sémáját
-kódgenerálásra alkalmas pontossággal fel tudom dolgozni, és a 6.4 fejezet
-bizonytalansága is megszűnik.
+**Dokumentáció:** a teljes, 473 oldalas OpenAPI-referencia (279 végpont) a
+`giftformekft-tech/allegro-sync` repóban van. Ezzel a 6., 7. és 8. fejezet
+végpontjai és mezői ellenőrzöttek. Egyedül a **szamlazz.hu** oldal maradt
+nyitva – a `docs.szamlazz.hu` domaint a fejlesztői környezet proxyja
+blokkolja (403), így a Számla Agent XML mezőneveit
+(`szamlaagentkulcs`, `action-xmlagentxmlfile` stb.) nem tudtam ellenőrizni.
+Ha a szamlazz.hu Agent dokumentációját is felteszed a repóba, a 8. fejezet
+is ugyanilyen pontos lesz.
 
 ---
 
