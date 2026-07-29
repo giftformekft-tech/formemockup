@@ -242,6 +242,12 @@ class MG_Admin_Page {
                 'group'      => 'export',
                 'capability' => 'edit_products',
             ),
+            'allegro_export' => array(
+                'label'      => __('Allegro Export', 'mockup-generator'),
+                'type'       => 'allegro_export',
+                'group'      => 'export',
+                'capability' => 'edit_products',
+            ),
             'custom_feeds' => array(
                 'label'      => __('Egyedi Feeder', 'mockup-generator'),
                 'type'       => 'legacy',
@@ -575,6 +581,11 @@ class MG_Admin_Page {
             case 'temu_export':
                 if (class_exists('MG_Temu_Export_Page')) {
                     MG_Temu_Export_Page::render_page();
+                }
+                break;
+            case 'allegro_export':
+                if (class_exists('MG_Allegro_Export_Page')) {
+                    MG_Allegro_Export_Page::render_page();
                 }
                 break;
             case 'placeholder':
