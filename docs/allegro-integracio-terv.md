@@ -6,9 +6,16 @@ Fejlesztési terv. Önállóan végrehajtható, előzetes kontextus nélkül.
 
 **Rögzített keretek** (2026-07-29):
 
-- Allegro eladói fiók és API-alkalmazás **megvan**.
+- Allegro eladói fiók és API-alkalmazás **megvan** (`fmshirt`).
 - **Nincs EAN/GTIN, és nem is lesz.** Ez a terv központi megkötése – lásd 7. fejezet.
 - **Csak a magyar piac** (allegro.hu). Nincs PL/CZ/SK értékesítés.
+
+**Források.** A 6. és 7. fejezet a hivatalos fejlesztői portál két oldalán
+alapul, amit PDF-ben kaptunk: az „Alapvető információk" (magyar) és a
+„Dokumentacja" OpenAPI-referencia (az ajánlat- és katalógus-szekció).
+A **rendelés- és számla-végpontok** (8. fejezet) nem szerepeltek ezekben,
+azok forrása a súgó és a GitHub issue-k – ezeket implementáció előtt
+ellenőrizni kell.
 
 ---
 
@@ -47,14 +54,15 @@ welcome program** fut.
 | 5 | Saját katalógustermék javaslása (`product-proposals`) | P0 |
 | 6 | Ajánlat létrehozás + aszinkron művelet követés | P0 |
 | 7 | Állapottár: SKU ↔ offerId ↔ productId | P0 |
-| 8 | GPSR-adatok (gyártó, EU-felelős személy) | P0 – jogszabályi |
-| 9 | Ár- és készletszinkron (tömeges) | P1 |
-| 10 | Rendelés-lehúzás eseményfolyamból | P1 |
-| 11 | szamlazz.hu számlázás + számla visszatöltés Allegróra | P1 |
-| 12 | Szállítási adat / csomagszám visszaírás | P2 |
+| 8 | GPSR-adatok (`productSafety`, felelős gyártó) | P0 – jogszabályi |
+| 9 | **GTIN-őrszem** – figyelmeztetés, ha kötelezővé válik | P0 – egzisztenciális |
+| 10 | Ár- és készletszinkron (tömeges) | P1 |
+| 11 | Rendelés-lehúzás eseményfolyamból | P1 |
+| 12 | szamlazz.hu számlázás + számla visszatöltés Allegróra | P1 |
+| 13 | Szállítási adat / csomagszám visszaírás | P2 |
 
 Ami **kikerült** a magyar-piac-only döntés miatt: cross-border megosztás,
-OSS-számlázás, devizakezelés, gépi fordítás ellenőrzése.
+OSS-számlázás, devizakezelés.
 
 ---
 
@@ -64,28 +72,35 @@ OSS-számlázás, devizakezelés, gépi fordítás ellenőrzése.
 
 - **ÁFA:** belföldi értékesítés, egységes 27% – **nincs OSS**, nincs célország
   szerinti kulcslogika. A számlázó modul ezzel jelentősen egyszerűbb.
-- **Deviza:** HUF-ban árazunk és HUF-ban számolunk el. Nincs PLN-váltás,
-  nincs árfolyamkockázat az elszámolásban.
-- **Nyelv:** magyar cím és leírás. Nincs gépi fordítás, amit ellenőrizni kellene
-  (ez egyedi mintás, szójátékos feliratoknál komoly kockázat lett volna).
+- **Deviza:** HUF-ban árazunk és HUF-ban számolunk el.
+- **Nyelv:** magyar cím és leírás.
 - **Szállítás:** csak belföldi.
 
-### 2.2 Amit viszont ellenőrizni kell: az alappiac
+### 2.2 Az alappiac kérdése – most már konkrétan megfogható
 
-Az Allegro alapmodellje a „list once, sell everywhere": a hirdetést jellemzően
-allegro.pl-en hozod létre, majd megosztod a többi piacra. A magyar eladók
-2026-os megnyitása után viszont az allegro.hu natív piacként is működik –
-az Allegro súgója szerint HUF-ban árazol és HUF-ban számolsz el, és a
-magyar piac **API-ból is kezelhető**.
+Az OpenAPI-referencia két mezőt ad, ami ezt eldönti:
 
-**Konkrét ellenőrzendő kérdés az induláskor:** a meglévő fiókban az ajánlat
-alap-piaca `allegro-pl` vagy `allegro-hu`? Ez azért számít, mert ha az alappiac
-PL, akkor **lengyelül kell listázni** és az Allegro fordítja magyarra – ami egy
-magyar-only eladónak felesleges kerülőút és minőségi kockázat.
+- `language` – „Declared base language of the offer" (az ajánlat deklarált alapnyelve)
+- `additionalMarketplaces` – *„This field does not contain information about the
+  base marketplace of the offer"*; a lehetséges `marketplaceId` értékek a
+  `GET /marketplaces` erőforrásból jönnek.
 
-Ez egy 10 perces ellenőrzés a meglévő fiókon (`GET /sale/marketplaces`,
-illetve egy meglévő/teszt ajánlat publikációs beállításai), de a
-címképző és leírásgeneráló logikát ez dönti el.
+Tehát az ajánlatnak van **alappiaca** és vannak **további piacai**, és a
+`GET /marketplaces` megmondja, mi közülük elérhető a fióknak.
+
+**Konkrét induló ellenőrzés:** `GET /marketplaces` lefuttatása a meglévő
+`fmshirt` fiókkal. Ha az `allegro-hu` alappiacként választható, magyarul
+listázunk és kész. Ha nem, akkor az alappiac PL marad, és a magyar szöveget
+a **fordítás-erőforrásokon** keresztül adjuk meg:
+
+```
+GET   /sale/offers/{offerId}/translations
+PATCH /sale/offers/{offerId}/translations/{language}
+```
+
+Ez fontos mentőöv: **nem vagyunk az Allegro gépi fordítására utalva** –
+a magyar címet és leírást saját kezűleg feltölthetjük. Egyedi mintás,
+szójátékos feliratoknál ez nem kozmetikai kérdés.
 
 ### 2.3 Egyedi/személyre szabott termék és az elállási jog
 
@@ -94,18 +109,25 @@ jellemzően nem vonatkozik – de ezt az ajánlatban **deklarálni kell**.
 Ha viszont a minta előre gyártott (nem a vevő küldi egyedileg), akkor
 **vonatkozik**. Tisztázandó, melyik esetbe esik a kínálat.
 
-### 2.4 GPSR
+### 2.4 GPSR és AI-tartalom
 
-A 2024 decemberétől hatályos uniós termékbiztonsági rendelet miatt az
-Allegro megköveteli a gyártói és EU-felelős személy adatokat. Erre van
-API-erőforrás (`/sale/responsible-persons`, `/sale/responsible-producers`):
-egyszer felvesszük, utána az ajánlatokra hivatkozunk rá.
+Két deklarációs kötelezettség, mindkettőre van API-mező:
+
+- **`productSafety`** (a termékjavaslatban): `responsibleProducers` +
+  `safetyInformation`. A 2024 decemberétől hatályos uniós termékbiztonsági
+  rendelet miatt kötelező.
+- **`aiCoCreatedContent`** (az ajánlaton és a termékjavaslaton is):
+  *„Information about content declared as generated using AI."*
+
+Ez utóbbi minket **közvetlenül érint**: a repóban van
+`includes/class-ai-seo-generator.php`, tehát a leírások egy része AI-val
+készül, és a mockup-képek is generáltak. Az `aiCoCreatedContent` mező
+`images` és `paths` szerkezetet vár – tisztázni kell, mi minősül
+deklarálandónak, és a mapperben ezt ki kell tölteni.
 
 ---
 
 ## 3. Architektúra – hol lakjon a kód
-
-Három reális opció:
 
 | Opció | Előny | Hátrány |
 |---|---|---|
@@ -123,7 +145,7 @@ Három reális opció:
   nem függ a WooCommerce belső szerkezetétől.
 - A plugin exportőr gyakorlatilag a meglévő Temu CSV-export másolata, kibővítve.
 
-### 3.1 Javasolt könyvtárszerkezet (önálló program)
+### 3.1 Javasolt könyvtárszerkezet
 
 ```
 allegro-sync/
@@ -131,14 +153,16 @@ allegro-sync/
   src/
     Auth/TokenStore.php       # token mentés + refresh
     Auth/DeviceFlow.php       # bejelentkezés böngésző nélkül
-    Api/Client.php            # HTTP, rate limit, 429 backoff, retry
+    Api/Client.php            # HTTP, User-Agent, rate limit, 429 backoff, Trace-Id log
     Api/Operations.php        # aszinkron művelet-pollozás
-    Discover/CategoryScanner.php  # <-- a 0. fázis eszköze
+    Discover/CategoryScanner.php   # <-- a 0. fázis eszköze
+    Discover/GtinWatchdog.php      # <-- 7.6
     Import/CsvReader.php      # forme.hu CSV/XLSX
     Import/RowValidator.php
     Map/CategoryMap.php       # forme típus -> Allegro kategória + paraméterek
-    Map/OfferBuilder.php      # sor -> offer payload
-    Map/ColorMap.php          # magyar szín -> Allegro paraméterérték
+    Map/TitleBuilder.php      # 12–75 karakter, min. 3 szó (7.5)
+    Map/OfferBuilder.php
+    Map/ColorMap.php
     Map/SizeMap.php
     Sync/ImageSync.php
     Sync/ProductProposalSync.php
@@ -168,13 +192,14 @@ allegro-export.csv  ── termékvariáns-soronként
 allegro-sync import           (validálás, dry-run)
     │
     ├─ ImageSync            ─► POST /sale/images
-    ├─ ProductProposalSync  ─► POST /sale/product-proposals
-    ├─ OfferSync            ─► POST /sale/product-offers ─► operation polling
-    │                            └─► offerId elmentve SQLite-ba (SKU szerint)
+    ├─ ProductProposalSync  ─► POST /sale/product-proposals   (409 → meglévő productId)
+    ├─ OfferSync            ─► POST /sale/product-offers      (INACTIVE!)
+    │                            └─► 202 → operation polling → offerId
     ▼
-Allegro élő ajánlatok (allegro.hu)
+Ellenőrző kör  ─► tömeges aktiválás
     │
     ├─ PriceStockSync  ◄── napi CSV újraolvasás
+    ├─ GtinWatchdog    ◄── heti ellenőrzés (7.6)
     │
     └─ OrderSync   ◄── GET /order/events
              │
@@ -199,18 +224,19 @@ Javasolt bővített séma:
 | Oszlop | Forrás | Kötelező | Megjegyzés |
 |---|---|---|---|
 | `sku` | jelenlegi `SKU` + variáns | ✔ | **Ez lesz az `external.id`** – idempotencia-kulcs |
-| `parent_sku` | alap SKU | ✔ | variánscsoportosításhoz |
-| `name` | terméknév + típus | ✔ | Allegro cím **max. 75 karakter** – csonkolni kell! |
-| `description` | kategória-SEO szöveg | ✔ | HTML, Allegro-specifikus szekciókba tördelve |
+| `parent_sku` | alap SKU | ✔ | csoportosításhoz, riportokhoz |
+| `name` | terméknév + típus | ✔ | **12–75 karakter, min. 3 szó** – lásd 7.5 |
+| `description` | kategória-SEO szöveg | ✔ | HTML, szekciókra bontva, max. 40 000 bájt |
 | `type` | terméktípus slug (polo, pulcsi, bogre) | ✔ | kategória-térkép kulcsa |
 | `color` | szín címke | ✔ | Allegro paraméterértékre kell képezni |
-| `size` | méret | ✔ | ua. |
-| `price_huf` | **új** | ✔ | bruttó, HUF |
+| `size` | méret | ✔ | ua.; ruházatnál `sizeTable` is szóba jön |
+| `price_huf` | **új** | ✔ | bruttó, HUF; **stringként** megy tovább (6.0) |
 | `stock` | **új** | ✔ | POD-nál jellemzően fix nagy szám |
 | `image_url` | mockup URL | ✔ | több kép is: `image_url_2..n` |
 | `weight_g` | **új** | ✔ | szállítási díjszabáshoz |
 | `brand` | **új** | ✔ | GPSR + Allegro paraméter |
 | `material` | **új** | – | pl. „100% pamut", kategóriaparaméter |
+| `ai_content` | **új** | – | AI-val készült leírás/kép jelölése (2.4) |
 
 **EAN oszlop nincs** – tudatos döntés, lásd 7. fejezet.
 
@@ -234,49 +260,177 @@ megközelítés a repóban már ismerős), vagy a CSV-t tesszük kötelezővé.
 
 ---
 
-## 6. Allegro API – amit használni fogunk
+## 6. Allegro API
 
-Alap: `https://api.allegro.pl` · Sandbox: `https://api.allegro.pl.allegrosandbox.pl`
-Fejléc: `Accept: application/vnd.allegro.public.v1+json`
+### 6.0 Kötelező kliens-viselkedés
 
-### 6.1 Hitelesítés
+Ezek nem stílusjavaslatok – az API elutasítja vagy megbünteti a kérést nélkülük.
 
-- OAuth2 **Authorization Code** (felhasználói kontextus – ajánlatokhoz/rendelésekhez kell)
-- **Device Flow** – CLI-hez ez a kényelmes: kiír egy kódot, böngészőben jóváhagyod
-- Access token ~12 óra, refresh token ~3 hónap → automatikus refresh kell
-- Sandbox auth host: `https://allegro.pl.allegrosandbox.pl/auth/oauth/…`
+**User-Agent – kötelező.** A REST API Szabályzat 3.4(c) pontja megköveteli az
+alkalmazás egyértelmű azonosítását. Formátum:
 
-**Rate limit: 9000 kérés/perc Client ID-nként**, ezen felül erőforrás-specifikus
-alacsonyabb limitek, felhasználónkénti leaky-bucket, túllépésnél `429`.
-A kliensbe kell egy központi ütemező + exponenciális backoff.
+```
+AlkalmazasNev/Verzio (+https://info-oldal-url)
+```
 
-### 6.2 Felderítés és listázás
+Az alkalmazásnévnek **egyeznie kell a regisztrált alkalmazás nevével**, és
+mutatnia kell egy elérhető információs oldalra. Validátor:
+`https://apps.developer.allegro.pl/user-agent`.
+
+A portál külön kiemeli: a User-Agent tartalmát **ne változtassuk**
+(a szoftververziót se), mert fehérlistázási tényezőként használják. Ha nincs
+rendes User-Agent, szokatlan aktivitásnál **az alkalmazás IP-címét megelőzően
+blokkolhatják**. Ezt az első kódsortól kezdve helyesen kell csinálni.
+
+**Verziózás.** Kötelező az erőforrás-verzió az `Accept` és `Content-Type`
+fejlécben: `application/vnd.allegro.public.v1+json`. Béta erőforrásoknál
+`application/vnd.allegro.beta.v1+json`. Kivétel: `DELETE` és az OAuth-végpontok.
+Rossz verzió → `406 Not Acceptable`.
+
+**Nyelv.** `Accept-Language: hu-HU` **támogatott** (a támogatott értékek:
+`en-US`, `pl-PL`, `uk-UA`, `sk-SK`, `cs-CZ`, `hu-HU`). Ezzel a kategória- és
+paraméternevek, valamint a hibák `userMessage` mezője magyarul jön vissza.
+Alapértelmezés nélkül lengyelül kapjuk.
+
+> Kivétel: a `GET /sale/category-parameters-scheduled-changes` erőforrás
+> **csak `pl-PL`-t fogad**. A GTIN-őrszemnél (7.6) ezzel számolni kell.
+
+**Trace-Id.** Minden válasz tartalmaz egy `Trace-Id` fejlécet, ami egyedileg
+azonosítja a kérést; hibabejelentésnél az Allegro ezt kéri.
+→ **Minden API-hívásnál naplózni kell.**
+
+**Ár mint karakterlánc.** Az ár `{"amount": "10.23", "currency": "HUF"}`
+formában megy – az `amount` **string**, nem szám. A mapperben ezért nem
+lebegőpontos aritmetikát kell használni, hanem egész értéket és
+string-formázást, különben kerekítési hibák keletkeznek.
+
+**Azonosítók mint karakterlánc.** Az API az azonosítókat mindig stringként adja
+vissza (gyakran UUID). Az állapottárban is stringként tároljuk.
+
+**`commandId` – mi generáljuk.** A tömeges műveleteknél a `commandId` a
+**kérés azonosítója, amit nekünk kell UUID-ként előállítani**, és amivel
+utána lekérdezhető az állapot
+(`GET /sale/offer-modification-commands/{commandId}`, illetve `/tasks`).
+Ez egyben **idempotencia-kulcs** – újrapróbálkozásnál ezt kell kihasználni.
+
+**Lapozás.** `offset` + `limit` (a `limit` erőforrásfüggő, jellemzően max. 1000),
+illetve kurzoros lapozás `page.id`-val. Szűrés és rendezés az URL-ben:
+`?publication.status=ACTIVE`, `?sort=-stock.sold`.
+
+**Dátum/idő.** ISO 8601, zulu idő. A My Allegro felület helyi időt mutat,
+tehát 1–2 óra eltérés lesz a felület és az API között. Egyes mezők
+(`handlingTime`, `publication.duration`) ISO 8601 **időtartamot** várnak:
+`P3D`, `PT24H`.
+
+**Hibakezelés.** A hibaválasz `errors[]` tömb, mezői: `code` (gépi döntéshez),
+`message` (fejlesztőnek), `userMessage` (felhasználónak mutatható),
+`path` (a hibás mező útvonala), `details`, `metadata`.
+A `path` miatt a validációs hibákat **soronként és mezőnként** vissza tudjuk
+vezetni a CSV-re – a riportban ezt ki kell használni.
+
+### 6.1 Hitelesítés és környezetek
+
+- OAuth2 **Authorization Code** – felhasználói kontextus. Az ajánlat-, termékjavaslat-
+  és rendelés-erőforrások mind `bearer-token-for-user` jogosultságot kérnek.
+- **Device Flow** – CLI-hez ez a kényelmes: kiír egy kódot, böngészőben jóváhagyod.
+- **Client credentials** (`bearer-token-for-application`) – a **kategória- és
+  paraméter-erőforrásokhoz elég**. Ez a 0. fázist jelentősen egyszerűsíti:
+  a felderítő futtatásához nem kell felhasználói bejelentkezés.
+- Access token ~12 óra, refresh token ~3 hónap → automatikus refresh kell.
+
+| | Éles | Sandbox |
+|---|---|---|
+| API | `https://api.allegro.pl/` | `https://api.allegro.pl.allegrosandbox.pl/` |
+| Alkalmazásregisztráció | `https://apps.developer.allegro.pl/` | `https://apps.developer.allegro.pl.allegrosandbox.pl/` |
+| OAuth | `https://allegro.pl/auth/oauth/` | `https://allegro.pl.allegrosandbox.pl/auth/oauth/` |
+| Webes felület | `https://allegro.hu` | `https://allegro.hu.allegrosandbox.pl` |
+
+A sandbox **magyar domainen is elérhető** (`allegro.xy.allegrosandbox.pl`
+mintára) – a magyar piacot tesztkörnyezetben is meg tudjuk nézni.
+
+**Sandbox-buktatók, amikre tervezni kell:**
+
+- A feltöltött **fotókat 7 nap után törlik**. A képfeltöltő szinkronnak ezért
+  újrafuttathatónak kell lennie, és a kép-URL-ekhez lejárat tartozzon.
+- **Negyedévente frissítik a kategória- és paraméterlistát, és törlik az összes
+  tesztajánlatot.** A kategória-térképet nem elég egyszer felvenni.
+- **Ugyanazok a kéréskorlátok érvényesek**, mint élesben.
+- A regisztrációnál valós formátumú (lengyel) címet kell megadni, különben az
+  aktiválás elhasal. Kétfaktoros hitelesítés nem kell; ha mégis kér: `123456`.
+- A tesztkörnyezet **teljesen elkülönül** az élestől: külön fiók, külön
+  alkalmazásregisztráció, külön kulcsok.
+
+### 6.2 Kéréskorlátok
+
+**9000 kérés/perc Client ID-nként** (élesben és sandboxban egyaránt).
+Túllépésnél az Allegro **egy percre blokkolja a Client ID-t**, és `429`-et ad.
+Egyes erőforrásokon ezen felül alacsonyabb, erőforrás-specifikus limitek vannak,
+illetve felhasználónkénti (`user.id`) **leaky bucket**: előbb lassítják a
+válaszidőt, majd `429`.
+
+A kliensbe ezért kell központi ütemező + exponenciális backoff.
+
+### 6.3 Felderítés és listázás
+
+| Végpont | Auth | Szerep |
+|---|---|---|
+| `GET /marketplaces` | user | elérhető piacok, alappiac (2.2) |
+| `GET /sale/categories`, `/sale/categories/{id}` | app | kategóriafa + `options` |
+| `GET /sale/categories/{id}/parameters` | app | paraméterek, kötelezőség, GTIN |
+| `GET /sale/categories/{id}/product-parameters` | app | termékdefiniáló paraméterek |
+| `GET /sale/matching-categories` | app | **kategória-javaslat kifejezésre** |
+| `GET /sale/category-parameters-scheduled-changes` | app | **tervezett kötelezővé válás (7.6)** |
+| `GET /sale/products`, `/sale/products/{id}` | user | katalógus keresés (kurzoros lapozás) |
+| `POST /sale/product-proposals` | user | **saját katalógustermék javaslása** |
+| `POST /sale/images` | user | képfeltöltés |
+| `POST /sale/product-offers` | user | ajánlat létrehozás – `201` vagy `202` |
+| `GET /sale/product-offers/{offerId}/operations/{operationId}` | user | aszinkron művelet státusz |
+| `PATCH /sale/product-offers/{offerId}` | user | részleges módosítás |
+| `GET /sale/offers` | user | saját ajánlatok (`?product.id.empty=true` szűrhető) |
+| `GET /sale/offers/unfilled-parameters` | user | **hiányzó kötelező paraméterek (7.6)** |
+| `GET /sale/offer-events` | user | ajánlat-eseményfolyam, egyeztetéshez |
+| `POST /sale/offer-bulk-modification-commands` | user | tömeges ár/készlet, max. 25/kérés |
+| `PUT /sale/offer-publication-commands/{commandId}` | user | **tömeges aktiválás/leállítás** |
+| `GET/PATCH /sale/offers/{offerId}/translations/{lang}` | user | saját fordítás (2.2) |
+
+**Biztonsági minta tömeges feltöltéshez.** A hivatalos példa
+`"publication": {"status": "INACTIVE"}` értékkel dolgozik. Vegyük át szabályként:
+**minden ajánlat inaktívan jön létre**, utána jön egy ellenőrző kör (kép rendben?
+cím nem csonkult értelmetlenre? ár stimmel?), és csak azután aktiválunk tömegesen
+a `offer-publication-commands` erőforrással. 90 ajánlat/minta mellett ez az
+egyetlen épeszű módja annak, hogy egy hibás leképezés ne kerüljön azonnal élesbe.
+
+A hivatalos példa payload a leképezés vázát is megerősíti:
+
+```json
+{
+  "productSet": [{ "product": { "id": "…", "idType": "GTIN" } }],
+  "sellingMode": { "price": { "amount": "220.85", "currency": "PLN" } },
+  "stock": { "available": 10 },
+  "publication": { "status": "INACTIVE" }
+}
+```
+
+Nálunk az `idType: "GTIN"` ág **nem járható** (nincs EAN) – helyette saját
+javasolt termék `productId`-ja kerül a `product.id` mezőbe. Lásd 7.3.
+
+Az ajánlat további releváns mezői: `external.id` (a mi SKU-nk),
+`language` (alapnyelv), `category`, `parameters`, `images`, `description`,
+`delivery.handlingTime`, `sizeTable` (ruházatnál!), `taxSettings`,
+`aiCoCreatedContent`, `additionalMarketplaces`.
+
+### 6.4 Rendelés és számla
+
+> ⚠️ Ez a szekció **nem** szerepelt a kapott PDF-ekben. A végpontok a súgó és a
+> GitHub issue-k alapján valószínűek, de implementáció előtt ellenőrizni kell.
 
 | Végpont | Szerep |
 |---|---|
-| `GET /sale/marketplaces` | elérhető piacok, alappiac ellenőrzése (2.2) |
-| `GET /sale/categories`, `GET /sale/categories/{id}` | kategóriafa + `options` (lásd 7.2) |
-| `GET /sale/categories/{id}/parameters` | paraméterek, kötelezőség, GTIN-jelölés |
-| `GET /sale/products?phrase=…` | termékkatalógus keresés |
-| `POST /sale/product-proposals` | **saját katalógustermék javaslása** |
-| `POST /sale/images` | képfeltöltés (URL-ből is) |
-| `POST /sale/product-offers` | ajánlat létrehozás – `201` vagy `202` (aszinkron) |
-| `GET /sale/product-offers/{offerId}/operations/{operationId}` | aszinkron művelet státusz |
-| `PATCH /sale/product-offers/{offerId}` | ajánlat módosítás, termékhez kötés |
-| `GET /sale/offers` | saját ajánlatok listája |
-| `GET /sale/shipping-rates` | szállítási díjszabások (max. 250 lista) |
-| `POST /sale/offer-bulk-modification-commands` | tömeges ár/készlet, **kérésenként max. 25** |
-| `/sale/responsible-persons`, `/sale/responsible-producers` | GPSR-adatok |
-
-### 6.3 Rendelés és számla
-
-| Végpont | Szerep |
-|---|---|
-| `GET /order/events` | rendelés-eseményfolyam – **inkrementális lehúzáshoz ez a helyes** |
+| `GET /order/events` | rendelés-eseményfolyam – inkrementális lehúzáshoz |
 | `GET /order/checkout-forms/{id}` | rendelés részletei |
 | `POST /order/checkout-forms/{id}/shipments` | csomagszám visszaírás |
 | `POST /order/checkout-forms/{id}/invoices` | számlaobjektum létrehozása |
-| `PUT /order/checkout-forms/{id}/invoices/{invoiceId}/file` | **PDF feltöltés** |
+| `PUT /order/checkout-forms/{id}/invoices/{invoiceId}/file` | PDF feltöltés |
 
 A feltöltött számla ellenőrzési státuszt kap: `WAITING` → `ACCEPTED` / `REJECTED`.
 A `REJECTED` esetet kezelni kell (értesítés).
@@ -291,54 +445,72 @@ egyáltalán megvalósítható-e, és milyen terméktípusokra.
 ### 7.1 A variáns-API megszűnt
 
 **2026. április 14-én az Allegro kivezette a többvariánsos ajánlat-erőforrásokat.**
-A `POST/GET/PUT/DELETE /sale/offer-variants` végpontok azóta `404`-et adnak.
-A variánsokat most **automatikusan képzi a Termékkatalógusból**.
+A `/sale/offer-variants` végpontok azóta `404`-et adnak; a variánsokat most
+**automatikusan képzi a Termékkatalógusból**.
 ([allegro-api#12899](https://github.com/allegro/allegro-api/issues/12899))
 
+A kapott OpenAPI-referencia ezt megerősíti: a kategória `options` struktúrájában
+már **nincs** `variantsByColorPatternAllowed` mező – csak `advertisement`,
+`offersWithProductPublicationEnabled`, `productCreationEnabled` és
+`sellerCanRequirePurchaseComments`.
+
 Fontos pontosítás: az Allegrón **eddig is** minden szín×méret önálló ajánlat volt –
-a kivezetett erőforrás csak *összefűzte* őket variánsválasztóvá. Tehát a
-darabszám nem nőtt, de **elveszítettük a csoportosítás irányítását**.
+a kivezetett erőforrás csak *összefűzte* őket variánsválasztóvá. A darabszám tehát
+nem nőtt, de **elveszítettük a csoportosítás irányítását**.
 
 Következmény: 1 minta × 3 típus × 5 szín × 6 méret = **90 ajánlat**.
-100 mintánál 9000 ajánlat. Saját javasolt katalógustermékeknél az automatikus
-variánscsoportosítás nagy valószínűséggel **nem fog összeállni**, tehát a
-vevő külön hirdetéseket lát, nem méretválasztót. Ezt konverziós hátrányként
-be kell kalkulálni.
-
-**Ebből következik a legfontosabb operatív javaslat: szűk kínálattal indulni.**
-Néhány minta, 1–2 terméktípus, korlátozott szín- és méretskála. A gazdaságosságot
-és a variánsmegjelenést élesben kell megnézni, mielőtt ezresével töltünk fel.
+Saját javasolt katalógustermékeknél az automatikus variánscsoportosítás nagy
+valószínűséggel nem áll össze, tehát a vevő külön hirdetéseket lát, nem
+méretválasztót. Ezt konverziós hátrányként be kell kalkulálni.
 
 ### 7.2 Hogyan listázunk EAN nélkül – a felderítő
 
-A jó hír: a kategória-erőforrás visszaad egy `options` struktúrát, benne
-többek között:
+A kategória-erőforrás visszaad egy `options` struktúrát:
 
-- `productCreationEnabled` – javasolhatunk-e **saját terméket** a katalógusba
-- `offersWithProductPublicationEnabled` – publikálható-e termékhez kötött ajánlat
-- `customParametersEnabled` – megadhatunk-e egyedi paramétereket
+```json
+{
+  "id": "12", "leaf": true, "name": "Other",
+  "options": {
+    "advertisement": true,
+    "offersWithProductPublicationEnabled": true,
+    "productCreationEnabled": true,
+    "sellerCanRequirePurchaseComments": true
+  },
+  "parent": { "id": "709" }
+}
+```
 
-A `GET /sale/categories/{id}/parameters` pedig megadja a paraméterek
-kötelezőségét és a GTIN-jelölést (`options.isGTIN`).
+Nekünk a `productCreationEnabled` (javasolhatunk-e saját terméket) és az
+`offersWithProductPublicationEnabled` (publikálható-e termékhez kötött ajánlat)
+a döntő. A `GET /sale/categories/{id}/parameters` pedig megadja a paraméterek
+kötelezőségét és a GTIN-jelölést.
 
-**Ebből épül a 0. fázis eszköze, a kategória-felderítő:**
+Egy további bíztató jel: a dokumentáció szűrési példája
+`GET /sale/offers?product.id.empty=true` – tehát **létezik katalógustermékhez
+nem kötött ajánlat**, és az API külön szűrőt ad rájuk. Ez nem garancia
+(kategóriafüggő marad), de azt jelzi, hogy nem elvi lehetetlenség.
+
+**A 0. fázis eszköze, a kategória-felderítő:**
 
 ```
-allegro categories:scan --root <categoryId>
+allegro categories:scan --root <categoryId> --lang hu-HU
 ```
 
-Minden levélkategóriára kiírja:
+A `GET /sale/matching-categories` segít a kiindulásban: kifejezésre
+(„póló", „bögre") kategóriát javasol, nem kell a teljes fát végigjárni.
+Mivel ezek `bearer-token-for-application` jogosultsággal is mennek,
+**a felderítéshez nem kell felhasználói bejelentkezés**.
+
+Kimenet minden levélkategóriára:
 
 | Kategória | GTIN kötelező? | `productCreationEnabled` | Verdikt |
 |---|---|---|---|
 | … | nem | igen | ✅ listázható EAN nélkül |
 | … | igen | – | ❌ számunkra zárt |
 
-Ez a tábla a **go/no-go döntés**: ha a póló/pulcsi/bögre kategóriákban a GTIN
-nem kötelező és javasolhatunk saját terméket, a projekt mehet. Ha kötelező,
-az a terméktípus számunkra zárva van, és más kategóriát kell keresni.
+Ez a tábla a **go/no-go döntés**.
 
-Az ismert hibaüzenetek, amikbe bele fogunk futni, ha rossz kategóriát választunk:
+Az ismert hibaüzenetek, amikbe rossz kategóriánál belefutunk:
 `MatchingProductNotFoundException`, illetve „ebben a kategóriában az ajánlatot
 a Katalógushoz kell kötni"
 ([#8450](https://github.com/allegro/allegro-api/issues/8450),
@@ -346,21 +518,81 @@ a Katalógushoz kell kötni"
 
 ### 7.3 A listázási út EAN nélkül
 
+`POST /sale/product-proposals` kötelező mezői a referencia szerint:
+`name` (**max. 75 karakter**), `category`, `images` (legalább egy),
+`parameters`, `language`. Opcionális: `description` (max. 40 000 bájt),
+`productSafety`, `aiCoCreatedContent`, `hasProtectedBrand`.
+A publikációs állapot `PROPOSED`.
+
+Folyamat:
+
 1. `POST /sale/product-proposals` – saját katalógustermék javaslása
-   (a GTIN paramétert üresen hagyva, ahol nem kötelező).
-2. A kapott `productId`-t elmentjük az állapottárba.
-3. `POST /sale/product-offers` – az ajánlat a saját termékre hivatkozik.
-4. Ha a javaslat moderálásra vár, az ajánlatot később kötjük hozzá
-   (`PATCH /sale/product-offers/{offerId}`).
+   (GTIN paraméter nélkül, ahol nem kötelező).
+2. **`409 Conflict` = a termék már létezik**, és a válasz `Location` fejléce
+   megadja a meglévő termék URL-jét. Ez ingyen idempotencia: újrafuttatásnál
+   a `409`-ből kiolvassuk a `productId`-t, nem hozunk létre duplikátumot.
+3. A `productId` az állapottárba.
+4. `POST /sale/product-offers` – az ajánlat a saját termékre hivatkozik,
+   `publication.status: INACTIVE`.
+5. `202` esetén művelet-pollozás a végleges `offerId`-ért.
 
-**Kockázat:** a termékjavaslat moderálásfüggő és lassú lehet nagy tételszámnál.
-Ez is a szűk kínálattal való indulás mellett szól.
+### 7.4 Kapacitáskorlát: havi 20 000 új termék
 
-### 7.4 Cím- és leíráskorlát
+A referencia kimondja: **havonta legfeljebb 20 000 új terméket lehet a
+Katalógusba felvinni** (`product-proposals`).
 
-Az ajánlat címe **max. 75 karakter**. A mai Temu-név
-(`terméknév + típus + toldalék`) ezt simán túllépi. Külön címképző logika kell,
-prioritási sorrenddel (minta neve → típus → szín → méret) és csonkolással.
+Ez a 7.1 szorzóval együtt kemény tervezési korlát:
+
+| Minta/hó | Variáns/minta | Új katalógustermék/hó | Belefér? |
+|---|---|---|---|
+| 50 | 90 | 4 500 | ✅ |
+| 100 | 90 | 9 000 | ✅ |
+| 222 | 90 | 19 980 | ✅ (határon) |
+| 300 | 90 | 27 000 | ❌ |
+
+Tehát a **variánsskála szűkítése nem kozmetika, hanem kapacitáskérdés**.
+Ha egy típusnál 6 helyett 4 méretet és 5 helyett 3 színt viszünk,
+a variánsszám 90-ről 36-ra esik, és ugyanaz a keret 555 mintát bír el.
+
+Ezt a számítást **a kínálattervezés elején** kell elvégezni, nem utólag.
+
+### 7.5 Címszabály – szigorúbb, mint hittük
+
+Az ajánlat `name` mezője: **12–75 karakter, szóközökkel együtt, és legalább
+3 szóból kell állnia**. A termékjavaslat `name` mezője: max. 75 karakter.
+
+A mai Temu-név (`terméknév + típus + toldalék`) a felső határt simán túllépi,
+és csonkolásnál könnyen 3 szó alá eshet vagy értelmetlenné válhat.
+
+Ezért kell egy dedikált `TitleBuilder`, ami:
+
+- prioritási sorrendben épít: minta neve → típus → szín → méret,
+- **szóhatáron** csonkol, nem karakter közepén,
+- garantálja a 12 karakteres alsó és a 3 szavas minimumot,
+- ütközésnél (két variáns azonos címet kapna) determinisztikusan feloldja.
+
+Ez a modul kapjon egységteszteket – itt a csendes hiba drága.
+
+### 7.6 GTIN-őrszem – egzisztenciális kockázat figyelése
+
+Mivel a vállalkozás **soha nem fog EAN-t használni**, az a nap, amikor a
+célkategóriánkban a GTIN kötelezővé válik, leállítja a feltöltést.
+Az API viszont ad rá **előrejelzést**:
+
+```
+GET /sale/category-parameters-scheduled-changes?type=REQUIREMENT_CHANGE
+    &scheduledFor.lte=<+3 hónap>          # Accept-Language: pl-PL !
+GET /sale/offers/unfilled-parameters?parameterType=REQUIREMENT_PLANNED
+```
+
+Az első megmondja, mely paraméter válik kötelezővé egy kategóriában
+(legfeljebb 3 hónapra előre), a második azt, hogy a **meglévő ajánlatainkból**
+melyikből hiányzik kötelező vagy hamarosan kötelezővé váló paraméter.
+
+**Javaslat: heti cron, ami mindkettőt lefuttatja a használt kategóriákra,
+és e-mailt küld, ha GTIN-t érintő változást talál.** Ez néhány óra munka,
+és három hónap reakcióidőt ad egy olyan eseményre, ami különben egyik napról
+a másikra állítaná le az értékesítést.
 
 ---
 
@@ -385,15 +617,11 @@ Folyamat:
 
 Idempotencia: rendelésazonosítónként **pontosan egy** számla. Az állapottár
 `orders` táblája őrzi, hogy kiállítottuk-e már – újrafuttatásnál nem duplázunk.
-Az Allegro rendelésenként **egy** PDF-et fogad.
 
-> **Megjegyzés a pontosságról:** a `developer.allegro.pl`, a `help.allegro.com`
-> és a `docs.szamlazz.hu` domaineket a fejlesztői környezet proxyja blokkolja
-> (403), így a mezőszintű részleteket – a `product-offers` payload teljes
-> sémáját, a kategória-`options` pontos mezőneveit, és a szamlazz.hu XML
-> mezőneveit (`szamlaagentkulcs`, `action-xmlagentxmlfile` stb.) – **a hivatalos
-> dokumentációval kell egyeztetni az implementáció előtt**. A végpontlista és a
-> viselkedés a fejlesztői portál, a GitHub issue-k és a súgó alapján megbízható.
+> **Megjegyzés a pontosságról:** a `docs.szamlazz.hu` domaint a fejlesztői
+> környezet proxyja blokkolja (403), így a szamlazz.hu XML mezőneveit
+> (`szamlaagentkulcs`, `action-xmlagentxmlfile` stb.) **a hivatalos
+> dokumentációval kell egyeztetni az implementáció előtt**.
 
 ---
 
@@ -401,12 +629,12 @@ Az Allegro rendelésenként **egy** PDF-et fogad.
 
 | Fázis | Tartalom | Eredmény |
 |---|---|---|
-| **0. Felderítés** ⚠️ | OAuth device flow + `categories:scan`. Alappiac ellenőrzése (2.2). A 7.2 tábla előállítása a póló/pulcsi/bögre kategóriákra. | **Go/No-go döntés** |
-| **1. Egy ajánlat kézzel** ⚠️ | Sandboxban **egyetlen** POD-ajánlat végigvitele: `product-proposals` → kép → `product-offers`. | Bizonyíték, hogy EAN nélkül megy |
-| **2. Alapkliens** | Token store, HTTP kliens rate limittel, aszinkron művelet-pollozás, SQLite állapottár. | `allegro auth`, `allegro whoami` |
-| **3. Export + import** | Plugin Allegro-CSV export; CLI beolvasás, validálás, `--dry-run` payload-nyomtatás. | Ellenőrizhető payloadok |
-| **4. Feltöltés** | Kép- és termékjavaslat-szinkron, ajánlat-létrehozás, újrafuttatás-biztos idempotencia. | Élő ajánlatok sandboxban |
-| **5. Ár/készlet** | Tömeges módosítás (`offer-bulk-modification-commands`, 25-ös kötegek). | Napi szinkron |
+| **0. Felderítés** ⚠️ | Client-credentials token + `categories:scan` + `matching-categories`. `GET /marketplaces` az alappiac tisztázására (2.2). | **Go/No-go döntés** |
+| **1. Egy ajánlat kézzel** ⚠️ | Sandboxban **egyetlen** POD-ajánlat végigvitele: `product-proposals` → kép → `product-offers` → aktiválás. | Bizonyíték, hogy EAN nélkül megy |
+| **2. Alapkliens** | User-Agent, token store, rate limit, Trace-Id naplózás, aszinkron pollozás, SQLite. | `allegro auth`, `allegro whoami` |
+| **3. Export + import** | Plugin Allegro-CSV export; CLI beolvasás, validálás, `TitleBuilder`, `--dry-run`. | Ellenőrizhető payloadok |
+| **4. Feltöltés** | Kép- és termékjavaslat-szinkron (409-kezeléssel), ajánlat inaktívan, ellenőrző kör, tömeges aktiválás. | Élő ajánlatok sandboxban |
+| **5. Ár/készlet + őrszem** | `offer-bulk-modification-commands` 25-ös kötegekben; GTIN-őrszem cron (7.6). | Napi szinkron, korai riasztás |
 | **6. Rendelés + számla** | `GET /order/events`, szamlazz.hu, számla-visszatöltés. | Zárt kör |
 | **7. Éles indulás** | Éles kulcsok, **szűk kínálattal** indulás, monitorozás. | Élesben |
 
@@ -418,15 +646,15 @@ keretrendszert nem érdemes írni**. Ez a terv legfontosabb üzenete.
 
 ## 10. Nyitott kérdések
 
-Megválaszolva: Allegro-fiók ✔ megvan · EAN ✘ nincs és nem lesz · piac ✔ csak HU.
+Megválaszolva: Allegro-fiók ✔ megvan (`fmshirt`) · EAN ✘ nincs és nem lesz ·
+piac ✔ csak HU.
 
 Ami még nyitott:
 
 1. **Hol legyen a kód?** Ebben a repóban egy `allegro-sync/` mappában,
    vagy külön repóban? (Javaslat: külön repó, mert nem WordPress-kód.)
-2. **Melyik terméktípusokkal indulunk?** A kategória-térképet típusonként
-   kézzel kell felvenni – 2-3 típussal indulni sokkal gyorsabb, és a 7.1
-   darabszám-robbanás miatt amúgy is ez a helyes.
+2. **Melyik terméktípusokkal indulunk, és milyen szín/méret skálával?**
+   A 7.4 kapacitásszámítás miatt ez nem ízlés kérdése.
 3. **Szállítás:** ki szállít belföldön, milyen díjszabással?
    Allegro Shipping / DPD, vagy saját futár?
 4. **Árazás:** a HUF-ár honnan jön – a WooCommerce ár + szorzó, vagy külön
@@ -434,16 +662,26 @@ Ami még nyitott:
 5. **szamlazz.hu:** a forme.hu ma is ezt használja? Van Agent kulcs?
 6. **Elállási jog:** a kínálat előre gyártott mintás termék (elállás jár),
    vagy vevő által személyre szabott (nem jár)? Lásd 2.3.
+7. **AI-tartalom:** a leírások mekkora része készül AI-val? Az
+   `aiCoCreatedContent` mezőt ennek megfelelően kell kitölteni (2.4).
+
+**Kérés:** a fejlesztői portál kínál egy letölthető **`swagger.yaml`**-t a teljes
+erőforrás-dokumentációval. A `developer.allegro.pl` domaint a fejlesztői
+környezet proxyja blokkolja, így közvetlenül nem tudom lehúzni. Ha ezt is
+elküldöd, a `product-offers` és a rendelés-erőforrások **teljes** sémáját
+kódgenerálásra alkalmas pontossággal fel tudom dolgozni, és a 6.4 fejezet
+bizonytalansága is megszűnik.
 
 ---
 
 ## 11. Amit szándékosan kihagytam az első körből
 
-- Allegro Ads / kampánykezelés
+- Allegro Ads / promóciós csomagok (`offer-promotion-packages`, `promo-options`)
 - Vevői üzenetek (`/messaging`) kezelése
 - Visszaküldés és reklamáció (`/order/refund-claims`) automatizálása
 - One Fulfillment (Allegro raktár) – POD-nál nem értelmes
 - Automatikus árverseny-követés
+- Ajánlat-mellékletek (`offer-attachments`), méretjelző kompatibilitási listák
 
 Ezek mind API-ból elérhetők, de csak akkor éri meg, ha az alapfolyamat
 már stabilan megy.
