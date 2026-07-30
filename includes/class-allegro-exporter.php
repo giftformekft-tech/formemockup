@@ -75,6 +75,71 @@ class MG_Allegro_Exporter {
         );
     }
 
+    /** The first supported Allegro listing profiles (collared shirts excluded). */
+    public static function category_profiles() {
+        return array(
+            '89528' => array(
+                'label' => 'Gyermek pólók',
+                'path' => 'Gyerek / Ruházat / Pólók',
+                'default_type' => 'gyerek-polo',
+            ),
+            '87913' => array(
+                'label' => 'Férfi pólók',
+                'path' => 'Divat / Ruházat, cipő, kiegészítők / Férfi ruházat / Pólók',
+                'default_type' => 'ferfi-polo',
+            ),
+            '76104' => array(
+                'label' => 'Női pólók',
+                'path' => 'Divat / Ruházat, cipő, kiegészítők / Női ruházat / Pólók',
+                'default_type' => 'noi-polo',
+            ),
+        );
+    }
+
+    /** Exact Allegro size choices exposed by the supported T-shirt profiles. */
+    public static function allowed_sizes_for_category($category_id) {
+        $sizes = array(
+            '89528' => array(
+                '3XS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL',
+                '1', '2', '3', '4', '5', '6', '7', '8',
+                '32', '36', '38', '40', '44', '48', '50', '56', '62', '68',
+                '74', '80', '86', '92', '98', '104', '110', '116', '122',
+                '128', '134', '140', '146', '152', '158', '164', '166', '170',
+                '176', '182', '188', '104-110', '116-122', '128-134', '140-146',
+                '170-176', '176-182', 'one size', '86-92', '50/56', '62/68',
+                '74/80', '98/104', '152/158', '164/170', '110/116', '122/128',
+                '134/140', '146/152', '158/164', '92/98', '116/124', '68/74',
+                '80/86',
+            ),
+            '87913' => array(
+                '5XS', '4XS', '3XS', 'XXS', 'XXS/XS', 'XS', 'XS/S', 'S',
+                'S/M', 'S/L', 'M', 'M/L', 'L', 'L/XL', 'XL', 'XL/XXL', 'XXL',
+                '2XL/3XL', '3XL', '3XL/4XL', '4XL', '4XL/5XL', '5XL', '5XL/6XL',
+                '6XL', '6XL/7XL', '7XL', '7XL/8XL', '8XL', '9XL', '10XL',
+                '11XL', '12XL', '14XL', '40', '42', '44', '46', '48', '50',
+                '52', '54', '56', '58', '60', '62', '64', '66', '68', '70',
+                '72', '74', '76', '78', '80', '82', '40/42', '42/44', '44/46',
+                '46/48', '48/50', '50/52', '52/54', '54/56', '56/58', '58/60',
+                '60/62', '62/64', '64/66', '66/68', '68/70', '72/74', '76/78',
+                'univerzális', '170/78', '170/82', '170/86', '176/82', '176/86',
+            ),
+            '76104' => array(
+                '5XS', '4XS', '3XS', 'XXS', 'XXS/XS', 'XS', 'XS/S', 'S',
+                'S/M', 'S/L', 'M', 'M/L', 'L', 'L/XL', 'XL', 'XL/XXL', 'XXL',
+                '2XL/3XL', '3XL', '3XL/4XL', '4XL', '4XL/5XL', '5XL', '5XL/6XL',
+                '6XL', '6XL/7XL', '7XL', '7XL/8XL', '8XL', '9XL', '10XL',
+                '11XL', '12XL', '13XL', '14XL', '30', '32', '34', '36', '38',
+                '40', '42', '44', '46', '48', '50', '52', '54', '56', '58',
+                '60', '62', '64', '66', '68', '70', '72', '74', '76', '78',
+                '32/34', '34/36', '36/38', '38/40', '40/42', '42/44', '44/46',
+                '46/48', '48/50', '50/52', '52/54', '54/56', '56/58', '58/60',
+                '60/62', '62/64', '64/66', '66/68', '68/70', '72/74', '76/78',
+                'univerzális',
+            ),
+        );
+        return isset($sizes[(string) $category_id]) ? $sizes[(string) $category_id] : array();
+    }
+
     /**
      * Canonical size aliases verified against parameter 54 (Méret) in the
      * Allegro.hu men's, women's and children's T-shirt categories.
@@ -126,7 +191,7 @@ class MG_Allegro_Exporter {
         return trim(preg_replace('/\s+/', ' ', $value));
     }
 
-    public static function map_color($slug, $label, $custom_map = array()) {
+    public static function map_color($slug, $label, $custom_map = array(), $use_defaults = true) {
         $keys = array_unique(array_filter(array(
             sanitize_title($slug), self::mapping_key($slug), self::mapping_key($label),
         )));
@@ -136,22 +201,27 @@ class MG_Allegro_Exporter {
                 return $custom_map[$key];
             }
         }
-        foreach ($keys as $key) {
-            if (isset($defaults[$key])) {
-                return $defaults[$key];
+        if ($use_defaults) {
+            foreach ($keys as $key) {
+                if (isset($defaults[$key])) {
+                    return $defaults[$key];
+                }
             }
         }
         return '';
     }
 
-    public static function map_size($type_slug, $size, $custom_map = array()) {
+    public static function map_size($type_slug, $size, $custom_map = array(), $use_defaults = true) {
         $key = self::mapping_key($size);
         $type_slug = sanitize_title($type_slug);
         if (isset($custom_map[$type_slug][$key]) && trim($custom_map[$type_slug][$key]) !== '') {
             return sanitize_text_field($custom_map[$type_slug][$key]);
         }
-        $defaults = self::default_size_map();
-        return isset($defaults[$key]) ? $defaults[$key] : '';
+        if ($use_defaults) {
+            $defaults = self::default_size_map();
+            return isset($defaults[$key]) ? $defaults[$key] : '';
+        }
+        return '';
     }
 
     public static function build_parent_sku($base_sku, $type_slug) {
@@ -176,10 +246,10 @@ class MG_Allegro_Exporter {
      * Returns all source dictionary values currently present in the virtual
      * catalogue, ready for the mapping settings UI.
      *
-     * @return array{types:array<string,string>,colors:array<string,array>,sizes:array<string,array>}
+     * @return array{types:array<string,string>,colors:array<string,array>,colors_by_type:array<string,array>,sizes:array<string,array>}
      */
     public static function source_dictionary() {
-        $result = array('types' => array(), 'colors' => array(), 'sizes' => array());
+        $result = array('types' => array(), 'colors' => array(), 'colors_by_type' => array(), 'sizes' => array());
         if (!class_exists('MG_Variant_Display_Manager')) {
             return $result;
         }
@@ -191,10 +261,12 @@ class MG_Allegro_Exporter {
             $type_slug = sanitize_title($type_slug);
             $result['types'][$type_slug] = !empty($type_meta['label']) ? wp_strip_all_tags($type_meta['label']) : $type_slug;
             $result['sizes'][$type_slug] = array_values(array_unique(array_map('strval', (array) ($type_meta['sizes'] ?? array()))));
+            $result['colors_by_type'][$type_slug] = array();
             foreach ((array) ($type_meta['colors'] ?? array()) as $color_slug => $color_meta) {
                 $label = is_array($color_meta) && !empty($color_meta['label']) ? $color_meta['label'] : $color_slug;
                 $key = sanitize_title($color_slug);
                 $result['colors'][$key] = array('slug' => $key, 'label' => wp_strip_all_tags($label));
+                $result['colors_by_type'][$type_slug][$key] = array('slug' => $key, 'label' => wp_strip_all_tags($label));
             }
         }
         ksort($result['types']);
@@ -213,6 +285,7 @@ class MG_Allegro_Exporter {
         $color_map = isset($options['color_map']) && is_array($options['color_map']) ? $options['color_map'] : array();
         $size_map = isset($options['size_map']) && is_array($options['size_map']) ? $options['size_map'] : array();
         $category_map = isset($options['category_map']) && is_array($options['category_map']) ? $options['category_map'] : array();
+        $strict_mappings = !empty($options['strict_mappings']);
         $default_stock = max(1, intval($options['default_stock'] ?? 10));
         $brand = sanitize_text_field($options['brand'] ?? 'márkanév nélkül');
         $material = sanitize_text_field($options['material'] ?? 'pamut');
@@ -246,23 +319,34 @@ class MG_Allegro_Exporter {
                 }
                 $type_label = wp_strip_all_tags($type_meta['label'] ?? $type_slug);
                 $category_id = trim((string) ($category_map[$type_slug] ?? ''));
-                if ($category_id !== '' && !preg_match('/^\d+$/', $category_id)) {
-                    $errors[] = sprintf('%s: az Allegro kategóriaazonosító csak szám lehet.', $type_label);
+                if ($category_id === '') {
+                    $errors[] = sprintf('%s: nincs Allegro-kategóriához rendelve.', $type_label);
+                    continue;
+                }
+                if (!isset(self::category_profiles()[$category_id])) {
+                    $errors[] = sprintf('%s: a(z) %s Allegro-kategóriát ez az exportprofil még nem támogatja.', $type_label, $category_id);
                     continue;
                 }
                 $added_for_type = false;
                 foreach ((array) ($type_meta['colors'] ?? array()) as $color_slug => $color_meta) {
                     $source_color = wp_strip_all_tags($color_meta['label'] ?? $color_slug);
-                    $color = self::map_color($color_slug, $source_color, $color_map);
+                    $type_color_map = isset($color_map[$type_slug]) && is_array($color_map[$type_slug])
+                        ? $color_map[$type_slug]
+                        : $color_map;
+                    $color = self::map_color($color_slug, $source_color, $type_color_map, !$strict_mappings);
                     if ($color === '') {
                         $errors[] = sprintf('%s / %s: nincs Allegro főszín-leképezés.', $type_label, $source_color);
                         continue;
                     }
                     $sizes = (array) ($color_meta['sizes'] ?? array());
                     foreach ($sizes as $source_size) {
-                        $size = self::map_size($type_slug, $source_size, $size_map);
+                        $size = self::map_size($type_slug, $source_size, $size_map, !$strict_mappings);
                         if ($size === '') {
                             $errors[] = sprintf('%s / %s: nincs Allegro méretleképezés.', $type_label, $source_size);
+                            continue;
+                        }
+                        if (!in_array($size, self::allowed_sizes_for_category($category_id), true)) {
+                            $errors[] = sprintf('%s / %s: a(z) „%s” nem engedélyezett méret ebben az Allegro-kategóriában.', $type_label, $source_size, $size);
                             continue;
                         }
                         $price = MG_Virtual_Variant_Manager::calculate_variant_price($type_slug, $source_size);

@@ -16,3 +16,9 @@ companion `allegro-sync` application.
   template stock is used.
 - Missing SKU, description, image, price, colour mapping or size mapping stops
   the download and produces an actionable validation list.
+
+The first mapping screen is organized into three Allegro profiles: child,
+men's and women's T-shirts. Each Allegro category is assigned to one virtual
+product type, then that type's own colours and sizes are mapped from dropdowns
+containing the exact Allegro dictionary values. Collared shirts are not part of
+the initial profiles.
