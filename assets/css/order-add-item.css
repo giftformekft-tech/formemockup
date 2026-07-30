@@ -1,12 +1,44 @@
 /* MG Order Add Item – Modal Styles */
 
-/* Variant mockup in the order items table (kept here too, in case KSES strips
-   the inline object-fit from the filtered thumbnail markup). */
+/* Variant mockup in the order items table.
+   100px is the largest size that costs nothing in layout: every line already
+   stands ~150px tall because of the type/color/size meta rows, so the taller
+   image fits inside the existing row height. WooCommerce sizes the thumbnail
+   column and its wrapper itself, so both have to grow with the image. */
+#woocommerce-order-items .woocommerce_order_items td.thumb,
+#woocommerce-order-items .wc-order-totals-items td.thumb {
+    width: 116px;
+}
+
+#woocommerce-order-items .wc-order-item-thumbnail {
+    width: 100px;
+    height: auto;
+}
+
 .mg-admin-item-preview {
-    width: 38px;
-    height: 38px;
-    object-fit: cover;
+    width: 100px;
+    height: 100px;
+    /* contain, not cover: the whole mockup stays visible, nothing is cropped */
+    object-fit: contain;
     border-radius: 3px;
+    background: #f6f7f7;
+}
+
+/* Narrow screens: the items table already scrolls there, so keep it compact. */
+@media screen and (max-width: 1200px) {
+    #woocommerce-order-items .woocommerce_order_items td.thumb,
+    #woocommerce-order-items .wc-order-totals-items td.thumb {
+        width: 76px;
+    }
+
+    #woocommerce-order-items .wc-order-item-thumbnail {
+        width: 60px;
+    }
+
+    .mg-admin-item-preview {
+        width: 60px;
+        height: 60px;
+    }
 }
 
 .mg-add-item-blocked {

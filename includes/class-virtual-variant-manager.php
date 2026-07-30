@@ -1258,8 +1258,10 @@ class MG_Virtual_Variant_Manager {
             return $image;
         }
 
+        // Sizing lives in the stylesheet (an inline width would win over it and
+        // block the enlarged thumbnail); the attributes are the no-CSS fallback.
         return sprintf(
-            '<img src="%s" alt="%s" class="mg-admin-item-preview" style="width:38px;height:38px;object-fit:cover;border-radius:3px;" />',
+            '<img src="%s" alt="%s" class="mg-admin-item-preview" width="100" height="100" />',
             esc_url($preview_url),
             esc_attr__('Mockup előnézet', 'mgdtp')
         );
