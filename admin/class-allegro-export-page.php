@@ -26,6 +26,7 @@ class MG_Allegro_Export_Page {
             'material' => 'pamut',
             'color_map' => array(),
             'size_map' => array(),
+            'size_measurements' => array(),
             'category_map' => array(),
             'category_type_map' => array(),
             'strict_mappings' => false,
@@ -82,12 +83,14 @@ class MG_Allegro_Export_Page {
         $raw_category_types = isset($_POST['category_type_map']) ? (array) wp_unslash($_POST['category_type_map']) : array();
         $raw_colors = isset($_POST['color_map']) ? (array) wp_unslash($_POST['color_map']) : array();
         $raw_sizes = isset($_POST['size_map']) ? (array) wp_unslash($_POST['size_map']) : array();
+        $raw_measurements = isset($_POST['size_measurements']) ? (array) wp_unslash($_POST['size_measurements']) : array();
         $allowed_colors = MG_Allegro_Exporter::allowed_colors();
 
         $category_type_map = array();
         $category_map = array();
         $color_map = array();
         $size_map = array();
+        $size_measurements = array();
         $used_types = array();
 
         foreach ($profiles as $category_id => $profile) {
@@ -121,6 +124,14 @@ class MG_Allegro_Export_Page {
                 if (in_array($value, $allowed_sizes, true)) {
                     $size_map[$type_slug][$key] = $value;
                 }
+                $length = MG_Allegro_Exporter::normalize_measurement($raw_measurements[$type_slug][$key]['length'] ?? '');
+                $width = MG_Allegro_Exporter::normalize_measurement($raw_measurements[$type_slug][$key]['width'] ?? '');
+                if ($length !== '' || $width !== '') {
+                    $size_measurements[$type_slug][$key] = array(
+                        'length' => $length,
+                        'width' => $width,
+                    );
+                }
             }
         }
 
@@ -132,6 +143,7 @@ class MG_Allegro_Export_Page {
             'category_map' => $category_map,
             'color_map' => $color_map,
             'size_map' => $size_map,
+            'size_measurements' => $size_measurements,
             'strict_mappings' => true,
         ), false);
 
@@ -401,12 +413,19 @@ class MG_Allegro_Export_Page {
                                 </div>
                                 <div>
                                     <h4 style="margin-top:0"><?php esc_html_e('Méretek', 'mockup-generator'); ?></h4>
-                                    <table class="widefat striped"><thead><tr><th><?php esc_html_e('Saját méret', 'mockup-generator'); ?></th><th><?php esc_html_e('Allegro méret', 'mockup-generator'); ?></th></tr></thead><tbody>
+                                    <p class="description"><?php esc_html_e('A hossz és szélesség a póló sík felületre kiterített mérete centiméterben. A megadott adatok automatikusan bekerülnek az adott variáns leírásába.', 'mockup-generator'); ?></p>
+                                    <table class="widefat striped"><thead><tr><th><?php esc_html_e('Saját méret', 'mockup-generator'); ?></th><th><?php esc_html_e('Allegro méret', 'mockup-generator'); ?></th><th><?php esc_html_e('Hossz (cm)', 'mockup-generator'); ?></th><th><?php esc_html_e('Szélesség (cm)', 'mockup-generator'); ?></th></tr></thead><tbody>
                                     <?php foreach ((array) ($dictionary['sizes'][$type_slug] ?? array()) as $source_size):
                                         $size_key = MG_Allegro_Exporter::mapping_key($source_size);
                                         $mapped = MG_Allegro_Exporter::map_size($type_slug, $source_size, $settings['size_map'], empty($settings['strict_mappings']));
+                                        $measurement = MG_Allegro_Exporter::get_size_measurement($type_slug, $source_size, $settings['size_measurements']);
                                     ?>
-                                        <tr><td><strong><?php echo esc_html($source_size); ?></strong></td><td><select name="size_map[<?php echo esc_attr($type_slug); ?>][<?php echo esc_attr($size_key); ?>]" style="width:100%"><option value=""><?php esc_html_e('— válassz —', 'mockup-generator'); ?></option><?php foreach ($allowed_sizes as $target_size): ?><option value="<?php echo esc_attr($target_size); ?>" <?php selected($mapped, $target_size); ?>><?php echo esc_html($target_size); ?></option><?php endforeach; ?></select></td></tr>
+                                        <tr>
+                                            <td><strong><?php echo esc_html($source_size); ?></strong></td>
+                                            <td><select name="size_map[<?php echo esc_attr($type_slug); ?>][<?php echo esc_attr($size_key); ?>]" style="width:100%"><option value=""><?php esc_html_e('— válassz —', 'mockup-generator'); ?></option><?php foreach ($allowed_sizes as $target_size): ?><option value="<?php echo esc_attr($target_size); ?>" <?php selected($mapped, $target_size); ?>><?php echo esc_html($target_size); ?></option><?php endforeach; ?></select></td>
+                                            <td><input type="number" min="0.1" max="999" step="0.1" inputmode="decimal" name="size_measurements[<?php echo esc_attr($type_slug); ?>][<?php echo esc_attr($size_key); ?>][length]" value="<?php echo esc_attr($measurement['length']); ?>" style="width:90px" aria-label="<?php echo esc_attr(sprintf(__('%s hosszúsága centiméterben', 'mockup-generator'), $source_size)); ?>"></td>
+                                            <td><input type="number" min="0.1" max="999" step="0.1" inputmode="decimal" name="size_measurements[<?php echo esc_attr($type_slug); ?>][<?php echo esc_attr($size_key); ?>][width]" value="<?php echo esc_attr($measurement['width']); ?>" style="width:90px" aria-label="<?php echo esc_attr(sprintf(__('%s szélessége centiméterben', 'mockup-generator'), $source_size)); ?>"></td>
+                                        </tr>
                                     <?php endforeach; ?>
                                     </tbody></table>
                                 </div>

@@ -224,6 +224,56 @@ class MG_Allegro_Exporter {
         return '';
     }
 
+    /** Normalize a centimetre measurement saved from the admin form. */
+    public static function normalize_measurement($value) {
+        $value = str_replace(',', '.', trim((string) $value));
+        if ($value === '' || !preg_match('/^\d+(?:\.\d{1,2})?$/', $value)) {
+            return '';
+        }
+        $number = (float) $value;
+        if ($number <= 0 || $number > 999) {
+            return '';
+        }
+        return rtrim(rtrim(number_format($number, 2, '.', ''), '0'), '.');
+    }
+
+    /** Return the saved laid-flat measurements for one source size. */
+    public static function get_size_measurement($type_slug, $source_size, $measurements = array()) {
+        $type_slug = sanitize_title($type_slug);
+        $size_key = self::mapping_key($source_size);
+        $saved = isset($measurements[$type_slug][$size_key]) && is_array($measurements[$type_slug][$size_key])
+            ? $measurements[$type_slug][$size_key]
+            : array();
+        return array(
+            'length' => self::normalize_measurement($saved['length'] ?? ''),
+            'width' => self::normalize_measurement($saved['width'] ?? ''),
+        );
+    }
+
+    /** Append an Allegro-safe text block for the exact exported size. */
+    public static function append_size_measurement_description($description, $allegro_size, $measurement) {
+        $length = self::normalize_measurement($measurement['length'] ?? '');
+        $width = self::normalize_measurement($measurement['width'] ?? '');
+        if ($length === '' && $width === '') {
+            return (string) $description;
+        }
+
+        $values = array();
+        if ($length !== '') {
+            $values[] = 'hosszúság ' . str_replace('.', ',', $length) . ' cm';
+        }
+        if ($width !== '') {
+            $values[] = 'szélesség ' . str_replace('.', ',', $width) . ' cm';
+        }
+        $size = htmlspecialchars(trim((string) $allegro_size), ENT_QUOTES, 'UTF-8');
+        $block = '<h2>Méretadatok</h2>'
+            . '<p><b>' . $size . ' méret:</b> ' . implode(', ', $values) . '.</p>'
+            . '<p>A méretek a póló sík felületre kiterített állapotában mérve értendők. '
+            . 'A szélesség a póló egyik oldalától a másikig mért érték, nem a teljes körméret. '
+            . 'A gyártásból adódóan ±1–2 cm eltérés előfordulhat.</p>';
+        return rtrim((string) $description) . $block;
+    }
+
     public static function build_parent_sku($base_sku, $type_slug) {
         return self::sku_part($base_sku) . '-' . self::sku_part($type_slug);
     }
@@ -284,6 +334,7 @@ class MG_Allegro_Exporter {
         $product_types = array();
         $color_map = isset($options['color_map']) && is_array($options['color_map']) ? $options['color_map'] : array();
         $size_map = isset($options['size_map']) && is_array($options['size_map']) ? $options['size_map'] : array();
+        $size_measurements = isset($options['size_measurements']) && is_array($options['size_measurements']) ? $options['size_measurements'] : array();
         $category_map = isset($options['category_map']) && is_array($options['category_map']) ? $options['category_map'] : array();
         $strict_mappings = !empty($options['strict_mappings']);
         $default_stock = max(1, intval($options['default_stock'] ?? 10));
@@ -394,6 +445,8 @@ class MG_Allegro_Exporter {
                             $errors[] = sprintf('#%d %s: hiányzik a termékleírás.', $pid, $product->get_name());
                             continue;
                         }
+                        $measurement = self::get_size_measurement($type_slug, $source_size, $size_measurements);
+                        $description = self::append_size_measurement_description($description, $size, $measurement);
                         $stock = $product->managing_stock() ? intval($product->get_stock_quantity()) : $default_stock;
                         if ($stock <= 0) {
                             $stock = $default_stock;

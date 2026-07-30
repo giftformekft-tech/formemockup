@@ -47,6 +47,23 @@ expect_same('86-92', MG_Allegro_Exporter::map_size('gyerek-polo', '1/2', array(
 )), 'An explicit child-size mapping wins.');
 expect_same('', MG_Allegro_Exporter::map_size('ferfi-polo', 'XL', array(), false), 'Strict profiles require a saved size mapping.');
 
+expect_same('53.5', MG_Allegro_Exporter::normalize_measurement('53,5'), 'Hungarian decimal measurements are normalized.');
+expect_same('', MG_Allegro_Exporter::normalize_measurement('-5'), 'Negative measurements are rejected.');
+$measurements = array('ferfi-polo' => array('m' => array('length' => '72', 'width' => '53')));
+expect_same(
+    array('length' => '72', 'width' => '53'),
+    MG_Allegro_Exporter::get_size_measurement('ferfi-polo', 'M', $measurements),
+    'Measurements are resolved by virtual product type and source size.'
+);
+$description = MG_Allegro_Exporter::append_size_measurement_description(
+    '<p>Prémium pamut póló.</p>',
+    'M',
+    array('length' => '72', 'width' => '53')
+);
+expect_same(true, strpos($description, '<b>M méret:</b> hosszúság 72 cm, szélesség 53 cm.') !== false, 'Exact laid-flat measurements are appended to the description.');
+expect_same(true, strpos($description, 'nem a teljes körméret') !== false, 'The width explanation is included.');
+expect_same('<p>Leírás.</p>', MG_Allegro_Exporter::append_size_measurement_description('<p>Leírás.</p>', 'M', array()), 'Empty measurements leave the description untouched.');
+
 expect_same('ABC-FERFI-POLO', MG_Allegro_Exporter::build_parent_sku('ABC', 'ferfi-polo'), 'Parent SKU groups the design and product type.');
 expect_same('ABC-FERFI-POLO-FEKETE-2XL', MG_Allegro_Exporter::build_sku('ABC', 'ferfi-polo', 'fekete', '2XL'), 'Variant SKU is stable and contains the exact combination.');
 expect_same('87913', MG_Allegro_Exporter::default_category_map()['ferfi-polo'], 'The verified Allegro men T-shirt category is the default.');

@@ -14,6 +14,9 @@ companion `allegro-sync` application.
   child age-range sizes must be mapped explicitly in the admin page.
 - Woo stock is used when stock management is enabled; otherwise the saved
   template stock is used.
+- Each virtual product type can store laid-flat length and width values for
+  every size. When present, the exact exported variant receives a Hungarian
+  size-measurement block in its description; no size-chart image is needed.
 - Missing SKU, description, image, price, colour mapping or size mapping stops
   the download and produces an actionable validation list.
 
