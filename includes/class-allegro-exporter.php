@@ -278,7 +278,7 @@ class MG_Allegro_Exporter {
      * @param array<string,mixed> $options
      * @return array{rows:array<int,array<string,mixed>>,errors:array<int,string>,product_types:array<int,array{pid:int,type:string}>}
      */
-    public static function build_rows($type_filter = array(), $only_unexported = false, $options = array()) {
+    public static function build_rows($type_filter = array(), $only_unexported = false, $options = array(), $selection = array()) {
         $rows = array();
         $errors = array();
         $product_types = array();
@@ -292,6 +292,20 @@ class MG_Allegro_Exporter {
         $brand = $brand !== '' ? $brand : 'márkanév nélkül';
         $material = $material !== '' ? $material : 'pamut';
         $type_filter = array_values(array_filter(array_map('sanitize_title', (array) $type_filter)));
+        $selection_lookup = array();
+        foreach ((array) $selection as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $selected_pid = absint($item['pid'] ?? 0);
+            $selected_type = sanitize_title($item['type'] ?? '');
+            $selected_color = sanitize_title($item['color'] ?? '');
+            $selected_size = self::mapping_key($item['size'] ?? '');
+            if ($selected_pid && $selected_type !== '' && $selected_color !== '' && $selected_size !== '') {
+                $selection_lookup[$selected_pid][$selected_type][$selected_color][$selected_size] = true;
+            }
+        }
+        $restrict_selection = !empty($selection);
 
         $products = wc_get_products(array('status' => 'publish', 'limit' => -1, 'return' => 'objects'));
         foreach ((array) $products as $product) {
@@ -299,6 +313,9 @@ class MG_Allegro_Exporter {
                 continue;
             }
             $pid = (int) $product->get_id();
+            if ($restrict_selection && empty($selection_lookup[$pid])) {
+                continue;
+            }
             $base_sku = trim((string) $product->get_sku());
             if ($base_sku === '') {
                 $errors[] = sprintf('#%d %s: hiányzik a WooCommerce SKU.', $pid, $product->get_name());
@@ -312,6 +329,9 @@ class MG_Allegro_Exporter {
             foreach ($config['types'] as $type_slug => $type_meta) {
                 $type_slug = sanitize_title($type_slug);
                 if ($type_filter && !in_array($type_slug, $type_filter, true)) {
+                    continue;
+                }
+                if ($restrict_selection && empty($selection_lookup[$pid][$type_slug])) {
                     continue;
                 }
                 if ($only_unexported && isset($exported[$type_slug])) {
@@ -329,6 +349,10 @@ class MG_Allegro_Exporter {
                 }
                 $added_for_type = false;
                 foreach ((array) ($type_meta['colors'] ?? array()) as $color_slug => $color_meta) {
+                    $color_slug = sanitize_title($color_slug);
+                    if ($restrict_selection && empty($selection_lookup[$pid][$type_slug][$color_slug])) {
+                        continue;
+                    }
                     $source_color = wp_strip_all_tags($color_meta['label'] ?? $color_slug);
                     $type_color_map = isset($color_map[$type_slug]) && is_array($color_map[$type_slug])
                         ? $color_map[$type_slug]
@@ -340,6 +364,9 @@ class MG_Allegro_Exporter {
                     }
                     $sizes = (array) ($color_meta['sizes'] ?? array());
                     foreach ($sizes as $source_size) {
+                        if ($restrict_selection && empty($selection_lookup[$pid][$type_slug][$color_slug][self::mapping_key($source_size)])) {
+                            continue;
+                        }
                         $size = self::map_size($type_slug, $source_size, $size_map, !$strict_mappings);
                         if ($size === '') {
                             $errors[] = sprintf('%s / %s: nincs Allegro méretleképezés.', $type_label, $source_size);

@@ -22,3 +22,8 @@ men's and women's T-shirts. Each Allegro category is assigned to one virtual
 product type, then that type's own colours and sizes are mapped from dropdowns
 containing the exact Allegro dictionary values. Collared shirts are not part of
 the initial profiles.
+
+The export itself follows the same two-step selection model as the Temu
+screen: first choose the exact Woo products from a paginated, category-filtered
+table, then include or exclude the mapped virtual product types, colours and
+sizes. Only the resulting exact combinations are written to the Allegro CSV.

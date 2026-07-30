@@ -11,6 +11,8 @@ class MG_Allegro_Export_Page {
     public static function init() {
         add_action('admin_post_mg_allegro_save_settings', array(self::class, 'handle_save_settings'));
         add_action('admin_post_mg_allegro_export_csv', array(self::class, 'handle_export_csv'));
+        add_action('wp_ajax_mg_allegro_get_products', array(self::class, 'ajax_get_products'));
+        add_action('wp_ajax_mg_allegro_get_variants', array(self::class, 'ajax_get_variants'));
     }
 
     public static function get_settings() {
@@ -143,14 +145,19 @@ class MG_Allegro_Export_Page {
         }
         check_admin_referer('mg_allegro_export_csv');
 
-        $types = isset($_POST['types']) ? array_map('sanitize_title', (array) wp_unslash($_POST['types'])) : array();
-        if (!$types) {
-            wp_die(self::error_page(array('Legalább egy összerendelt terméktípust válassz ki.')));
+        $selection = isset($_POST['selection']) ? json_decode(wp_unslash($_POST['selection']), true) : array();
+        $selection = is_array($selection) ? array_values(array_filter($selection, 'is_array')) : array();
+        if (!$selection) {
+            wp_die(self::error_page(array('Legalább egy pontos termék–típus–szín–méret variációt válassz ki.')));
         }
+        $types = array_values(array_unique(array_filter(array_map(function ($item) {
+            return sanitize_title($item['type'] ?? '');
+        }, $selection))));
         $result = MG_Allegro_Exporter::build_rows(
             $types,
-            !empty($_POST['only_unexported']),
-            self::get_settings()
+            false,
+            self::get_settings(),
+            $selection
         );
         if (!empty($result['errors'])) {
             wp_die(self::error_page($result['errors']), 'Allegro export ellenőrzési hiba', array('response' => 400));
@@ -175,6 +182,126 @@ class MG_Allegro_Export_Page {
         }
         fclose($output);
         exit;
+    }
+
+    public static function ajax_get_products() {
+        check_ajax_referer('mg_allegro_nonce', 'nonce');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error('Nincs jogosultságod a termékek lekéréséhez.', 403);
+        }
+
+        $page = max(1, absint($_POST['page'] ?? 1));
+        $per_page = absint($_POST['per_page'] ?? 25);
+        if (!in_array($per_page, array(25, 50, 100), true)) {
+            $per_page = 25;
+        }
+        $category_id = absint($_POST['category_id'] ?? 0);
+        $args = array(
+            'status' => 'publish',
+            'limit' => $per_page,
+            'page' => $page,
+            'paginate' => true,
+        );
+        if ($category_id) {
+            $term = get_term($category_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $args['category'] = array($term->slug);
+            }
+        }
+
+        $results = wc_get_products($args);
+        $products = array();
+        foreach ((array) $results->products as $product) {
+            if (!$product || !$product->is_in_stock()) {
+                continue;
+            }
+            $image_id = $product->get_image_id();
+            $cats = wc_get_product_term_ids($product->get_id(), 'product_cat');
+            $category = '';
+            if ($cats) {
+                $term = get_term($cats[0], 'product_cat');
+                $category = $term && !is_wp_error($term) ? $term->name : '';
+            }
+            $products[] = array(
+                'id' => (int) $product->get_id(),
+                'name' => $product->get_name(),
+                'sku' => $product->get_sku(),
+                'category' => $category,
+                'image' => $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src(),
+            );
+        }
+
+        wp_send_json_success(array(
+            'products' => $products,
+            'total_pages' => (int) $results->max_num_pages,
+            'total' => (int) $results->total,
+        ));
+    }
+
+    public static function ajax_get_variants() {
+        check_ajax_referer('mg_allegro_nonce', 'nonce');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error('Nincs jogosultságod a variációk lekéréséhez.', 403);
+        }
+        $product_ids = isset($_POST['product_ids']) ? array_values(array_unique(array_map('absint', (array) wp_unslash($_POST['product_ids'])))) : array();
+        if (!$product_ids) {
+            wp_send_json_error('Nincs kiválasztott termék.');
+        }
+
+        $settings = self::get_settings();
+        $profiles = MG_Allegro_Exporter::category_profiles();
+        $strict = !empty($settings['strict_mappings']);
+        $data = array();
+        foreach ($product_ids as $product_id) {
+            $product = wc_get_product($product_id);
+            if (!$product || !$product->is_in_stock()) {
+                continue;
+            }
+            $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+            $variants = array();
+            foreach ((array) ($config['types'] ?? array()) as $type_slug => $type_meta) {
+                $type_slug = sanitize_title($type_slug);
+                $category_id = (string) ($settings['category_map'][$type_slug] ?? '');
+                if (!isset($profiles[$category_id])) {
+                    continue;
+                }
+                $type_color_map = isset($settings['color_map'][$type_slug]) && is_array($settings['color_map'][$type_slug])
+                    ? $settings['color_map'][$type_slug]
+                    : (array) $settings['color_map'];
+                foreach ((array) ($type_meta['colors'] ?? array()) as $color_slug => $color_meta) {
+                    $color_slug = sanitize_title($color_slug);
+                    $color_label = wp_strip_all_tags($color_meta['label'] ?? $color_slug);
+                    $mapped_color = MG_Allegro_Exporter::map_color($color_slug, $color_label, $type_color_map, !$strict);
+                    foreach ((array) ($color_meta['sizes'] ?? array()) as $source_size) {
+                        $mapped_size = MG_Allegro_Exporter::map_size($type_slug, $source_size, $settings['size_map'], !$strict);
+                        $color_valid = $mapped_color !== '';
+                        $size_valid = $mapped_size !== ''
+                            && in_array($mapped_size, MG_Allegro_Exporter::allowed_sizes_for_category($category_id), true);
+                        $variants[] = array(
+                            'type' => $type_slug,
+                            'type_label' => wp_strip_all_tags($type_meta['label'] ?? $type_slug),
+                            'category_id' => $category_id,
+                            'category_label' => $profiles[$category_id]['label'],
+                            'color' => $color_slug,
+                            'color_label' => $color_label,
+                            'allegro_color' => $mapped_color,
+                            'color_valid' => $color_valid,
+                            'size' => (string) $source_size,
+                            'allegro_size' => $mapped_size,
+                            'size_valid' => $size_valid,
+                            'valid' => $color_valid && $size_valid,
+                        );
+                    }
+                }
+            }
+            $data[] = array(
+                'product_id' => (int) $product->get_id(),
+                'product_name' => $product->get_name(),
+                'sku_base' => $product->get_sku(),
+                'variants' => $variants,
+            );
+        }
+        wp_send_json_success($data);
     }
 
     private static function error_page($errors) {
@@ -297,24 +424,145 @@ class MG_Allegro_Export_Page {
                 </form>
 
                 <hr style="margin:30px 0">
-                <h3><?php esc_html_e('Allegro CSV export', 'mockup-generator'); ?></h3>
-                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <h3><?php esc_html_e('4. Exportálandó termékek és variációk kiválasztása', 'mockup-generator'); ?></h3>
+                <div id="mg-allegro-export-app">
+                    <div id="mg-allegro-product-step">
+                        <div class="mg-allegro-toolbar">
+                            <div class="mg-allegro-toolbar__filters">
+                                <label><?php esc_html_e('Termékek oldalanként:', 'mockup-generator'); ?>
+                                    <select id="mg-allegro-per-page"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select>
+                                </label>
+                                <label><?php esc_html_e('Főkategória:', 'mockup-generator'); ?>
+                                    <select id="mg-allegro-parent-category"><option value=""><?php esc_html_e('— mind —', 'mockup-generator'); ?></option>
+                                    <?php foreach ((array) get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => false, 'parent' => 0, 'orderby' => 'name')) as $term): ?>
+                                        <option value="<?php echo esc_attr($term->term_id); ?>"><?php echo esc_html($term->name); ?></option>
+                                    <?php endforeach; ?>
+                                    </select>
+                                </label>
+                                <label id="mg-allegro-child-category-wrap" hidden><?php esc_html_e('Alkategória:', 'mockup-generator'); ?>
+                                    <select id="mg-allegro-child-category"><option value=""><?php esc_html_e('— mind —', 'mockup-generator'); ?></option></select>
+                                </label>
+                            </div>
+                            <div><button type="button" class="button" id="mg-allegro-select-page"><?php esc_html_e('Összes kijelölése az oldalon', 'mockup-generator'); ?></button> <button type="button" class="button button-primary" id="mg-allegro-next"><?php esc_html_e('Tovább a variációkhoz', 'mockup-generator'); ?></button></div>
+                        </div>
+                        <div class="mg-table-wrap"><table class="widefat fixed striped"><thead><tr><td class="check-column"><input type="checkbox" id="mg-allegro-check-page"></td><th style="width:90px"><?php esc_html_e('Kép', 'mockup-generator'); ?></th><th><?php esc_html_e('Terméknév', 'mockup-generator'); ?></th><th><?php esc_html_e('Base SKU', 'mockup-generator'); ?></th><th><?php esc_html_e('Woo kategória', 'mockup-generator'); ?></th></tr></thead><tbody id="mg-allegro-products"><tr><td colspan="5"><?php esc_html_e('Betöltés…', 'mockup-generator'); ?></td></tr></tbody></table></div>
+                        <div id="mg-allegro-pages" class="mg-allegro-pages"></div>
+                    </div>
+
+                    <div id="mg-allegro-variant-step" hidden>
+                        <div class="mg-allegro-toolbar"><button type="button" class="button" id="mg-allegro-back"><?php esc_html_e('« Vissza a termékekhez', 'mockup-generator'); ?></button><button type="button" class="button button-primary button-hero" id="mg-allegro-download"><span class="dashicons dashicons-download" style="vertical-align:-4px"></span> <?php esc_html_e('Kijelölt Allegro CSV letöltése', 'mockup-generator'); ?></button></div>
+                        <div id="mg-allegro-variants"><p><?php esc_html_e('Variációk betöltése…', 'mockup-generator'); ?></p></div>
+                    </div>
+                </div>
+
+                <form id="mg-allegro-download-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" hidden>
                     <input type="hidden" name="action" value="mg_allegro_export_csv">
+                    <input type="hidden" name="selection" id="mg-allegro-selection" value="">
                     <?php wp_nonce_field('mg_allegro_export_csv'); ?>
-                    <fieldset style="margin:12px 0"><legend class="screen-reader-text"><?php esc_html_e('Exportálandó profilok', 'mockup-generator'); ?></legend>
-                    <?php foreach ($profiles as $category_id => $profile):
-                        $type_slug = sanitize_title($settings['category_type_map'][$category_id] ?? '');
-                        if ($type_slug === '' || !isset($dictionary['types'][$type_slug])) {
-                            continue;
-                        }
-                    ?>
-                        <label style="display:inline-block;margin:0 18px 10px 0"><input type="checkbox" name="types[]" value="<?php echo esc_attr($type_slug); ?>" checked> <?php echo esc_html($profile['label']); ?> ↔ <?php echo esc_html($dictionary['types'][$type_slug]); ?></label>
-                    <?php endforeach; ?>
-                    </fieldset>
-                    <p><label><input type="checkbox" name="only_unexported" value="1"> <?php esc_html_e('Csak a még nem exportált termék–típus párok', 'mockup-generator'); ?></label></p>
-                    <p><button type="submit" class="button button-primary button-hero"><span class="dashicons dashicons-download" style="vertical-align:-4px"></span> <?php esc_html_e('Allegro CSV letöltése', 'mockup-generator'); ?></button></p>
-                    <p class="description"><?php esc_html_e('Minden termék–szín–méret kombináció külön sort kap. A fájl az allegro-sync alkalmazásba importálható.', 'mockup-generator'); ?></p>
                 </form>
+
+                <style>
+                    .mg-allegro-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #dcdcde;border-radius:9px;padding:12px;margin:14px 0}.mg-allegro-toolbar__filters{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.mg-allegro-pages{display:flex;justify-content:center;gap:5px;margin:15px 0}.mg-allegro-pages .button{min-width:34px}.mg-allegro-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:16px}.mg-allegro-filter-card{background:#fff;border:1px solid #dcdcde;border-radius:9px;padding:14px}.mg-allegro-filter-list{max-height:420px;overflow:auto}.mg-allegro-filter-list label{display:block;padding:4px 0}.mg-allegro-summary{margin-top:16px;padding:14px;background:#f0f6fc;border-left:4px solid #2271b1;font-weight:600}.mg-allegro-invalid{color:#b32d2e;font-weight:600}@media(max-width:900px){.mg-allegro-filter-grid{grid-template-columns:1fr}}
+                </style>
+
+                <script>
+                jQuery(function($) {
+                    const nonce = '<?php echo esc_js(wp_create_nonce('mg_allegro_nonce')); ?>';
+                    const childCategories = <?php
+                        $children = array();
+                        foreach ((array) get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => false, 'parent__not_in' => array(0), 'orderby' => 'name')) as $term) {
+                            $children[$term->parent][] = array('id' => $term->term_id, 'name' => $term->name);
+                        }
+                        echo wp_json_encode($children);
+                    ?>;
+                    let page = 1;
+                    let selectedProducts = {};
+                    let variants = [];
+
+                    function esc(value) { return $('<div>').text(value == null ? '' : String(value)).html(); }
+                    function activeCategory() { return $('#mg-allegro-child-category').val() || $('#mg-allegro-parent-category').val() || ''; }
+
+                    function loadProducts(newPage) {
+                        page = newPage;
+                        $('#mg-allegro-check-page').prop('checked', false);
+                        $('#mg-allegro-products').html('<tr><td colspan="5">Betöltés…</td></tr>');
+                        $.post(ajaxurl, {action:'mg_allegro_get_products', nonce:nonce, page:page, per_page:$('#mg-allegro-per-page').val(), category_id:activeCategory()})
+                            .done(function(response) {
+                                if (!response.success) { $('#mg-allegro-products').html('<tr><td colspan="5">Hiba: '+esc(response.data)+'</td></tr>'); return; }
+                                let html = '';
+                                response.data.products.forEach(function(product) {
+                                    html += '<tr><th class="check-column"><input type="checkbox" class="mg-allegro-product" value="'+product.id+'" '+(selectedProducts[product.id]?'checked':'')+'></th><td><img src="'+esc(product.image)+'" width="72" height="72" style="object-fit:cover;border-radius:6px"></td><td><strong>'+esc(product.name)+'</strong></td><td>'+esc(product.sku)+'</td><td>'+esc(product.category)+'</td></tr>';
+                                });
+                                $('#mg-allegro-products').html(html || '<tr><td colspan="5">Nincs megjeleníthető termék.</td></tr>');
+                                renderPages(response.data.total_pages);
+                            }).fail(function() { $('#mg-allegro-products').html('<tr><td colspan="5">Kommunikációs hiba.</td></tr>'); });
+                    }
+
+                    function renderPages(total) {
+                        let html = '';
+                        for (let i=1; i<=total; i++) {
+                            if (i<=3 || i>total-3 || Math.abs(i-page)<=1) html += '<button type="button" class="button '+(i===page?'button-primary':'')+' mg-allegro-page" data-page="'+i+'">'+i+'</button>';
+                            else if (!html.endsWith('<span>…</span>')) html += '<span>…</span>';
+                        }
+                        $('#mg-allegro-pages').html(html);
+                    }
+
+                    $(document).on('change', '.mg-allegro-product', function() { if (this.checked) selectedProducts[this.value]=true; else delete selectedProducts[this.value]; });
+                    $(document).on('click', '.mg-allegro-page', function() { loadProducts(Number($(this).data('page'))); });
+                    $('#mg-allegro-check-page').on('change', function() { $('.mg-allegro-product').prop('checked', this.checked).trigger('change'); });
+                    $('#mg-allegro-select-page').on('click', function() { $('.mg-allegro-product').prop('checked', true).trigger('change'); });
+                    $('#mg-allegro-per-page').on('change', function() { loadProducts(1); });
+                    $('#mg-allegro-parent-category').on('change', function() {
+                        const list = childCategories[this.value] || [];
+                        $('#mg-allegro-child-category').html('<option value="">— mind —</option>'+list.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join(''));
+                        $('#mg-allegro-child-category-wrap').prop('hidden', !list.length);
+                        loadProducts(1);
+                    });
+                    $('#mg-allegro-child-category').on('change', function() { loadProducts(1); });
+
+                    $('#mg-allegro-next').on('click', function() {
+                        const ids = Object.keys(selectedProducts);
+                        if (!ids.length) { alert('Válassz legalább egy terméket.'); return; }
+                        $('#mg-allegro-product-step').prop('hidden', true);
+                        $('#mg-allegro-variant-step').prop('hidden', false);
+                        $('#mg-allegro-variants').html('<p style="padding:20px;text-align:center">Virtuális variációk betöltése…</p>');
+                        $.post(ajaxurl, {action:'mg_allegro_get_variants', nonce:nonce, product_ids:ids}).done(function(response) {
+                            if (!response.success) { $('#mg-allegro-variants').html('<p>Hiba: '+esc(response.data)+'</p>'); return; }
+                            renderVariants(response.data);
+                        }).fail(function() { $('#mg-allegro-variants').html('<p>Kommunikációs hiba.</p>'); });
+                    });
+                    $('#mg-allegro-back').on('click', function() { $('#mg-allegro-variant-step').prop('hidden', true); $('#mg-allegro-product-step').prop('hidden', false); });
+
+                    function renderVariants(products) {
+                        variants = products;
+                        const types={}, colors={}, sizes={};
+                        products.forEach(p=>p.variants.forEach(v=>{
+                            if(!types[v.type]) types[v.type]={label:v.category_label+' ↔ '+v.type_label,count:0}; types[v.type].count++;
+                            if(!colors[v.color]) colors[v.color]={label:v.color_label,allegro:v.allegro_color,count:0,valid:v.color_valid}; else { colors[v.color].valid=colors[v.color].valid&&v.color_valid; if(colors[v.color].allegro!==v.allegro_color) colors[v.color].allegro='profilfüggő'; } colors[v.color].count++;
+                            if(!sizes[v.size]) sizes[v.size]={label:v.size,allegro:v.allegro_size,count:0,valid:v.size_valid}; else { sizes[v.size].valid=sizes[v.size].valid&&v.size_valid; if(sizes[v.size].allegro!==v.allegro_size) sizes[v.size].allegro='profilfüggő'; } sizes[v.size].count++;
+                        }));
+                        function column(title, allId, cls, values) {
+                            return '<div class="mg-allegro-filter-card"><h3>'+title+'</h3><div class="mg-allegro-filter-list"><label><input type="checkbox" id="'+allId+'" checked> <strong>Összes kijelölése</strong></label><hr>'+Object.keys(values).map(k=>{const mapping=Object.prototype.hasOwnProperty.call(values[k],'allegro')?(values[k].allegro?' → '+esc(values[k].allegro):' → nincs megfeleltetés'):'';return '<label class="'+(values[k].valid===false?'mg-allegro-invalid':'')+'"><input type="checkbox" class="'+cls+'" value="'+esc(k)+'" checked> '+esc(values[k].label)+mapping+' <small>('+values[k].count+')</small></label>';}).join('')+'</div></div>';
+                        }
+                        $('#mg-allegro-variants').html('<div class="mg-allegro-filter-grid">'+column('Terméktípusok','mg-allegro-all-types','mg-allegro-type',types)+column('Színek','mg-allegro-all-colors','mg-allegro-color',colors)+column('Méretek','mg-allegro-all-sizes','mg-allegro-size',sizes)+'</div><div id="mg-allegro-summary" class="mg-allegro-summary"></div>');
+                        updateSummary();
+                    }
+
+                    function collectSelection() {
+                        const types=$('.mg-allegro-type:checked').map((i,e)=>e.value).get(), colors=$('.mg-allegro-color:checked').map((i,e)=>e.value).get(), sizes=$('.mg-allegro-size:checked').map((i,e)=>e.value).get();
+                        const selection=[], invalid=[];
+                        variants.forEach(p=>p.variants.forEach(v=>{ if(types.includes(v.type)&&colors.includes(v.color)&&sizes.includes(v.size)){ const row={pid:p.product_id,type:v.type,color:v.color,size:v.size}; selection.push(row); if(!v.valid) invalid.push(row); } }));
+                        return {selection:selection, invalid:invalid};
+                    }
+                    function updateSummary() { const result=collectSelection(); $('#mg-allegro-summary').html('Összesen <strong>'+result.selection.length+'</strong> pontos variáció kerül a fájlba '+(result.invalid.length?'<span class="mg-allegro-invalid">· '+result.invalid.length+' hiányos megfeleltetés</span>':'· minden megfeleltetés rendben')); }
+                    $(document).on('change','.mg-allegro-type,.mg-allegro-color,.mg-allegro-size',updateSummary);
+                    $(document).on('change','#mg-allegro-all-types',function(){$('.mg-allegro-type').prop('checked',this.checked).trigger('change');});
+                    $(document).on('change','#mg-allegro-all-colors',function(){$('.mg-allegro-color').prop('checked',this.checked).trigger('change');});
+                    $(document).on('change','#mg-allegro-all-sizes',function(){$('.mg-allegro-size').prop('checked',this.checked).trigger('change');});
+                    $('#mg-allegro-download').on('click', function() { const result=collectSelection(); if(!result.selection.length){alert('Nincs kiválasztott variáció.');return;} if(result.invalid.length){alert('A kijelölésben hiányos szín- vagy méretmegfeleltetés van. Előbb javítsd a profilt.');return;} $('#mg-allegro-selection').val(JSON.stringify(result.selection)); document.getElementById('mg-allegro-download-form').submit(); });
+                    loadProducts(1);
+                });
+                </script>
             </section>
         </div>
         <?php
