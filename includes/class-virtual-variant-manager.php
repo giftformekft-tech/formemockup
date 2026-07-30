@@ -571,12 +571,12 @@ class MG_Virtual_Variant_Manager {
         );
     }
 
-    protected static function get_design_id($product) {
+    public static function get_design_id($product) {
         $product_id = $product ? $product->get_id() : 0;
         return apply_filters('mg_virtual_variant_design_id', $product_id, $product);
     }
 
-    protected static function get_render_version($product) {
+    public static function get_render_version($product) {
         $default_version = 'v4';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
         $version = sanitize_title($version);
@@ -991,8 +991,29 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
+        self::apply_variant_meta_to_item($item, $values);
+    }
+
+    /**
+     * Write the virtual variant payload onto an order line item.
+     *
+     * Shared by the checkout hook above and by any flow that builds an order
+     * item outside the cart (e.g. adding a line to an existing order in the
+     * admin), so both paths produce identical meta.
+     *
+     * @param WC_Order_Item_Product $item   Line item to decorate.
+     * @param array                 $values Cart-item-shaped data: mg_product_type,
+     *                                      mg_color, mg_size and optionally
+     *                                      product_id, mg_design_id, mg_preview_url,
+     *                                      mg_render_version.
+     * @return bool True when the meta was written.
+     */
+    public static function apply_variant_meta_to_item($item, $values) {
+        if (!$item instanceof WC_Order_Item_Product) {
+            return false;
+        }
         if (empty($values['mg_product_type']) || empty($values['mg_color']) || empty($values['mg_size'])) {
-            return;
+            return false;
         }
 
         $type_slug = sanitize_text_field($values['mg_product_type']);
@@ -1072,6 +1093,8 @@ class MG_Virtual_Variant_Manager {
         if (!empty($design_reference)) {
             $item->add_meta_data('_mg_print_design_reference', $design_reference, true);
         }
+
+        return true;
     }
 
     protected static function capture_design_reference_for_order_item($item, $values) {
@@ -1147,6 +1170,40 @@ class MG_Virtual_Variant_Manager {
         return $reference;
     }
 
+    /**
+     * Unit price of a virtual variant: the product type's base price plus the
+     * size surcharge. This is the single source of truth for the cart and for
+     * any order line built outside the cart.
+     *
+     * @param string $type_slug Product type key.
+     * @param string $size      Size value.
+     * @return float Gross unit price, 0.0 when the type is unknown.
+     */
+    public static function calculate_variant_price($type_slug, $size) {
+        if (!function_exists('mgsc_get_products')) {
+            return 0.0;
+        }
+        $type_slug = sanitize_title($type_slug);
+        $products = mgsc_get_products();
+        if ($type_slug === '' || empty($products[$type_slug])) {
+            return 0.0;
+        }
+        $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
+        $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $size)) : 0.0;
+        return (float) max(0, $base_price + $size_extra);
+    }
+
+    /**
+     * Public wrapper around the mockup preview resolver, for callers outside
+     * the cart flow.
+     *
+     * @return string Preview URL, or an empty string when none could be resolved.
+     */
+    public static function resolve_preview_url($product_id, $type_slug, $color_slug) {
+        $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+        return is_wp_error($preview) ? '' : (string) $preview;
+    }
+
     public static function apply_cart_pricing($cart) {
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
@@ -1167,9 +1224,7 @@ class MG_Virtual_Variant_Manager {
             if (empty($products[$type_slug])) {
                 continue;
             }
-            $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
-            $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $cart_item['mg_size'])) : 0.0;
-            $final_price = max(0, $base_price + $size_extra);
+            $final_price = self::calculate_variant_price($type_slug, $cart_item['mg_size']);
             $product->set_price($final_price);
             $cart->cart_contents[$cart_item_key]['mg_custom_fields_base_price'] = $final_price;
         }
