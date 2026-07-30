@@ -57,6 +57,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
         add_filter('woocommerce_admin_order_item_thumbnail', array(__CLASS__, 'filter_admin_order_item_thumbnail'), 10, 3);
+        add_action('admin_head', array(__CLASS__, 'print_admin_thumbnail_styles'));
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
@@ -1245,6 +1246,66 @@ class MG_Virtual_Variant_Manager {
             $item->get_meta('mg_product_type'),
             $item->get_meta('mg_color')
         );
+    }
+
+    /**
+     * Size the order item thumbnails from an inline block instead of the
+     * stylesheet: WooCommerce's own admin CSS pins the thumbnail wrapper to
+     * 38px, and an enqueued override loses that fight whenever an optimizer
+     * plugin (LiteSpeed) combines or defers our file.
+     */
+    public static function print_admin_thumbnail_styles() {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen) {
+            return;
+        }
+
+        $is_order_screen = in_array($screen->id, array('shop_order', 'woocommerce_page_wc-orders'), true)
+            || $screen->post_type === 'shop_order';
+        if (!$is_order_screen) {
+            return;
+        }
+        ?>
+        <style id="mg-admin-item-preview-size">
+        #woocommerce-order-items td.thumb,
+        #order_line_items td.thumb {
+            width: 116px !important;
+        }
+        #woocommerce-order-items .wc-order-item-thumbnail,
+        #order_line_items .wc-order-item-thumbnail {
+            width: 100px !important;
+            height: auto !important;
+        }
+        #woocommerce-order-items .wc-order-item-thumbnail img,
+        #order_line_items .wc-order-item-thumbnail img,
+        img.mg-admin-item-preview {
+            width: 100px !important;
+            height: 100px !important;
+            max-width: 100px !important;
+            /* contain, not cover: the whole mockup stays visible, nothing is cropped */
+            object-fit: contain;
+            border-radius: 3px;
+            background: #f6f7f7;
+        }
+        @media screen and (max-width: 1200px) {
+            #woocommerce-order-items td.thumb,
+            #order_line_items td.thumb {
+                width: 76px !important;
+            }
+            #woocommerce-order-items .wc-order-item-thumbnail,
+            #order_line_items .wc-order-item-thumbnail {
+                width: 60px !important;
+            }
+            #woocommerce-order-items .wc-order-item-thumbnail img,
+            #order_line_items .wc-order-item-thumbnail img,
+            img.mg-admin-item-preview {
+                width: 60px !important;
+                height: 60px !important;
+                max-width: 60px !important;
+            }
+        }
+        </style>
+        <?php
     }
 
     /**
