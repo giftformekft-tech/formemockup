@@ -139,12 +139,20 @@ class MG_Order_Add_Item {
         }
 
         $plugin_url = plugin_dir_url(dirname(__FILE__));
-        $version = defined('MG_VERSION') ? MG_VERSION : '1.0.0';
+        $plugin_dir = plugin_dir_path(dirname(__FILE__));
+
+        // filemtime beats MG_VERSION here: an optimizer plugin (LiteSpeed) keeps
+        // serving the combined stylesheet until the URL actually changes.
+        $css_path = $plugin_dir . 'assets/css/order-add-item.css';
+        $js_path  = $plugin_dir . 'assets/js/order-add-item.js';
+        $fallback = defined('MG_VERSION') ? MG_VERSION : '1.0.0';
+        $css_ver  = file_exists($css_path) ? filemtime($css_path) : $fallback;
+        $js_ver   = file_exists($js_path) ? filemtime($js_path) : $fallback;
 
         self::$assets_loaded = true;
 
-        wp_enqueue_style('mg-order-add-item', $plugin_url . 'assets/css/order-add-item.css', array(), $version);
-        wp_enqueue_script('mg-order-add-item', $plugin_url . 'assets/js/order-add-item.js', array('jquery'), $version, true);
+        wp_enqueue_style('mg-order-add-item', $plugin_url . 'assets/css/order-add-item.css', array(), $css_ver);
+        wp_enqueue_script('mg-order-add-item', $plugin_url . 'assets/js/order-add-item.js', array('jquery'), $js_ver, true);
 
         wp_localize_script('mg-order-add-item', 'mgOrderAddItem', array(
             'ajax_url' => admin_url('admin-ajax.php'),
@@ -209,6 +217,39 @@ class MG_Order_Add_Item {
             return;
         }
         ?>
+        <style id="mg-add-item-critical">
+        /* Printed inline so the modal is never laid out in the page flow (and
+           hidden behind the admin menu) if the stylesheet is delayed, combined
+           or cached away by an optimizer plugin. */
+        #mg-add-item-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 160000;
+            align-items: center;
+            justify-content: center;
+        }
+        #mg-add-item-overlay .mg-add-item-modal {
+            background: #fff;
+            width: 560px;
+            max-width: 95vw;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-radius: 4px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+        }
+        #mg-add-item-overlay .mg-add-item-body {
+            padding: 18px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        #mg-add-item-overlay .mg-add-item-results {
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        </style>
         <div id="mg-add-item-overlay" class="mg-add-item-overlay" style="display:none;">
             <div class="mg-add-item-modal">
                 <div class="mg-add-item-header">

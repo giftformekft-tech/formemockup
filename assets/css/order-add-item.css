@@ -12,8 +12,8 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
-    z-index: 100000;
-    display: flex;
+    /* Above the admin bar (99999) and the support widgets that sit near it. */
+    z-index: 160000;
     align-items: center;
     justify-content: center;
 }

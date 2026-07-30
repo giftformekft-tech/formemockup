@@ -31,6 +31,12 @@
         $message  = $('#mg-add-item-message');
         $warning  = $('#mg-add-item-production-warning');
 
+        // Keep the overlay a direct child of <body>, so no ancestor's transform
+        // or overflow can trap the fixed positioning.
+        if ($overlay.length && !$overlay.parent().is('body')) {
+            $overlay.appendTo('body');
+        }
+
         $(document).on('click', '.mg-add-item-btn', openModal);
         $(document).on('click', '.mg-add-item-close', closeModal);
         $(document).on('click', '#mg-add-item-overlay', function (e) {
@@ -80,7 +86,12 @@
         $price.val(0);
         $message.hide();
         $save.prop('disabled', true).text(i18n.add || 'Hozzáadás');
-        $overlay.fadeIn(150);
+
+        // The overlay centers its box with flexbox, so it must not be shown with
+        // a plain fadeIn() — jQuery would restore the element's default "block"
+        // display and the modal would render in the page flow. Caching "flex"
+        // via hide() first makes fadeIn() restore that instead.
+        $overlay.stop(true, true).css('display', 'flex').hide().fadeIn(150);
         $search.trigger('focus');
     }
 
