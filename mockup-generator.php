@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.31.1
+Version: 2.32.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.31.1');
+    define('MG_VERSION', '2.32.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -72,7 +72,9 @@ add_action('plugins_loaded', function(){
         'includes/class-design-gallery.php',
         'includes/class-designer-button.php',
         'includes/class-temu-xlsx-writer.php',
+        'includes/class-allegro-exporter.php',
         'admin/class-temu-export-page.php',
+        'admin/class-allegro-export-page.php',
         'admin/class-order-design-download.php',
         'admin/class-order-item-editor.php',
         'admin/class-order-add-item.php',
@@ -249,6 +251,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Temu_Export_Page')) {
         MG_Temu_Export_Page::init();
+    }
+    if (class_exists('MG_Allegro_Export_Page')) {
+        MG_Allegro_Export_Page::init();
     }
     if (class_exists('MG_Order_Design_Download')) {
         MG_Order_Design_Download::init();
