@@ -21,7 +21,7 @@ class MG_Allegro_Exporter {
             'sku', 'parent_sku', 'name', 'description', 'type', 'type_label',
             'color', 'manufacturer_color', 'size', 'price_huf', 'stock',
             'image_url', 'weight_g', 'brand', 'material', 'ai_content',
-            'category_id',
+            'length_cm', 'width_cm', 'category_id',
         );
     }
 
@@ -472,6 +472,8 @@ class MG_Allegro_Exporter {
                             'brand' => $brand,
                             'material' => $material,
                             'ai_content' => '0',
+                            'length_cm' => $measurement['length'],
+                            'width_cm' => $measurement['width'],
                             'category_id' => $category_id,
                         );
                         $added_for_type = true;

@@ -16,7 +16,8 @@ companion `allegro-sync` application.
   template stock is used.
 - Each virtual product type can store laid-flat length and width values for
   every size. When present, the exact exported variant receives a Hungarian
-  size-measurement block in its description; no size-chart image is needed.
+  size-measurement block in its description and separate `length_cm` / `width_cm`
+  CSV values for Allegro's additional parameters; no size-chart image is needed.
 - Missing SKU, description, image, price, colour mapping or size mapping stops
   the download and produces an actionable validation list.
 
