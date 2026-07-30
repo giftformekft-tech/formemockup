@@ -7,12 +7,15 @@
     var $overlay, $results, $search, $selected, $variant, $type, $color, $size,
         $qty, $price, $notify, $save, $message, $warning;
 
+    var $removeOverlay, $removeName, $removeNotify, $removeConfirm, $removeMessage, $removeWarning;
+
     var state = {
         orderId: 0,
         productId: 0,
         types: [],
         searchTimer: null,
-        priceTouched: false
+        priceTouched: false,
+        removeItemId: 0
     };
 
     function init() {
@@ -31,13 +34,31 @@
         $message  = $('#mg-add-item-message');
         $warning  = $('#mg-add-item-production-warning');
 
-        // Keep the overlay a direct child of <body>, so no ancestor's transform
+        $removeOverlay = $('#mg-remove-item-overlay');
+        $removeName    = $('#mg-remove-item-name');
+        $removeNotify  = $('#mg-remove-item-notify');
+        $removeConfirm = $('#mg-remove-item-confirm');
+        $removeMessage = $('#mg-remove-item-message');
+        $removeWarning = $('#mg-remove-item-production-warning');
+
+        // Keep the overlays direct children of <body>, so no ancestor's transform
         // or overflow can trap the fixed positioning.
-        if ($overlay.length && !$overlay.parent().is('body')) {
-            $overlay.appendTo('body');
-        }
+        $overlay.add($removeOverlay).each(function () {
+            var $el = $(this);
+            if ($el.length && !$el.parent().is('body')) {
+                $el.appendTo('body');
+            }
+        });
 
         $(document).on('click', '.mg-add-item-btn', openModal);
+        $(document).on('click', '.mg-remove-item-btn', openRemoveModal);
+        $(document).on('click', '.mg-remove-item-close', closeRemoveModal);
+        $(document).on('click', '#mg-remove-item-overlay', function (e) {
+            if ($(e.target).is('#mg-remove-item-overlay')) {
+                closeRemoveModal();
+            }
+        });
+        $(document).on('click', '#mg-remove-item-confirm', removeItem);
         $(document).on('click', '.mg-add-item-close', closeModal);
         $(document).on('click', '#mg-add-item-overlay', function (e) {
             if ($(e.target).is('#mg-add-item-overlay')) {
@@ -45,8 +66,14 @@
             }
         });
         $(document).on('keydown', function (e) {
-            if (e.key === 'Escape' && $overlay.is(':visible')) {
+            if (e.key !== 'Escape') {
+                return;
+            }
+            if ($overlay.is(':visible')) {
                 closeModal();
+            }
+            if ($removeOverlay.is(':visible')) {
+                closeRemoveModal();
             }
         });
 
@@ -99,8 +126,53 @@
         $overlay.fadeOut(120);
     }
 
-    function showMessage(text, type) {
-        $message
+    function openRemoveModal() {
+        var $btn = $(this);
+        state.removeItemId = parseInt($btn.data('item-id'), 10) || 0;
+
+        $removeName.text($btn.data('item-name') || '');
+        $removeWarning.toggle(parseInt($btn.data('in-production'), 10) === 1);
+        $removeNotify.prop('checked', true);
+        $removeMessage.hide();
+        $removeConfirm.prop('disabled', false).text(i18n.remove || 'Tétel törlése');
+        $removeOverlay.stop(true, true).css('display', 'flex').hide().fadeIn(150);
+    }
+
+    function closeRemoveModal() {
+        $removeOverlay.fadeOut(120);
+    }
+
+    function removeItem() {
+        if (!state.removeItemId || $removeConfirm.prop('disabled')) {
+            return;
+        }
+
+        $removeConfirm.prop('disabled', true).text(i18n.removing || '');
+        $removeMessage.hide();
+
+        $.post(cfg.ajax_url, {
+            action: 'mg_order_remove_item',
+            nonce: cfg.nonce,
+            item_id: state.removeItemId,
+            notify: $removeNotify.is(':checked') ? 1 : 0
+        }, function (response) {
+            if (!response.success) {
+                showMessage((response.data && response.data.message) || i18n.error, 'error', $removeMessage);
+                $removeConfirm.prop('disabled', false).text(i18n.remove || '');
+                return;
+            }
+
+            showMessage(response.data.message, 'success', $removeMessage);
+            // Reload so WooCommerce re-renders the items table and the totals.
+            window.location.reload();
+        }).fail(function () {
+            showMessage(i18n.error, 'error', $removeMessage);
+            $removeConfirm.prop('disabled', false).text(i18n.remove || '');
+        });
+    }
+
+    function showMessage(text, type, $target) {
+        ($target || $message)
             .removeClass('notice-success notice-error')
             .addClass(type === 'success' ? 'notice-success' : 'notice-error')
             .show()

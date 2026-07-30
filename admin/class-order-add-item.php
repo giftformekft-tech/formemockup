@@ -19,6 +19,10 @@ if (!defined('ABSPATH')) {
  * total, so no online payment has to be re-taken. It stays available while the
  * order is already in production; in that case the admin is warned that the new
  * item still has to be sent to the supplier separately.
+ *
+ * The same rules apply to the "🗑️ Tétel törlése" button rendered on each line:
+ * a customer who changed their mind can have an item taken off the order as long
+ * as it is paid on delivery.
  */
 class MG_Order_Add_Item {
 
@@ -34,6 +38,8 @@ class MG_Order_Add_Item {
         add_action('wp_ajax_mg_order_add_item_search', array(__CLASS__, 'ajax_search_products'));
         add_action('wp_ajax_mg_order_add_item_options', array(__CLASS__, 'ajax_get_options'));
         add_action('wp_ajax_mg_order_add_item_save', array(__CLASS__, 'ajax_add_item'));
+        add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_remove_button'), 20, 3);
+        add_action('wp_ajax_mg_order_remove_item', array(__CLASS__, 'ajax_remove_item'));
     }
 
     /**
@@ -178,6 +184,8 @@ class MG_Order_Add_Item {
                 'incomplete'     => __('Válassz terméket, típust, színt és méretet.', 'mgdtp'),
                 'add'            => __('Hozzáadás', 'mgdtp'),
                 'adding'         => __('Hozzáadás…', 'mgdtp'),
+                'remove'         => __('Tétel törlése', 'mgdtp'),
+                'removing'       => __('Törlés…', 'mgdtp'),
                 'cancel'         => __('Mégse', 'mgdtp'),
                 'loading'        => __('Betöltés…', 'mgdtp'),
                 'error'          => __('Hiba történt, próbáld újra.', 'mgdtp'),
@@ -212,6 +220,40 @@ class MG_Order_Add_Item {
         );
     }
 
+    /**
+     * Render the per-line "remove" button under the item meta.
+     */
+    public static function render_remove_button($item_id, $item, $product) {
+        if (!$item_id || !($item instanceof WC_Order_Item_Product)) {
+            return;
+        }
+
+        $order = $item->get_order();
+        if (is_wp_error(self::check_eligibility($order))) {
+            return;
+        }
+
+        // Nothing to remove when this is the only line left — that is a
+        // cancellation, not an order change.
+        if (count($order->get_items()) <= 1) {
+            return;
+        }
+
+        printf(
+            '<div class="mg-remove-item-wrap" style="margin-top:6px;">
+                <button type="button"
+                    class="button button-small mg-remove-item-btn"
+                    data-item-id="%d"
+                    data-item-name="%s"
+                    data-in-production="%d">🗑️ %s</button>
+            </div>',
+            esc_attr($item_id),
+            esc_attr($item->get_name()),
+            self::is_in_production($order) ? 1 : 0,
+            esc_html__('Tétel törlése', 'mgdtp')
+        );
+    }
+
     public static function render_modal() {
         if (!self::$assets_loaded) {
             return;
@@ -221,7 +263,7 @@ class MG_Order_Add_Item {
         /* Printed inline so the modal is never laid out in the page flow (and
            hidden behind the admin menu) if the stylesheet is delayed, combined
            or cached away by an optimizer plugin. */
-        #mg-add-item-overlay {
+        .mg-add-item-overlay {
             position: fixed;
             inset: 0;
             background: rgba(0, 0, 0, 0.55);
@@ -229,7 +271,7 @@ class MG_Order_Add_Item {
             align-items: center;
             justify-content: center;
         }
-        #mg-add-item-overlay .mg-add-item-modal {
+        .mg-add-item-overlay .mg-add-item-modal {
             background: #fff;
             width: 560px;
             max-width: 95vw;
@@ -240,12 +282,12 @@ class MG_Order_Add_Item {
             border-radius: 4px;
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
         }
-        #mg-add-item-overlay .mg-add-item-body {
+        .mg-add-item-overlay .mg-add-item-body {
             padding: 18px;
             overflow-y: auto;
             flex: 1;
         }
-        #mg-add-item-overlay .mg-add-item-results {
+        .mg-add-item-overlay .mg-add-item-results {
             max-height: 240px;
             overflow-y: auto;
         }
@@ -322,6 +364,38 @@ class MG_Order_Add_Item {
                         <?php esc_html_e('Hozzáadás', 'mgdtp'); ?>
                     </button>
                     <button type="button" class="button mg-add-item-close"><?php esc_html_e('Mégse', 'mgdtp'); ?></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="mg-remove-item-overlay" class="mg-add-item-overlay" style="display:none;">
+            <div class="mg-add-item-modal">
+                <div class="mg-add-item-header">
+                    <h3><?php esc_html_e('Tétel törlése a rendelésből', 'mgdtp'); ?></h3>
+                    <button type="button" class="mg-remove-item-close" aria-label="<?php esc_attr_e('Bezárás', 'mgdtp'); ?>">&times;</button>
+                </div>
+                <div class="mg-add-item-body">
+                    <div id="mg-remove-item-production-warning" class="mg-add-item-warning" style="display:none;">
+                        <?php esc_html_e('Ez a rendelés már gyártás alatt van. A tétel kikerül a rendelésből és az utánvét összegéből, de a nagykernél leadott gyártást ez nem vonja vissza.', 'mgdtp'); ?>
+                    </div>
+
+                    <p><?php esc_html_e('Biztosan törlöd ezt a tételt a rendelésből?', 'mgdtp'); ?></p>
+                    <p><strong id="mg-remove-item-name"></strong></p>
+
+                    <p>
+                        <label>
+                            <input type="checkbox" id="mg-remove-item-notify" checked="checked" />
+                            <?php esc_html_e('Vevő értesítése e-mailben a módosításról', 'mgdtp'); ?>
+                        </label>
+                    </p>
+
+                    <div id="mg-remove-item-message" class="notice" style="display:none;"><p></p></div>
+                </div>
+                <div class="mg-add-item-footer">
+                    <button type="button" id="mg-remove-item-confirm" class="button button-primary mg-button-danger">
+                        <?php esc_html_e('Tétel törlése', 'mgdtp'); ?>
+                    </button>
+                    <button type="button" class="button mg-remove-item-close"><?php esc_html_e('Mégse', 'mgdtp'); ?></button>
                 </div>
             </div>
         </div>
@@ -599,6 +673,109 @@ class MG_Order_Add_Item {
 
         wp_send_json_success(array(
             'message'   => __('Tétel hozzáadva a rendeléshez.', 'mgdtp'),
+            'new_total' => wp_strip_all_tags(wc_price($new_total)),
+        ));
+    }
+
+    /**
+     * AJAX: drop a line item from an existing order and recalculate the totals.
+     */
+    public static function ajax_remove_item() {
+        self::verify_request();
+
+        $item_id = absint($_POST['item_id'] ?? 0);
+        $notify  = !empty($_POST['notify']) && $_POST['notify'] !== 'false';
+
+        if (!$item_id) {
+            wp_send_json_error(array('message' => __('Hiányzó tétel azonosító.', 'mgdtp')));
+        }
+
+        $item = WC_Order_Factory::get_order_item($item_id);
+        if (!$item instanceof WC_Order_Item_Product) {
+            wp_send_json_error(array('message' => __('A rendelési tétel nem található.', 'mgdtp')));
+        }
+
+        $order = $item->get_order();
+        $eligible = self::check_eligibility($order);
+        if (is_wp_error($eligible)) {
+            wp_send_json_error(array('message' => $eligible->get_error_message()));
+        }
+
+        if (count($order->get_items()) <= 1) {
+            wp_send_json_error(array(
+                'message' => __('Az utolsó tétel nem törölhető – ilyenkor a rendelést kell törölni vagy lemondani.', 'mgdtp'),
+            ));
+        }
+
+        if ((float) $order->get_total_refunded() > 0) {
+            wp_send_json_error(array(
+                'message' => __('Ehhez a rendeléshez már tartozik visszatérítés, a tételt kézzel kell rendezni.', 'mgdtp'),
+            ));
+        }
+
+        $was_in_production = self::is_in_production($order);
+        $item_name = $item->get_name();
+        $quantity  = $item->get_quantity();
+        $type_label  = $item->get_meta('Terméktípus');
+        $color_label = $item->get_meta('Szín');
+        $size_value  = $item->get_meta('Méret');
+        $variant = trim(implode(' / ', array_filter(array($type_label, $color_label, $size_value))));
+
+        $old_total = (float) $order->get_total();
+
+        $order->remove_item($item_id);
+        wc_delete_order_item($item_id);
+        $order->calculate_taxes();
+        $order->calculate_totals(false);
+
+        if ($was_in_production) {
+            $order->update_meta_data('_mg_items_removed_after_export', 'yes');
+        }
+
+        $order->save();
+
+        $new_total = (float) $order->get_total();
+
+        $note = sprintf(
+            /* translators: 1: product name, 2: variant, 3: quantity, 4: old total, 5: new total */
+            __('Tétel törölve a rendelésből: %1$s%2$s × %3$d. Végösszeg: %4$s → %5$s (utánvéttel fizetendő).', 'mgdtp'),
+            $item_name,
+            $variant !== '' ? ' (' . $variant . ')' : '',
+            $quantity,
+            wp_strip_all_tags(wc_price($old_total)),
+            wp_strip_all_tags(wc_price($new_total))
+        );
+
+        if ($was_in_production) {
+            $note .= ' ' . __('FIGYELEM: a rendelés már gyártás alatt volt, a nagykernél leadott gyártást ez nem vonja vissza.', 'mgdtp');
+        }
+
+        $order->add_order_note($note);
+
+        if ($notify) {
+            $order->add_order_note(
+                sprintf(
+                    /* translators: 1: product name, 2: variant, 3: quantity, 4: new total */
+                    __('Kérésedre töröltük a rendelésedből: %1$s%2$s × %3$d. Az utánvétnél fizetendő új végösszeg: %4$s.', 'mgdtp'),
+                    $item_name,
+                    $variant !== '' ? ' (' . $variant . ')' : '',
+                    $quantity,
+                    wp_strip_all_tags(wc_price($new_total))
+                ),
+                true
+            );
+        }
+
+        /**
+         * Fires after a line item was removed from an existing order.
+         *
+         * @param int      $item_id The removed line item id.
+         * @param WC_Order $order   The order it was removed from.
+         */
+        do_action('mg_order_item_removed_after_purchase', $item_id, $order);
+
+        wp_send_json_success(array(
+            'message'   => __('Tétel törölve a rendelésből.', 'mgdtp'),
             'new_total' => wp_strip_all_tags(wc_price($new_total)),
         ));
     }
