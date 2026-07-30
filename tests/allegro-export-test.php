@@ -75,7 +75,7 @@ expect_same(true, in_array('13XL', MG_Allegro_Exporter::allowed_sizes_for_catego
 expect_same(true, in_array('86-92', MG_Allegro_Exporter::allowed_sizes_for_category('89528'), true), 'The child profile contains current height ranges.');
 
 $headers = MG_Allegro_Exporter::headers();
-foreach (array('sku', 'parent_sku', 'color', 'manufacturer_color', 'size', 'price_huf', 'stock', 'image_url', 'length_cm', 'width_cm', 'category_id') as $required) {
+foreach (array('sku', 'parent_sku', 'color', 'manufacturer_color', 'size', 'price_huf', 'stock', 'image_url', 'temu_common_image_url', 'length_cm', 'width_cm', 'category_id') as $required) {
     if (!in_array($required, $headers, true)) {
         fwrite(STDERR, "FAIL: missing CSV header {$required}\n");
         exit(1);
