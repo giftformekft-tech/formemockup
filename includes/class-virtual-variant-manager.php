@@ -56,6 +56,7 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
+        add_filter('woocommerce_admin_order_item_thumbnail', array(__CLASS__, 'filter_admin_order_item_thumbnail'), 10, 3);
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
@@ -1028,25 +1029,8 @@ class MG_Virtual_Variant_Manager {
             $product_id = $item->get_product_id();
             $product = wc_get_product($product_id);
             if ($product) {
-                $sku = $product->get_sku();
-                if ($sku) {
-                    $uploads = self::get_upload_dir();
-                    $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
-                    $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
-                    
-                    if ($base_dir !== '' && $base_url !== '') {
-                        $type_sanitized = sanitize_title($type_slug);
-                        $color_sanitized = sanitize_title($color_slug);
-                        $filename = $sku . '_' . $type_sanitized . '_' . $color_sanitized . '_front.webp';
-                        $file_path = $base_dir . '/' . $sku . '/' . $filename;
-                        $file_url = $base_url . '/' . $sku . '/' . $filename;
-                        
-                        if (file_exists($file_path)) {
-                            $preview_url = $file_url;
-                        }
-                    }
-                }
-                
+                $preview_url = self::build_sku_preview_url($product, $type_slug, $color_slug);
+
                 // FALLBACK: If mockup file doesn't exist, use product featured image
                 if ($preview_url === '') {
                     $image_id = $product->get_image_id();
@@ -1191,6 +1175,94 @@ class MG_Virtual_Variant_Manager {
         $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
         $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $size)) : 0.0;
         return (float) max(0, $base_price + $size_extra);
+    }
+
+    /**
+     * Build the mockup URL from the SKU + type + color naming pattern:
+     * uploads/mg_mockups/{SKU}/{SKU}_{type}_{color}_front.webp
+     *
+     * Pure string work plus a single file_exists() stat — no database access.
+     * The check can be skipped through the 'mg_verify_preview_file' filter on
+     * setups where hitting the filesystem is expensive (network storage).
+     *
+     * @return string URL of the mockup, or an empty string when it is missing.
+     */
+    public static function build_sku_preview_url($product, $type_slug, $color_slug) {
+        if (!$product instanceof WC_Product) {
+            return '';
+        }
+
+        $sku = $product->get_sku();
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($sku === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+
+        $uploads = self::get_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+        if ($base_dir === '' || $base_url === '') {
+            return '';
+        }
+
+        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        $file_url = $base_url . '/' . $sku . '/' . $filename;
+
+        if (!apply_filters('mg_verify_preview_file', true, $product, $type_slug, $color_slug)) {
+            return $file_url;
+        }
+
+        return file_exists($base_dir . '/' . $sku . '/' . $filename) ? $file_url : '';
+    }
+
+    /**
+     * Preview URL of an order line item: the URL stored at checkout, or — for
+     * older lines that predate that meta — one rebuilt from the naming pattern.
+     *
+     * @return string Preview URL, or an empty string when none could be resolved.
+     */
+    public static function get_order_item_preview_url($item) {
+        if (!$item instanceof WC_Order_Item_Product) {
+            return '';
+        }
+
+        $preview_url = (string) $item->get_meta('mg_preview_url');
+        if ($preview_url === '') {
+            $preview_url = (string) $item->get_meta('preview_image_url');
+        }
+        if ($preview_url !== '') {
+            return $preview_url;
+        }
+
+        $product = $item->get_product();
+        if (!$product) {
+            return '';
+        }
+
+        return self::build_sku_preview_url(
+            $product,
+            $item->get_meta('mg_product_type'),
+            $item->get_meta('mg_color')
+        );
+    }
+
+    /**
+     * Show the variant mockup instead of the product's featured image in the
+     * admin order items table. WooCommerce renders that thumbnail straight from
+     * the product, so without this the admin sees the generic product photo.
+     */
+    public static function filter_admin_order_item_thumbnail($image, $item_id, $item) {
+        $preview_url = self::get_order_item_preview_url($item);
+        if ($preview_url === '') {
+            return $image;
+        }
+
+        return sprintf(
+            '<img src="%s" alt="%s" class="mg-admin-item-preview" style="width:38px;height:38px;object-fit:cover;border-radius:3px;" />',
+            esc_url($preview_url),
+            esc_attr__('Mockup előnézet', 'mgdtp')
+        );
     }
 
     /**
@@ -1878,21 +1950,9 @@ class MG_Virtual_Variant_Manager {
         }
 
         // NEW: Pattern-based resolution
-        $sku = $product->get_sku();
-        if ($sku) {
-            $uploads = self::get_upload_dir();
-            $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
-            $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
-            
-            if ($base_dir !== '' && $base_url !== '') {
-                $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
-                $file_path = $base_dir . '/' . $sku . '/' . $filename;
-                $file_url = $base_url . '/' . $sku . '/' . $filename;
-                
-                if (file_exists($file_path)) {
-                    return $file_url;
-                }
-            }
+        $pattern_url = self::build_sku_preview_url($product, $type_slug, $color_slug);
+        if ($pattern_url !== '') {
+            return $pattern_url;
         }
 
         // Fallback to old system (just in case)
