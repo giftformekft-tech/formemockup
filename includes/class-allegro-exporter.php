@@ -20,7 +20,7 @@ class MG_Allegro_Exporter {
         return array(
             'sku', 'parent_sku', 'name', 'description', 'type', 'type_label',
             'color', 'manufacturer_color', 'size', 'price_huf', 'stock',
-            'image_url', 'temu_common_image_url', 'weight_g', 'brand', 'material', 'ai_content',
+            'image_url', 'weight_g', 'brand', 'material', 'ai_content',
             'length_cm', 'width_cm', 'category_id',
         );
     }
@@ -468,9 +468,6 @@ class MG_Allegro_Exporter {
                             'price_huf' => (string) round($price),
                             'stock' => (string) $stock,
                             'image_url' => $image_url,
-                            'temu_common_image_url' => class_exists('MG_Temu_API_Image_Field')
-                                ? MG_Temu_API_Image_Field::get_image_url($product->get_id())
-                                : '',
                             'weight_g' => $weight_g ? (string) $weight_g : '',
                             'brand' => $brand,
                             'material' => $material,

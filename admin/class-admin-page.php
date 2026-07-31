@@ -242,6 +242,12 @@ class MG_Admin_Page {
                 'group'      => 'export',
                 'capability' => 'edit_products',
             ),
+            'temu_api_export' => array(
+                'label'      => __('Temu API Export', 'mockup-generator'),
+                'type'       => 'temu_api_export',
+                'group'      => 'export',
+                'capability' => 'edit_products',
+            ),
             'allegro_export' => array(
                 'label'      => __('Allegro Export', 'mockup-generator'),
                 'type'       => 'allegro_export',
@@ -581,6 +587,11 @@ class MG_Admin_Page {
             case 'temu_export':
                 if (class_exists('MG_Temu_Export_Page')) {
                     MG_Temu_Export_Page::render_page();
+                }
+                break;
+            case 'temu_api_export':
+                if (class_exists('MG_Temu_API_Export_Page')) {
+                    MG_Temu_API_Export_Page::render_page();
                 }
                 break;
             case 'allegro_export':
