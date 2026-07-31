@@ -5,8 +5,6 @@ if (!defined('ABSPATH')) {
 
 class MG_Temu_Export_Page {
 
-    const META_COMMON_IMAGE_ID = '_mg_temu_common_image_id';
-
     public static function init() {
         add_action('wp_ajax_mg_temu_get_products', [self::class, 'ajax_get_products']);
         add_action('wp_ajax_mg_temu_get_variants', [self::class, 'ajax_get_variants']);
@@ -19,97 +17,6 @@ class MG_Temu_Export_Page {
         add_action('admin_post_mg_temu_upload_template', [self::class, 'handle_upload_template']);
         add_action('admin_post_mg_temu_delete_template', [self::class, 'handle_delete_template']);
         add_action('wp_ajax_mg_temu_save_bullets', [self::class, 'ajax_save_bullets']);
-        add_action('woocommerce_product_options_general_product_data', [self::class, 'render_common_image_field']);
-        add_action('woocommerce_admin_process_product_object', [self::class, 'save_common_image_field']);
-        add_action('admin_enqueue_scripts', [self::class, 'enqueue_product_media_picker']);
-    }
-
-    /**
-     * Betölti a WordPress médiaválasztót a WooCommerce termékszerkesztőn.
-     */
-    public static function enqueue_product_media_picker($hook) {
-        if (!in_array($hook, ['post.php', 'post-new.php'], true)) {
-            return;
-        }
-        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
-        if (!$screen || $screen->post_type !== 'product') {
-            return;
-        }
-        wp_enqueue_media();
-    }
-
-    /**
-     * Termékszintű, minden Temu-variánsnál közösen használt galériakép.
-     */
-    public static function render_common_image_field() {
-        global $post;
-        if (!$post || !current_user_can('edit_post', $post->ID)) {
-            return;
-        }
-
-        $image_id = absint(get_post_meta($post->ID, self::META_COMMON_IMAGE_ID, true));
-        $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'medium') : '';
-        wp_nonce_field('mg_temu_common_image', 'mg_temu_common_image_nonce');
-        ?>
-        <div class="options_group mg-temu-common-image-field">
-            <p class="form-field">
-                <label><?php esc_html_e('Temu közös termékkép', 'mockup-generator'); ?></label>
-                <span style="display:inline-flex;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-                    <span class="mg-temu-common-image-preview" style="display:<?php echo $image_url ? 'block' : 'none'; ?>;">
-                        <img src="<?php echo esc_url($image_url); ?>" alt="" style="display:block;width:120px;height:120px;object-fit:cover;border:1px solid #dcdcde;border-radius:6px;" />
-                    </span>
-                    <span>
-                        <input type="hidden" name="<?php echo esc_attr(self::META_COMMON_IMAGE_ID); ?>" value="<?php echo esc_attr($image_id); ?>" />
-                        <button type="button" class="button mg-temu-select-common-image"><?php esc_html_e('Kép kiválasztása', 'mockup-generator'); ?></button>
-                        <button type="button" class="button-link-delete mg-temu-remove-common-image" style="display:<?php echo $image_url ? 'inline-block' : 'none'; ?>;margin-left:8px;"><?php esc_html_e('Eltávolítás', 'mockup-generator'); ?></button>
-                        <span class="description" style="display:block;max-width:520px;margin-top:8px;"><?php esc_html_e('Nem szín- vagy méretfüggő kép. A Temu export minden kiválasztott variánsához ezt az egy közös galériaképet adja.', 'mockup-generator'); ?></span>
-                    </span>
-                </span>
-            </p>
-        </div>
-        <script>
-        jQuery(function($){
-            var $field = $('.mg-temu-common-image-field');
-            if (!$field.length || $field.data('mgTemuReady')) return;
-            $field.data('mgTemuReady', true);
-            $field.on('click', '.mg-temu-select-common-image', function(event){
-                event.preventDefault();
-                var frame = wp.media({title: '<?php echo esc_js(__('Temu közös termékkép', 'mockup-generator')); ?>', button: {text: '<?php echo esc_js(__('Kép használata', 'mockup-generator')); ?>'}, multiple: false, library: {type: 'image'}});
-                frame.on('select', function(){
-                    var image = frame.state().get('selection').first().toJSON();
-                    var preview = image.sizes && image.sizes.medium ? image.sizes.medium.url : image.url;
-                    $field.find('input[type="hidden"]').val(image.id);
-                    $field.find('.mg-temu-common-image-preview').show().find('img').attr('src', preview);
-                    $field.find('.mg-temu-remove-common-image').show();
-                });
-                frame.open();
-            });
-            $field.on('click', '.mg-temu-remove-common-image', function(event){
-                event.preventDefault();
-                $field.find('input[type="hidden"]').val('');
-                $field.find('.mg-temu-common-image-preview').hide().find('img').attr('src', '');
-                $(this).hide();
-            });
-        });
-        </script>
-        <?php
-    }
-
-    public static function save_common_image_field($product) {
-        if (!isset($_POST['mg_temu_common_image_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mg_temu_common_image_nonce'])), 'mg_temu_common_image')) {
-            return;
-        }
-        $image_id = isset($_POST[self::META_COMMON_IMAGE_ID]) ? absint($_POST[self::META_COMMON_IMAGE_ID]) : 0;
-        if ($image_id && wp_attachment_is_image($image_id)) {
-            $product->update_meta_data(self::META_COMMON_IMAGE_ID, $image_id);
-        } else {
-            $product->delete_meta_data(self::META_COMMON_IMAGE_ID);
-        }
-    }
-
-    public static function get_common_image_url($product_id) {
-        $image_id = absint(get_post_meta($product_id, self::META_COMMON_IMAGE_ID, true));
-        return $image_id ? (string) wp_get_attachment_url($image_id) : '';
     }
 
     public static function render_page() {
@@ -1149,7 +1056,7 @@ class MG_Temu_Export_Page {
         // selection = [ { pid, type, color, size }, ... ]
 
         // CSV Header
-        $header = ['Termék neve', 'SKU', 'Sub SKU', 'Szín', 'Méret', 'Leírás', 'Kép URL', 'Közös kép URL'];
+        $header = ['Termék neve', 'SKU', 'Sub SKU', 'Szín', 'Méret', 'Leírás', 'Kép URL'];
 
         $rows = self::build_export_rows($selection);
 
@@ -1177,7 +1084,6 @@ class MG_Temu_Export_Page {
                 $row['size'],
                 $row['desc'],
                 $row['img'],
-                $row['common_img'],
             ], ';');
         }
         fclose($fp);
@@ -1194,7 +1100,7 @@ class MG_Temu_Export_Page {
      * azonos, csak a kimeneti formátum tér el.
      *
      * @param array $selection [ { pid, type, color, size }, ... ]
-     * @return array<int,array{name:string,sku:string,sub_sku:string,color:string,size:string,desc:string,img:string,common_img:string}>
+     * @return array<int,array{name:string,sku:string,sub_sku:string,color:string,size:string,desc:string,img:string}>
      */
     private static function build_export_rows(array $selection) {
         $rows = [];
@@ -1288,7 +1194,6 @@ class MG_Temu_Export_Page {
             
             $filename = $base_sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
             $img_url = $base_url . '/' . $base_sku . '/' . $filename;
-            $common_img_url = self::get_common_image_url($pid);
             
             // Verify file exists? User didn't strictly ask to verify, just "img url". 
             // Better to provide the predicted URL so they can fix missing files later.
@@ -1329,8 +1234,7 @@ class MG_Temu_Export_Page {
                 'color'   => $color_label,         // Szín
                 'size'    => $size,                // Méret
                 'desc'    => $export_description,  // Leírás
-                'img'     => $img_url,             // Variáns kép URL
-                'common_img' => $common_img_url    // Termékszintű közös kép URL
+                'img'     => $img_url              // Img URL
             ], $bullet_fields);
 
             // Ha gyerekpóló (12-es méret, ami 12Y lett), csinálünk egy extra '14Y' sort a Temu miatt
@@ -1346,8 +1250,7 @@ class MG_Temu_Export_Page {
                     'color'   => $color_label,         // Szín
                     'size'    => '14Y',                // Kamu méret
                     'desc'    => $export_description,  // Leírás
-                    'img'     => $img_url,             // Img URL (A 12-es méreté hasznosítva)
-                    'common_img' => $common_img_url
+                    'img'     => $img_url              // Img URL (A 12-es méreté hasznosítva)
                 ], $bullet_fields);
             }
         }

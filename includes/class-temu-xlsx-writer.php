@@ -10,8 +10,7 @@
  * A kitöltési logika a temu_kitolto.py portja:
  *  - 4. sor = mezőkulcsok, az oszlopokat mindig ezek alapján keressük meg
  *  - 5. sor = mintasor, minden fix érték innen másolódik minden kimeneti sorba
- *  - a változó oszlopok a WooCommerce-ből jönnek (név, SKU, Sub SKU, leírás,
- *    méret, szín, variánskép és – ha a sablon tartalmazza – közös termékkép)
+ *  - 7 változó oszlop jön a WooCommerce-ből (név, SKU, Sub SKU, leírás, méret, szín, kép URL)
  *
  * Az osztály szándékosan NEM használ WordPress függvényt, így a
  * tools/temu-xlsx-cli.php tesztszkripttel önállóan is futtatható.
@@ -404,15 +403,6 @@ class MG_Temu_Xlsx_Writer {
         }
         if ($missing) {
             throw new MG_Temu_Xlsx_Error('Hiányzó mezőkulcs(ok) a Template ' . self::KEY_ROW . '. sorában: ' . implode(', ', $missing));
-        }
-
-        // A termékszintű képoszlop nem minden Temu-sablonban szerepel. Ha igen,
-        // a pontos t_* előtagtól függetlenül kitöltjük, az SKU-képoszlopot kihagyva.
-        foreach ($key_col as $key => $col) {
-            if (stripos($key, 'Product Images URL') !== false && stripos($key, 'SKU Images URL') === false) {
-                $field_col['common_img'] = $col;
-                break;
-            }
         }
 
         // --- 5. sor: mintasor ---

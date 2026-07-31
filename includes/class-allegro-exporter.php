@@ -468,8 +468,8 @@ class MG_Allegro_Exporter {
                             'price_huf' => (string) round($price),
                             'stock' => (string) $stock,
                             'image_url' => $image_url,
-                            'temu_common_image_url' => class_exists('MG_Temu_Export_Page')
-                                ? MG_Temu_Export_Page::get_common_image_url($product->get_id())
+                            'temu_common_image_url' => class_exists('MG_Temu_API_Image_Field')
+                                ? MG_Temu_API_Image_Field::get_image_url($product->get_id())
                                 : '',
                             'weight_g' => $weight_g ? (string) $weight_g : '',
                             'brand' => $brand,

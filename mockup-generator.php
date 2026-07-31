@@ -73,6 +73,7 @@ add_action('plugins_loaded', function(){
         'includes/class-designer-button.php',
         'includes/class-temu-xlsx-writer.php',
         'includes/class-allegro-exporter.php',
+        'admin/class-temu-api-image-field.php',
         'admin/class-temu-export-page.php',
         'admin/class-allegro-export-page.php',
         'admin/class-order-design-download.php',
@@ -251,6 +252,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Temu_Export_Page')) {
         MG_Temu_Export_Page::init();
+    }
+    if (class_exists('MG_Temu_API_Image_Field')) {
+        MG_Temu_API_Image_Field::init();
     }
     if (class_exists('MG_Allegro_Export_Page')) {
         MG_Allegro_Export_Page::init();
