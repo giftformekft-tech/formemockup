@@ -22,7 +22,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 # A kanonikus taglista JSON-t a program mellett keresi. A Tallózás gombbal
 # bármelyik másik, kompatibilis taglista is betölthető.
 TAG_DICTIONARY_FILENAME = "forme-taglista-vegleges-2026-08-02.json"
-PROMPT_CACHE_KEY_PREFIX = "forme-ai-rename-canonical-v2"
+PROMPT_CACHE_KEY_PREFIX = "forme-ai-rename-canonical-v3"
 
 DEFAULT_MAIN_CATS = ["Vicces", "Horgászat", "Család", "Ajándék", "Egyéb"]
 DEFAULT_SUB_CATS  = ["Festő", "Szakmák / Mesterek", "Autós", "Apák napi", "Anyák napi", "Egyéb"]
@@ -40,6 +40,18 @@ DEFAULT_WORKERS = 4
 
 # Kép max oldalhossza (px) API küldés előtt – 0 = eredeti méret
 DEFAULT_MAX_SIDE = 768
+
+# Egy minta legfeljebb ennyi, egymást kiegészítő taget kapjon.
+MAX_TAGS_PER_IMAGE = 4
+
+# Széles tagok, amelyeket nem érdemes a konkrétabb gyermektaggal együtt menteni.
+BROAD_TAG_PARENTS = {
+    "Állatok": {"Macska", "Kutya", "Ló vagy lovaglás", "Hal", "Cápa", "Méh", "Dinoszaurusz", "Hörcsög", "Kígyó", "Nyuszi", "Rovarok", "Unikornis", "Vidra", "Capybara"},
+    "Sport": {"Labdarúgás", "Forma–1", "Darts", "Karate", "Kézilabda", "Konditerem", "Kosárlabda", "Röplabda", "Úszás", "Vízilabda"},
+    "Zene": {"Zenekarok", "Dobosok", "Gitár"},
+    "Filmek és sorozatok": {"Bud Spencer", "Star Wars", "Anime", "Labubu", "A nagy pénzrablás", "Squid Game", "Stranger Things", "Wednesday"},
+    "Gamer": {"Among Us", "Apex Legends", "Brawl Stars", "Clash", "Diablo", "Dota", "Fall Guys", "FNAF", "Fortnite", "GTA", "League of Legends", "Minecraft", "Overwatch", "Palworld", "PUBG", "Roblox", "Stumble Guys", "Valorant", "World of Warcraft"},
+}
 
 
 def normalize_hu_basic(s: str) -> str:
@@ -199,7 +211,7 @@ def safe_json_loads(s: str) -> dict:
         raise
 
 
-def load_canonical_tags(path: Path) -> tuple[list[str], str]:
+def load_canonical_tags(path: Path) -> tuple[list[str], str, dict[str, str]]:
     """Betölt egy egyszerű tags JSON-t vagy a korábbi mg-tag-dictionary sémát.
 
     Támogatott formák:
@@ -207,23 +219,30 @@ def load_canonical_tags(path: Path) -> tuple[list[str], str]:
       - {"tags": ["Anyának", ...]}
       - {"dimensions": [{"terms": [{"label": "Anyának"}, ...]}]}
       - egy sima stringlista
-    A visszaadott lista deduplikált, megjelenítési (kanonikus) nevekből áll.
+    A visszaadott lista deduplikált, megjelenítési (kanonikus) nevekből áll,
+    a harmadik érték pedig a címke → tagcsoport leképezés.
     """
     if not path or not path.exists():
         raise FileNotFoundError(f"Taglista nem található: {path}")
 
     data = json.loads(path.read_text(encoding="utf-8"))
     values: list[str] = []
+    groups: dict[str, str] = {}
 
-    def add_value(value):
+    def add_value(value, default_group: str = ""):
         if isinstance(value, str):
             label = value.strip()
+            group = default_group
         elif isinstance(value, dict):
             label = str(value.get("label") or value.get("name") or value.get("value") or "").strip()
+            group = str(value.get("group") or default_group or "").strip()
         else:
             label = ""
+            group = ""
         if label and label not in values:
             values.append(label)
+        if label and group and label not in groups:
+            groups[label] = group
 
     if isinstance(data, list):
         for item in data:
@@ -239,8 +258,9 @@ def load_canonical_tags(path: Path) -> tuple[list[str], str]:
             for dimension in dimensions:
                 if not isinstance(dimension, dict):
                     continue
+                dimension_group = str(dimension.get("group") or dimension.get("label") or dimension.get("name") or "").strip()
                 for item in (dimension.get("terms") or []):
-                    add_value(item)
+                    add_value(item, dimension_group)
 
         # Hasznos kompatibilitás egy esetleges {"terms": [...]} fájlhoz is.
         if not values and isinstance(data.get("terms"), list):
@@ -253,7 +273,7 @@ def load_canonical_tags(path: Path) -> tuple[list[str], str]:
     version = "ismeretlen"
     if isinstance(data, dict):
         version = str(data.get("dictionary_version") or data.get("version") or version)
-    return values, version
+    return values, version, groups
 
 
 def build_schema(
@@ -285,7 +305,7 @@ def build_schema(
             "type": "array",
             "items": {"type": "string", "enum": sorted(set(canonical_tags or []))},
             "minItems": 0,
-            "maxItems": 8
+            "maxItems": MAX_TAGS_PER_IMAGE
         }
         required.append("tags")
 
@@ -376,28 +396,58 @@ def enforce_category_mapping(meta: dict, main_to_subs: dict) -> tuple[dict, str]
     return meta, note
 
 
-def enforce_canonical_tags(meta: dict, canonical_tags: list[str]) -> tuple[dict, str]:
-    """Biztonsági szűrés: a mentett JSON-ba csak a betöltött listából kerülhet tag."""
+def format_tag_groups(canonical_tags: list[str], tag_groups: dict[str, str] | None = None) -> str:
+    """A promptban csoportosítva mutatja a címkéket, hogy több nézőpontot válasszon a modell."""
+    groups: dict[str, list[str]] = {}
+    for tag in canonical_tags or []:
+        label = str(tag).strip()
+        if not label:
+            continue
+        group = str((tag_groups or {}).get(label) or "Egyéb").strip() or "Egyéb"
+        groups.setdefault(group, []).append(label)
+    return "; ".join(f"{group}: {', '.join(labels)}" for group, labels in groups.items())
+
+
+def enforce_canonical_tags(
+    meta: dict,
+    canonical_tags: list[str],
+) -> tuple[dict, str]:
+    """Biztonsági szűrés: csak kanonikus, nem redundáns, legfeljebb 4 tag maradhat."""
     allowed = {str(x).strip() for x in (canonical_tags or []) if str(x).strip()}
     incoming = meta.get("tags")
     if not isinstance(incoming, list):
         meta["tags"] = []
         return meta, "⚠ tags nem lista volt, üres listára állítva"
 
-    kept = []
+    candidates = []
     removed = []
     seen = set()
     for item in incoming:
         value = str(item).strip()
         if value in allowed and value not in seen:
-            kept.append(value)
+            candidates.append(value)
             seen.add(value)
         elif value:
             removed.append(value)
 
+    selected = set(candidates)
+    for parent, children in BROAD_TAG_PARENTS.items():
+        if parent in selected and selected.intersection(children):
+            selected.discard(parent)
+            removed.append(parent)
+
+    kept = []
+    for value in candidates:
+        if value not in selected:
+            continue
+        if len(kept) >= MAX_TAGS_PER_IMAGE:
+            removed.append(value)
+            continue
+        kept.append(value)
+
     meta["tags"] = kept
     if removed:
-        return meta, "⚠ Nem engedélyezett tagek kihagyva: " + ", ".join(removed[:5])
+        return meta, "⚠ Redundáns vagy többlet tagek kihagyva: " + ", ".join(removed[:5])
     return meta, ""
 
 
@@ -509,6 +559,7 @@ class App(tk.Tk):
         self.tag_dictionary_path = tk.StringVar(value=str(default_tag_path) if default_tag_path.exists() else "")
         self.tag_dictionary_status = tk.StringVar(value="Nincs betöltve")
         self.canonical_tags: list[str] = []
+        self.tag_groups: dict[str, str] = {}
         self.tag_dictionary_version = ""
 
         # kreatív + brand
@@ -914,18 +965,21 @@ class App(tk.Tk):
         raw_path = (self.tag_dictionary_path.get() or "").strip()
         if not raw_path:
             self.canonical_tags = []
+            self.tag_groups = {}
             self.tag_dictionary_version = ""
             self.tag_dictionary_status.set("Nincs betöltve")
             return False
 
         try:
-            values, version = load_canonical_tags(Path(raw_path))
+            values, version, groups = load_canonical_tags(Path(raw_path))
             self.canonical_tags = values
+            self.tag_groups = groups
             self.tag_dictionary_version = version
             self.tag_dictionary_status.set(f"Betöltve: {len(values)} kanonikus tag | verzió: {version}")
             return True
         except Exception as exc:
             self.canonical_tags = []
+            self.tag_groups = {}
             self.tag_dictionary_version = ""
             self.tag_dictionary_status.set("Betöltési hiba")
             if show_error:
@@ -1036,6 +1090,7 @@ class App(tk.Tk):
         cat_map = self.get_category_map()
         fixed_main = (self.force_main_value.get() or "").strip() if self.force_main.get() else None
         canonical_tags = list(self.canonical_tags)
+        tag_groups = dict(self.tag_groups)
 
         schema = build_schema(
             cat_map,
@@ -1077,11 +1132,12 @@ class App(tk.Tk):
                     parts.append("categories: a megadott listákból válassz, leginkább passzoló párt.")
 
         if self.want_tags.get():
-            allowed_tags_text = ", ".join(canonical_tags)
+            allowed_tags_text = format_tag_groups(canonical_tags, tag_groups)
             parts.append(
-                "tags: 0-8 db kanonikus tag. KIZÁRÓLAG a következő, betöltött taglista pontos értékeiből válassz, "
+                "tags: ha a kép alapján indokolt, általában 2-4 egymást kiegészítő kanonikus tag. KIZÁRÓLAG a következő, betöltött taglista pontos értékeiből válassz, "
                 "ne írj át kisbetűre, ne adj hozzá ragozott alakot, SEO-mondatot, színt, stílust, konkrét idézetet vagy szabad szöveget. "
-                f"Engedélyezett taglista: [{allowed_tags_text}] "
+                "Lehetőleg több különböző tagcsoportból válassz; ugyanabból a csoportból több tag is engedett, ha külön látható fogalmakat jelölnek. Ne add együtt a széles és a konkrét tagot (például Állatok + Macska, Sport + Labdarúgás, Filmek és sorozatok + Wednesday). "
+                f"Engedélyezett tagcsoportok: [{allowed_tags_text}] "
                 "Ha nincs illő kanonikus tag, tags legyen üres tömb."
             )
 

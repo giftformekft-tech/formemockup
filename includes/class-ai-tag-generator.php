@@ -22,7 +22,8 @@ class MG_AI_Tag_Generator {
     const MAX_WORKERS = 8;
     const DEFAULT_CANDIDATE_LIMIT = 10000;
     const NONCE_ACTION = 'mg_ai_tag_nonce';
-    const PROMPT_CACHE_PREFIX = 'forme-ai-retag-tags-v2';
+    const MAX_TAGS_PER_IMAGE = 4;
+    const PROMPT_CACHE_PREFIX = 'forme-ai-retag-tags-v3';
     const DICTIONARY_RELATIVE_PATH = 'assets/data/forme-taglista-vegleges-2026-08-02.json';
 
     private static $dictionary_cache = null;
@@ -234,6 +235,7 @@ class MG_AI_Tag_Generator {
             'version' => $version,
             'records' => $records,
             'labels' => array_keys($labels),
+            'groups' => self::group_dictionary_records($records),
             'path' => $path,
         );
         return self::$dictionary_cache;
@@ -242,6 +244,23 @@ class MG_AI_Tag_Generator {
     public static function get_dictionary_labels() {
         $dictionary = self::get_dictionary();
         return is_wp_error($dictionary) ? array() : $dictionary['labels'];
+    }
+
+    private static function group_dictionary_records($records) {
+        $groups = array();
+        foreach ((array) $records as $record) {
+            $label = isset($record['label']) ? trim((string) $record['label']) : '';
+            if ($label === '') {
+                continue;
+            }
+            $group = isset($record['group']) ? trim((string) $record['group']) : '';
+            $group = $group !== '' ? $group : 'Egyéb';
+            if (!isset($groups[$group])) {
+                $groups[$group] = array();
+            }
+            $groups[$group][] = $label;
+        }
+        return $groups;
     }
 
     private static function get_openai_settings() {
@@ -253,9 +272,47 @@ class MG_AI_Tag_Generator {
         );
     }
 
+    private static function broad_tag_parents() {
+        return array(
+            'Állatok' => array('Macska', 'Kutya', 'Ló vagy lovaglás', 'Hal', 'Cápa', 'Méh', 'Dinoszaurusz', 'Hörcsög', 'Kígyó', 'Nyuszi', 'Rovarok', 'Unikornis', 'Vidra', 'Capybara'),
+            'Sport' => array('Labdarúgás', 'Forma–1', 'Darts', 'Karate', 'Kézilabda', 'Konditerem', 'Kosárlabda', 'Röplabda', 'Úszás', 'Vízilabda'),
+            'Zene' => array('Zenekarok', 'Dobosok', 'Gitár'),
+            'Filmek és sorozatok' => array('Bud Spencer', 'Star Wars', 'Anime', 'Labubu', 'A nagy pénzrablás', 'Squid Game', 'Stranger Things', 'Wednesday'),
+            'Gamer' => array('Among Us', 'Apex Legends', 'Brawl Stars', 'Clash', 'Diablo', 'Dota', 'Fall Guys', 'FNAF', 'Fortnite', 'GTA', 'League of Legends', 'Minecraft', 'Overwatch', 'Palworld', 'PUBG', 'Roblox', 'Stumble Guys', 'Valorant', 'World of Warcraft'),
+        );
+    }
+
+    private static function remove_redundant_tags($tags) {
+        $selected = array_fill_keys((array) $tags, true);
+        $filtered = array();
+        $parents = self::broad_tag_parents();
+        foreach ((array) $tags as $tag) {
+            $children = $parents[$tag] ?? array();
+            $has_specific_child = false;
+            foreach ($children as $child) {
+                if (isset($selected[$child])) {
+                    $has_specific_child = true;
+                    break;
+                }
+            }
+            if (!$has_specific_child) {
+                $filtered[] = $tag;
+            }
+        }
+        return $filtered;
+    }
+
+    private static function grouped_dictionary_text($dictionary) {
+        $parts = array();
+        foreach ((array) ($dictionary['groups'] ?? array()) as $group => $labels) {
+            $parts[] = $group . ': ' . implode(', ', (array) $labels);
+        }
+        return implode('; ', $parts);
+    }
+
     private static function build_schema($dictionary) {
         return array(
-            'name' => 'forme_retag_tags_v2',
+            'name' => 'forme_retag_tags_v3',
             'schema' => array(
                 'type' => 'object',
                 'additionalProperties' => false,
@@ -264,7 +321,7 @@ class MG_AI_Tag_Generator {
                         'type' => 'array',
                         'items' => array('type' => 'string', 'enum' => array_values($dictionary['labels'])),
                         'minItems' => 0,
-                        'maxItems' => 8,
+                        'maxItems' => self::MAX_TAGS_PER_IMAGE,
                     ),
                 ),
                 'required' => array('tags'),
@@ -273,12 +330,13 @@ class MG_AI_Tag_Generator {
     }
 
     private static function build_instructions($dictionary) {
-        $allowed_tags = implode(', ', $dictionary['labels']);
-        return "Analyze the attached forme.hu design. Return only 0-8 tags from the canonical list below. "
-            . "Choose only concepts clearly visible in the image. Do not return colors, graphic properties, styles, text, quotes, "
-            . "free text, a title, a category, a confidence value, or unmatched concepts. Do not invent tags. "
+        $allowed_tags = self::grouped_dictionary_text($dictionary);
+        return "Analyze the attached forme.hu design. Return 0-4 canonical tags; when the image supports it, usually choose 2-4 complementary tags, preferably from different groups. "
+            . "Choose only concepts clearly visible in the image; multiple tags from one group are allowed when they represent separate visible concepts. Prefer a specific tag over a broad parent. "
+            . "Do not return colors, graphic properties, styles, text, quotes, free text, a title, a category, a confidence value, or unmatched concepts. Do not invent tags. "
+            . "Do not select both a broad and a specific tag such as Állatok + Macska, Sport + Labdarúgás, or Filmek és sorozatok + Wednesday. "
             . "Return only the JSON object required by the schema. "
-            . "Canonical tag list (dictionary_version=" . $dictionary['version'] . "): [" . $allowed_tags . "]";
+            . "Canonical tag groups (dictionary_version=" . $dictionary['version'] . "): [" . $allowed_tags . "]";
     }
 
     private static function build_cache_key($instructions, $schema, $model = '', $shard = 0) {
@@ -474,13 +532,25 @@ class MG_AI_Tag_Generator {
     }
 
     private static function sanitize_result($meta, $dictionary) {
+        if (!is_array($meta)) {
+            $meta = array();
+        }
         $allowed = array_fill_keys($dictionary['labels'], true);
-        $tags = array();
+        $candidates = array();
         foreach ((array) ($meta['tags'] ?? array()) as $tag) {
             $tag = trim((string) $tag);
-            if ($tag !== '' && isset($allowed[$tag]) && !in_array($tag, $tags, true) && count($tags) < 8) {
-                $tags[] = $tag;
+            if ($tag !== '' && isset($allowed[$tag]) && !in_array($tag, $candidates, true)) {
+                $candidates[] = $tag;
             }
+        }
+
+        $candidates = self::remove_redundant_tags($candidates);
+        $tags = array();
+        foreach ($candidates as $tag) {
+            if (count($tags) >= self::MAX_TAGS_PER_IMAGE) {
+                break;
+            }
+            $tags[] = $tag;
         }
 
         return array(
