@@ -22,7 +22,7 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 # A kanonikus taglista JSON-t a program mellett keresi. A Tallózás gombbal
 # bármelyik másik, kompatibilis taglista is betölthető.
 TAG_DICTIONARY_FILENAME = "forme-taglista-vegleges-2026-08-02.json"
-PROMPT_CACHE_KEY_PREFIX = "forme-ai-rename-canonical-v3"
+PROMPT_CACHE_KEY_PREFIX = "forme-ai-rename-canonical-v4"
 
 DEFAULT_MAIN_CATS = ["Vicces", "Horgászat", "Család", "Ajándék", "Egyéb"]
 DEFAULT_SUB_CATS  = ["Festő", "Szakmák / Mesterek", "Autós", "Apák napi", "Anyák napi", "Egyéb"]
@@ -41,8 +41,8 @@ DEFAULT_WORKERS = 4
 # Kép max oldalhossza (px) API küldés előtt – 0 = eredeti méret
 DEFAULT_MAX_SIDE = 768
 
-# Egy minta legfeljebb ennyi, egymást kiegészítő taget kapjon.
-MAX_TAGS_PER_IMAGE = 4
+# Egy minta legfeljebb ennyi, egymást kiegészítő taget kaphat.
+MAX_TAGS_PER_IMAGE = 8
 
 # Széles tagok, amelyeket nem érdemes a konkrétabb gyermektaggal együtt menteni.
 BROAD_TAG_PARENTS = {
@@ -412,7 +412,7 @@ def enforce_canonical_tags(
     meta: dict,
     canonical_tags: list[str],
 ) -> tuple[dict, str]:
-    """Biztonsági szűrés: csak kanonikus, nem redundáns, legfeljebb 4 tag maradhat."""
+    """Biztonsági szűrés: csak kanonikus, nem redundáns, legfeljebb 8 tag maradhat."""
     allowed = {str(x).strip() for x in (canonical_tags or []) if str(x).strip()}
     incoming = meta.get("tags")
     if not isinstance(incoming, list):
@@ -1134,7 +1134,7 @@ class App(tk.Tk):
         if self.want_tags.get():
             allowed_tags_text = format_tag_groups(canonical_tags, tag_groups)
             parts.append(
-                "tags: ha a kép alapján indokolt, általában 2-4 egymást kiegészítő kanonikus tag. KIZÁRÓLAG a következő, betöltött taglista pontos értékeiből válassz, "
+                "tags: ha a kép alapján indokolt, általában 2-4 egymást kiegészítő kanonikus tag, de legfeljebb 8-at válassz, ha ennyi különálló, látható fogalom tényleg hasznos. KIZÁRÓLAG a következő, betöltött taglista pontos értékeiből válassz, "
                 "ne írj át kisbetűre, ne adj hozzá ragozott alakot, SEO-mondatot, színt, stílust, konkrét idézetet vagy szabad szöveget. "
                 "Lehetőleg több különböző tagcsoportból válassz; ugyanabból a csoportból több tag is engedett, ha külön látható fogalmakat jelölnek. Ne add együtt a széles és a konkrét tagot (például Állatok + Macska, Sport + Labdarúgás, Filmek és sorozatok + Wednesday). "
                 f"Engedélyezett tagcsoportok: [{allowed_tags_text}] "

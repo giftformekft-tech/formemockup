@@ -173,7 +173,7 @@ class MG_AI_SEO_Page {
 
             <h2 class="title"><?php esc_html_e('AI minta-tagelés', 'mockup-generator'); ?></h2>
             <p class="description">
-                <?php esc_html_e('A kiemelt képet elemzi, kizárólag a tagkönyvtárból választ legfeljebb 4, általában 2–4 kiegészítő taget, és az eredményt WooCommerce product_tag-ként menti.', 'mockup-generator'); ?>
+                <?php esc_html_e('A kiemelt képet elemzi, kizárólag a tagkönyvtárból választ legfeljebb 8, általában 2–4 kiegészítő taget, és az eredményt WooCommerce product_tag-ként menti.', 'mockup-generator'); ?>
             </p>
             <p>
                 <strong><?php esc_html_e('Tagkönyvtár:', 'mockup-generator'); ?></strong>

@@ -22,8 +22,8 @@ class MG_AI_Tag_Generator {
     const MAX_WORKERS = 8;
     const DEFAULT_CANDIDATE_LIMIT = 10000;
     const NONCE_ACTION = 'mg_ai_tag_nonce';
-    const MAX_TAGS_PER_IMAGE = 4;
-    const PROMPT_CACHE_PREFIX = 'forme-ai-retag-tags-v3';
+    const MAX_TAGS_PER_IMAGE = 8;
+    const PROMPT_CACHE_PREFIX = 'forme-ai-retag-tags-v4';
     const DICTIONARY_RELATIVE_PATH = 'assets/data/forme-taglista-vegleges-2026-08-02.json';
 
     private static $dictionary_cache = null;
@@ -312,7 +312,7 @@ class MG_AI_Tag_Generator {
 
     private static function build_schema($dictionary) {
         return array(
-            'name' => 'forme_retag_tags_v3',
+            'name' => 'forme_retag_tags_v4',
             'schema' => array(
                 'type' => 'object',
                 'additionalProperties' => false,
@@ -331,7 +331,7 @@ class MG_AI_Tag_Generator {
 
     private static function build_instructions($dictionary) {
         $allowed_tags = self::grouped_dictionary_text($dictionary);
-        return "Analyze the attached forme.hu design. Return 0-4 canonical tags; when the image supports it, usually choose 2-4 complementary tags, preferably from different groups. "
+        return "Analyze the attached forme.hu design. Return 0-8 canonical tags; when the image supports it, usually choose 2-4 complementary tags, but use up to 8 when that many distinct visible concepts are genuinely useful. Preferably choose tags from different groups. "
             . "Choose only concepts clearly visible in the image; multiple tags from one group are allowed when they represent separate visible concepts. Prefer a specific tag over a broad parent. "
             . "Do not return colors, graphic properties, styles, text, quotes, free text, a title, a category, a confidence value, or unmatched concepts. Do not invent tags. "
             . "Do not select both a broad and a specific tag such as Állatok + Macska, Sport + Labdarúgás, or Filmek és sorozatok + Wednesday. "
