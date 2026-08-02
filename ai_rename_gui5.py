@@ -288,13 +288,6 @@ def build_schema(
             "maxItems": 8
         }
         required.append("tags")
-        props["unmatched_concepts"] = {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 0,
-            "maxItems": 5
-        }
-        required.append("unmatched_concepts")
 
     if want_main or want_sub:
         mains = sorted([m for m in (main_to_subs or {}).keys() if (m or "").strip()]) or ["Egyéb"]
@@ -405,73 +398,6 @@ def enforce_canonical_tags(meta: dict, canonical_tags: list[str]) -> tuple[dict,
     meta["tags"] = kept
     if removed:
         return meta, "⚠ Nem engedélyezett tagek kihagyva: " + ", ".join(removed[:5])
-    return meta, ""
-
-
-UNMATCHED_NOISE_TERMS = {
-    "felirat", "szoveg", "idezet", "szlogen", "tipografia", "betutipus", "betuhatas",
-    "grafika", "illusztracio", "rajzolt", "stilus", "hatter", "szin", "szines",
-    "fekete", "feher", "piros", "kek", "zold", "sarga", "lila", "narancs", "barna",
-    "rozsaszin", "pink", "monokrom", "kawaii", "cartoon", "pop art", "pixel art",
-    "retro", "vintage", "meme", "minimalista", "grunge", "comic", "neon",
-    "elrendezes", "racs", "layout", "sziluett", "kalligrafia", "handlettering",
-}
-
-
-def normalize_concept(value: str) -> str:
-    value = normalize_hu_basic(str(value or ""))
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", value)).strip()
-
-
-def filter_unmatched_concepts(meta: dict, canonical_tags: list[str]) -> tuple[dict, str]:
-    """Kiszűri az újfogalom-listából a stílus-, szín-, felirat- és duplikált zajt."""
-    incoming = meta.get("unmatched_concepts")
-    if not isinstance(incoming, list):
-        meta["unmatched_concepts"] = []
-        return meta, "⚠ unmatched_concepts nem lista volt, üres listára állítva"
-
-    allowed_norm = {normalize_concept(tag) for tag in (canonical_tags or []) if normalize_concept(tag)}
-    selected_norm = {
-        normalize_concept(tag)
-        for tag in (meta.get("tags") or [])
-        if normalize_concept(tag)
-    }
-    kept = []
-    removed = []
-    seen = set()
-
-    for item in incoming:
-        value = str(item or "").strip()
-        normalized = normalize_concept(value)
-        if not normalized or normalized in seen:
-            continue
-
-        is_noise = normalized in allowed_norm or normalized in selected_norm
-        if not is_noise:
-            for term in UNMATCHED_NOISE_TERMS:
-                if re.search(rf"(?:^| ){re.escape(term)}(?: |$)", normalized):
-                    is_noise = True
-                    break
-
-        if (
-            not is_noise
-            and "humoros" in selected_norm
-            and re.search(r"(?:^| )(humor|humoros|vicces|szarkasztikus|poen|trefas)(?: |$)", normalized)
-        ):
-            is_noise = True
-
-        if is_noise:
-            removed.append(value)
-            continue
-
-        kept.append(value)
-        seen.add(normalized)
-        if len(kept) >= 5:
-            break
-
-    meta["unmatched_concepts"] = kept
-    if removed:
-        return meta, "ℹ Zajos új fogalmak kiszűrve: " + ", ".join(removed[:5])
     return meta, ""
 
 
@@ -1156,11 +1082,7 @@ class App(tk.Tk):
                 "tags: 0-8 db kanonikus tag. KIZÁRÓLAG a következő, betöltött taglista pontos értékeiből válassz, "
                 "ne írj át kisbetűre, ne adj hozzá ragozott alakot, SEO-mondatot, színt, stílust, konkrét idézetet vagy szabad szöveget. "
                 f"Engedélyezett taglista: [{allowed_tags_text}] "
-                "Ha nincs illő kanonikus tag, tags legyen üres tömb. "
-                "unmatched_concepts: legfeljebb 5 új, önállóan kereshető és üzletileg hasznos fogalom, amely hiányzik a listából. "
-                "Ide se kerüljön szín, háttér, felirat vagy annak nyelve, idézet/szövegrészlet, betűhatás, grafikai technika, "
-                "illusztráció, stílus, elrendezés, általános jelző, illetve a kiválasztott tagek részletesebb megismétlése. "
-                "Ha nincs valóban új fogalom, unmatched_concepts legyen üres tömb."
+                "Ha nincs illő kanonikus tag, tags legyen üres tömb."
             )
 
         parts.append("Válaszolj kizárólag a JSON sémában.")
@@ -1200,9 +1122,6 @@ class App(tk.Tk):
                 tag_note = ""
                 if self.want_tags.get():
                     meta, tag_note = enforce_canonical_tags(meta, canonical_tags)
-                    meta, unmatched_note = filter_unmatched_concepts(meta, canonical_tags)
-                    if unmatched_note:
-                        tag_note = (tag_note + " | " + unmatched_note).strip(" |")
                     meta["tag_dictionary_version"] = self.tag_dictionary_version
 
                 if fixed_main and self.want_sub.get():
