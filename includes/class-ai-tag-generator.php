@@ -304,8 +304,11 @@ class MG_AI_Tag_Generator {
             . "tags: 0–8 darab kanonikus tag. KIZÁRÓLAG az alábbi lista pontos label értékeiből válassz; "
             . "ne adj hozzá színt, grafikai tulajdonságot, stílus- vagy idézettaget, ragozott alakot, SEO-mondatot "
             . "vagy szabad szöveget. Ha nincs biztosan illő tag, hagyd üresen. "
-            . "unmatched_concepts: legfeljebb 5 lényeges, de a kanonikus listában nem szereplő fogalom javaslatként; "
-            . "ezek nem kerülhetnek a tags tömbbe. Konkrét film, sorozat, játék vagy márka csak akkor legyen tag, "
+            . "unmatched_concepts: legfeljebb 5 új, önállóan kereshető és üzletileg hasznos jelentésű fogalom, "
+            . "amely hiányzik a kanonikus listából. Ide se kerüljön szín, háttér, felirat vagy annak nyelve, "
+            . "idézet/szövegrészlet, betűhatás, grafikai technika, illusztráció, stílus, elrendezés, általános jelző, "
+            . "illetve a kiválasztott tagek ragozott vagy részletesebb megismétlése. Ha nincs valóban új fogalom, legyen üres tömb. "
+            . "Az unmatched_concepts elemei nem kerülhetnek a tags tömbbe. Konkrét film, sorozat, játék vagy márka csak akkor legyen tag, "
             . "ha a képen egyértelműen felismerhető. "
             . "categories.main_id és categories.sub_id: a megadott WooCommerce kategórialistából válassz ID-t. "
             . "Ha nincs megfelelő kategória, 0 legyen. A sub_id csak a hozzá tartozó fő kategória alá tartozhat. "
@@ -552,11 +555,36 @@ class MG_AI_Tag_Generator {
             }
         }
 
+        $allowed_normalized = array();
+        foreach ($dictionary['labels'] as $label) {
+            $normalized_label = self::normalize_concept($label);
+            if ($normalized_label !== '') {
+                $allowed_normalized[$normalized_label] = true;
+            }
+        }
+
+        $selected_normalized = array();
+        foreach ($tags as $tag) {
+            $normalized_tag = self::normalize_concept($tag);
+            if ($normalized_tag !== '') {
+                $selected_normalized[$normalized_tag] = true;
+            }
+        }
+
         $unmatched = array();
+        $unmatched_normalized = array();
         foreach ((array) ($meta['unmatched_concepts'] ?? array()) as $concept) {
             $concept = sanitize_text_field((string) $concept);
-            if ($concept !== '' && !in_array($concept, $unmatched, true) && count($unmatched) < 5) {
+            $normalized = self::normalize_concept($concept);
+            if (
+                $concept !== ''
+                && $normalized !== ''
+                && !isset($unmatched_normalized[$normalized])
+                && !self::is_noise_unmatched_concept($normalized, $allowed_normalized, $selected_normalized)
+                && count($unmatched) < 5
+            ) {
                 $unmatched[] = $concept;
+                $unmatched_normalized[$normalized] = true;
             }
         }
 
@@ -568,6 +596,45 @@ class MG_AI_Tag_Generator {
             'categories' => array('main_id' => $main_id, 'sub_id' => $sub_id),
             'tag_dictionary_version' => (string) $dictionary['version'],
         );
+    }
+
+    private static function normalize_concept($value) {
+        $value = wp_strip_all_tags((string) $value);
+        $value = remove_accents($value);
+        $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+        $value = preg_replace('/[^a-z0-9]+/u', ' ', $value);
+        return trim(preg_replace('/\s+/', ' ', (string) $value));
+    }
+
+    private static function is_noise_unmatched_concept($normalized, $allowed_normalized, $selected_normalized) {
+        if (isset($allowed_normalized[$normalized]) || isset($selected_normalized[$normalized])) {
+            return true;
+        }
+
+        // Ezek kivitel-, nyelv- vagy formátumleírások, nem új keresési fogalmak.
+        $blocked_terms = array(
+            'felirat', 'szoveg', 'idezet', 'szlogen', 'tipografia', 'betutipus', 'betuhatas',
+            'grafika', 'illusztracio', 'rajzolt', 'stilus', 'hatter', 'szin', 'szines',
+            'fekete', 'feher', 'piros', 'kek', 'zold', 'sarga', 'lila', 'narancs', 'barna',
+            'rozsaszin', 'pink', 'monokrom', 'kawaii', 'cartoon', 'pop art', 'pixel art',
+            'retro', 'vintage', 'meme', 'minimalista', 'grunge', 'comic', 'neon',
+            'elrendezes', 'racs', 'layout', 'sziluett', 'kalligrafia', 'handlettering',
+        );
+        foreach ($blocked_terms as $term) {
+            if (preg_match('/(?:^| )' . preg_quote($term, '/') . '(?: |$)/', $normalized)) {
+                return true;
+            }
+        }
+
+        // Ha a Humoros tag már kiválasztásra került, ezek csak annak körülírásai.
+        if (
+            isset($selected_normalized['humoros'])
+            && preg_match('/(?:^| )(humor|humoros|vicces|szarkasztikus|poen|trefas)(?: |$)/', $normalized)
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     private static function ensure_tag_terms($labels) {
