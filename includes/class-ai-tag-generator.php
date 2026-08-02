@@ -31,6 +31,7 @@ class MG_AI_Tag_Generator {
 
     public static function init() {
         add_action('wp_ajax_mg_ai_tag_candidates', array(__CLASS__, 'ajax_candidates'));
+        add_action('wp_ajax_mg_ai_tag_test_candidates', array(__CLASS__, 'ajax_test_candidates'));
         add_action('wp_ajax_mg_ai_tag_one', array(__CLASS__, 'ajax_tag_one'));
     }
 
@@ -641,13 +642,54 @@ class MG_AI_Tag_Generator {
         }
         $meta = self::sanitize_result($result['meta'], $dictionary, $catalog);
         $tag_labels = $meta['tags'];
-        $tag_ids = self::ensure_tag_terms($tag_labels);
-        if (is_wp_error($tag_ids)) {
-            return $tag_ids;
-        }
-
         $replace_tags = !empty($options['replace_tags']);
         $update_categories = !empty($options['update_categories']);
+        $preview = !empty($options['preview']);
+        $tag_ids = array();
+        if (!$preview) {
+            $tag_ids = self::ensure_tag_terms($tag_labels);
+            if (is_wp_error($tag_ids)) {
+                return $tag_ids;
+            }
+        }
+
+        $cache_usage = $result['cache_usage'];
+        $category_ids = array();
+        if ($update_categories || $preview) {
+            $category_ids = self::category_term_ids(
+                $meta['categories']['main_id'],
+                $meta['categories']['sub_id'],
+                $catalog
+            );
+        }
+        $category_names = array();
+        foreach ($category_ids as $category_id) {
+            $term = get_term($category_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $category_names[] = (string) $term->name;
+            }
+        }
+
+        if ($preview) {
+            return array(
+                'product_id' => $product_id,
+                'product_name' => method_exists($product, 'get_name') ? (string) $product->get_name() : '',
+                'title_hu' => $meta['title_hu'],
+                'tags' => $tag_labels,
+                'categories' => $meta['categories'],
+                'category_ids' => $category_ids,
+                'category_names' => $category_names,
+                'unmatched_concepts' => $meta['unmatched_concepts'],
+                'confidence' => $meta['confidence'],
+                'cache_usage' => $cache_usage,
+                'prompt_cache_key' => $cache_key,
+                'replace_tags' => $replace_tags,
+                'update_categories' => $update_categories,
+                'preview' => true,
+                'saved' => false,
+            );
+        }
+
         if ($replace_tags) {
             $assigned = wp_set_object_terms($product_id, $tag_ids, 'product_tag', false);
         } else {
@@ -672,6 +714,14 @@ class MG_AI_Tag_Generator {
             }
         }
 
+        $category_names = array();
+        foreach ($category_ids as $category_id) {
+            $term = get_term($category_id, 'product_cat');
+            if ($term && !is_wp_error($term)) {
+                $category_names[] = (string) $term->name;
+            }
+        }
+
         // A kategória/tag változás a gift finder rangsorának és facet-cache-ének
         // újraszámítását is igényli. A saját bump metódus percenként legfeljebb
         // egyszer ír optiont, ezért tömeges futásnál sem okoz egy írást/mintát.
@@ -679,7 +729,6 @@ class MG_AI_Tag_Generator {
             MG_Gift_Finder::bump_cache_version();
         }
 
-        $cache_usage = $result['cache_usage'];
         update_post_meta($product_id, self::META_RESULT, wp_json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         update_post_meta($product_id, self::META_TAGGED_AT, current_time('mysql'));
         update_post_meta($product_id, self::META_DICTIONARY_VERSION, $dictionary['version']);
@@ -688,9 +737,11 @@ class MG_AI_Tag_Generator {
 
         return array(
             'product_id' => $product_id,
+            'title_hu' => $meta['title_hu'],
             'tags' => $tag_labels,
             'categories' => $meta['categories'],
             'category_ids' => $category_ids,
+            'category_names' => $category_names,
             'unmatched_concepts' => $meta['unmatched_concepts'],
             'confidence' => $meta['confidence'],
             'cache_usage' => $cache_usage,
@@ -714,7 +765,12 @@ class MG_AI_Tag_Generator {
             'ignore_sticky_posts' => true,
             'update_post_meta_cache' => false,
             'update_post_term_cache' => false,
-            'meta_query' => array(array('key' => '_thumbnail_id', 'compare' => 'EXISTS')),
+            'meta_query' => array(array(
+                'key' => '_thumbnail_id',
+                'value' => 0,
+                'compare' => '>',
+                'type' => 'NUMERIC',
+            )),
         );
         if (!$force) {
             $not_processed = array(
@@ -759,6 +815,66 @@ class MG_AI_Tag_Generator {
         ));
     }
 
+    /**
+     * Searchable product list for the single-sample preview in the admin UI.
+     * This endpoint only reads products; the actual preview call still runs
+     * through retag_for_product() with the explicit preview flag.
+     */
+    public static function ajax_test_candidates() {
+        self::check_ajax_permissions();
+
+        $search = isset($_POST['search']) ? sanitize_text_field(wp_unslash($_POST['search'])) : '';
+        $args = array(
+            'post_type' => 'product',
+            'post_status' => array('publish', 'draft', 'pending'),
+            'posts_per_page' => 50,
+            'fields' => 'ids',
+            'orderby' => 'title',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+            'ignore_sticky_posts' => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+            'meta_query' => array(array(
+                'key' => '_thumbnail_id',
+                'value' => 0,
+                'compare' => '>',
+                'type' => 'NUMERIC',
+            )),
+        );
+
+        // A numeric search is an exact product ID lookup. For text, WP_Query's
+        // normal title/content/excerpt search is useful for the sample name.
+        if ($search !== '' && ctype_digit($search)) {
+            $args['p'] = absint($search);
+            $args['posts_per_page'] = 1;
+        } elseif ($search !== '') {
+            $args['s'] = $search;
+        }
+
+        $query = new WP_Query($args);
+        $products = array();
+        foreach ((array) $query->posts as $id) {
+            $id = absint($id);
+            $product = function_exists('wc_get_product') ? wc_get_product($id) : null;
+            if (!$product) {
+                continue;
+            }
+            $image_id = method_exists($product, 'get_image_id') ? absint($product->get_image_id()) : 0;
+            if ($image_id <= 0) {
+                continue;
+            }
+            $products[] = array(
+                'id' => $id,
+                'name' => method_exists($product, 'get_name') ? (string) $product->get_name() : get_the_title($id),
+                'sku' => method_exists($product, 'get_sku') ? (string) $product->get_sku() : '',
+                'image_url' => $image_id ? (string) wp_get_attachment_image_url($image_id, 'thumbnail') : '',
+            );
+        }
+
+        wp_send_json_success(array('products' => $products));
+    }
+
     public static function ajax_tag_one() {
         self::check_ajax_permissions();
         $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
@@ -768,6 +884,7 @@ class MG_AI_Tag_Generator {
         $options = array(
             'replace_tags' => !empty($_POST['replace_tags']) && $_POST['replace_tags'] === '1',
             'update_categories' => !empty($_POST['update_categories']) && $_POST['update_categories'] === '1',
+            'preview' => !empty($_POST['preview']) && $_POST['preview'] === '1',
             'cache_shard' => isset($_POST['cache_shard']) ? absint($_POST['cache_shard']) : 0,
             'cache_shards' => isset($_POST['cache_shards']) ? max(1, min(8, absint($_POST['cache_shards']))) : 1,
         );

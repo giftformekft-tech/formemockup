@@ -212,6 +212,26 @@ class MG_AI_SEO_Page {
                 <?php submit_button(__('Tagelési beállítások mentése', 'mockup-generator'), 'secondary', 'submit', false); ?>
             </form>
 
+            <div id="mg-ai-tag-test" style="max-width:760px;border:1px solid #ccd0d4;background:#fff;padding:14px 16px;margin:18px 0;">
+                <h3 style="margin-top:0;"><?php esc_html_e('Tesztelemzés egy mintán', 'mockup-generator'); ?></h3>
+                <p class="description">
+                    <?php esc_html_e('Keress rá egy mintára név vagy ID alapján, válaszd ki, majd futtasd le az elemzést. Ez előnézet: a rendszer nem ment taget, kategóriát vagy metaadatot.', 'mockup-generator'); ?>
+                </p>
+                <p>
+                    <label for="mg-ai-tag-test-search"><strong><?php esc_html_e('Minta keresése', 'mockup-generator'); ?></strong></label><br />
+                    <input type="search" id="mg-ai-tag-test-search" class="regular-text" placeholder="<?php echo esc_attr__('Minta neve vagy ID', 'mockup-generator'); ?>" />
+                    <button type="button" class="button" id="mg-ai-tag-test-search-btn"><?php esc_html_e('Minták keresése', 'mockup-generator'); ?></button>
+                </p>
+                <p>
+                    <label for="mg-ai-tag-test-product"><strong><?php esc_html_e('Kiválasztott minta', 'mockup-generator'); ?></strong></label><br />
+                    <select id="mg-ai-tag-test-product" style="min-width:560px;max-width:100%;">
+                        <option value=""><?php esc_html_e('Előbb keress mintát…', 'mockup-generator'); ?></option>
+                    </select>
+                    <button type="button" class="button button-primary" id="mg-ai-tag-test-run" disabled><?php esc_html_e('Kiválasztott minta elemzése', 'mockup-generator'); ?></button>
+                </p>
+                <div id="mg-ai-tag-test-result" style="white-space:pre-wrap;background:#f6f7f7;border:1px solid #ccd0d4;padding:10px;min-height:40px;"></div>
+            </div>
+
             <p class="description" style="max-width:760px;">
                 <?php esc_html_e('A „régi tagek cseréje” bekapcsolva eltávolítja az adott termék korábbi product_tag tageit, és csak az AI által kiválasztott kanonikus tageket hagyja meg. Kikapcsolva a kanonikus tagek hozzáadódnak a régiekhez. A kategóriák frissítése külön kapcsolható.', 'mockup-generator'); ?>
             </p>
@@ -343,6 +363,112 @@ class MG_AI_SEO_Page {
                     data: $.extend({ action: action, nonce: nonce }, data || {})
                 });
             }
+
+            function loadTagTestCandidates() {
+                var $searchButton = $('#mg-ai-tag-test-search-btn');
+                var $select = $('#mg-ai-tag-test-product');
+                var search = $.trim($('#mg-ai-tag-test-search').val() || '');
+                $searchButton.prop('disabled', true);
+                $select.prop('disabled', true).empty().append($('<option></option>').text('Minták keresése...'));
+                tagPost('mg_ai_tag_test_candidates', { search: search }).done(function (resp) {
+                    if (!resp || !resp.success) {
+                        $select.empty().append($('<option></option>').val('').text('Hiba a minták lekérésekor.'));
+                        $('#mg-ai-tag-test-run').prop('disabled', true);
+                        return;
+                    }
+                    var products = resp.data ? (resp.data.products || []) : [];
+                    $select.empty();
+                    if (!products.length) {
+                        $select.append($('<option></option>').val('').text('Nincs találat képpel rendelkező mintára.'));
+                        $('#mg-ai-tag-test-run').prop('disabled', true);
+                        return;
+                    }
+                    $.each(products, function (_, product) {
+                        var label = '#' + product.id + ' – ' + (product.name || 'Névtelen minta');
+                        if (product.sku) { label += ' (SKU: ' + product.sku + ')'; }
+                        $select.append($('<option></option>').val(product.id).text(label));
+                    });
+                    $select.prop('disabled', false).prop('selectedIndex', 0);
+                    $('#mg-ai-tag-test-run').prop('disabled', false);
+                }).fail(function () {
+                    $select.empty().append($('<option></option>').val('').text('Hiba a minták lekérésekor.'));
+                    $('#mg-ai-tag-test-run').prop('disabled', true);
+                }).always(function () {
+                    $searchButton.prop('disabled', false);
+                });
+            }
+
+            $('#mg-ai-tag-test-search-btn').on('click', function () {
+                loadTagTestCandidates();
+            });
+
+            $('#mg-ai-tag-test-search').on('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    loadTagTestCandidates();
+                }
+            });
+
+            $('#mg-ai-tag-test-run').on('click', function () {
+                var $button = $(this);
+                var productId = parseInt($('#mg-ai-tag-test-product').val(), 10) || 0;
+                if (!$('#mg_ai_tag_enabled').is(':checked')) {
+                    window.alert('Előbb engedélyezd az AI minta-tagelést, majd mentsd el a beállítást.');
+                    return;
+                }
+                if (!productId) {
+                    window.alert('Válassz ki egy mintát.');
+                    return;
+                }
+
+                var replaceTags = $('#mg-ai-tag-replace').is(':checked');
+                var updateCategories = $('#mg-ai-tag-categories').is(':checked');
+                var $result = $('#mg-ai-tag-test-result');
+                $button.prop('disabled', true);
+                $result.text('Elemzés folyamatban…');
+                tagPost('mg_ai_tag_one', {
+                    product_id: productId,
+                    replace_tags: replaceTags ? '1' : '0',
+                    update_categories: updateCategories ? '1' : '0',
+                    preview: '1',
+                    cache_shard: 0,
+                    cache_shards: 1
+                }).done(function (resp) {
+                    if (!resp || !resp.success) {
+                        $result.text('Hiba: ' + (resp && resp.data && resp.data.message ? resp.data.message : 'ismeretlen hiba'));
+                        return;
+                    }
+                    var data = resp.data || {};
+                    var tags = (data.tags || []).join(', ') || 'nincs kanonikus tag';
+                    var categories = (data.category_names || []).join(' > ');
+                    if (!categories) {
+                        var categoryIds = data.categories || {};
+                        categories = 'ID-k: ' + (categoryIds.main_id || 0) + ' / ' + (categoryIds.sub_id || 0);
+                    }
+                    var unmatched = (data.unmatched_concepts || []).join(', ') || 'nincs';
+                    var confidence = typeof data.confidence === 'number'
+                        ? Math.round(data.confidence * 100) + '%'
+                        : 'nincs adat';
+                    var cache = data.cache_usage || {};
+                    var lines = [
+                        'ELŐNÉZET – #' + productId + (data.product_name ? ' ' + data.product_name : ''),
+                        '',
+                        'Javasolt SEO cím: ' + (data.title_hu || 'nincs'),
+                        'Javasolt tagek: ' + tags,
+                        'Javasolt kategória: ' + categories,
+                        'Bizonyosság: ' + confidence,
+                        'Nem illeszkedő fogalmak: ' + unmatched,
+                        '',
+                        'Mentés: NEM történt (sem tag, sem kategória, sem metaadat).',
+                        'Cache: ' + (cache.cached_tokens || 0) + ' token'
+                    ];
+                    $result.text(lines.join('\n'));
+                }).fail(function () {
+                    $result.text('Hiba az elemzés kérésekor.');
+                }).always(function () {
+                    $button.prop('disabled', false);
+                });
+            });
 
             var configuredTagWorkers = <?php echo (int) ($tag_settings['workers'] ?? MG_AI_Tag_Generator::DEFAULT_WORKERS); ?>;
             var configuredTagDelay = <?php echo (int) ($tag_settings['delay_ms'] ?? MG_AI_Tag_Generator::DEFAULT_DELAY_MS); ?>;
