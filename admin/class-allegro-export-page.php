@@ -234,12 +234,24 @@ class MG_Allegro_Export_Page {
                 $term = get_term($cats[0], 'product_cat');
                 $category = $term && !is_wp_error($term) ? $term->name : '';
             }
+            $exported = MG_Allegro_Exporter::get_exported_types($product->get_id());
+            $exported_types = array();
+            $frontend_config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+            foreach ((array) ($frontend_config['types'] ?? array()) as $type_slug => $type_meta) {
+                $type_slug = sanitize_title($type_slug);
+                $exported_types[] = array(
+                    'slug' => $type_slug,
+                    'label' => wp_strip_all_tags($type_meta['label'] ?? $type_slug),
+                    'exported_at' => isset($exported[$type_slug]) ? (string) $exported[$type_slug] : '',
+                );
+            }
             $products[] = array(
                 'id' => (int) $product->get_id(),
                 'name' => $product->get_name(),
                 'sku' => $product->get_sku(),
                 'category' => $category,
                 'image' => $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : wc_placeholder_img_src(),
+                'exported_types' => $exported_types,
             );
         }
 
@@ -270,6 +282,7 @@ class MG_Allegro_Export_Page {
                 continue;
             }
             $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+            $exported = MG_Allegro_Exporter::get_exported_types($product->get_id());
             $variants = array();
             foreach ((array) ($config['types'] ?? array()) as $type_slug => $type_meta) {
                 $type_slug = sanitize_title($type_slug);
@@ -302,6 +315,7 @@ class MG_Allegro_Export_Page {
                             'allegro_size' => $mapped_size,
                             'size_valid' => $size_valid,
                             'valid' => $color_valid && $size_valid,
+                            'exported_at' => isset($exported[$type_slug]) ? (string) $exported[$type_slug] : '',
                         );
                     }
                 }
@@ -464,7 +478,7 @@ class MG_Allegro_Export_Page {
                             </div>
                             <div><button type="button" class="button" id="mg-allegro-select-page"><?php esc_html_e('Összes kijelölése az oldalon', 'mockup-generator'); ?></button> <button type="button" class="button button-primary" id="mg-allegro-next"><?php esc_html_e('Tovább a variációkhoz', 'mockup-generator'); ?></button></div>
                         </div>
-                        <div class="mg-table-wrap"><table class="widefat fixed striped"><thead><tr><td class="check-column"><input type="checkbox" id="mg-allegro-check-page"></td><th style="width:90px"><?php esc_html_e('Kép', 'mockup-generator'); ?></th><th><?php esc_html_e('Terméknév', 'mockup-generator'); ?></th><th><?php esc_html_e('Base SKU', 'mockup-generator'); ?></th><th><?php esc_html_e('Woo kategória', 'mockup-generator'); ?></th></tr></thead><tbody id="mg-allegro-products"><tr><td colspan="5"><?php esc_html_e('Betöltés…', 'mockup-generator'); ?></td></tr></tbody></table></div>
+                        <div class="mg-table-wrap"><table class="widefat fixed striped"><thead><tr><td class="check-column"><input type="checkbox" id="mg-allegro-check-page"></td><th style="width:90px"><?php esc_html_e('Kép', 'mockup-generator'); ?></th><th><?php esc_html_e('Terméknév', 'mockup-generator'); ?></th><th><?php esc_html_e('Base SKU', 'mockup-generator'); ?></th><th><?php esc_html_e('Woo kategória', 'mockup-generator'); ?></th><th><?php esc_html_e('Allegro export', 'mockup-generator'); ?></th></tr></thead><tbody id="mg-allegro-products"><tr><td colspan="6"><?php esc_html_e('Betöltés…', 'mockup-generator'); ?></td></tr></tbody></table></div>
                         <div id="mg-allegro-pages" class="mg-allegro-pages"></div>
                     </div>
 
@@ -482,6 +496,9 @@ class MG_Allegro_Export_Page {
 
                 <style>
                     .mg-allegro-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#fff;border:1px solid #dcdcde;border-radius:9px;padding:12px;margin:14px 0}.mg-allegro-toolbar__filters{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.mg-allegro-pages{display:flex;justify-content:center;gap:5px;margin:15px 0}.mg-allegro-pages .button{min-width:34px}.mg-allegro-filter-grid{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));gap:16px}.mg-allegro-filter-card{background:#fff;border:1px solid #dcdcde;border-radius:9px;padding:14px}.mg-allegro-filter-list{max-height:420px;overflow:auto}.mg-allegro-filter-list label{display:block;padding:4px 0}.mg-allegro-summary{margin-top:16px;padding:14px;background:#f0f6fc;border-left:4px solid #2271b1;font-weight:600}.mg-allegro-invalid{color:#b32d2e;font-weight:600}@media(max-width:900px){.mg-allegro-filter-grid{grid-template-columns:1fr}}
+                </style>
+                <style>
+                    .mg-allegro-export-statuses{display:flex;flex-wrap:wrap;gap:5px;min-width:180px}.mg-allegro-export-chip{display:inline-flex;flex-direction:column;gap:1px;padding:4px 8px;border-radius:7px;background:#f0f0f1;color:#50575e;font-size:12px;line-height:1.2}.mg-allegro-export-chip small{font-size:11px}.mg-allegro-export-chip.is-exported{background:#edfaef;border:1px solid #b7dfbd;color:#116329}.mg-allegro-export-chip.is-partial{background:#fff8e5;border:1px solid #f0c36d;color:#7a4b00}.mg-allegro-export-chip.is-pending{border:1px solid #dcdcde}.mg-allegro-export-none{color:#646970;font-size:12px}
                 </style>
 
                 <script>
@@ -510,7 +527,13 @@ class MG_Allegro_Export_Page {
                                 if (!response.success) { $('#mg-allegro-products').html('<tr><td colspan="5">Hiba: '+esc(response.data)+'</td></tr>'); return; }
                                 let html = '';
                                 response.data.products.forEach(function(product) {
-                                    html += '<tr><th class="check-column"><input type="checkbox" class="mg-allegro-product" value="'+product.id+'" '+(selectedProducts[product.id]?'checked':'')+'></th><td><img src="'+esc(product.image)+'" width="72" height="72" style="object-fit:cover;border-radius:6px"></td><td><strong>'+esc(product.name)+'</strong></td><td>'+esc(product.sku)+'</td><td>'+esc(product.category)+'</td></tr>';
+                                    const statuses = (product.exported_types || []).map(function(type) {
+                                        const exported = !!type.exported_at;
+                                        const statusText = exported ? '&#10003; export&aacute;lva' : 'm&eacute;g nincs export&aacute;lva';
+                                        const title = exported ? ' title="Export&aacute;lva: '+esc(type.exported_at)+'"' : ' title="M&eacute;g nincs export&aacute;lva"';
+                                        return '<span class="mg-allegro-export-chip '+(exported?'is-exported':'is-pending')+'"'+title+'><strong>'+esc(type.label)+'</strong><small>'+statusText+'</small></span>';
+                                    }).join('') || '<span class="mg-allegro-export-none">Nincs virtu&aacute;lis t&iacute;pus</span>';
+                                    html += '<tr><th class="check-column"><input type="checkbox" class="mg-allegro-product" value="'+product.id+'" '+(selectedProducts[product.id]?'checked':'')+'></th><td><img src="'+esc(product.image)+'" width="72" height="72" style="object-fit:cover;border-radius:6px"></td><td><strong>'+esc(product.name)+'</strong></td><td>'+esc(product.sku)+'</td><td>'+esc(product.category)+'</td><td><div class="mg-allegro-export-statuses">'+statuses+'</div></td></tr>';
                                 });
                                 $('#mg-allegro-products').html(html || '<tr><td colspan="5">Nincs megjeleníthető termék.</td></tr>');
                                 renderPages(response.data.total_pages);
@@ -559,8 +582,17 @@ class MG_Allegro_Export_Page {
                             if(!types[v.type]) types[v.type]={label:v.category_label+' ↔ '+v.type_label,count:0}; types[v.type].count++;
                             if(!colors[v.color]) colors[v.color]={label:v.color_label,allegro:v.allegro_color,count:0,valid:v.color_valid}; else { colors[v.color].valid=colors[v.color].valid&&v.color_valid; if(colors[v.color].allegro!==v.allegro_color) colors[v.color].allegro='profilfüggő'; } colors[v.color].count++;
                             if(!sizes[v.size]) sizes[v.size]={label:v.size,allegro:v.allegro_size,count:0,valid:v.size_valid}; else { sizes[v.size].valid=sizes[v.size].valid&&v.size_valid; if(sizes[v.size].allegro!==v.allegro_size) sizes[v.size].allegro='profilfüggő'; } sizes[v.size].count++;
-                        }));
-                        function column(title, allId, cls, values) {
+                         }));
+                         const typeProducts={};
+                         products.forEach(function(p){p.variants.forEach(function(v){if(!typeProducts[v.type])typeProducts[v.type]={};typeProducts[v.type][p.product_id]=!!v.exported_at;});});
+                         Object.keys(typeProducts).forEach(function(type){
+                             if(!types[type])return;
+                             const states=Object.keys(typeProducts[type]).map(function(pid){return typeProducts[type][pid];});
+                             const exportedCount=states.filter(Boolean).length;
+                             const status=exportedCount===states.length?'[EXPORTALVA]':(exportedCount?'[RESZBEN EXPORTALVA]':'[NINCS EXPORT]');
+                             types[type].label += ' '+status;
+                         });
+                         function column(title, allId, cls, values) {
                             return '<div class="mg-allegro-filter-card"><h3>'+title+'</h3><div class="mg-allegro-filter-list"><label><input type="checkbox" id="'+allId+'" checked> <strong>Összes kijelölése</strong></label><hr>'+Object.keys(values).map(k=>{const mapping=Object.prototype.hasOwnProperty.call(values[k],'allegro')?(values[k].allegro?' → '+esc(values[k].allegro):' → nincs megfeleltetés'):'';return '<label class="'+(values[k].valid===false?'mg-allegro-invalid':'')+'"><input type="checkbox" class="'+cls+'" value="'+esc(k)+'" checked> '+esc(values[k].label)+mapping+' <small>('+values[k].count+')</small></label>';}).join('')+'</div></div>';
                         }
                         $('#mg-allegro-variants').html('<div class="mg-allegro-filter-grid">'+column('Terméktípusok','mg-allegro-all-types','mg-allegro-type',types)+column('Színek','mg-allegro-all-colors','mg-allegro-color',colors)+column('Méretek','mg-allegro-all-sizes','mg-allegro-size',sizes)+'</div><div id="mg-allegro-summary" class="mg-allegro-summary"></div>');
