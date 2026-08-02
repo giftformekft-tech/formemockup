@@ -212,6 +212,18 @@ class MG_AI_SEO_Page {
                 <?php submit_button(__('Tagelési beállítások mentése', 'mockup-generator'), 'secondary', 'submit', false); ?>
             </form>
 
+            <div style="max-width:760px;border:1px solid #ccd0d4;background:#fff;padding:14px 16px;margin:18px 0;">
+                <h3 style="margin-top:0;"><?php esc_html_e('Új fogalom-javaslatok', 'mockup-generator'); ?></h3>
+                <p class="description">
+                    <?php esc_html_e('A mentett AI-elemzések kanonikus listán kívüli, keresés szempontjából hasznos javaslatai összesítve tölthetők le. A zajos javaslatokat az export is kiszűri.', 'mockup-generator'); ?>
+                </p>
+                <p>
+                    <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=mg_ai_tag_unmatched_export'), 'mg_ai_tag_unmatched_export')); ?>">
+                        <?php esc_html_e('Új fogalom-javaslatok letöltése (CSV)', 'mockup-generator'); ?>
+                    </a>
+                </p>
+            </div>
+
             <div id="mg-ai-tag-test" style="max-width:760px;border:1px solid #ccd0d4;background:#fff;padding:14px 16px;margin:18px 0;">
                 <h3 style="margin-top:0;"><?php esc_html_e('Tesztelemzés egy mintán', 'mockup-generator'); ?></h3>
                 <p class="description">

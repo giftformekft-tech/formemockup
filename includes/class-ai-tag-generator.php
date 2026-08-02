@@ -33,6 +33,7 @@ class MG_AI_Tag_Generator {
         add_action('wp_ajax_mg_ai_tag_candidates', array(__CLASS__, 'ajax_candidates'));
         add_action('wp_ajax_mg_ai_tag_test_candidates', array(__CLASS__, 'ajax_test_candidates'));
         add_action('wp_ajax_mg_ai_tag_one', array(__CLASS__, 'ajax_tag_one'));
+        add_action('admin_post_mg_ai_tag_unmatched_export', array(__CLASS__, 'admin_export_unmatched'));
     }
 
     public static function get_settings() {
@@ -862,6 +863,145 @@ class MG_AI_Tag_Generator {
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], self::NONCE_ACTION)) {
             wp_send_json_error(array('message' => __('Érvénytelen kérés (nonce).', 'mockup-generator')), 401);
         }
+    }
+
+    /**
+     * Export the saved, still-unmatched AI concepts for dictionary review.
+     * The same noise rules used for fresh AI responses are applied here too,
+     * so older saved metadata does not pollute the review list.
+     */
+    public static function admin_export_unmatched() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Nincs jogosultságod az exportáláshoz.', 'mockup-generator'));
+        }
+        check_admin_referer('mg_ai_tag_unmatched_export');
+
+        $dictionary = self::get_dictionary();
+        if (is_wp_error($dictionary)) {
+            wp_die(esc_html($dictionary->get_error_message()));
+        }
+
+        $allowed_normalized = array();
+        foreach ((array) $dictionary['labels'] as $label) {
+            $normalized_label = self::normalize_concept($label);
+            if ($normalized_label !== '') {
+                $allowed_normalized[$normalized_label] = true;
+            }
+        }
+
+        $query = new WP_Query(array(
+            'post_type' => 'product',
+            'post_status' => array('publish', 'draft', 'pending', 'private'),
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'orderby' => 'ID',
+            'order' => 'ASC',
+            'no_found_rows' => true,
+            'ignore_sticky_posts' => true,
+            'update_post_meta_cache' => true,
+            'update_post_term_cache' => false,
+            'meta_query' => array(
+                'relation' => 'OR',
+                array(
+                    'key' => self::META_UNMATCHED,
+                    'compare' => 'EXISTS',
+                ),
+                array(
+                    'key' => self::META_RESULT,
+                    'compare' => 'EXISTS',
+                ),
+            ),
+        ));
+
+        $concepts = array();
+        foreach ((array) $query->posts as $product_id) {
+            $product_id = absint($product_id);
+            if ($product_id <= 0) {
+                continue;
+            }
+
+            $stored_result = get_post_meta($product_id, self::META_RESULT, true);
+            if (is_string($stored_result)) {
+                $stored_result = json_decode($stored_result, true);
+            }
+            $selected_normalized = array();
+            if (is_array($stored_result)) {
+                foreach ((array) ($stored_result['tags'] ?? array()) as $tag) {
+                    $normalized_tag = self::normalize_concept($tag);
+                    if ($normalized_tag !== '') {
+                        $selected_normalized[$normalized_tag] = true;
+                    }
+                }
+            }
+
+            $stored_unmatched = get_post_meta($product_id, self::META_UNMATCHED, true);
+            if (is_string($stored_unmatched)) {
+                $stored_unmatched = json_decode($stored_unmatched, true);
+            }
+            if (!is_array($stored_unmatched) && is_array($stored_result)) {
+                $stored_unmatched = $stored_result['unmatched_concepts'] ?? array();
+            }
+            if (!is_array($stored_unmatched)) {
+                continue;
+            }
+
+            $seen_for_product = array();
+            foreach ($stored_unmatched as $raw_concept) {
+                $concept = sanitize_text_field((string) $raw_concept);
+                $normalized = self::normalize_concept($concept);
+                if (
+                    $concept === ''
+                    || $normalized === ''
+                    || isset($seen_for_product[$normalized])
+                    || self::is_noise_unmatched_concept($normalized, $allowed_normalized, $selected_normalized)
+                ) {
+                    continue;
+                }
+
+                $seen_for_product[$normalized] = true;
+                if (!isset($concepts[$normalized])) {
+                    $concepts[$normalized] = array(
+                        'concept' => $concept,
+                        'products' => array(),
+                        'variants' => array(),
+                    );
+                }
+                $concepts[$normalized]['products'][$product_id] = get_the_title($product_id);
+                $concepts[$normalized]['variants'][$concept] = true;
+            }
+        }
+
+        uasort($concepts, static function ($left, $right) {
+            $count_compare = count($right['products']) <=> count($left['products']);
+            if ($count_compare !== 0) {
+                return $count_compare;
+            }
+            return strnatcasecmp((string) $left['concept'], (string) $right['concept']);
+        });
+
+        while (ob_get_level()) {
+            ob_end_clean();
+        }
+        nocache_headers();
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="forme-ai-uj-fogalom-javaslatok-' . gmdate('Y-m-d-His') . '.csv"');
+
+        $output = fopen('php://output', 'w');
+        fwrite($output, "\xEF\xBB\xBF");
+        fputcsv($output, array('Javaslat', 'Előfordulás (minták)', 'Minta ID-k', 'Minták', 'Eltérő változatok'), ';');
+        foreach ($concepts as $row) {
+            $product_ids = array_keys($row['products']);
+            $product_names = array_values($row['products']);
+            fputcsv($output, array(
+                $row['concept'],
+                count($product_ids),
+                implode(', ', $product_ids),
+                implode(' | ', $product_names),
+                implode(' | ', array_keys($row['variants'])),
+            ), ';');
+        }
+        fclose($output);
+        exit;
     }
 
     public static function ajax_candidates() {
