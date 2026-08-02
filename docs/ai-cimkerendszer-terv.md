@@ -3,7 +3,7 @@
 Fejlesztési brief. Önállóan végrehajtható, előzetes kontextus nélkül.
 
 Ez a dokumentum **terv**, nem implementáció. A benne szereplő címkeszótár v0 javaslat:
-a 2. szakasz első lépése a jóváhagyása.
+a 3. szakasz zárja le a jóváhagyásával.
 
 ---
 
@@ -46,6 +46,12 @@ duplikátumszűrés, és az `$append = true` miatt semmi nem kerül soha ki egy
 termékről. Eredmény: **11 836 címke**, sok duplikációval, elírással és nulla
 termékes taggel (`docs/ajandekvalaszto-besorolas-2026-07-13.md:25`).
 
+**Ez az állomány magnak sem használható.** Nem csak zajos: soha nem ellenőrizte
+senki sem kereslet-, sem kínálat-oldalról. Egy belőle levezetett szótár ugyanazt a
+hibát örökölné, csak rendezettebb formában – ezért a szótár **nulláról** épül,
+a régi címkék pedig nem forrásként, hanem törlendő állományként szerepelnek
+ebben a tervben.
+
 ### Az ajándékkereső ma nem lát címkét
 
 A kereső válaszai `category_id`, `category_ids` és szabad `keywords` mezőt
@@ -69,6 +75,8 @@ Ezek a megrendelő döntései, nem javaslatok:
 3. **A képet elemezzük** – azt, hogy ténylegesen mi van a mintán –, nem a meglévő
    szövegeket.
 4. **Előbb terv, utána kód.** Ez a dokumentum a terv.
+5. **A meglévő 11 836 címke nem kiindulópont.** Sem magnak, sem összevonási
+   térkép alapjának nem használjuk. A szótár nulláról, mért adatokból épül.
 
 ---
 
@@ -135,9 +143,14 @@ Egy címke akkor kerülhet a szótárba, ha mind a három teljesül:
 
 ### 2.5 A szótár v0 javaslata
 
-Az alábbi lista **kiindulópont a jóváhagyáshoz**, a bolt meglévő kategóriáiból és
-az ajándékkereső érdeklődési köreiből levezetve. A végleges listát a 2. szakasz
-zárja le, a meglévő 11 836 címke gépi csoportosításának ismeretében.
+Az alábbi lista a bolt meglévő **kategóriáiból** és az ajándékkereső érdeklődési
+köreiből van levezetve – tehát abból, amit a bolt bizonyíthatóan árul. A meglévő
+címkékből semmi nem került bele.
+
+**Ez próbabábu, nem javaslat.** A célja, hogy a 2.6 szerinti mérésnek legyen mit
+cáfolnia: ami a mérésben nem igazolódik, az kiesik, és ami a mérésből jön és itt
+nincs, az bekerül. Ha a végén ez a lista változatlan maradna, az azt jelentené,
+hogy a mérés nem történt meg.
 
 **`motivum` – állat (kb. 30)**
 kutya, tacskó, francia bulldog, német juhász, golden retriever, labrador, mopsz,
@@ -193,17 +206,120 @@ névre szóló, dátumos, fotós, monogramos
 
 ### 2.6 Hogyan születik meg a végleges szótár
 
-1. A meglévő 11 836 címke lehúzása termékszámmal együtt (a `class-gift-finder-transfer.php`
-   exportja ezt már tudja: `admin/class-gift-finder-transfer.php:111`).
-2. Gépi csoportosítás: az AI a nyers címkelistát a fenti dimenziókba és
-   jelöltcímkékbe rendezi, minden nyers címkéhez célcímkét vagy `törlés` jelet ad.
-   Ez **egy** hívás-sorozat a listán, nem termékenkénti munka.
-3. A javaslat admin táblázatban jelenik meg: nyers címke → javasolt cél →
-   termékszám → döntés. Ember hagyja jóvá.
-4. A jóváhagyott szótár lesz a `product_tag` taxonómia új, tiszta állománya.
+A régi címkékből nem lehet kiindulni (0. szakasz). A szótár két, **egymástól
+függetlenül** felépített oldal metszetéből születik – így a két oldal nem tudja
+körkörösen igazolni egymást.
 
-**A 2. lépés kimenete önmagában is érték:** megmutatja, mely témákra van sok
-termék és melyekre semmi – ez katalógusbővítési input.
+Egy címke akkor kerül a szótárba, ha **mindkettő** igaz rá:
+
+- **Kínálat:** van elég terméked, ami tényleg hordozza. Ez a képekből jön.
+- **Kereslet:** tényleg keresnek rá magyarul. Ez a keresési adatokból jön.
+
+#### 2.6.1 Kínálat-oldal – alulról, a képekből
+
+Az AI-tól **nem címkét kérünk**, hanem megfigyelést: „mi látható ezen?", szabad
+szöveggel, szótár nélkül. Aki szótárat kér az AI-tól, kitalált szótárat kap.
+
+1. **Rétegzett minta, 300–500 termék** – kategóriánként arányosan. Véletlen mintánál
+   a nagy kategóriák elnyomják a kicsiket, és a szótár féloldalas lesz.
+2. A megfigyeléseket összeszámoljuk. Ami a mintában legalább 8–10 terméken
+   felbukkan, az címkejelölt; a mintaarányból visszaszorozva megvan a várható
+   éles termékszám is.
+3. Így minden jelölthez **mért** szám tartozik, nem becslés.
+
+**Két ingyenes gyorsító,** amiért nem kell API-t hívni: a már legenerált
+`_mg_sample_seo` leírások (ezeket az AI SEO modul a képekből írta, tehát
+témaszavakat tartalmaznak) és a terméknevek. Ezek nem váltják ki a képelemzést,
+de a jelöltlista nagy részét ingyen megadják, és a pilot már csak ellenőriz.
+
+#### 2.6.2 Kereslet-oldal – valós magyar keresésekből
+
+Erősség szerint:
+
+1. **Search Console lekérdezés-export, 12 hónap.** Ingyen van, és ez a gerinc:
+   valós magyar keresések, amikre a bolt már megjelenik. A hosszú farok kell, nem
+   csak a top 100 – a motívumok ott vannak.
+2. **Google Ads keresési kifejezés riport.** A mérés bekötve
+   (`docs/google-ads-precision-measurement.md`), tehát elérhető. Erősebb jel a
+   puszta megjelenésnél, mert vásárláshoz köthető.
+3. **Belső keresés naplózása.** Ma nincs. Kis munka bekapcsolni, és amíg a szótár
+   készül, gyűlik az adat. A **nulla találatos** keresések a legértékesebbek:
+   pontosan azt mutatják, amit a vevő nálad keres és nem talál.
+4. **Keyword Planner** az Ads fiókból – aktív költés mellett valós volumen, nem sáv.
+
+**A kulcsfogás: a lekérdezés szétszedése.** Egy valós magyar keresés így épül fel:
+
+> „vicces **horgászos** **póló** **apának**"
+> → stílus: `vicces` · motívum: `horgászat` · terméktípus: *póló* · címzett: *apának*
+
+A terméktípus attribútum, a címzett kategória. **Ami marad, az a címke.** Ez
+mechanikus szabály, tehát több ezer lekérdezésen végigfuttatható, és pontosan azt
+a tengelyt hagyja meg, amit a 2.1 szabály címkének szán.
+
+#### 2.6.3 A metszet négy vödröt ad
+
+| | **Van kereslet** | **Nincs kereslet** |
+|---|---|---|
+| **Van kínálat** | ✅ **Ez a szótár** | Belső szűrő lehet, URL-t nem kap |
+| **Nincs kínálat** | 🎯 **Tervezői brief** – ezt kéne megrajzolni | Nem érdekes |
+
+A jobb felső vödör önmagában megéri a munkát: megmondja, milyen mintát keresnek
+nálad, amire nincs terméked. Ez nem címkézési, hanem **katalógusbővítési** információ,
+és a szótártól függetlenül is hasznosítható.
+
+#### 2.6.4 Amitől megbízható lesz
+
+Öt mechanizmus. Ezek nélkül bármelyik szótár szétcsúszik – a mostani is így csúszott szét.
+
+1. **Minden címkének definíciója van, nem csak neve.** Egy mondat arról, mikor
+   teszem rá, egy arról, mikor **nem**, plusz 2-3 pozitív és 2-3 negatív példa.
+   Ez nem bürokrácia: definíció nélkül ugyanaz a modell ugyanarra a képre kedden
+   mást ad, mint hétfőn. A definíció teszi reprodukálhatóvá a gépi címkézést.
+2. **Kettős vak validálás.** 100 terméken az AI is címkéz, és ember is címkéz a
+   szótárból, egymás eredményét nem látva. Ha az egyezés 80% alatt van, **nem az
+   AI rossz, hanem a szótár kétértelmű** – átfedő címkék, homályos definíciók.
+   Ez a taxonómia egyetlen igazi minőségi mérőszáma, és a lezárás előtt kell lefutnia.
+3. **Ütközési teszt.** Ha két címke termékhalmaza majdnem azonos, az egy címke két
+   néven – össze kell vonni. A pilot adatain automatikusan futtatható.
+4. **Sekély hierarchia a vékony oldalak ellen.** Lásd 2.7.
+5. **Fix keret és gazda.** Felső méret (400) és dimenziónkénti keret. Új címke
+   felvétele **döntés**, nem mellékhatás – pontosan ez hiányzott eddig.
+   Negyedéves felülvizsgálat: mi nőtt ki, mi halt el.
+
+#### 2.6.5 A javasolt sorrend
+
+| | Lépés | Miért itt |
+|---|---|---|
+| 0 | Belső keresés naplózása be | Az adat idővel gyűlik – minél előbb indul, annál több lesz a lezárásig |
+| 1 | Kereslet-oldal lehúzása (GSC + Ads), lekérdezések szétszedése | Ingyen van, és ez a legerősebb jel |
+| 2 | Kínálat-oldali pilot: 300–500 kép elemzése | Mért termékszámokat ad |
+| 3 | Metszet → négy vödör | Itt születik a szótár váza **és** a tervezői brief |
+| 4 | Definíciók megírása, ütközési teszt | A reprodukálhatóság feltétele |
+| 5 | Kettős vak validálás 100 terméken | Ez dönti el, kész-e |
+| 6 | v1 befagyasztás, gazda, negyedéves review | Innentől rendszer, nem akció |
+
+A pilot 300–500 hívás – nagyságrendekkel olcsóbb a teljes állománynál, és a
+szótárhoz elég. A teljes képelemzés csak a lezárt szótár után indul.
+
+### 2.7 Sekély hierarchia
+
+A `tacskó` mögött lehet csak 4 termék – önmagában vékony oldal, viszont az SEO-értéke
+nagy, mert a „tacskós póló" valódi keresés. Megoldás: **a specifikus címke magával
+hozza az általánosat** – a `tacskó` felírásakor a `kutya` is felkerül. A `kutya`
+archívum így kövér és indexelhető, a `tacskó` pedig akkor válik publikussá, amikor
+eléri az 5 terméket.
+
+A `product_tag` taxonómia nem hierarchikus, ezért a szülő egy `_mg_tag_parent` term
+metában él, és a kiterjesztés íráskor történik. Egy szint mély, nem több –
+mélyebb fánál a termékek címkeszáma elszalad.
+
+### 2.8 Elfogadási teszt a kész szótárra
+
+Vedd a 200 legerősebb valós lekérdezést, és nézd meg, mindegyik kifejezhető-e
+`címke + kategória + terméktípus` kombinációként. Amelyik nem, az lyuk a szótárban.
+
+Ez mérhető kritérium, nem ízlés kérdése – és ugyanez a teszt évente
+megismételhető, hogy lássuk, elavult-e a szótár.
 
 ---
 
@@ -365,33 +481,53 @@ Ettől a „pecás bögre" keresés is megtalálja a `horgászat` címkéjű ter
 
 Minden szakasz végén működő, telepíthető állapot. Szakaszonként külön commit.
 
-### 1. szakasz – Mérés a törlés előtt
+### 1. szakasz – Mérés
 
-**Semmit nem törlünk, amíg nem tudjuk, mit veszítünk.** A meglévő címkeoldalak közül
-néhány hozhat organikus forgalmat.
+Két, egymástól független mérés. Egyik sem ír semmit.
 
-- A 11 836 címke listája termékszámmal, admin táblázatban.
-- Search Console export a `/product-tag/` útvonalra: megjelenés, kattintás, pozíció.
-- Ebből egy **„ne bántsd" lista**: a valóban forgalmat hozó címkék, amiket nem
-  törölni, hanem a szótárba beemelni kell.
+**(a) Mit veszítünk a törléssel?** Search Console export a `/product-tag/`
+útvonalra: megjelenés, kattintás, pozíció. A várakozás az, hogy ez gyakorlatilag
+nulla – a címkék minősége miatt aligha rangsorolnak. **Ezt egyszer ellenőrizni
+kell, nem feltételezni.** Ha tényleg nulla, a 6. szakasz tömeges törlés lehet,
+összevonási térkép nélkül; ha nem, a forgalmat hozó néhány címke kap kivételt.
 
-**Elfogadási kritérium:** megvan a lista, és kézzel ellenőrizhető, hogy a top 20
-forgalmat hozó címke szerepel-e a szótár v0-ban.
+**(b) Kereslet-oldal.** A 2.6.2 szerinti lehúzás és a lekérdezések szétszedése.
+Egyben a belső keresés naplózásának bekapcsolása, hogy a szótár lezárásáig
+gyűljön az adat.
 
-### 2. szakasz – A szótár
+**Elfogadási kritérium:** megvan a `/product-tag/` forgalmi kép, és megvan a
+szétszedett kereslet-oldali kifejezéslista; a belső keresés naplóz.
 
-- `MG_Tag_Dictionary` osztály, term meta alapon (lásd 7. szakasz).
-- Admin felület: dimenzió, szinonimák, státusz szerkesztése.
-- A 11 836 régi címke gépi csoportosítása → összevonási javaslat táblázat.
-- Emberi jóváhagyás. **A frontenden semmi nem változik.**
+### 2. szakasz – Kínálat-oldali pilot
 
-**Elfogadási kritérium:** a jóváhagyott szótár 150–400 címke között van; minden
-címkének van dimenziója; nincs két címke ugyanazzal a slug-gal; minden régi
-címkéhez tartozik döntés (cél vagy törlés).
+- `MG_AI_Image_Analyzer` első, korlátozott futása **rétegzett 300–500 termékre**.
+- A megfigyelések a `_mg_ai_image_facts` metába kerülnek, címke nem íródik.
+- A megfigyelések gyakorisági listája, kategóriánkénti bontással.
 
-### 3. szakasz – Írási kapu
+Ez az 5. szakasz motorjának első éles használata – szándékosan kis mintán, mert itt
+derül ki, jó-e a prompt és a séma, mielőtt több ezer hívást fizetnénk ki.
 
-Ez a szakasz **a 4. előtt** kell, különben a takarítás közben a feltöltések újra
+**Elfogadási kritérium:** 20 véletlen terméken kézzel visszanézve a megfigyelés
+egyezik azzal, ami a mockupon látszik; a gyakorisági lista minden dimenzióhoz ad
+jelölteket.
+
+### 3. szakasz – A szótár
+
+- `MG_Tag_Dictionary` osztály, term meta alapon (lásd a 7. Adatmodell szakaszt).
+- Az 1(b) és a 2. szakasz metszete → a négy vödör (2.6.3).
+- Definíciók, szinonimák, szülő-kapcsolatok megírása.
+- Ütközési teszt, majd **kettős vak validálás 100 terméken** (2.6.4).
+- Admin felület a szerkesztéshez. **A frontenden semmi nem változik.**
+
+**Elfogadási kritérium:** a szótár 150–400 címke; mindegyiknek van dimenziója és
+definíciója; nincs két azonos slug; az ütközési teszt nem talál majdnem azonos
+halmazú párt; a kettős vak egyezés legalább 80%; a 2.8 teszt lefut a 200
+legerősebb lekérdezésen, és a lyukak vagy be vannak foltozva, vagy dokumentáltan
+vállaltak.
+
+### 4. szakasz – Írási kapu
+
+Ez a szakasz **az 5. előtt** kell, különben a takarítás közben a feltöltések újra
 szemetelnek.
 
 - A három írási pont csak szótárbeli címkét fogad el; ismeretlen címke nem íródik
@@ -402,28 +538,36 @@ szemetelnek.
 **Elfogadási kritérium:** egy szótáron kívüli címkével feltöltött minta nem hoz
 létre új taxonómia-termet, és a felületen jelzi, hogy a címke javaslatsorba került.
 
-### 4. szakasz – Képelemzés
+### 5. szakasz – Teljes képelemzés
 
-- `MG_AI_Image_Analyzer`, sorba szervezett futással.
+- `MG_AI_Image_Analyzer` a teljes állományra, sorba szervezett futással.
 - A megfigyelés a `_mg_ai_image_facts` metába kerül, **címke még nem íródik**.
+- A 2. szakaszban már elemzett 300–500 termék nem fut újra.
 - Statisztika: hány terméken van megfigyelés, mennyi a bizonytalan.
 
-**Elfogadási kritérium:** 20 véletlen terméken kézzel visszanézve a megfigyelés
-egyezik azzal, ami a mockupon látszik; a futás megszakítható és folytatható; a
-már elemzett termékek nem futnak újra.
+**Elfogadási kritérium:** a futás megszakítható és folytatható; a már elemzett
+termékek nem futnak újra; a bizonytalanok külön listázhatók.
 
-### 5. szakasz – Leképezés és alkalmazás
+### 6. szakasz – Leképezés és alkalmazás
 
 - `MG_Tag_Mapper` javaslatot ír a `_mg_ai_tags_suggested` metába.
 - Admin felület: termékenkénti javaslat átnézése, tömeges elfogadás szűrőkkel.
-- **Alkalmazás:** a jóváhagyott címkék kiírása, a régi címkék törlése, a
-  `_mg_tag_redirect_to` alapján 301 átirányítás a törölt címke URL-jéről.
+- **Alkalmazás:** a jóváhagyott címkék kiírása, majd a régi állomány törlése.
+
+A törlés módját az 1(a) mérés dönti el, nem ez a terv:
+
+- **Ha a régi címkeoldalak forgalma nulla** (ez a várakozás): tömeges törlés,
+  egyenkénti összevonási térkép nélkül. A `/product-tag/` útvonal 404-esei
+  elfogadhatók, mert nincs mit veszíteni; a sitemapból is kiesnek.
+- **Ha néhány címke mégis hoz forgalmat:** azokra – és csak azokra – készül
+  `_mg_tag_redirect_to` bejegyzés és 301 átirányítás a szótár legközelebbi
+  címkéjére vagy a megfelelő kategóriára.
 
 **Elfogadási kritérium:** minden termék 3–8 címkét hord; a dimenziónkénti korlátok
-tartanak; egy törölt címke URL-je 301-gyel a célcímkére megy, nem 404-re; a
-„ne bántsd" listáról egyetlen címke sem tűnt el.
+tartanak; a taxonómiában csak szótárbeli címke maradt; az 1(a) mérésben forgalmat
+mutató címkék egyike sem ad 404-et.
 
-### 6. szakasz – Ajándékkereső
+### 7. szakasz – Ajándékkereső
 
 - `tag_ids` a válaszokban, a facet-metszetben és az admin szerkesztőben.
 - Anyák napja / Apák napja felvétele alkalomként.
@@ -435,7 +579,7 @@ szűrő-diagnosztika táblázat (`docs/gift-finder-facet-terv.md` 2. szakasza)
 kimutatja, hogy a címke-alapú szűrés ott is szűkít, ahol a kategória-alapú nem;
 egy régi konfigurációs JSON importja nem üti ki a címkekötéseket.
 
-### 7. szakasz – Keresés és SEO
+### 8. szakasz – Keresés és SEO
 
 - `_mg_search_blob` és a `posts_search` kiterjesztés.
 - Címkearchívum bevezető szövegek generálása.
@@ -455,6 +599,8 @@ bevezető szövege egyedi.
 |---|---|---|
 | Dimenzió | `_mg_tag_dimension` term meta | A szótár és a taxonómia egy dolog legyen; így az export, a jogosultságkezelés és a WP admin ingyen működik |
 | Szinonimák | `_mg_tag_synonyms` term meta (JSON) | A keresés és a leképezés használja, URL-t nem kap |
+| Definíció | `_mg_tag_definition` term meta (mikor rakom rá, mikor nem, példák) | Enélkül a gépi címkézés nem reprodukálható (2.6.4) |
+| Szülő címke | `_mg_tag_parent` term meta (term_id) | A `product_tag` nem hierarchikus, de a vékony oldalak elkerüléséhez egy szint kell (2.7) |
 | Státusz | `_mg_tag_status` term meta (`approved` / `proposed` / `retired`) | A javaslatsor és a takarítás állapotgépe |
 | Átirányítás | `_mg_tag_redirect_to` term meta (term_id) | A törölt címke URL-je ebből tudja, hova menjen 301-gyel |
 | Archívum szövege | `_mg_tag_intro` term meta | Ugyanaz a minta, mint a `_mg_sample_seo` |
@@ -512,13 +658,14 @@ beégetett másolattal.
 
 ## 9. Kockázatok
 
-1. **A 11 836 címke törlése SEO-veszteség lehet.** Ez a legnagyobb kockázat, ezért
-   van az 1. szakasz a többi előtt. Törölni csak mért forgalom ismeretében és
-   301-es térképpel szabad. **Ne kezdd az 5. szakaszt az 1. eredménye nélkül.**
+1. **A 11 836 címke törlése SEO-veszteség lehet.** Valószínűleg nem az – ilyen
+   minőségű címkeoldalak aligha rangsorolnak –, de ez **feltételezés, amíg nem
+   mértük.** Ezért van az 1(a) mérés a törlés előtt.
+   **Ne kezdd a 6. szakaszt az 1(a) eredménye nélkül.**
 2. **A vision téved.** Egy stilizált mintán a modell mást lát, mint az ember. Ezért
-   van `confidence`, ezért nem ír élesbe a 4. szakasz, és ezért kell a 20 elemes
+   van `confidence`, ezért nem ír élesbe az 5. szakasz, és ezért kell a 20 elemes
    kézi minta az elfogadáshoz.
-3. **A hozzáfűzéses írás visszacsinálja a takarítást.** Ha a 3. szakasz `$append`
+3. **A hozzáfűzéses írás visszacsinálja a takarítást.** Ha a 4. szakasz `$append`
    javítása kimarad, a következő bulk feltöltés újra ráteszi a régi címkéket.
 4. **Kannibalizáció.** Ha a 2.1 szabály csúszik, a címkeoldal a kategóriaoldal ellen
    fog versenyezni, és a mérhető eredmény romlás lesz, nem javulás.
@@ -528,7 +675,7 @@ beégetett másolattal.
    felépítés (3.1) azért kell, hogy ezt egyszer kelljen kifizetni.
 7. **A gyorsítótár.** Az ajándékkereső halmazai címkeváltozásra is elavulnak; ha a
    verzióléptetés kimarad, a kereső órákig hazudik.
-8. **A mérési alapvonal elmosódik.** Az 5. és 7. szakasz élesítése előtt érdemes
+8. **A mérési alapvonal elmosódik.** A 6. és 8. szakasz élesítése előtt érdemes
    kimenteni az előző hét analitikáját és a Search Console adatait.
 
 ---
