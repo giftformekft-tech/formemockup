@@ -27,6 +27,9 @@ Főnöknek
 Anyósnak  
 Apósnak  
 Pedagógusnak  
+Tanítónak
+Óvónőnek
+Osztályfőnöknek
 Családnak  
 Baráti társaságnak  
 Csapatnak  
@@ -38,13 +41,18 @@ Magamnak
 Születésnap  
 Névnap  
 Karácsony  
+Mikulás
 Húsvét  
 Halloween  
 Valentin-nap  
 Anyák napja  
 Apák napja  
 Ballagás  
+Iskolai ballagás
 Óvodai ballagás  
+Iskolakezdés
+Óvodakezdés
+Tanévzáró
 Érettségi  
 Diplomaosztó  
 Szalagavató  
@@ -81,6 +89,7 @@ Anya–gyerek
 Apa–gyerek  
 Csapatpóló  
 Osztálypóló  
+Csoportpóló
 Céges póló  
 Logózott póló  
 Munkaruha  
@@ -89,6 +98,7 @@ Rendezvénypóló
 ## Érdeklődés és téma
 
 Humoros  
+Márka paródia
 Gamer  
 Sport  
 Horgászat  
@@ -97,7 +107,11 @@ Horgászat
 Filmek és sorozatok  
 Zene  
 Zenekarok  
+Dobosok
+Gitár
+Társasjáték
 Irodalom  
+Olvasás
 Kávé  
 Sör  
 Alkohol  
@@ -109,6 +123,7 @@ Fitness és edzés
 Futás  
 Jóga  
 Túrázás  
+Kirándulás
 Utazás  
 Vadászat  
 Buli  
@@ -146,6 +161,7 @@ Bicikli
 
 Labdarúgás  
 Forma–1  
+Darts
 Karate  
 Kézilabda  
 Konditerem  
@@ -197,6 +213,7 @@ Biztonsági őr
 Bölcsődei gondozó  
 Buszsofőr  
 Cukrász  
+Dajka
 Edző  
 Eladó  
 Favágó  
@@ -236,6 +253,7 @@ Szakács
 Szerelő  
 Takarító  
 Tanár  
+Tanító
 Táncos  
 Targoncás  
 Taxi sofőr  

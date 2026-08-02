@@ -1,7 +1,7 @@
 {
   "schema": "forme-canonical-tags",
   "version": 1,
-  "dictionary_version": "2026-08-02",
+  "dictionary_version": "2026-08-02-v2",
   "language": "hu-HU",
   "source": "forme-taglista-vegleges-2026-08-02.md",
   "notes": [
@@ -106,6 +106,21 @@
       "group": "Címzett"
     },
     {
+      "id": "cimzett.tanitonak",
+      "label": "Tanítónak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.ovononek",
+      "label": "Óvónőnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.osztalyfonoknek",
+      "label": "Osztályfőnöknek",
+      "group": "Címzett"
+    },
+    {
       "id": "cimzett.csaladnak",
       "label": "Családnak",
       "group": "Címzett"
@@ -126,6 +141,11 @@
       "group": "Címzett"
     },
     {
+      "id": "cimzett.magamnak",
+      "label": "Magamnak",
+      "group": "Címzett"
+    },
+    {
       "id": "alkalom.szuletesnap",
       "label": "Születésnap",
       "group": "Alkalom"
@@ -138,6 +158,11 @@
     {
       "id": "alkalom.karacsony",
       "label": "Karácsony",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.mikulas",
+      "label": "Mikulás",
       "group": "Alkalom"
     },
     {
@@ -171,8 +196,28 @@
       "group": "Alkalom"
     },
     {
+      "id": "alkalom.iskolai-ballagas",
+      "label": "Iskolai ballagás",
+      "group": "Alkalom"
+    },
+    {
       "id": "alkalom.ovodai-ballagas",
       "label": "Óvodai ballagás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.iskolakezdes",
+      "label": "Iskolakezdés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.ovodakezdes",
+      "label": "Óvodakezdés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.tanevzaro",
+      "label": "Tanévzáró",
       "group": "Alkalom"
     },
     {
@@ -286,6 +331,11 @@
       "group": "Alkalom"
     },
     {
+      "id": "alkalom.csak-ugy-vagy-meglepetes",
+      "label": "Csak úgy vagy meglepetés",
+      "group": "Alkalom"
+    },
+    {
       "id": "ajandekozasi-es-hasznalati-cel.sajat-kep-vagy-foto",
       "label": "Saját kép vagy fotó",
       "group": "Ajándékozási és használati cél"
@@ -336,6 +386,11 @@
       "group": "Ajándékozási és használati cél"
     },
     {
+      "id": "ajandekozasi-es-hasznalati-cel.csoportpolo",
+      "label": "Csoportpóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
       "id": "ajandekozasi-es-hasznalati-cel.ceges-polo",
       "label": "Céges póló",
       "group": "Ajándékozási és használati cél"
@@ -351,8 +406,18 @@
       "group": "Ajándékozási és használati cél"
     },
     {
+      "id": "ajandekozasi-es-hasznalati-cel.rendezvenypolo",
+      "label": "Rendezvénypóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
       "id": "erdeklodes-es-tema.humoros",
       "label": "Humoros",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.marka-parodia",
+      "label": "Márka paródia",
       "group": "Érdeklődés és téma"
     },
     {
@@ -396,8 +461,28 @@
       "group": "Érdeklődés és téma"
     },
     {
+      "id": "erdeklodes-es-tema.dobosok",
+      "label": "Dobosok",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.gitar",
+      "label": "Gitár",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.tarsasjatek",
+      "label": "Társasjáték",
+      "group": "Érdeklődés és téma"
+    },
+    {
       "id": "erdeklodes-es-tema.irodalom",
       "label": "Irodalom",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.olvasas",
+      "label": "Olvasás",
       "group": "Érdeklődés és téma"
     },
     {
@@ -456,6 +541,11 @@
       "group": "Érdeklődés és téma"
     },
     {
+      "id": "erdeklodes-es-tema.kirandulas",
+      "label": "Kirándulás",
+      "group": "Érdeklődés és téma"
+    },
+    {
       "id": "erdeklodes-es-tema.utazas",
       "label": "Utazás",
       "group": "Érdeklődés és téma"
@@ -478,6 +568,11 @@
     {
       "id": "erdeklodes-es-tema.mobil-es-technologia",
       "label": "Mobil és technológia",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.bitcoin-es-kripto",
+      "label": "Bitcoin és kriptó",
       "group": "Érdeklődés és téma"
     },
     {
@@ -546,6 +641,11 @@
       "group": "Állatok és természet"
     },
     {
+      "id": "allatok-es-termeszet.capybara",
+      "label": "Capybara",
+      "group": "Állatok és természet"
+    },
+    {
       "id": "jarmuvek.auto",
       "label": "Autó",
       "group": "Járművek"
@@ -571,6 +671,11 @@
       "group": "Járművek"
     },
     {
+      "id": "jarmuvek.bicikli",
+      "label": "Bicikli",
+      "group": "Járművek"
+    },
+    {
       "id": "sportagak.labdarugas",
       "label": "Labdarúgás",
       "group": "Sportágak"
@@ -578,6 +683,11 @@
     {
       "id": "sportagak.forma-1",
       "label": "Forma–1",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.darts",
+      "label": "Darts",
       "group": "Sportágak"
     },
     {
@@ -608,6 +718,11 @@
     {
       "id": "sportagak.uszas",
       "label": "Úszás",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.vizilabda",
+      "label": "Vízilabda",
       "group": "Sportágak"
     },
     {
@@ -701,6 +816,11 @@
       "group": "Játékok"
     },
     {
+      "id": "jatekok.world-of-warcraft",
+      "label": "World of Warcraft",
+      "group": "Játékok"
+    },
+    {
       "id": "filmek-sorozatok-es-karaktervilagok.bud-spencer",
       "label": "Bud Spencer",
       "group": "Filmek, sorozatok és karaktervilágok"
@@ -733,6 +853,11 @@
     {
       "id": "filmek-sorozatok-es-karaktervilagok.stranger-things",
       "label": "Stranger Things",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.wednesday",
+      "label": "Wednesday",
       "group": "Filmek, sorozatok és karaktervilágok"
     },
     {
@@ -773,6 +898,11 @@
     {
       "id": "foglalkozasok.cukrasz",
       "label": "Cukrász",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.dajka",
+      "label": "Dajka",
       "group": "Foglalkozások"
     },
     {
@@ -971,6 +1101,11 @@
       "group": "Foglalkozások"
     },
     {
+      "id": "foglalkozasok.tanito",
+      "label": "Tanító",
+      "group": "Foglalkozások"
+    },
+    {
       "id": "foglalkozasok.tancos",
       "label": "Táncos",
       "group": "Foglalkozások"
@@ -993,6 +1128,11 @@
     {
       "id": "foglalkozasok.ugyved",
       "label": "Ügyvéd",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.villanyszerelo",
+      "label": "Villanyszerelő",
       "group": "Foglalkozások"
     }
   ]
