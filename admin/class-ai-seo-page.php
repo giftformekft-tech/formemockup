@@ -191,7 +191,10 @@ class MG_AI_SEO_Page {
                     </tr>
                     <tr>
                         <th scope="row"><label for="mg_ai_tag_max_tokens"><?php esc_html_e('Max. kimeneti token', 'mockup-generator'); ?></label></th>
-                        <td><input type="number" id="mg_ai_tag_max_tokens" name="mg_ai_tag_settings[max_output_tokens]" value="<?php echo esc_attr($tag_settings['max_output_tokens'] ?? MG_AI_Tag_Generator::DEFAULT_MAX_TOKENS); ?>" min="200" max="4000" class="small-text" /></td>
+                        <td>
+                            <input type="number" id="mg_ai_tag_max_tokens" name="mg_ai_tag_settings[max_output_tokens]" value="<?php echo esc_attr($tag_settings['max_output_tokens'] ?? MG_AI_Tag_Generator::DEFAULT_MAX_TOKENS); ?>" min="<?php echo (int) MG_AI_Tag_Generator::MIN_MAX_TOKENS; ?>" max="4000" class="small-text" />
+                            <p class="description"><?php esc_html_e('A képes GPT-5 strukturált válasz miatt legalább 4000 tokenes keret szükséges; a tényleges JSON ennél jóval rövidebb.', 'mockup-generator'); ?></p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="mg_ai_tag_delay"><?php esc_html_e('Késleltetés hívások között (ms)', 'mockup-generator'); ?></label></th>

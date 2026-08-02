@@ -16,7 +16,8 @@ class MG_AI_Tag_Generator {
     const META_DICTIONARY_VERSION = '_mg_ai_tag_dictionary_version';
     const META_UNMATCHED = '_mg_ai_tag_unmatched_concepts';
     const META_CACHE_USAGE = '_mg_ai_tag_cache_usage';
-    const DEFAULT_MAX_TOKENS = 650;
+    const DEFAULT_MAX_TOKENS = 4000;
+    const MIN_MAX_TOKENS = 4000;
     const DEFAULT_DELAY_MS = 600;
     const DEFAULT_WORKERS = 4;
     const MAX_WORKERS = 8;
@@ -45,7 +46,7 @@ class MG_AI_Tag_Generator {
             $stored = array();
         }
         $settings = array_merge($defaults, $stored);
-        $settings['max_output_tokens'] = max(200, min(4000, (int) $settings['max_output_tokens']));
+        $settings['max_output_tokens'] = max(self::MIN_MAX_TOKENS, min(4000, (int) $settings['max_output_tokens']));
         $settings['delay_ms'] = max(0, (int) $settings['delay_ms']);
         $settings['workers'] = max(1, min(self::MAX_WORKERS, (int) $settings['workers']));
         return $settings;
@@ -55,7 +56,7 @@ class MG_AI_Tag_Generator {
         $clean = array(
             'enabled' => !empty($input['enabled']),
             'max_output_tokens' => isset($input['max_output_tokens'])
-                ? max(200, min(4000, intval($input['max_output_tokens'])))
+                ? max(self::MIN_MAX_TOKENS, min(4000, intval($input['max_output_tokens'])))
                 : self::DEFAULT_MAX_TOKENS,
             'delay_ms' => isset($input['delay_ms'])
                 ? max(0, intval($input['delay_ms']))
@@ -356,14 +357,81 @@ class MG_AI_Tag_Generator {
             return trim($data['output_text']);
         }
         $chunks = array();
-        foreach ((array) ($data['output'] ?? array()) as $item) {
-            foreach ((array) ($item['content'] ?? array()) as $content) {
-                if (!empty($content['text']) && (!isset($content['type']) || in_array($content['type'], array('output_text', 'text'), true))) {
-                    $chunks[] = (string) $content['text'];
+        $output = is_array($data) ? ($data['output'] ?? array()) : array();
+        foreach ((array) $output as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $content_items = $item['content'] ?? array();
+            if (is_array($content_items) && (isset($content_items['type']) || isset($content_items['text']) || isset($content_items['parsed']))) {
+                $content_items = array($content_items);
+            }
+            foreach ((array) $content_items as $content) {
+                if (!is_array($content)) {
+                    continue;
+                }
+                if (isset($content['text']) && $content['text'] !== '' && (!isset($content['type']) || in_array($content['type'], array('output_text', 'text'), true))) {
+                    $chunks[] = is_string($content['text'])
+                        ? $content['text']
+                        : wp_json_encode($content['text'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                }
+                if (isset($content['parsed']) && is_array($content['parsed'])) {
+                    $chunks[] = wp_json_encode($content['parsed'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 }
             }
         }
         return trim(implode("\n", $chunks));
+    }
+
+    private static function describe_empty_response($data) {
+        $status = is_array($data) ? (string) ($data['status'] ?? '') : '';
+        $reason = is_array($data) && isset($data['incomplete_details']['reason'])
+            ? (string) $data['incomplete_details']['reason'] : '';
+        $refusal = '';
+        $types = array();
+        $output = is_array($data) ? ($data['output'] ?? array()) : array();
+        foreach ((array) $output as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            if (!empty($item['type'])) {
+                $types[] = (string) $item['type'];
+            }
+            $content_items = $item['content'] ?? array();
+            if (is_array($content_items) && (isset($content_items['type']) || isset($content_items['text']) || isset($content_items['parsed']) || isset($content_items['refusal']))) {
+                $content_items = array($content_items);
+            }
+            foreach ((array) $content_items as $content) {
+                if (is_array($content) && !empty($content['type'])) {
+                    $types[] = (string) $content['type'];
+                }
+                if (is_array($content) && !empty($content['refusal'])) {
+                    $refusal = (string) $content['refusal'];
+                }
+            }
+        }
+        $types = array_values(array_unique($types));
+
+        if ($refusal !== '') {
+            return sprintf(__('Az AI megtagadta a választ: %s', 'mockup-generator'), $refusal);
+        }
+        if ($reason !== '') {
+            $message = sprintf(__('Az AI válasza hiányos (%s).', 'mockup-generator'), $reason);
+            if ($reason === 'max_output_tokens') {
+                $message .= ' ' . sprintf(__('A max. kimeneti token legyen legalább %d.', 'mockup-generator'), self::MIN_MAX_TOKENS);
+            }
+            return $message;
+        }
+
+        $details = array();
+        if ($status !== '') {
+            $details[] = 'status=' . $status;
+        }
+        if (!empty($types)) {
+            $details[] = 'output=' . implode(',', $types);
+        }
+        return __('Az AI nem adott vissza tagelési választ.', 'mockup-generator')
+            . (!empty($details) ? ' (' . implode('; ', $details) . ')' : '');
     }
 
     private static function decode_json_result($text) {
@@ -372,6 +440,9 @@ class MG_AI_Tag_Generator {
             $text = trim($matches[1]);
         }
         $data = json_decode($text, true);
+        if (!is_array($data) && preg_match('/\{.*\}/s', $text, $matches)) {
+            $data = json_decode(trim($matches[0]), true);
+        }
         return is_array($data) ? $data : new WP_Error(
             'mg_ai_tag_invalid_json',
             __('Az AI válasza nem érvényes JSON.', 'mockup-generator')
@@ -432,7 +503,7 @@ class MG_AI_Tag_Generator {
 
         $text = self::extract_output_text($data);
         if ($text === '') {
-            return new WP_Error('mg_ai_tag_empty', __('Az AI nem adott vissza tagelési választ.', 'mockup-generator'));
+            return new WP_Error('mg_ai_tag_empty', self::describe_empty_response($data));
         }
         $meta = self::decode_json_result($text);
         if (is_wp_error($meta)) {
