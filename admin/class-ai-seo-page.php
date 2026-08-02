@@ -77,6 +77,7 @@ class MG_AI_SEO_Page {
         $tag_dictionary = class_exists('MG_AI_Tag_Generator') ? MG_AI_Tag_Generator::get_dictionary() : new WP_Error('missing', '');
         $tag_dictionary_count = is_wp_error($tag_dictionary) ? 0 : count($tag_dictionary['labels']);
         $tag_dictionary_version = is_wp_error($tag_dictionary) ? '' : $tag_dictionary['version'];
+        $tag_custom_labels = class_exists('MG_AI_Tag_Generator') ? MG_AI_Tag_Generator::get_custom_labels() : array();
         ?>
         <div class="wrap">
             <h1><?php esc_html_e('AI Minta SEO és tagelés (GPT-5 mini)', 'mockup-generator'); ?></h1>
@@ -86,6 +87,9 @@ class MG_AI_SEO_Page {
             <?php endif; ?>
             <?php if (isset($_GET['tag_updated'])): ?>
             <div class="notice notice-success is-dismissible"><p><strong><?php esc_html_e('AI minta-tagelési beállítások elmentve.', 'mockup-generator'); ?></strong></p></div>
+            <?php endif; ?>
+            <?php if (isset($_GET['tag_dictionary_updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p><strong><?php esc_html_e('Az egyedi tagkönyvtár elmentve.', 'mockup-generator'); ?></strong></p></div>
             <?php endif; ?>
 
             <p><?php esc_html_e('Ez a modul a termék kiemelt (már legenerált mockup) képe alapján egyedi SEO leírást ír a mintához. Az eredmény a "_mg_sample_seo" mezőbe kerül, amit a terméktípus leírás sablonjában a {sample_seo} változóval illeszthetsz be.', 'mockup-generator'); ?></p>
@@ -167,13 +171,16 @@ class MG_AI_SEO_Page {
 
             <hr />
 
-            <h2 class="title"><?php esc_html_e('AI minta-tagelés és kategorizálás', 'mockup-generator'); ?></h2>
+            <h2 class="title"><?php esc_html_e('AI minta-tagelés', 'mockup-generator'); ?></h2>
             <p class="description">
-                <?php esc_html_e('Ez ugyanazt a kanonikus taglistát és kategória-választási logikát használja, mint az ai_rename_gui5.py. A kiemelt képet elemzi, csak a szótárból választ taget, és az eredményt WooCommerce product_tag-ként menti.', 'mockup-generator'); ?>
+                <?php esc_html_e('A kiemelt képet elemzi, kizárólag a tagkönyvtárból választ 0–8 taget, és az eredményt WooCommerce product_tag-ként menti.', 'mockup-generator'); ?>
             </p>
             <p>
-                <strong><?php esc_html_e('Beépített szótár:', 'mockup-generator'); ?></strong>
-                <?php echo esc_html($tag_dictionary_count); ?> <?php esc_html_e('kanonikus tag', 'mockup-generator'); ?>
+                <strong><?php esc_html_e('Tagkönyvtár:', 'mockup-generator'); ?></strong>
+                <?php echo esc_html($tag_dictionary_count); ?> <?php esc_html_e('összes tag', 'mockup-generator'); ?>
+                <?php if ($tag_custom_labels): ?>
+                    (<?php echo esc_html(count($tag_custom_labels)); ?> <?php esc_html_e('egyedi tag', 'mockup-generator'); ?>)
+                <?php endif; ?>
                 <?php if ($tag_dictionary_version !== ''): ?>
                     (<?php echo esc_html($tag_dictionary_version); ?>)
                 <?php else: ?>
@@ -204,7 +211,7 @@ class MG_AI_SEO_Page {
                         <th scope="row"><label for="mg_ai_tag_workers"><?php esc_html_e('Párhuzamos AI workerek', 'mockup-generator'); ?></label></th>
                         <td>
                             <input type="number" id="mg_ai_tag_workers" name="mg_ai_tag_settings[workers]" value="<?php echo esc_attr($tag_settings['workers'] ?? MG_AI_Tag_Generator::DEFAULT_WORKERS); ?>" min="1" max="<?php echo (int) MG_AI_Tag_Generator::MAX_WORKERS; ?>" class="small-text" />
-                            <p class="description"><?php esc_html_e('Ennyi minta elemzése futhat párhuzamosan. 4 az alapérték; nano modellnél ne állítsd magasra a TPM-limit miatt.', 'mockup-generator'); ?></p>
+                            <p class="description"><?php esc_html_e('Ennyi minta elemzése futhat párhuzamosan. 4 az alapérték; a pontos értéket az OpenAI modell- és TPM-limitjeihez igazítsd.', 'mockup-generator'); ?></p>
                         </td>
                     </tr>
                 </table>
@@ -213,21 +220,22 @@ class MG_AI_SEO_Page {
             </form>
 
             <div style="max-width:760px;border:1px solid #ccd0d4;background:#fff;padding:14px 16px;margin:18px 0;">
-                <h3 style="margin-top:0;"><?php esc_html_e('Új fogalom-javaslatok', 'mockup-generator'); ?></h3>
+                <h3 style="margin-top:0;"><?php esc_html_e('Egyedi tagek hozzáadása a tagkönyvtárhoz', 'mockup-generator'); ?></h3>
                 <p class="description">
-                    <?php esc_html_e('A mentett AI-elemzések kanonikus listán kívüli, keresés szempontjából hasznos javaslatai összesítve tölthetők le. A zajos javaslatokat az export is kiszűri.', 'mockup-generator'); ?>
+                    <?php esc_html_e('Egy tagot írj egy sorba. A mentés után az új tagek bekerülnek a következő AI-elemzések választható listájába. A mező csak az egyedi tageket tartalmazza; a beépített szótár tagjai mindig megmaradnak. A mentés a teljes egyedi listát felülírja.', 'mockup-generator'); ?>
                 </p>
-                <p>
-                    <a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=mg_ai_tag_unmatched_export'), 'mg_ai_tag_unmatched_export')); ?>">
-                        <?php esc_html_e('Új fogalom-javaslatok letöltése (CSV)', 'mockup-generator'); ?>
-                    </a>
-                </p>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <input type="hidden" name="action" value="mg_ai_tag_dictionary_save" />
+                    <?php wp_nonce_field('mg_ai_tag_dictionary_save_action'); ?>
+                    <textarea name="mg_ai_tag_custom_labels" rows="6" class="large-text" placeholder="például:&#10;Kutyabarát&#10;Horgász&#10;Kertészkedés"><?php echo esc_textarea(implode("\n", $tag_custom_labels)); ?></textarea>
+                    <?php submit_button(__('Tagkönyvtár mentése', 'mockup-generator'), 'secondary', 'submit', false); ?>
+                </form>
             </div>
 
             <div id="mg-ai-tag-test" style="max-width:760px;border:1px solid #ccd0d4;background:#fff;padding:14px 16px;margin:18px 0;">
                 <h3 style="margin-top:0;"><?php esc_html_e('Tesztelemzés egy mintán', 'mockup-generator'); ?></h3>
                 <p class="description">
-                    <?php esc_html_e('Keress rá egy mintára név vagy ID alapján, válaszd ki, majd futtasd le az elemzést. Ez előnézet: a rendszer nem ment taget, kategóriát vagy metaadatot.', 'mockup-generator'); ?>
+                    <?php esc_html_e('Keress rá egy mintára név vagy ID alapján, válaszd ki, majd futtasd le az elemzést. Ez előnézet: a rendszer nem ment taget vagy metaadatot.', 'mockup-generator'); ?>
                 </p>
                 <p>
                     <label for="mg-ai-tag-test-search"><strong><?php esc_html_e('Minta keresése', 'mockup-generator'); ?></strong></label><br />
@@ -245,12 +253,11 @@ class MG_AI_SEO_Page {
             </div>
 
             <p class="description" style="max-width:760px;">
-                <?php esc_html_e('A „régi tagek cseréje” bekapcsolva eltávolítja az adott termék korábbi product_tag tageit, és csak az AI által kiválasztott kanonikus tageket hagyja meg. Kikapcsolva a kanonikus tagek hozzáadódnak a régiekhez. A kategóriák frissítése külön kapcsolható.', 'mockup-generator'); ?>
+                <?php esc_html_e('A „régi tagek cseréje” bekapcsolva eltávolítja az adott termék korábbi product_tag tageit, és csak az AI által kiválasztott tagkönyvtári tageket hagyja meg. Kikapcsolva az új tagek hozzáadódnak a régiekhez.', 'mockup-generator'); ?>
             </p>
             <p>
                 <label><input type="checkbox" id="mg-ai-tag-force" /> <?php esc_html_e('Már tagelt minták újraelemzése (force)', 'mockup-generator'); ?></label><br />
-                <label><input type="checkbox" id="mg-ai-tag-replace" /> <?php esc_html_e('Régi product_tag tagek cseréje (különben csak hozzáadás)', 'mockup-generator'); ?></label><br />
-                <label><input type="checkbox" id="mg-ai-tag-categories" /> <?php esc_html_e('WooCommerce kategóriák frissítése az AI választása alapján', 'mockup-generator'); ?></label>
+                <label><input type="checkbox" id="mg-ai-tag-replace" /> <?php esc_html_e('Régi product_tag tagek cseréje (különben csak hozzáadás)', 'mockup-generator'); ?></label>
             </p>
             <p>
                 <button type="button" class="button button-primary" id="mg-ai-tag-start"><?php esc_html_e('Meglévő minták újratagelése', 'mockup-generator'); ?></button>
@@ -434,14 +441,12 @@ class MG_AI_SEO_Page {
                 }
 
                 var replaceTags = $('#mg-ai-tag-replace').is(':checked');
-                var updateCategories = $('#mg-ai-tag-categories').is(':checked');
                 var $result = $('#mg-ai-tag-test-result');
                 $button.prop('disabled', true);
                 $result.text('Elemzés folyamatban…');
                 tagPost('mg_ai_tag_one', {
                     product_id: productId,
                     replace_tags: replaceTags ? '1' : '0',
-                    update_categories: updateCategories ? '1' : '0',
                     preview: '1',
                     cache_shard: 0,
                     cache_shards: 1
@@ -452,26 +457,13 @@ class MG_AI_SEO_Page {
                     }
                     var data = resp.data || {};
                     var tags = (data.tags || []).join(', ') || 'nincs kanonikus tag';
-                    var categories = (data.category_names || []).join(' > ');
-                    if (!categories) {
-                        var categoryIds = data.categories || {};
-                        categories = 'ID-k: ' + (categoryIds.main_id || 0) + ' / ' + (categoryIds.sub_id || 0);
-                    }
-                    var unmatched = (data.unmatched_concepts || []).join(', ') || 'nincs';
-                    var confidence = typeof data.confidence === 'number'
-                        ? Math.round(data.confidence * 100) + '%'
-                        : 'nincs adat';
                     var cache = data.cache_usage || {};
                     var lines = [
-                        'ELŐNÉZET – #' + productId + (data.product_name ? ' ' + data.product_name : ''),
+                        'ELŐNÉZET – #' + productId,
                         '',
-                        'Javasolt SEO cím: ' + (data.title_hu || 'nincs'),
                         'Javasolt tagek: ' + tags,
-                        'Javasolt kategória: ' + categories,
-                        'Bizonyosság: ' + confidence,
-                        'Nem illeszkedő fogalmak: ' + unmatched,
                         '',
-                        'Mentés: NEM történt (sem tag, sem kategória, sem metaadat).',
+                        'Mentés: NEM történt (sem tag, sem metaadat).',
                         'Cache: ' + (cache.cached_tokens || 0) + ' token'
                     ];
                     $result.text(lines.join('\n'));
@@ -520,7 +512,6 @@ class MG_AI_SEO_Page {
                 tagPost('mg_ai_tag_one', {
                     product_id: productId,
                     replace_tags: state.replaceTags ? '1' : '0',
-                    update_categories: state.updateCategories ? '1' : '0',
                     cache_shard: state.cacheShards > 1 ? (index % state.cacheShards) : 0,
                     cache_shards: state.cacheShards
                 }).always(function (resp) {
@@ -530,10 +521,9 @@ class MG_AI_SEO_Page {
                         state.stats.ok++;
                         var data = resp.data || {};
                         var tags = (data.tags || []).join(', ');
-                        var unmatched = (data.unmatched_concepts || []).join(', ');
                         var cache = data.cache_usage || {};
                         var cacheText = cache.cached_tokens ? (' | cache: ' + cache.cached_tokens + ' token') : '';
-                        tagLogLine('#' + productId + ': OK | ' + (tags || 'nincs kanonikus tag') + cacheText + (unmatched ? ' | új fogalom: ' + unmatched : ''));
+                        tagLogLine('#' + productId + ': OK | ' + (tags || 'nincs kanonikus tag') + cacheText);
                     } else {
                         state.stats.error++;
                         var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'ismeretlen hiba';
@@ -551,13 +541,12 @@ class MG_AI_SEO_Page {
                 });
             }
 
-            function runTagParallel(ids, replaceTags, updateCategories, cacheShards, workers, delayMs) {
+            function runTagParallel(ids, replaceTags, cacheShards, workers, delayMs) {
                 var workerCount = parseInt(workers, 10) || 1;
                 workerCount = Math.max(1, Math.min(workerCount, 8, ids.length));
                 var state = {
                     ids: ids,
                     replaceTags: replaceTags,
-                    updateCategories: updateCategories,
                     cacheShards: cacheShards,
                     delayMs: Math.max(0, parseInt(delayMs, 10) || 0),
                     nextIndex: 0,
@@ -579,11 +568,9 @@ class MG_AI_SEO_Page {
                 stopped = false;
                 var force = $('#mg-ai-tag-force').is(':checked');
                 var replaceTags = $('#mg-ai-tag-replace').is(':checked');
-                var updateCategories = $('#mg-ai-tag-categories').is(':checked');
-                if (replaceTags || updateCategories) {
+                if (replaceTags) {
                     var warning = 'A futtatás módosítani fogja a meglévő termékadatokat.';
-                    if (replaceTags) { warning += '\n\nA régi product_tag tagek törlődnek, és csak az AI kanonikus tagei maradnak.'; }
-                    if (updateCategories) { warning += '\n\nA WooCommerce kategóriák az AI választása alapján cserélődnek.'; }
+                    if (replaceTags) { warning += '\n\nA régi product_tag tagek törlődnek, és csak a tagkönyvtárból választott tagek maradnak.'; }
                     if (!window.confirm(warning + '\n\nFolytatod?')) { return; }
                 }
                 $('#mg-ai-tag-log').empty();
@@ -592,7 +579,7 @@ class MG_AI_SEO_Page {
                 $('#mg-ai-tag-progress-text').text('Minták lekérése...');
                 $('#mg-ai-tag-start').prop('disabled', true);
                 $('#mg-ai-tag-stop').prop('disabled', false);
-                tagLogLine('Beállítás: ' + (replaceTags ? 'régi tagek cseréje' : 'tagek hozzáadása') + (updateCategories ? ', kategóriák frissítése' : ''));
+                tagLogLine('Beállítás: ' + (replaceTags ? 'régi tagek cseréje' : 'tagek hozzáadása'));
                 tagPost('mg_ai_tag_candidates', { force: force ? '1' : '0' }).done(function (resp) {
                     if (!resp || !resp.success) {
                         $('#mg-ai-tag-progress-text').text('Nem sikerült lekérni a mintákat.');
@@ -612,7 +599,7 @@ class MG_AI_SEO_Page {
                         $('#mg-ai-tag-stop').prop('disabled', true);
                         return;
                     }
-                    runTagParallel(ids, replaceTags, updateCategories, cacheShards, configuredTagWorkers, configuredTagDelay);
+                    runTagParallel(ids, replaceTags, cacheShards, configuredTagWorkers, configuredTagDelay);
                 }).fail(function () {
                     $('#mg-ai-tag-progress-text').text('Hiba a minták lekérésekor.');
                     $('#mg-ai-tag-start').prop('disabled', false);
