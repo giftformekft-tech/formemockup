@@ -40,7 +40,7 @@ class MG_AI_SEO_Page {
         $input = isset($_POST['mg_ai_seo_settings']) ? wp_unslash($_POST['mg_ai_seo_settings']) : array();
         MG_AI_SEO_Generator::save_settings(is_array($input) ? $input : array());
 
-        wp_redirect(admin_url('admin.php?page=' . self::MENU_SLUG . '&updated=1'));
+        wp_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo&updated=1'));
         exit;
     }
 
@@ -57,7 +57,7 @@ class MG_AI_SEO_Page {
         $input = isset($_POST['mg_ai_tag_settings']) ? wp_unslash($_POST['mg_ai_tag_settings']) : array();
         MG_AI_Tag_Generator::save_settings(is_array($input) ? $input : array());
 
-        wp_redirect(admin_url('admin.php?page=' . self::MENU_SLUG . '&tag_updated=1'));
+        wp_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo&tag_updated=1'));
         exit;
     }
 
@@ -431,7 +431,7 @@ class MG_AI_SEO_Page {
             }
 
             $('#mg-ai-tag-start').on('click', function () {
-                if (!$('#mg-ai-tag-enabled').is(':checked')) {
+                if (!$('#mg_ai_tag_enabled').is(':checked')) {
                     window.alert('Előbb engedélyezd az AI minta-tagelést, majd mentsd el a beállítást.');
                     return;
                 }
