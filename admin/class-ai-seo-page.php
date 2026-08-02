@@ -197,8 +197,15 @@ class MG_AI_SEO_Page {
                         <th scope="row"><label for="mg_ai_tag_delay"><?php esc_html_e('Késleltetés hívások között (ms)', 'mockup-generator'); ?></label></th>
                         <td><input type="number" id="mg_ai_tag_delay" name="mg_ai_tag_settings[delay_ms]" value="<?php echo esc_attr($tag_settings['delay_ms'] ?? MG_AI_Tag_Generator::DEFAULT_DELAY_MS); ?>" min="0" class="small-text" /></td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="mg_ai_tag_workers"><?php esc_html_e('Párhuzamos AI workerek', 'mockup-generator'); ?></label></th>
+                        <td>
+                            <input type="number" id="mg_ai_tag_workers" name="mg_ai_tag_settings[workers]" value="<?php echo esc_attr($tag_settings['workers'] ?? MG_AI_Tag_Generator::DEFAULT_WORKERS); ?>" min="1" max="<?php echo (int) MG_AI_Tag_Generator::MAX_WORKERS; ?>" class="small-text" />
+                            <p class="description"><?php esc_html_e('Ennyi minta elemzése futhat párhuzamosan. 4 az alapérték; nano modellnél ne állítsd magasra a TPM-limit miatt.', 'mockup-generator'); ?></p>
+                        </td>
+                    </tr>
                 </table>
-                <p><?php esc_html_e('Az OpenAI kulcs, modell és endpoint a fenti AI SEO beállításból öröklődik.', 'mockup-generator'); ?></p>
+                <p><?php esc_html_e('Az OpenAI kulcs, modell és endpoint a fenti AI SEO beállításból öröklődik. A workerek az admin queue-ban párhuzamos HTTP-kéréseket jelentenek, nem egyetlen API-kérésen belüli modell-szálakat.', 'mockup-generator'); ?></p>
                 <?php submit_button(__('Tagelési beállítások mentése', 'mockup-generator'), 'secondary', 'submit', false); ?>
             </form>
 
@@ -334,24 +341,52 @@ class MG_AI_SEO_Page {
                 });
             }
 
-            function runTagNext(ids, index, force, replaceTags, updateCategories, cacheShards, stats) {
-                if (stopped || index >= ids.length) {
-                    $('#mg-ai-tag-start').prop('disabled', false);
-                    $('#mg-ai-tag-stop').prop('disabled', true);
-                    $('#mg-ai-tag-progress-text').text('Kész: ' + stats.done + ' / ' + ids.length + ' (siker: ' + stats.ok + ', hiba: ' + stats.error + ')');
+            var configuredTagWorkers = <?php echo (int) ($tag_settings['workers'] ?? MG_AI_Tag_Generator::DEFAULT_WORKERS); ?>;
+            var configuredTagDelay = <?php echo (int) ($tag_settings['delay_ms'] ?? MG_AI_Tag_Generator::DEFAULT_DELAY_MS); ?>;
+
+            function updateTagProgress(state) {
+                var stats = state.stats;
+                var pct = Math.round((stats.done / state.ids.length) * 100);
+                $('#mg-ai-tag-progress-bar').css('width', pct + '%');
+                $('#mg-ai-tag-progress-text').text(stats.done + ' / ' + state.ids.length + ' (siker: ' + stats.ok + ', hiba: ' + stats.error + ', futó: ' + state.active + ')');
+            }
+
+            function finishTagRun(state) {
+                if (!state || state.finished || state.active > 0) {
                     return;
                 }
-                var productId = ids[index];
+                if (!stopped && state.nextIndex < state.ids.length) {
+                    return;
+                }
+                state.finished = true;
+                $('#mg-ai-tag-start').prop('disabled', false);
+                $('#mg-ai-tag-stop').prop('disabled', true);
+                $('#mg-ai-tag-progress-text').text((stopped ? 'Leállítva: ' : 'Kész: ') + state.stats.done + ' / ' + state.ids.length + ' (siker: ' + state.stats.ok + ', hiba: ' + state.stats.error + ')');
+            }
+
+            function runTagWorker(state) {
+                if (!state || state.finished) {
+                    return;
+                }
+                if (stopped || state.nextIndex >= state.ids.length) {
+                    finishTagRun(state);
+                    return;
+                }
+
+                var index = state.nextIndex++;
+                var productId = state.ids[index];
+                state.active++;
                 tagPost('mg_ai_tag_one', {
                     product_id: productId,
-                    replace_tags: replaceTags ? '1' : '0',
-                    update_categories: updateCategories ? '1' : '0',
-                    cache_shard: cacheShards > 1 ? (index % cacheShards) : 0,
-                    cache_shards: cacheShards
+                    replace_tags: state.replaceTags ? '1' : '0',
+                    update_categories: state.updateCategories ? '1' : '0',
+                    cache_shard: state.cacheShards > 1 ? (index % state.cacheShards) : 0,
+                    cache_shards: state.cacheShards
                 }).always(function (resp) {
-                    stats.done++;
+                    state.active--;
+                    state.stats.done++;
                     if (resp && resp.success) {
-                        stats.ok++;
+                        state.stats.ok++;
                         var data = resp.data || {};
                         var tags = (data.tags || []).join(', ');
                         var unmatched = (data.unmatched_concepts || []).join(', ');
@@ -359,17 +394,40 @@ class MG_AI_SEO_Page {
                         var cacheText = cache.cached_tokens ? (' | cache: ' + cache.cached_tokens + ' token') : '';
                         tagLogLine('#' + productId + ': OK | ' + (tags || 'nincs kanonikus tag') + cacheText + (unmatched ? ' | új fogalom: ' + unmatched : ''));
                     } else {
-                        stats.error++;
+                        state.stats.error++;
                         var msg = (resp && resp.data && resp.data.message) ? resp.data.message : 'ismeretlen hiba';
                         tagLogLine('#' + productId + ': ' + msg, true);
                     }
-                    var pct = Math.round((stats.done / ids.length) * 100);
-                    $('#mg-ai-tag-progress-bar').css('width', pct + '%');
-                    $('#mg-ai-tag-progress-text').text(stats.done + ' / ' + ids.length + ' (siker: ' + stats.ok + ', hiba: ' + stats.error + ')');
-                    setTimeout(function () {
-                        runTagNext(ids, index + 1, force, replaceTags, updateCategories, cacheShards, stats);
-                    }, <?php echo (int) ($tag_settings['delay_ms'] ?? MG_AI_Tag_Generator::DEFAULT_DELAY_MS); ?>);
+                    updateTagProgress(state);
+
+                    if (stopped || state.nextIndex >= state.ids.length) {
+                        finishTagRun(state);
+                    } else {
+                        state.timers.push(setTimeout(function () {
+                            runTagWorker(state);
+                        }, state.delayMs));
+                    }
                 });
+            }
+
+            function runTagParallel(ids, replaceTags, updateCategories, cacheShards, workers, delayMs) {
+                var workerCount = parseInt(workers, 10) || 1;
+                workerCount = Math.max(1, Math.min(workerCount, 8, ids.length));
+                var state = {
+                    ids: ids,
+                    replaceTags: replaceTags,
+                    updateCategories: updateCategories,
+                    cacheShards: cacheShards,
+                    delayMs: Math.max(0, parseInt(delayMs, 10) || 0),
+                    nextIndex: 0,
+                    active: 0,
+                    finished: false,
+                    timers: [],
+                    stats: { done: 0, ok: 0, error: 0 }
+                };
+                for (var i = 0; i < workerCount; i++) {
+                    runTagWorker(state);
+                }
             }
 
             $('#mg-ai-tag-start').on('click', function () {
@@ -406,13 +464,14 @@ class MG_AI_SEO_Page {
                     if (!cacheShards || cacheShards < 1) { cacheShards = 1; }
                     tagLogLine('Szótár: ' + (resp.data.dictionary_count || 0) + ' tag | verzió: ' + (resp.data.dictionary_version || 'ismeretlen'));
                     tagLogLine('Prompt cache: ' + cacheShards + ' stabil kulcs a nagyobb köteghez.');
+                    tagLogLine('Párhuzamos workerek: ' + Math.max(1, Math.min(parseInt(configuredTagWorkers, 10) || 1, 8)) + ' | késleltetés workerenként: ' + configuredTagDelay + ' ms');
                     if (!ids.length) {
                         $('#mg-ai-tag-progress-text').text('Nincs feldolgozandó minta.');
                         $('#mg-ai-tag-start').prop('disabled', false);
                         $('#mg-ai-tag-stop').prop('disabled', true);
                         return;
                     }
-                    runTagNext(ids, 0, force, replaceTags, updateCategories, cacheShards, { done: 0, ok: 0, error: 0 });
+                    runTagParallel(ids, replaceTags, updateCategories, cacheShards, configuredTagWorkers, configuredTagDelay);
                 }).fail(function () {
                     $('#mg-ai-tag-progress-text').text('Hiba a minták lekérésekor.');
                     $('#mg-ai-tag-start').prop('disabled', false);

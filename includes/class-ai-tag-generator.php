@@ -18,6 +18,9 @@ class MG_AI_Tag_Generator {
     const META_CACHE_USAGE = '_mg_ai_tag_cache_usage';
     const DEFAULT_MAX_TOKENS = 650;
     const DEFAULT_DELAY_MS = 600;
+    const DEFAULT_WORKERS = 4;
+    const MAX_WORKERS = 8;
+    const DEFAULT_CANDIDATE_LIMIT = 10000;
     const NONCE_ACTION = 'mg_ai_tag_nonce';
     const PROMPT_CACHE_PREFIX = 'forme-ai-retag-canonical-v1';
     const DICTIONARY_RELATIVE_PATH = 'assets/data/forme-taglista-vegleges-2026-08-02.json';
@@ -35,12 +38,17 @@ class MG_AI_Tag_Generator {
             'enabled' => false,
             'max_output_tokens' => self::DEFAULT_MAX_TOKENS,
             'delay_ms' => self::DEFAULT_DELAY_MS,
+            'workers' => self::DEFAULT_WORKERS,
         );
         $stored = get_option(self::OPTION_KEY, array());
         if (!is_array($stored)) {
             $stored = array();
         }
-        return array_merge($defaults, $stored);
+        $settings = array_merge($defaults, $stored);
+        $settings['max_output_tokens'] = max(200, min(4000, (int) $settings['max_output_tokens']));
+        $settings['delay_ms'] = max(0, (int) $settings['delay_ms']);
+        $settings['workers'] = max(1, min(self::MAX_WORKERS, (int) $settings['workers']));
+        return $settings;
     }
 
     public static function save_settings(array $input) {
@@ -52,6 +60,9 @@ class MG_AI_Tag_Generator {
             'delay_ms' => isset($input['delay_ms'])
                 ? max(0, intval($input['delay_ms']))
                 : self::DEFAULT_DELAY_MS,
+            'workers' => isset($input['workers'])
+                ? max(1, min(self::MAX_WORKERS, intval($input['workers'])))
+                : self::DEFAULT_WORKERS,
         );
         update_option(self::OPTION_KEY, $clean);
         return $clean;
@@ -618,7 +629,7 @@ class MG_AI_Tag_Generator {
         );
     }
 
-    public static function get_candidate_product_ids($force = false, $limit = 2000) {
+    public static function get_candidate_product_ids($force = false, $limit = self::DEFAULT_CANDIDATE_LIMIT) {
         $dictionary = self::get_dictionary();
         $dictionary_version = is_wp_error($dictionary) ? '' : (string) $dictionary['version'];
         $args = array(
