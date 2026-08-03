@@ -630,6 +630,29 @@ class MG_Gift_Finder {
         return trim( preg_replace( '/[^a-z0-9]+/', ' ', $value ) );
     }
 
+    private static function tag_mapping_contains( $source_text, $tag_text ) {
+        $source_words = preg_split( '/\s+/', trim( (string) $source_text ), -1, PREG_SPLIT_NO_EMPTY );
+        $tag_words = preg_split( '/\s+/', trim( (string) $tag_text ), -1, PREG_SPLIT_NO_EMPTY );
+        if ( empty( $source_words ) || empty( $tag_words ) || count( $tag_words ) > count( $source_words ) ) return false;
+        foreach ( $source_words as $start => $source_word ) {
+            if ( $start + count( $tag_words ) > count( $source_words ) ) break;
+            $matches = true;
+            foreach ( $tag_words as $offset => $tag_word ) {
+                $source_word = $source_words[ $start + $offset ];
+                // A hárombetűs címke csak teljes szónak számítson: így a
+                // „Hal” nem talál rá véletlenül a „Halloween” kifejezésre.
+                if ( mb_strlen( $tag_word ) < 4 && count( $tag_words ) === 1 ) {
+                    if ( $source_word !== $tag_word ) $matches = false;
+                } elseif ( mb_strpos( $source_word, $tag_word ) !== 0 ) {
+                    $matches = false;
+                }
+                if ( ! $matches ) break;
+            }
+            if ( $matches ) return true;
+        }
+        return false;
+    }
+
     private static function suggest_initial_tag_labels( $question_key, $option ) {
         $allowed = array_fill_keys( self::get_canonical_tag_labels(), true );
         if ( empty( $allowed ) ) return array();
@@ -660,10 +683,12 @@ class MG_Gift_Finder {
         $sources = array( $label );
         foreach ( (array) ( $option['keywords'] ?? array() ) as $keyword ) $sources[] = (string) $keyword;
         $source_text = self::normalize_tag_mapping_text( implode( ' ', $sources ) );
+        $exact_mapping = in_array( $question_key, array( 'recipient', 'occupation' ), true );
         foreach ( self::get_canonical_tag_labels() as $tag ) {
             $tag_text = self::normalize_tag_mapping_text( $tag );
-            if ( mb_strlen( $tag_text ) < 4 ) continue;
-            if ( $tag_text !== '' && mb_strpos( $source_text, $tag_text ) !== false ) $suggested[] = $tag;
+            if ( mb_strlen( $tag_text ) < 3 ) continue;
+            if ( $tag_text === '' ) continue;
+            if ( ( $exact_mapping && $tag_text === $normalized ) || ( ! $exact_mapping && self::tag_mapping_contains( $source_text, $tag_text ) ) ) $suggested[] = $tag;
         }
         $suggested = array_values( array_unique( array_filter( $suggested, function( $tag ) use ( $allowed ) { return isset( $allowed[ $tag ] ); } ) ) );
         return $suggested;
