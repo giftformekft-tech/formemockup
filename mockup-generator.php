@@ -64,6 +64,8 @@ add_action('plugins_loaded', function(){
         'includes/class-size-selection.php',
         'includes/class-delivery-estimate.php',
         'includes/class-variant-display-manager.php',
+        'includes/class-local-stock.php',
+        'admin/class-local-stock-page.php',
         'includes/class-product-image-performance.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
@@ -234,6 +236,12 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Virtual_Variant_Manager')) {
         MG_Virtual_Variant_Manager::init();
+    }
+    if (class_exists('MG_Local_Stock')) {
+        MG_Local_Stock::init();
+    }
+    if (class_exists('MG_Local_Stock_Page')) {
+        MG_Local_Stock_Page::init();
     }
     if (class_exists('MG_Product_Image_Performance')) {
         MG_Product_Image_Performance::init();
