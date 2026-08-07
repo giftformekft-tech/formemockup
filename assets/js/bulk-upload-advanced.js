@@ -13,6 +13,20 @@
     } catch (e) { }
     return normalized.toLowerCase();
   }
+  function getDuplicateNameCandidates($row) {
+    var candidates = [];
+    var seen = {};
+    function addCandidate(value) {
+      var name = (value || '').toString().trim();
+      var key = normalizeDuplicateName(name);
+      if (!key || seen[key]) { return; }
+      seen[key] = true;
+      candidates.push(name);
+    }
+    addCandidate($row.find('input.mg-name').val());
+    addCandidate($row.data('mgBaseName'));
+    return candidates;
+  }
   function isJsonFile(file) {
     if (!file) { return false; }
     var name = (file.name || '').toLowerCase();
@@ -603,13 +617,17 @@
 
     var names = [];
     var seenNames = {};
+    var rowNameCandidates = [];
     $rows.each(function () {
-      var name = ($(this).find('input.mg-name').val() || '').toString().trim();
-      var key = normalizeDuplicateName(name);
-      if (key && !seenNames[key]) {
-        seenNames[key] = true;
-        names.push(name);
-      }
+      var candidates = getDuplicateNameCandidates($(this));
+      rowNameCandidates.push(candidates);
+      candidates.forEach(function (name) {
+        var key = normalizeDuplicateName(name);
+        if (key && !seenNames[key]) {
+          seenNames[key] = true;
+          names.push(name);
+        }
+      });
     });
     if (!names.length) {
       setDuplicateFilterStatus('A mintanevek üresek, nincs mit ellenőrizni.', 'is-error');
@@ -646,10 +664,13 @@
       });
 
       var removed = 0;
-      $rows.each(function () {
+      $rows.each(function (index) {
         var $row = $(this);
-        var rowName = ($row.find('input.mg-name').val() || '').toString();
-        if (matchedKeys[normalizeDuplicateName(rowName)]) {
+        var candidates = rowNameCandidates[index] || getDuplicateNameCandidates($row);
+        var isMatch = candidates.some(function (name) {
+          return !!matchedKeys[normalizeDuplicateName(name)];
+        });
+        if (isMatch) {
           $row.remove();
           removed++;
         }
