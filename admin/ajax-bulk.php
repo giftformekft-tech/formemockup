@@ -126,6 +126,78 @@ if (!class_exists('MG_Custom_Fields_Manager')) {
     require_once plugin_dir_path(__FILE__) . '../includes/class-custom-fields-manager.php';
 }
 
+if (!function_exists('mg_bulk_normalize_product_name')) {
+    /**
+     * Normalizes a bulk product name for case-insensitive duplicate checks.
+     *
+     * @param mixed $value Product name.
+     * @return string
+     */
+    function mg_bulk_normalize_product_name($value) {
+        $value = sanitize_text_field(wp_strip_all_tags((string) $value));
+        $collapsed = preg_replace('/\s+/u', ' ', trim($value));
+        $value = is_string($collapsed) ? $collapsed : trim($value);
+        if (function_exists('remove_accents')) {
+            $value = remove_accents($value);
+        }
+        return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    }
+}
+
+add_action('wp_ajax_mg_bulk_find_existing_names', function(){
+    if (!current_user_can('edit_products')) {
+        wp_send_json_error(array('message' => 'Jogosultság hiányzik.'), 403);
+    }
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_bulk_nonce')) {
+        wp_send_json_error(array('message' => 'Érvénytelen kérés (nonce).'), 401);
+    }
+
+    $submitted_names = isset($_POST['names']) && is_array($_POST['names'])
+        ? (array) wp_unslash($_POST['names'])
+        : array();
+    $names = array();
+    $requested_by_key = array();
+
+    foreach ($submitted_names as $submitted_name) {
+        $name = sanitize_text_field((string) $submitted_name);
+        $normalized = mg_bulk_normalize_product_name($name);
+        if ($normalized === '' || isset($requested_by_key[$normalized])) {
+            continue;
+        }
+        $requested_by_key[$normalized] = $name;
+        $names[] = $name;
+        // Keep the query bounded even if a client submits an unexpectedly large list.
+        if (count($names) >= 1000) {
+            break;
+        }
+    }
+
+    if (empty($names)) {
+        wp_send_json_success(array('matched_names' => array()));
+    }
+
+    global $wpdb;
+    $placeholders = implode(',', array_fill(0, count($names), '%s'));
+    $query = $wpdb->prepare(
+        "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status NOT IN ('trash', 'auto-draft') AND post_title IN ({$placeholders})",
+        $names
+    );
+    $products = $wpdb->get_results($query);
+    $matched_names = array();
+
+    if (!empty($products)) {
+        foreach ($products as $product) {
+            $normalized_title = mg_bulk_normalize_product_name($product->post_title ?? '');
+            if ($normalized_title === '' || !isset($requested_by_key[$normalized_title])) {
+                continue;
+            }
+            $matched_names[$normalized_title] = $requested_by_key[$normalized_title];
+        }
+    }
+
+    wp_send_json_success(array('matched_names' => array_values($matched_names)));
+});
+
 add_action('wp_ajax_mg_bulk_process', function(){
     try {
         if (!current_user_can('edit_products')) {

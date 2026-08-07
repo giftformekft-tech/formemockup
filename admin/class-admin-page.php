@@ -672,6 +672,12 @@ class MG_Admin_Page {
         echo '<input type="file" id="mg-bulk-files-adv" name="mg-bulk-files-adv[]" accept="image/png,image/jpeg,image/webp,application/json,.json" multiple style="display:none" />';
         echo '</div>';
 
+        echo '<div class="mg-bulk-duplicate-tools">';
+        echo '<button type="button" class="button" id="mg-bulk-remove-existing" disabled>' . esc_html__('Már feltöltött minták kiszűrése', 'mockup-generator') . '</button>';
+        echo '<span id="mg-bulk-duplicate-status" class="mg-bulk-duplicate-status" aria-live="polite"></span>';
+        echo '<p class="description">' . esc_html__('A sorokban látható terméknevek alapján megkeresi a már meglévő mintákat, és kiveszi őket ebből a feltöltésből.', 'mockup-generator') . '</p>';
+        echo '</div>';
+
         echo '<div class="mg-row">';
         echo '<h3>' . esc_html__('Terméktípusok', 'mockup-generator') . '</h3>';
         echo '<div class="mg-types">';

@@ -6,6 +6,13 @@
   var MG_AJAX_TIMEOUT = 120000; // 120 seconds
   function basename(name) { return (name || '').replace(/\.[^.]+$/, ''); }
   function normalizeLabel(value) { return (value || '').toString().trim().toLowerCase(); }
+  function normalizeDuplicateName(value) {
+    var normalized = (value || '').toString().trim().replace(/\s+/g, ' ');
+    try {
+      normalized = normalized.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) { }
+    return normalized.toLowerCase();
+  }
   function isJsonFile(file) {
     if (!file) { return false; }
     var name = (file.name || '').toLowerCase();
@@ -456,6 +463,36 @@
     });
   }
 
+  function setDuplicateFilterStatus(message, state) {
+    var $status = $('#mg-bulk-duplicate-status');
+    if (!$status.length) { return; }
+    $status.removeClass('is-success is-error');
+    if (state) { $status.addClass(state); }
+    $status.text(message || '');
+  }
+
+  function updateDuplicateFilterUi() {
+    var $button = $('#mg-bulk-remove-existing');
+    if (!$button.length) { return; }
+    var hasRows = $('#mg-bulk-rows tr.mg-item-row').length > 0;
+    var bulkState = window.MG_BULK_ADV || {};
+    var isBusy = !!bulkState._isRunning || !!bulkState._checkingExisting;
+    $button.prop('disabled', !hasRows || isBusy);
+  }
+
+  function syncBulkImageFilesFromRows() {
+    window.MG_BULK_ADV = window.MG_BULK_ADV || {};
+    window.MG_BULK_ADV.imageFiles = $('#mg-bulk-rows tr.mg-item-row').map(function () {
+      return $(this).data('mgFile') || null;
+    }).get().filter(function (file) { return !!file; });
+  }
+
+  function renumberBulkRows() {
+    $('#mg-bulk-rows tr.mg-item-row').each(function (index) {
+      $(this).children('td').first().text(index + 1);
+    });
+  }
+
   function renderRows(files) {
     var $tbody = $('#mg-bulk-rows').empty();
     var allFiles = Array.from(files || []);
@@ -470,16 +507,19 @@
         jsonByBase[key] = file;
       }
     });
-    if (!imageFiles.length) {
-      $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
-      return;
-    }
     window.MG_BULK_ADV = window.MG_BULK_ADV || {};
     window.MG_BULK_ADV.imageFiles = imageFiles;
     window.MG_BULK_ADV.jsonFiles = jsonByBase;
+    setDuplicateFilterStatus('', null);
+    if (!imageFiles.length) {
+      $tbody.append('<tr class="no-items"><td colspan="10">Válassz fájlokat fent.</td></tr>');
+      updateDuplicateFilterUi();
+      return;
+    }
     mgEnsureHeader();
     imageFiles.forEach(function (file, idx) {
       var $tr = $('<tr class="mg-item-row">');
+      $tr.data('mgFile', file);
       $tr.append('<td>' + (idx + 1) + '</td>');
       /* Preview cell */
       (function () {
@@ -549,7 +589,97 @@
       reader.readAsText(jsonFile);
     });
     mgDedupeTagInputs();
+    updateDuplicateFilterUi();
   }
+
+  function removeExistingBulkRows() {
+    var $button = $('#mg-bulk-remove-existing');
+    var $rows = $('#mg-bulk-rows tr.mg-item-row');
+    if (!$button.length || !$rows.length) {
+      setDuplicateFilterStatus('Előbb válassz ki mintákat.', 'is-error');
+      updateDuplicateFilterUi();
+      return;
+    }
+
+    var names = [];
+    var seenNames = {};
+    $rows.each(function () {
+      var name = ($(this).find('input.mg-name').val() || '').toString().trim();
+      var key = normalizeDuplicateName(name);
+      if (key && !seenNames[key]) {
+        seenNames[key] = true;
+        names.push(name);
+      }
+    });
+    if (!names.length) {
+      setDuplicateFilterStatus('A mintanevek üresek, nincs mit ellenőrizni.', 'is-error');
+      return;
+    }
+
+    window.MG_BULK_ADV = window.MG_BULK_ADV || {};
+    window.MG_BULK_ADV._checkingExisting = true;
+    updateDuplicateFilterUi();
+    $button.text('Ellenőrzés…');
+    setDuplicateFilterStatus('Meglévő minták keresése…', null);
+
+    $.ajax({
+      url: MG_BULK_ADV.ajax_url,
+      method: 'POST',
+      dataType: 'json',
+      data: {
+        action: 'mg_bulk_find_existing_names',
+        nonce: MG_BULK_ADV.nonce,
+        names: names
+      }
+    }).done(function (resp) {
+      if (!resp || !resp.success) {
+        var message = resp && resp.data && resp.data.message ? resp.data.message : 'Nem sikerült ellenőrizni a neveket.';
+        setDuplicateFilterStatus(message, 'is-error');
+        return;
+      }
+
+      var matchedKeys = {};
+      var matchedNames = resp.data && Array.isArray(resp.data.matched_names) ? resp.data.matched_names : [];
+      matchedNames.forEach(function (name) {
+        var key = normalizeDuplicateName(name);
+        if (key) { matchedKeys[key] = true; }
+      });
+
+      var removed = 0;
+      $rows.each(function () {
+        var $row = $(this);
+        var rowName = ($row.find('input.mg-name').val() || '').toString();
+        if (matchedKeys[normalizeDuplicateName(rowName)]) {
+          $row.remove();
+          removed++;
+        }
+      });
+
+      syncBulkImageFilesFromRows();
+      renumberBulkRows();
+      var remaining = $('#mg-bulk-rows tr.mg-item-row').length;
+      if (!remaining) {
+        $('#mg-bulk-rows').append('<tr class="no-items"><td colspan="9">Minden kiválasztott minta már fent van.</td></tr>');
+      }
+      if (removed) {
+        setDuplicateFilterStatus(removed + ' már fent lévő minta kivéve. ' + remaining + ' minta maradt.', 'is-success');
+      } else {
+        setDuplicateFilterStatus('Nem találtam név szerint már feltöltött mintát. ' + remaining + ' minta maradt.', 'is-success');
+      }
+    }).fail(function (xhr) {
+      var message = typeof serverErrorToText === 'function' ? serverErrorToText(xhr) : 'Nem sikerült ellenőrizni a neveket.';
+      setDuplicateFilterStatus('Ellenőrzési hiba: ' + message, 'is-error');
+    }).always(function () {
+      window.MG_BULK_ADV._checkingExisting = false;
+      $button.text('Már feltöltött minták kiszűrése');
+      updateDuplicateFilterUi();
+    });
+  }
+
+  $(document).on('click', '#mg-bulk-remove-existing', function (e) {
+    e.preventDefault();
+    removeExistingBulkRows();
+  });
 
   function updateAllAutoNames() {
     $('#mg-bulk-rows .mg-item-row').each(function () {
@@ -942,6 +1072,7 @@
 
     window.MG_BULK_ADV._isRunning = true;
     $('#mg-bulk-start').prop('disabled', true);
+    updateDuplicateFilterUi();
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
@@ -977,6 +1108,7 @@
     function finalize() {
       window.MG_BULK_ADV._isRunning = false;
       $('#mg-bulk-start').prop('disabled', false);
+      updateDuplicateFilterUi();
       $('.mg-worker-toggle').prop('disabled', false);
       $('#mg-bulk-queue-save').prop('disabled', false);
       $('input[name="mg-bulk-mode"]').prop('disabled', false);
@@ -1040,7 +1172,7 @@
         updateEnqueueProgress(nextIndex);
         return;
       }
-      var file = files[index];
+      var file = $row.data('mgFile') || files[index];
       if (!file) {
         $row.find('.mg-state').addClass('is-error').text('Hiba: hiányzó fájl');
         failedLocal++;
@@ -1154,6 +1286,7 @@
 
     window.MG_BULK_ADV._isRunning = true;
     $('#mg-bulk-start').prop('disabled', true);
+    updateDuplicateFilterUi();
     $('.mg-worker-toggle').prop('disabled', true);
     $('#mg-bulk-queue-save').prop('disabled', true);
     $('input[name="mg-bulk-mode"]').prop('disabled', true);
@@ -1190,6 +1323,7 @@
     function finalize() {
       window.MG_BULK_ADV._isRunning = false;
       $('#mg-bulk-start').prop('disabled', false);
+      updateDuplicateFilterUi();
       $('.mg-worker-toggle').prop('disabled', false);
       $('#mg-bulk-queue-save').prop('disabled', false);
       $('input[name="mg-bulk-mode"]').prop('disabled', false);
@@ -1214,7 +1348,7 @@
         launchNext();
         return;
       }
-      var file = files[index];
+      var file = $row.data('mgFile') || files[index];
       if (!file) {
         $row.find('.mg-state').addClass('is-error').text('Hiba: hiányzó fájl');
         done++;
