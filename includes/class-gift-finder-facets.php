@@ -93,7 +93,7 @@ class MG_Gift_Finder_Facets {
 
         $filtering = array();
         foreach ( $choices as $index => $choice ) {
-            if ( empty( self::choice_categories( $choice ) ) && empty( self::choice_keywords( $choice ) ) ) continue;
+            if ( ! self::choice_has_source( $choice ) ) continue;
             $filtering[ $index ] = $choice;
         }
         if ( ! $result['enabled'] || empty( $filtering ) ) return $result;
@@ -151,9 +151,9 @@ class MG_Gift_Finder_Facets {
      *
      * Ugyanaz a definíció, mint a pontozásé: a termék akkor felel meg egy
      * válasznak, ha a válasz valamelyik kategóriájában (vagy annak
-     * gyerekében) van, **vagy** a nevében szerepel a válasz kulcsszavainak
-     * egyike. Enélkül a szigorú metszet mást mérne, mint amit a rangsor
-     * egyezésnek tekint.
+     * gyerekében) van, tag módban valamelyik kanonikus taggel rendelkezik,
+     * **vagy** a nevében szerepel a válasz kulcsszavainak egyike. Enélkül a
+     * szigorú metszet mást mérne, mint amit a rangsor egyezésnek tekint.
      *
      * @return int[] ID szerint csökkenő sorrendű termékazonosítók.
      */
@@ -169,13 +169,17 @@ class MG_Gift_Finder_Facets {
 
     private static function facet_signature( array $choice ) {
         $categories = self::choice_categories( $choice );
+        $tags = self::choice_tags( $choice );
         $keywords = self::choice_keywords( $choice );
         sort( $categories );
+        sort( $tags );
         sort( $keywords );
         return array(
             'v'   => MG_Gift_Finder::cache_version(),
             'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ),
+            'tag_mode' => MG_Gift_Finder::is_tag_mode_enabled() ? 1 : 0,
             'c'   => $categories,
+            't'   => $tags,
             'k'   => $keywords,
         );
     }
@@ -196,6 +200,21 @@ class MG_Gift_Finder_Facets {
             );
             if ( count( $tax_query ) > 1 ) $tax_query['relation'] = 'AND';
             $ids = array_merge( $ids, self::query_ids( array( 'tax_query' => $tax_query ) ) );
+        }
+
+        if ( MG_Gift_Finder::is_tag_mode_enabled() ) {
+            $tag_ids = MG_Gift_Finder::get_tag_term_ids( self::choice_tags( $choice ) );
+            if ( ! empty( $tag_ids ) ) {
+                $tax_query = $base_tax_query;
+                $tax_query[] = array(
+                    'taxonomy' => 'product_tag',
+                    'field'    => 'term_id',
+                    'terms'    => $tag_ids,
+                    'operator' => 'IN',
+                );
+                if ( count( $tax_query ) > 1 ) $tax_query['relation'] = 'AND';
+                $ids = array_merge( $ids, self::query_ids( array( 'tax_query' => $tax_query ) ) );
+            }
         }
 
         $keywords = self::choice_keywords( $choice );
@@ -276,6 +295,16 @@ class MG_Gift_Finder_Facets {
         } ) ) );
     }
 
+    public static function choice_tags( array $choice ) {
+        return MG_Gift_Finder::get_option_tag_labels( $choice );
+    }
+
+    private static function choice_has_source( array $choice ) {
+        return ! empty( self::choice_categories( $choice ) )
+            || ! empty( self::choice_keywords( $choice ) )
+            || ( MG_Gift_Finder::is_tag_mode_enabled() && ! empty( self::choice_tags( $choice ) ) );
+    }
+
     /** Egy válasz kategóriái a gyerekeikkel együtt – az `include_children` átfedés kimutatásához. */
     public static function choice_family( array $choice ) {
         $family = array();
@@ -295,7 +324,7 @@ class MG_Gift_Finder_Facets {
     public static function intersect_choices( array $choices ) {
         $sets = array();
         foreach ( $choices as $choice ) {
-            if ( empty( self::choice_categories( $choice ) ) && empty( self::choice_keywords( $choice ) ) ) continue;
+            if ( ! self::choice_has_source( $choice ) ) continue;
             $sets[] = self::facet_product_ids( $choice );
         }
         if ( empty( $sets ) ) return array();
@@ -315,7 +344,7 @@ class MG_Gift_Finder_Facets {
     public static function union_choices( array $choices ) {
         $ids = array();
         foreach ( $choices as $choice ) {
-            if ( empty( self::choice_categories( $choice ) ) && empty( self::choice_keywords( $choice ) ) ) continue;
+            if ( ! self::choice_has_source( $choice ) ) continue;
             $ids = array_merge( $ids, self::facet_product_ids( $choice ) );
         }
         return array_values( array_unique( $ids ) );
@@ -345,13 +374,13 @@ class MG_Gift_Finder_Facets {
         $truncated = false;
         foreach ( $recipients as $recipient_option ) {
             $recipient = MG_Gift_Finder::build_choice( 'recipient', $recipient_option );
-            if ( empty( self::choice_categories( $recipient ) ) && empty( self::choice_keywords( $recipient ) ) ) continue;
+            if ( ! self::choice_has_source( $recipient ) ) continue;
             $recipient_ids = self::facet_product_ids( $recipient );
             $recipient_family = self::choice_family( $recipient );
 
             foreach ( $occasions as $occasion_option ) {
                 $occasion = MG_Gift_Finder::build_choice( 'occasion', $occasion_option );
-                if ( empty( self::choice_categories( $occasion ) ) && empty( self::choice_keywords( $occasion ) ) ) continue;
+                if ( ! self::choice_has_source( $occasion ) ) continue;
                 // A függő alkalmak csak a megfelelő címzett után jelennek meg,
                 // ezért a többi párosuk nem is fordulhat elő a keresőben.
                 $parents = array_map( 'intval', (array) ( $occasion['parent_category_ids'] ?? array() ) );

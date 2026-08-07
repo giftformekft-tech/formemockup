@@ -6,14 +6,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** Katalógusexport és ajándékkereső-konfiguráció import. */
 class MG_Gift_Finder_Transfer {
     const EXPORT_ACTION = 'mg_gift_catalog_export';
+    const CONFIG_EXPORT_ACTION = 'mg_gift_config_export';
     const IMPORT_ACTION = 'mg_gift_config_import';
     const RESTORE_ACTION = 'mg_gift_config_restore';
     const IMPORT_SCHEMA = 'mg-gift-finder-config';
+    const CONFIG_VERSION = 2;
     const CATALOG_SCHEMA = 'mg-gift-catalog';
+    const CATALOG_VERSION = 2;
     const MAX_IMPORT_SIZE = 2097152;
 
     public static function init() {
         add_action( 'admin_post_' . self::EXPORT_ACTION, array( __CLASS__, 'handle_export' ) );
+        add_action( 'admin_post_' . self::CONFIG_EXPORT_ACTION, array( __CLASS__, 'handle_config_export' ) );
         add_action( 'admin_post_' . self::IMPORT_ACTION, array( __CLASS__, 'handle_import' ) );
         add_action( 'admin_post_' . self::RESTORE_ACTION, array( __CLASS__, 'handle_restore' ) );
     }
@@ -21,6 +25,9 @@ class MG_Gift_Finder_Transfer {
     public static function render_panel() {
         if ( isset( $_GET['mg_gift_imported'] ) ) {
             echo '<div class="notice notice-success inline"><p><strong>Az ajándékkereső konfigurációja sikeresen importálva.</strong> Az import előtti beállításokról biztonsági mentés készült.</p></div>';
+        }
+        if ( isset( $_GET['mg_gift_import_warnings'] ) ) {
+            echo '<div class="notice notice-warning inline"><p>A konfigurációból ' . esc_html( absint( $_GET['mg_gift_import_warnings'] ) ) . ' ismeretlen vagy nem kanonikus tag kimaradt.</p></div>';
         }
         if ( isset( $_GET['mg_gift_restored'] ) ) {
             echo '<div class="notice notice-success inline"><p><strong>Az import előtti ajándékkereső-beállítások visszaállítva.</strong></p></div>';
@@ -44,11 +51,18 @@ class MG_Gift_Finder_Transfer {
                     <p class="description">Az eladási összesítés nagy katalógusnál tovább tarthat, de személyes adatot nem exportál.</p>
                     <?php submit_button( 'Katalógus JSON letöltése', 'secondary', 'submit', false ); ?>
                 </form>
+                <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="mg-gift-transfer__card">
+                    <input type="hidden" name="action" value="<?php echo esc_attr( self::CONFIG_EXPORT_ACTION ); ?>" />
+                    <?php wp_nonce_field( self::CONFIG_EXPORT_ACTION, 'mg_gift_config_export_nonce' ); ?>
+                    <h3>2. Ajándékkereső-konfiguráció exportálása</h3>
+                    <p>A jelenlegi kérdés–válasz láncot, a kategóriákat, a kanonikus tagkapcsolatokat és a tag mód kapcsolóját exportálja importálható JSON-ként. Az üres válasz–tag mezőkhöz a közös szótár alapján kezdeti megfeleltetéseket készít.</p>
+                    <?php submit_button( 'Konfiguráció JSON letöltése', 'secondary', 'submit', false ); ?>
+                </form>
                 <form method="post" enctype="multipart/form-data" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="mg-gift-transfer__card">
                     <input type="hidden" name="action" value="<?php echo esc_attr( self::IMPORT_ACTION ); ?>" />
                     <?php wp_nonce_field( self::IMPORT_ACTION, 'mg_gift_import_nonce' ); ?>
-                    <h3>2. Konfiguráció importálása</h3>
-                    <p>Csak a visszakapott <code>mg-gift-finder-config</code> JSON fájl tölthető be.</p>
+                    <h3>3. Konfiguráció importálása</h3>
+                    <p>Csak a visszakapott <code>mg-gift-finder-config</code> JSON fájl tölthető be. A 2-es verzió már a tag módot és a válasz–tag kapcsolatokat is tartalmazza.</p>
                     <input type="file" name="config_file" accept="application/json,.json" required />
                     <p class="description">Importálás előtt a jelenlegi beállításokról automatikus biztonsági mentés készül.</p>
                     <?php submit_button( 'Konfiguráció importálása', 'primary', 'submit', false ); ?>
@@ -87,6 +101,32 @@ class MG_Gift_Finder_Transfer {
         nocache_headers();
         header( 'Content-Type: application/json; charset=utf-8' );
         header( 'Content-Disposition: attachment; filename="forme-ajandek-katalogus-' . gmdate( 'Y-m-d' ) . '.json"' );
+        header( 'Content-Length: ' . strlen( $json ) );
+        echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        exit;
+    }
+
+    public static function handle_config_export() {
+        self::authorize( self::CONFIG_EXPORT_ACTION, 'mg_gift_config_export_nonce' );
+        $dictionary_version = '';
+        if ( class_exists( 'MG_AI_Tag_Generator' ) && method_exists( 'MG_AI_Tag_Generator', 'get_dictionary' ) ) {
+            $dictionary = MG_AI_Tag_Generator::get_dictionary();
+            if ( is_array( $dictionary ) ) $dictionary_version = (string) ( $dictionary['version'] ?? '' );
+        }
+        $payload = array(
+            'schema'              => self::IMPORT_SCHEMA,
+            'version'             => self::CONFIG_VERSION,
+            'generated_at'        => current_time( 'mysql' ),
+            'site_url'            => home_url( '/' ),
+            'dictionary_version'  => $dictionary_version,
+            'settings'            => MG_Gift_Finder::apply_initial_tag_mapping( self::get_gift_settings_without_prices() ),
+        );
+        $json = wp_json_encode( $payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+        if ( ! is_string( $json ) ) wp_die( esc_html__( 'A konfiguráció JSON előállítása nem sikerült.', 'mockup-generator' ) );
+        while ( ob_get_level() ) ob_end_clean();
+        nocache_headers();
+        header( 'Content-Type: application/json; charset=utf-8' );
+        header( 'Content-Disposition: attachment; filename="forme-ajandekkereso-konfiguracio-' . gmdate( 'Y-m-d' ) . '.json"' );
         header( 'Content-Length: ' . strlen( $json ) );
         echo $json; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
         exit;
@@ -133,9 +173,26 @@ class MG_Gift_Finder_Transfer {
             );
         }
 
+        $canonical_dictionary = array();
+        if ( class_exists( 'MG_AI_Tag_Generator' ) && method_exists( 'MG_AI_Tag_Generator', 'get_dictionary' ) ) {
+            $dictionary = MG_AI_Tag_Generator::get_dictionary();
+            if ( is_array( $dictionary ) ) {
+                $canonical_dictionary = array(
+                    'version' => (string) ( $dictionary['version'] ?? '' ),
+                    'tags'    => array_map( function( $record ) {
+                        return array(
+                            'id'    => sanitize_key( $record['id'] ?? '' ),
+                            'label' => sanitize_text_field( $record['label'] ?? '' ),
+                            'group' => sanitize_text_field( $record['group'] ?? '' ),
+                        );
+                    }, (array) ( $dictionary['records'] ?? array() ) ),
+                );
+            }
+        }
+
         return array(
             'schema'       => self::CATALOG_SCHEMA,
-            'version'      => 1,
+            'version'      => self::CATALOG_VERSION,
             'generated_at' => current_time( 'mysql' ),
             'site_url'     => home_url( '/' ),
             'privacy'      => 'No customer, address, email, phone or order identifier is included.',
@@ -143,9 +200,10 @@ class MG_Gift_Finder_Transfer {
             'categories'   => $category_rows,
             'tags'         => $tags,
             'products'     => $products,
+            'canonical_tag_dictionary' => $canonical_dictionary,
             'mockup_product_types' => self::get_mockup_types(),
             'cross_sell_rules'     => class_exists( 'MG_Crosssell_Manager' ) ? MG_Crosssell_Manager::get_rules() : array(),
-            'current_gift_finder_settings' => self::get_gift_settings_without_prices(),
+            'current_gift_finder_settings' => MG_Gift_Finder::apply_initial_tag_mapping( self::get_gift_settings_without_prices() ),
         );
     }
 
@@ -226,14 +284,18 @@ class MG_Gift_Finder_Transfer {
             self::import_error( 'A feltöltött konfigurációs fájl nem olvasható vagy túl nagy.' );
         }
         $decoded = json_decode( $raw, true );
-        if ( ! is_array( $decoded ) || ( $decoded['schema'] ?? '' ) !== self::IMPORT_SCHEMA || (int) ( $decoded['version'] ?? 0 ) !== 1 || ! is_array( $decoded['settings'] ?? null ) ) {
+        $config_version = is_array( $decoded ) ? (int) ( $decoded['version'] ?? 0 ) : 0;
+        if ( ! is_array( $decoded ) || ( $decoded['schema'] ?? '' ) !== self::IMPORT_SCHEMA || ! in_array( $config_version, array( 1, self::CONFIG_VERSION ), true ) || ! is_array( $decoded['settings'] ?? null ) ) {
             self::import_error( 'A fájl nem támogatott ajándékkereső-konfiguráció.' );
         }
 
-        $settings = self::sanitize_import_settings( $decoded['settings'] );
+        $invalid_tag_count = 0;
+        $settings = self::sanitize_import_settings( $decoded['settings'], $config_version, $invalid_tag_count );
         update_option( 'mg_gift_finder_import_backup', array( 'created_at' => current_time( 'mysql' ), 'settings' => MG_Gift_Finder::get_settings() ), false );
         update_option( MG_Gift_Finder::OPTION_KEY, $settings, false );
-        wp_safe_redirect( add_query_arg( array( 'page' => MG_Gift_Finder_Page::MENU_SLUG, 'mg_gift_imported' => 1 ), admin_url( 'admin.php' ) ) );
+        $redirect_args = array( 'page' => MG_Gift_Finder_Page::MENU_SLUG, 'mg_gift_imported' => 1 );
+        if ( $invalid_tag_count > 0 ) $redirect_args['mg_gift_import_warnings'] = $invalid_tag_count;
+        wp_safe_redirect( add_query_arg( $redirect_args, admin_url( 'admin.php' ) ) );
         exit;
     }
 
@@ -249,7 +311,7 @@ class MG_Gift_Finder_Transfer {
         exit;
     }
 
-    private static function sanitize_import_settings( $raw ) {
+    private static function sanitize_import_settings( $raw, $config_version = 1, &$invalid_tag_count = 0 ) {
         $defaults = MG_Gift_Finder::defaults();
         $clean = $defaults;
         $current = MG_Gift_Finder::get_settings();
@@ -274,6 +336,9 @@ class MG_Gift_Finder_Transfer {
         }
         $clean['facets']['levels']['recipient'] = 1;
 
+        $source_tag_mode = is_array( $raw['tag_mode'] ?? null ) ? $raw['tag_mode'] : array();
+        $clean['tag_mode']['enabled'] = $config_version >= 2 && ! empty( $source_tag_mode['enabled'] ) ? 1 : 0;
+
         $clean['cards'] = array();
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {
             $category_id = absint( $card['category_id'] ?? 0 );
@@ -297,12 +362,17 @@ class MG_Gift_Finder_Transfer {
                 $label = sanitize_text_field( $option['label'] ?? '' );
                 if ( $category_id && ! term_exists( $category_id, 'product_cat' ) ) $category_id = 0;
                 $category_ids = array_filter( array_map( 'absint', (array) ( $option['category_ids'] ?? array() ) ), function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } );
+                $raw_tags = is_string( $option['tag_labels'] ?? null ) ? preg_split( '/[,;\r\n]+/', $option['tag_labels'] ) : (array) ( $option['tag_labels'] ?? array() );
+                $raw_tags = array_map( 'sanitize_text_field', $raw_tags );
+                $tag_labels = MG_Gift_Finder::sanitize_tag_labels( $raw_tags );
+                $invalid_tag_count += count( array_diff( array_values( array_filter( array_map( 'trim', $raw_tags ) ) ), $tag_labels ) );
                 if ( $label === '' || ( ! $category_id && empty( $category_ids ) ) ) continue;
                 $parents = array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ), function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } );
                 $question['options'][] = array(
                     'label'               => $label,
                     'category_id'         => $category_id,
                     'category_ids'        => array_values( $category_ids ),
+                    'tag_labels'          => $tag_labels,
                     'keywords'            => self::sanitize_keywords( $option['keywords'] ?? array() ),
                     'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
                     'parent_category_ids' => array_values( $parents ),

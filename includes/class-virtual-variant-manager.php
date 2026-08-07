@@ -56,6 +56,8 @@ class MG_Virtual_Variant_Manager {
         add_filter('woocommerce_blocks_cart_item_price', array(__CLASS__, 'format_mini_cart_price'), PHP_INT_MAX, 3);
         add_filter('woocommerce_widget_cart_item_quantity', array(__CLASS__, 'format_widget_cart_item_quantity'), PHP_INT_MAX, 3);
         add_filter('woocommerce_order_item_thumbnail', array(__CLASS__, 'filter_order_thumbnail'), 10, 3);
+        add_filter('woocommerce_admin_order_item_thumbnail', array(__CLASS__, 'filter_admin_order_item_thumbnail'), 10, 3);
+        add_action('admin_head', array(__CLASS__, 'print_admin_thumbnail_styles'));
         add_filter('woocommerce_hidden_order_itemmeta', array(__CLASS__, 'hide_order_item_meta'), 10, 1);
         add_filter('woocommerce_order_item_get_formatted_meta_data', array(__CLASS__, 'filter_order_item_meta_display'), 10, 2);
         add_filter('woocommerce_email_order_items_args', array(__CLASS__, 'force_email_images'), 999);
@@ -571,12 +573,12 @@ class MG_Virtual_Variant_Manager {
         );
     }
 
-    protected static function get_design_id($product) {
+    public static function get_design_id($product) {
         $product_id = $product ? $product->get_id() : 0;
         return apply_filters('mg_virtual_variant_design_id', $product_id, $product);
     }
 
-    protected static function get_render_version($product) {
+    public static function get_render_version($product) {
         $default_version = 'v4';
         $version = apply_filters('mg_virtual_variant_render_version', $default_version, $product);
         $version = sanitize_title($version);
@@ -991,8 +993,29 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function add_order_item_meta($item, $cart_item_key, $values, $order) {
+        self::apply_variant_meta_to_item($item, $values);
+    }
+
+    /**
+     * Write the virtual variant payload onto an order line item.
+     *
+     * Shared by the checkout hook above and by any flow that builds an order
+     * item outside the cart (e.g. adding a line to an existing order in the
+     * admin), so both paths produce identical meta.
+     *
+     * @param WC_Order_Item_Product $item   Line item to decorate.
+     * @param array                 $values Cart-item-shaped data: mg_product_type,
+     *                                      mg_color, mg_size and optionally
+     *                                      product_id, mg_design_id, mg_preview_url,
+     *                                      mg_render_version.
+     * @return bool True when the meta was written.
+     */
+    public static function apply_variant_meta_to_item($item, $values) {
+        if (!$item instanceof WC_Order_Item_Product) {
+            return false;
+        }
         if (empty($values['mg_product_type']) || empty($values['mg_color']) || empty($values['mg_size'])) {
-            return;
+            return false;
         }
 
         $type_slug = sanitize_text_field($values['mg_product_type']);
@@ -1007,25 +1030,8 @@ class MG_Virtual_Variant_Manager {
             $product_id = $item->get_product_id();
             $product = wc_get_product($product_id);
             if ($product) {
-                $sku = $product->get_sku();
-                if ($sku) {
-                    $uploads = self::get_upload_dir();
-                    $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
-                    $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
-                    
-                    if ($base_dir !== '' && $base_url !== '') {
-                        $type_sanitized = sanitize_title($type_slug);
-                        $color_sanitized = sanitize_title($color_slug);
-                        $filename = $sku . '_' . $type_sanitized . '_' . $color_sanitized . '_front.webp';
-                        $file_path = $base_dir . '/' . $sku . '/' . $filename;
-                        $file_url = $base_url . '/' . $sku . '/' . $filename;
-                        
-                        if (file_exists($file_path)) {
-                            $preview_url = $file_url;
-                        }
-                    }
-                }
-                
+                $preview_url = self::build_sku_preview_url($product, $type_slug, $color_slug);
+
                 // FALLBACK: If mockup file doesn't exist, use product featured image
                 if ($preview_url === '') {
                     $image_id = $product->get_image_id();
@@ -1072,6 +1078,8 @@ class MG_Virtual_Variant_Manager {
         if (!empty($design_reference)) {
             $item->add_meta_data('_mg_print_design_reference', $design_reference, true);
         }
+
+        return true;
     }
 
     protected static function capture_design_reference_for_order_item($item, $values) {
@@ -1147,6 +1155,190 @@ class MG_Virtual_Variant_Manager {
         return $reference;
     }
 
+    /**
+     * Unit price of a virtual variant: the product type's base price plus the
+     * size surcharge. This is the single source of truth for the cart and for
+     * any order line built outside the cart.
+     *
+     * @param string $type_slug Product type key.
+     * @param string $size      Size value.
+     * @return float Gross unit price, 0.0 when the type is unknown.
+     */
+    public static function calculate_variant_price($type_slug, $size) {
+        if (!function_exists('mgsc_get_products')) {
+            return 0.0;
+        }
+        $type_slug = sanitize_title($type_slug);
+        $products = mgsc_get_products();
+        if ($type_slug === '' || empty($products[$type_slug])) {
+            return 0.0;
+        }
+        $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
+        $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $size)) : 0.0;
+        return (float) max(0, $base_price + $size_extra);
+    }
+
+    /**
+     * Build the mockup URL from the SKU + type + color naming pattern:
+     * uploads/mg_mockups/{SKU}/{SKU}_{type}_{color}_front.webp
+     *
+     * Pure string work plus a single file_exists() stat — no database access.
+     * The check can be skipped through the 'mg_verify_preview_file' filter on
+     * setups where hitting the filesystem is expensive (network storage).
+     *
+     * @return string URL of the mockup, or an empty string when it is missing.
+     */
+    public static function build_sku_preview_url($product, $type_slug, $color_slug) {
+        if (!$product instanceof WC_Product) {
+            return '';
+        }
+
+        $sku = $product->get_sku();
+        $type_slug = sanitize_title($type_slug);
+        $color_slug = sanitize_title($color_slug);
+        if ($sku === '' || $type_slug === '' || $color_slug === '') {
+            return '';
+        }
+
+        $uploads = self::get_upload_dir();
+        $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
+        if ($base_dir === '' || $base_url === '') {
+            return '';
+        }
+
+        $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
+        $file_url = $base_url . '/' . $sku . '/' . $filename;
+
+        if (!apply_filters('mg_verify_preview_file', true, $product, $type_slug, $color_slug)) {
+            return $file_url;
+        }
+
+        return file_exists($base_dir . '/' . $sku . '/' . $filename) ? $file_url : '';
+    }
+
+    /**
+     * Preview URL of an order line item: the URL stored at checkout, or — for
+     * older lines that predate that meta — one rebuilt from the naming pattern.
+     *
+     * @return string Preview URL, or an empty string when none could be resolved.
+     */
+    public static function get_order_item_preview_url($item) {
+        if (!$item instanceof WC_Order_Item_Product) {
+            return '';
+        }
+
+        $preview_url = (string) $item->get_meta('mg_preview_url');
+        if ($preview_url === '') {
+            $preview_url = (string) $item->get_meta('preview_image_url');
+        }
+        if ($preview_url !== '') {
+            return $preview_url;
+        }
+
+        $product = $item->get_product();
+        if (!$product) {
+            return '';
+        }
+
+        return self::build_sku_preview_url(
+            $product,
+            $item->get_meta('mg_product_type'),
+            $item->get_meta('mg_color')
+        );
+    }
+
+    /**
+     * Size the order item thumbnails from an inline block instead of the
+     * stylesheet: WooCommerce's own admin CSS pins the thumbnail wrapper to
+     * 38px, and an enqueued override loses that fight whenever an optimizer
+     * plugin (LiteSpeed) combines or defers our file.
+     */
+    public static function print_admin_thumbnail_styles() {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        if (!$screen) {
+            return;
+        }
+
+        $is_order_screen = in_array($screen->id, array('shop_order', 'woocommerce_page_wc-orders'), true)
+            || $screen->post_type === 'shop_order';
+        if (!$is_order_screen) {
+            return;
+        }
+        ?>
+        <style id="mg-admin-item-preview-size">
+        #woocommerce-order-items td.thumb,
+        #order_line_items td.thumb {
+            width: 116px !important;
+        }
+        #woocommerce-order-items .wc-order-item-thumbnail,
+        #order_line_items .wc-order-item-thumbnail {
+            width: 100px !important;
+            height: auto !important;
+        }
+        #woocommerce-order-items .wc-order-item-thumbnail img,
+        #order_line_items .wc-order-item-thumbnail img,
+        img.mg-admin-item-preview {
+            width: 100px !important;
+            height: 100px !important;
+            max-width: 100px !important;
+            /* contain, not cover: the whole mockup stays visible, nothing is cropped */
+            object-fit: contain;
+            border-radius: 3px;
+            background: #f6f7f7;
+        }
+        @media screen and (max-width: 1200px) {
+            #woocommerce-order-items td.thumb,
+            #order_line_items td.thumb {
+                width: 76px !important;
+            }
+            #woocommerce-order-items .wc-order-item-thumbnail,
+            #order_line_items .wc-order-item-thumbnail {
+                width: 60px !important;
+            }
+            #woocommerce-order-items .wc-order-item-thumbnail img,
+            #order_line_items .wc-order-item-thumbnail img,
+            img.mg-admin-item-preview {
+                width: 60px !important;
+                height: 60px !important;
+                max-width: 60px !important;
+            }
+        }
+        </style>
+        <?php
+    }
+
+    /**
+     * Show the variant mockup instead of the product's featured image in the
+     * admin order items table. WooCommerce renders that thumbnail straight from
+     * the product, so without this the admin sees the generic product photo.
+     */
+    public static function filter_admin_order_item_thumbnail($image, $item_id, $item) {
+        $preview_url = self::get_order_item_preview_url($item);
+        if ($preview_url === '') {
+            return $image;
+        }
+
+        // Sizing lives in the stylesheet (an inline width would win over it and
+        // block the enlarged thumbnail); the attributes are the no-CSS fallback.
+        return sprintf(
+            '<img src="%s" alt="%s" class="mg-admin-item-preview" width="100" height="100" />',
+            esc_url($preview_url),
+            esc_attr__('Mockup előnézet', 'mgdtp')
+        );
+    }
+
+    /**
+     * Public wrapper around the mockup preview resolver, for callers outside
+     * the cart flow.
+     *
+     * @return string Preview URL, or an empty string when none could be resolved.
+     */
+    public static function resolve_preview_url($product_id, $type_slug, $color_slug) {
+        $preview = self::get_or_generate_preview_url($product_id, $type_slug, $color_slug);
+        return is_wp_error($preview) ? '' : (string) $preview;
+    }
+
     public static function apply_cart_pricing($cart) {
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
@@ -1167,9 +1359,7 @@ class MG_Virtual_Variant_Manager {
             if (empty($products[$type_slug])) {
                 continue;
             }
-            $base_price = isset($products[$type_slug]['price']) ? floatval($products[$type_slug]['price']) : 0.0;
-            $size_extra = function_exists('mgsc_get_size_surcharge') ? floatval(mgsc_get_size_surcharge($type_slug, $cart_item['mg_size'])) : 0.0;
-            $final_price = max(0, $base_price + $size_extra);
+            $final_price = self::calculate_variant_price($type_slug, $cart_item['mg_size']);
             $product->set_price($final_price);
             $cart->cart_contents[$cart_item_key]['mg_custom_fields_base_price'] = $final_price;
         }
@@ -1823,21 +2013,9 @@ class MG_Virtual_Variant_Manager {
         }
 
         // NEW: Pattern-based resolution
-        $sku = $product->get_sku();
-        if ($sku) {
-            $uploads = self::get_upload_dir();
-            $base_dir = isset($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg_mockups' : '';
-            $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups' : '';
-            
-            if ($base_dir !== '' && $base_url !== '') {
-                $filename = $sku . '_' . $type_slug . '_' . $color_slug . '_front.webp';
-                $file_path = $base_dir . '/' . $sku . '/' . $filename;
-                $file_url = $base_url . '/' . $sku . '/' . $filename;
-                
-                if (file_exists($file_path)) {
-                    return $file_url;
-                }
-            }
+        $pattern_url = self::build_sku_preview_url($product, $type_slug, $color_slug);
+        if ($pattern_url !== '') {
+            return $pattern_url;
         }
 
         // Fallback to old system (just in case)

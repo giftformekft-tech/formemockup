@@ -1,0 +1,1139 @@
+{
+  "schema": "forme-canonical-tags",
+  "version": 1,
+  "dictionary_version": "2026-08-02-v2",
+  "language": "hu-HU",
+  "source": "forme-taglista-vegleges-2026-08-02.md",
+  "notes": [
+    "A külső AI csak a tags tömb label értékeiből választhat.",
+    "A keresési szinonimák aliasok, nem külön kanonikus tagek.",
+    "Az évszám külön year mező; nem tag."
+  ],
+  "tags": [
+    {
+      "id": "cimzett.anyanak",
+      "label": "Anyának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.apanak",
+      "label": "Apának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.mamanak",
+      "label": "Mamának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.papanak",
+      "label": "Papának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.dedinek",
+      "label": "Dédinek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.felesegnek",
+      "label": "Feleségnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.ferjnek",
+      "label": "Férjnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.a-szerelmemnek",
+      "label": "A szerelmemnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.egy-parnak",
+      "label": "Egy párnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.tesonak",
+      "label": "Tesónak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.gyereknek",
+      "label": "Gyereknek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.babanak",
+      "label": "Babának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.keresztszulonek",
+      "label": "Keresztszülőnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.baratnak-vagy-baratnonek",
+      "label": "Barátnak vagy barátnőnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.kolleganak",
+      "label": "Kollégának",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.fonoknek",
+      "label": "Főnöknek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.anyosnak",
+      "label": "Anyósnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.aposnak",
+      "label": "Apósnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.pedagogusnak",
+      "label": "Pedagógusnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.tanitonak",
+      "label": "Tanítónak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.ovononek",
+      "label": "Óvónőnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.osztalyfonoknek",
+      "label": "Osztályfőnöknek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.csaladnak",
+      "label": "Családnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.barati-tarsasagnak",
+      "label": "Baráti társaságnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.csapatnak",
+      "label": "Csapatnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.cegnek",
+      "label": "Cégnek",
+      "group": "Címzett"
+    },
+    {
+      "id": "cimzett.magamnak",
+      "label": "Magamnak",
+      "group": "Címzett"
+    },
+    {
+      "id": "alkalom.szuletesnap",
+      "label": "Születésnap",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.nevnap",
+      "label": "Névnap",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.karacsony",
+      "label": "Karácsony",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.mikulas",
+      "label": "Mikulás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.husvet",
+      "label": "Húsvét",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.halloween",
+      "label": "Halloween",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.valentin-nap",
+      "label": "Valentin-nap",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.anyak-napja",
+      "label": "Anyák napja",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.apak-napja",
+      "label": "Apák napja",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.ballagas",
+      "label": "Ballagás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.iskolai-ballagas",
+      "label": "Iskolai ballagás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.ovodai-ballagas",
+      "label": "Óvodai ballagás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.iskolakezdes",
+      "label": "Iskolakezdés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.ovodakezdes",
+      "label": "Óvodakezdés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.tanevzaro",
+      "label": "Tanévzáró",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.erettsegi",
+      "label": "Érettségi",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.diplomaoszto",
+      "label": "Diplomaosztó",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.szalagavato",
+      "label": "Szalagavató",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.eskuvo",
+      "label": "Esküvő",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.eljegyzes",
+      "label": "Eljegyzés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.hazassagi-evfordulo",
+      "label": "Házassági évforduló",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.keresztelo",
+      "label": "Keresztelő",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.babakoszonto",
+      "label": "Babaköszöntő",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.babavaro",
+      "label": "Babaváró",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.tejfakaszto",
+      "label": "Tejfakasztó",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.lanybucsu",
+      "label": "Lánybúcsú",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.legenybucsu",
+      "label": "Legénybúcsú",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.nyugdijazas",
+      "label": "Nyugdíjazás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.pedagogusnap",
+      "label": "Pedagógusnap",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.nonap",
+      "label": "Nőnap",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.lakasavato-vagy-koltozes",
+      "label": "Lakásavató vagy költözés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.csapatepito",
+      "label": "Csapatépítő",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.ceges-rendezveny",
+      "label": "Céges rendezvény",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.csaladi-rendezveny",
+      "label": "Családi rendezvény",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.sportesemeny",
+      "label": "Sportesemény",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.nyaralas",
+      "label": "Nyaralás",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.fesztival",
+      "label": "Fesztivál",
+      "group": "Alkalom"
+    },
+    {
+      "id": "alkalom.csak-ugy-vagy-meglepetes",
+      "label": "Csak úgy vagy meglepetés",
+      "group": "Alkalom"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.sajat-kep-vagy-foto",
+      "label": "Saját kép vagy fotó",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.sajat-szoveg",
+      "label": "Saját szöveg",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.nevre-szolo",
+      "label": "Névre szóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.egyedi-tervezes",
+      "label": "Egyedi tervezés",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.paros-polo",
+      "label": "Páros póló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.csaladi-polo",
+      "label": "Családi póló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.anya-gyerek",
+      "label": "Anya–gyerek",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.apa-gyerek",
+      "label": "Apa–gyerek",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.csapatpolo",
+      "label": "Csapatpóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.osztalypolo",
+      "label": "Osztálypóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.csoportpolo",
+      "label": "Csoportpóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.ceges-polo",
+      "label": "Céges póló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.logozott-polo",
+      "label": "Logózott póló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.munkaruha",
+      "label": "Munkaruha",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "ajandekozasi-es-hasznalati-cel.rendezvenypolo",
+      "label": "Rendezvénypóló",
+      "group": "Ajándékozási és használati cél"
+    },
+    {
+      "id": "erdeklodes-es-tema.humoros",
+      "label": "Humoros",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.marka-parodia",
+      "label": "Márka paródia",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.gamer",
+      "label": "Gamer",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.sport",
+      "label": "Sport",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.horgaszat",
+      "label": "Horgászat",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.allatok",
+      "label": "Állatok",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.allatbarat",
+      "label": "Állatbarát",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.filmek-es-sorozatok",
+      "label": "Filmek és sorozatok",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.zene",
+      "label": "Zene",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.zenekarok",
+      "label": "Zenekarok",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.dobosok",
+      "label": "Dobosok",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.gitar",
+      "label": "Gitár",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.tarsasjatek",
+      "label": "Társasjáték",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.irodalom",
+      "label": "Irodalom",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.olvasas",
+      "label": "Olvasás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.kave",
+      "label": "Kávé",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.sor",
+      "label": "Sör",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.alkohol",
+      "label": "Alkohol",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.sutes-fozes-vagy-grillezes",
+      "label": "Sütés, főzés vagy grillezés",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.kerteszkedes",
+      "label": "Kertészkedés",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.horgolas",
+      "label": "Horgolás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.tetovalas",
+      "label": "Tetoválás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.fitness-es-edzes",
+      "label": "Fitness és edzés",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.futas",
+      "label": "Futás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.joga",
+      "label": "Jóga",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.turazas",
+      "label": "Túrázás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.kirandulas",
+      "label": "Kirándulás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.utazas",
+      "label": "Utazás",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.vadaszat",
+      "label": "Vadászat",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.buli",
+      "label": "Buli",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.csillagjegyek",
+      "label": "Csillagjegyek",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.mobil-es-technologia",
+      "label": "Mobil és technológia",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "erdeklodes-es-tema.bitcoin-es-kripto",
+      "label": "Bitcoin és kriptó",
+      "group": "Érdeklődés és téma"
+    },
+    {
+      "id": "allatok-es-termeszet.macska",
+      "label": "Macska",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.kutya",
+      "label": "Kutya",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.lo-vagy-lovaglas",
+      "label": "Ló vagy lovaglás",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.hal",
+      "label": "Hal",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.capa",
+      "label": "Cápa",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.meh",
+      "label": "Méh",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.dinoszaurusz",
+      "label": "Dinoszaurusz",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.horcsog",
+      "label": "Hörcsög",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.kigyo",
+      "label": "Kígyó",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.nyuszi",
+      "label": "Nyuszi",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.rovarok",
+      "label": "Rovarok",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.unikornis",
+      "label": "Unikornis",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.vidra",
+      "label": "Vidra",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "allatok-es-termeszet.capybara",
+      "label": "Capybara",
+      "group": "Állatok és természet"
+    },
+    {
+      "id": "jarmuvek.auto",
+      "label": "Autó",
+      "group": "Járművek"
+    },
+    {
+      "id": "jarmuvek.busz",
+      "label": "Busz",
+      "group": "Járművek"
+    },
+    {
+      "id": "jarmuvek.kamion",
+      "label": "Kamion",
+      "group": "Járművek"
+    },
+    {
+      "id": "jarmuvek.motor",
+      "label": "Motor",
+      "group": "Járművek"
+    },
+    {
+      "id": "jarmuvek.traktor",
+      "label": "Traktor",
+      "group": "Járművek"
+    },
+    {
+      "id": "jarmuvek.bicikli",
+      "label": "Bicikli",
+      "group": "Járművek"
+    },
+    {
+      "id": "sportagak.labdarugas",
+      "label": "Labdarúgás",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.forma-1",
+      "label": "Forma–1",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.darts",
+      "label": "Darts",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.karate",
+      "label": "Karate",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.kezilabda",
+      "label": "Kézilabda",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.konditerem",
+      "label": "Konditerem",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.kosarlabda",
+      "label": "Kosárlabda",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.roplabda",
+      "label": "Röplabda",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.uszas",
+      "label": "Úszás",
+      "group": "Sportágak"
+    },
+    {
+      "id": "sportagak.vizilabda",
+      "label": "Vízilabda",
+      "group": "Sportágak"
+    },
+    {
+      "id": "jatekok.among-us",
+      "label": "Among Us",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.apex-legends",
+      "label": "Apex Legends",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.brawl-stars",
+      "label": "Brawl Stars",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.clash",
+      "label": "Clash",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.diablo",
+      "label": "Diablo",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.dota",
+      "label": "Dota",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.fall-guys",
+      "label": "Fall Guys",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.fnaf",
+      "label": "FNAF",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.fortnite",
+      "label": "Fortnite",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.gta",
+      "label": "GTA",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.league-of-legends",
+      "label": "League of Legends",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.minecraft",
+      "label": "Minecraft",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.overwatch",
+      "label": "Overwatch",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.palworld",
+      "label": "Palworld",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.pubg",
+      "label": "PUBG",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.roblox",
+      "label": "Roblox",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.stumble-guys",
+      "label": "Stumble Guys",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.valorant",
+      "label": "Valorant",
+      "group": "Játékok"
+    },
+    {
+      "id": "jatekok.world-of-warcraft",
+      "label": "World of Warcraft",
+      "group": "Játékok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.bud-spencer",
+      "label": "Bud Spencer",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.star-wars",
+      "label": "Star Wars",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.anime",
+      "label": "Anime",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.labubu",
+      "label": "Labubu",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.a-nagy-penzrablas",
+      "label": "A nagy pénzrablás",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.squid-game",
+      "label": "Squid Game",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.stranger-things",
+      "label": "Stranger Things",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "filmek-sorozatok-es-karaktervilagok.wednesday",
+      "label": "Wednesday",
+      "group": "Filmek, sorozatok és karaktervilágok"
+    },
+    {
+      "id": "foglalkozasok.acs",
+      "label": "Ács",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.apolo",
+      "label": "Ápoló",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.asztalos",
+      "label": "Asztalos",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.autoszerelo",
+      "label": "Autószerelő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.biztonsagi-or",
+      "label": "Biztonsági őr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.bolcsodei-gondozo",
+      "label": "Bölcsődei gondozó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.buszsofor",
+      "label": "Buszsofőr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.cukrasz",
+      "label": "Cukrász",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.dajka",
+      "label": "Dajka",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.edzo",
+      "label": "Edző",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.elado",
+      "label": "Eladó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.favago",
+      "label": "Favágó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.fenykepesz",
+      "label": "Fényképész",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.festo",
+      "label": "Festő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.fodrasz",
+      "label": "Fodrász",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.fogorvos",
+      "label": "Fogorvos",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.futar",
+      "label": "Futár",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.grafikus",
+      "label": "Grafikus",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.gyogyszeresz",
+      "label": "Gyógyszerész",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.gyogytornasz",
+      "label": "Gyógytornász",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.hegeszto",
+      "label": "Hegesztő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.hr-es",
+      "label": "HR-es",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.katona",
+      "label": "Katona",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.komuves",
+      "label": "Kőműves",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.konyvelo",
+      "label": "Könyvelő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.kozmetikus",
+      "label": "Kozmetikus",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.kutyakozmetikus",
+      "label": "Kutyakozmetikus",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.marketinges",
+      "label": "Marketinges",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.masszor",
+      "label": "Masszőr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.mehesz",
+      "label": "Méhész",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.mentos",
+      "label": "Mentős",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.mernok",
+      "label": "Mérnök",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.muvesz",
+      "label": "Művész",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.orvos",
+      "label": "Orvos",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.ovono",
+      "label": "Óvónő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.pek",
+      "label": "Pék",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.penztaros",
+      "label": "Pénztáros",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.pincer",
+      "label": "Pincér",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.postas",
+      "label": "Postás",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.programozo",
+      "label": "Programozó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.pultos",
+      "label": "Pultos",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.rendor",
+      "label": "Rendőr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.sofor",
+      "label": "Sofőr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.szabo",
+      "label": "Szabó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.szakacs",
+      "label": "Szakács",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.szerelo",
+      "label": "Szerelő",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.takarito",
+      "label": "Takarító",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.tanar",
+      "label": "Tanár",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.tanito",
+      "label": "Tanító",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.tancos",
+      "label": "Táncos",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.targoncas",
+      "label": "Targoncás",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.taxi-sofor",
+      "label": "Taxi sofőr",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.tuzolto",
+      "label": "Tűzoltó",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.ugyved",
+      "label": "Ügyvéd",
+      "group": "Foglalkozások"
+    },
+    {
+      "id": "foglalkozasok.villanyszerelo",
+      "label": "Villanyszerelő",
+      "group": "Foglalkozások"
+    }
+  ]
+}

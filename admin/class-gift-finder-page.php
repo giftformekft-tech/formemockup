@@ -101,7 +101,7 @@ class MG_Gift_Finder_Page {
                 <button type="button" class="button mg-add-row" data-template="mg-gift-card-template" data-target="mg-gift-cards">+ Kategóriakártya</button>
 
                 <h2>5. A kereső kérdései</h2>
-                <p class="description">Egy válaszhoz megadhatsz egy elsődleges és több további WooCommerce-kategóriát. Így saját alkalomcsoport készíthető, például az „Apák napja” alá bevonható az Apának, Papának és Férjnek kategória. A termékek annyi pontot kapnak, ahány választott kategóriacsoportnak megfelelnek; termékcímkéket a kereső nem használ.</p>
+                <p class="description">Egy válaszhoz megadhatsz egy elsődleges és több további WooCommerce-kategóriát, valamint kanonikus tageket. A tag mód kikapcsolva a korábbi kategória- és kulcsszólogika marad érvényben; bekapcsolva a pontos tag-egyezések előnyt kapnak.</p>
                 <p class="description"><strong>Függő válaszok:</strong> a „Csak ezek után jelenjen meg” mezővel szabályozható, hogy például az „Anyának” választás után mely alkalmak legyenek láthatók. Üresen hagyva a válasz minden korábbi választásnál megjelenik. Új első lépcsős válasz felvétele után ments egyszer, hogy megjelenjen a későbbi lépcsők szülőlistájában.</p>
                 <?php foreach ( $settings['questions'] as $key => $question ) : ?>
                     <section class="mg-gift-admin-question">
@@ -125,6 +125,13 @@ class MG_Gift_Finder_Page {
                 <p class="description"><strong>Mielőtt bekapcsolod:</strong> nézd meg a lenti <em>9. Szűrő-diagnosztika</em> táblázatot. Ahol az alkalom 0%-kal szűkít, ott a metszetes szűrésnek nincs hatása – azon az útvonalon a katalógus besorolásán kell változtatni.</p>
                 <?php $facets = $settings['facets']; ?>
                 <table class="form-table">
+                    <tr>
+                        <th scope="row">Kanonikus tag mód</th>
+                        <td>
+                            <label><input type="checkbox" name="settings[tag_mode][enabled]" value="1" <?php checked( ! empty( $settings['tag_mode']['enabled'] ) ); ?> /> A pontos kanonikus tagegyezések legyenek erősebbek</label>
+                            <p class="description">Kikapcsolva a kereső változatlanul csak a kategóriákat és a terméknevek kulcsszavait használja. Bekapcsolva a válaszokhoz rendelt kanonikus tagek is jelöltet és rangsorolási pontot adnak.</p>
+                        </td>
+                    </tr>
                     <tr>
                         <th scope="row">Metszetes szűrés</th>
                         <td>
@@ -286,7 +293,7 @@ class MG_Gift_Finder_Page {
         ?>
         <section class="mg-gift-stats mg-gift-diagnostics">
             <h2>9. Szűrő-diagnosztika (címzett × alkalom)</h2>
-            <p class="description">Csak olvasható kimutatás: a keresőn semmit nem változtat. A „mai unió” a jelenlegi OR-alapú jelöltszám, a „szigorú metszet” pedig az, amennyi termék mindkét válasznak egyszerre megfelel. A szűkítés azt mutatja, hogy az alkalom hány százalékkal csökkenti a címzett önmagában adott termékkörét. A számok a találati gyorsítótárral közös, verzióhoz kötött cache-ből jönnek, és termékmentéskor frissülnek.</p>
+            <p class="description">Csak olvasható kimutatás: a keresőn semmit nem változtat. A „mai unió” a jelenlegi OR-alapú jelöltszám, a „szigorú metszet” pedig az, amennyi termék mindkét válasznak egyszerre megfelel kategória-, kulcsszó- vagy bekapcsolt tag módban tag-egyezéssel. A szűkítés azt mutatja, hogy az alkalom hány százalékkal csökkenti a címzett önmagában adott termékkörét. A számok a találati gyorsítótárral közös, verzióhoz kötött cache-ből jönnek, és termékmentéskor frissülnek.</p>
             <?php if ( empty( $rows ) ) : ?>
                 <p>Még nincs kiszámítható címzett–alkalom pár. Adj hozzá válaszokat a címzett és az alkalom kérdéshez.</p>
             <?php else : ?>
@@ -318,7 +325,9 @@ class MG_Gift_Finder_Page {
     }
 
     private static function option_row( $key, $index, $option, $categories, $parent_categories = array() ) {
-        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'category_ids' => array(), 'keywords' => array(), 'option_id' => '', 'parent_category_ids' => array() ) );
+        $option = wp_parse_args( $option, array( 'label' => '', 'category_id' => 0, 'category_ids' => array(), 'tag_labels' => array(), 'keywords' => array(), 'option_id' => '', 'parent_category_ids' => array() ) );
+        $tag_groups = MG_Gift_Finder::get_canonical_tag_groups();
+        $selected_tags = MG_Gift_Finder::get_option_tag_labels( $option );
         $prefix = 'settings[questions][' . $key . '][options][' . $index . ']'; ?>
         <div class="mg-gift-admin-row">
             <input type="text" name="<?php echo esc_attr( $prefix ); ?>[label]" value="<?php echo esc_attr( $option['label'] ); ?>" placeholder="pl. Anyukának" required />
@@ -327,6 +336,16 @@ class MG_Gift_Finder_Page {
                 <select multiple name="<?php echo esc_attr( $prefix ); ?>[category_ids][]" size="5">
                     <?php foreach ( $categories as $term ) : ?><option value="<?php echo esc_attr( $term->term_id ); ?>" <?php echo in_array( (int) $term->term_id, array_map( 'intval', (array) $option['category_ids'] ), true ) ? 'selected' : ''; ?>><?php echo esc_html( $term->name ); ?></option><?php endforeach; ?>
                 </select>
+            </label>
+            <label>Kapcsolódó kanonikus tagek
+                <select multiple class="wc-enhanced-select" data-placeholder="Tag keresése…" name="<?php echo esc_attr( $prefix ); ?>[tag_labels][]" style="min-width:280px;">
+                    <?php foreach ( $tag_groups as $group => $labels ) : ?>
+                        <optgroup label="<?php echo esc_attr( $group ); ?>">
+                            <?php foreach ( (array) $labels as $tag_label ) : ?><option value="<?php echo esc_attr( $tag_label ); ?>" <?php selected( in_array( $tag_label, $selected_tags, true ) ); ?>><?php echo esc_html( $tag_label ); ?></option><?php endforeach; ?>
+                        </optgroup>
+                    <?php endforeach; ?>
+                </select>
+                <span class="description">A tag mód bekapcsolásakor ezek a tagek erősítik a válaszhoz illő termékeket.</span>
             </label>
             <input type="hidden" name="<?php echo esc_attr( $prefix ); ?>[option_id]" value="<?php echo esc_attr( $option['option_id'] ); ?>" />
             <label>További terméknév-kulcsszavak
@@ -390,6 +409,8 @@ class MG_Gift_Finder_Page {
         }
         // A címzett szintje kötött: enélkül a lazítás a teljes kínálatig tágulhatna.
         $clean['facets']['levels']['recipient'] = 1;
+        $raw_tag_mode = is_array( $raw['tag_mode'] ?? null ) ? $raw['tag_mode'] : array();
+        $clean['tag_mode']['enabled'] = ! empty( $raw_tag_mode['enabled'] ) ? 1 : 0;
         foreach ( (array) ( $raw['cards'] ?? array() ) as $card ) {
             $term_id = absint( $card['category_id'] ?? 0 );
             if ( ! $term_id || ! term_exists( $term_id, 'product_cat' ) ) continue;
@@ -412,11 +433,13 @@ class MG_Gift_Finder_Page {
                 if ( $term_id && ! term_exists( $term_id, 'product_cat' ) ) $term_id = 0;
                 $category_ids = self::parse_id_list( $option['category_ids'] ?? array() );
                 $category_ids = array_values( array_filter( $category_ids, function( $id ) { return (bool) term_exists( $id, 'product_cat' ); } ) );
+                $tag_labels = MG_Gift_Finder::sanitize_tag_labels( $option['tag_labels'] ?? array() );
                 if ( $label && ( $term_id || ! empty( $category_ids ) ) ) {
                     $question['options'][] = array(
                         'label'               => $label,
                         'category_id'         => $term_id,
                         'category_ids'        => $category_ids,
+                        'tag_labels'          => $tag_labels,
                         'keywords'            => self::sanitize_keywords( $option['keywords'] ?? array() ),
                         'option_id'           => sanitize_key( $option['option_id'] ?? '' ),
                         'parent_category_ids' => array_values( array_filter( array_map( 'absint', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),

@@ -1,0 +1,253 @@
+/* MG Order Add Item – Modal Styles */
+
+/* Variant mockup in the order items table.
+   100px is the largest size that costs nothing in layout: every line already
+   stands ~150px tall because of the type/color/size meta rows, so the taller
+   image fits inside the existing row height. WooCommerce sizes the thumbnail
+   column and its wrapper itself, so both have to grow with the image. */
+#woocommerce-order-items .woocommerce_order_items td.thumb,
+#woocommerce-order-items .wc-order-totals-items td.thumb {
+    width: 116px;
+}
+
+#woocommerce-order-items .wc-order-item-thumbnail {
+    width: 100px;
+    height: auto;
+}
+
+.mg-admin-item-preview {
+    width: 100px;
+    height: 100px;
+    /* contain, not cover: the whole mockup stays visible, nothing is cropped */
+    object-fit: contain;
+    border-radius: 3px;
+    background: #f6f7f7;
+}
+
+/* Narrow screens: the items table already scrolls there, so keep it compact. */
+@media screen and (max-width: 1200px) {
+    #woocommerce-order-items .woocommerce_order_items td.thumb,
+    #woocommerce-order-items .wc-order-totals-items td.thumb {
+        width: 76px;
+    }
+
+    #woocommerce-order-items .wc-order-item-thumbnail {
+        width: 60px;
+    }
+
+    .mg-admin-item-preview {
+        width: 60px;
+        height: 60px;
+    }
+}
+
+.mg-add-item-blocked {
+    display: inline-block;
+    padding: 4px 8px;
+    color: #757575;
+    font-style: italic;
+    cursor: help;
+}
+
+.mg-add-item-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    /* Above the admin bar (99999) and the support widgets that sit near it. */
+    z-index: 160000;
+    align-items: center;
+    justify-content: center;
+}
+
+.mg-add-item-modal {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+    width: 560px;
+    max-width: 95vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.mg-add-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #dcdcdc;
+    background: #f6f7f7;
+}
+
+.mg-add-item-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.mg-add-item-header .mg-add-item-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #666;
+    padding: 0 4px;
+}
+
+.mg-add-item-header .mg-add-item-close:hover {
+    color: #d63638;
+}
+
+.mg-add-item-body {
+    padding: 18px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.mg-add-item-warning {
+    background: #fcf9e8;
+    border-left: 4px solid #dba617;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    font-size: 13px;
+}
+
+.mg-add-item-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+/* Search results */
+.mg-add-item-results {
+    margin: 0 0 12px;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid #dcdcde;
+    border-radius: 3px;
+}
+
+.mg-add-item-results:empty {
+    display: none;
+}
+
+.mg-add-item-result,
+.mg-add-item-note {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.mg-add-item-result:last-child,
+.mg-add-item-note {
+    border-bottom: none;
+}
+
+.mg-add-item-note {
+    color: #757575;
+    font-style: italic;
+}
+
+.mg-add-item-result {
+    cursor: pointer;
+}
+
+.mg-add-item-result:hover {
+    background: #f6f7f7;
+}
+
+.mg-add-item-result img {
+    width: 36px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: 3px;
+    flex: 0 0 36px;
+}
+
+.mg-add-item-result-name {
+    flex: 1;
+}
+
+.mg-add-item-result-sku {
+    color: #757575;
+    font-size: 12px;
+}
+
+/* Selected product */
+.mg-add-item-selected {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: #f6f7f7;
+    border-radius: 3px;
+    margin-bottom: 14px;
+}
+
+.mg-add-item-selected img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 3px;
+    flex: 0 0 48px;
+}
+
+.mg-add-item-selected > div {
+    flex: 1;
+}
+
+/* Variant fields */
+.mg-add-item-table th {
+    width: 150px;
+    padding: 8px 10px 8px 0;
+    vertical-align: middle;
+    font-weight: 600;
+}
+
+.mg-add-item-table td {
+    padding: 8px 0;
+}
+
+.mg-add-item-table input[type="number"] {
+    width: 110px;
+}
+
+.mg-add-item-table .description {
+    display: block;
+    margin-top: 4px;
+}
+
+/* Destructive confirm button */
+.mg-add-item-footer .mg-button-danger,
+.mg-add-item-footer .mg-button-danger:hover,
+.mg-add-item-footer .mg-button-danger:focus {
+    background: #d63638;
+    border-color: #d63638;
+    color: #fff;
+    box-shadow: none;
+}
+
+.mg-add-item-footer .mg-button-danger:hover {
+    background: #b32d2e;
+    border-color: #b32d2e;
+}
+
+.mg-add-item-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 12px 18px;
+    border-top: 1px solid #dcdcdc;
+    background: #f6f7f7;
+}
+
+#mg-add-item-message {
+    margin: 14px 0 0;
+    padding: 8px 12px;
+}

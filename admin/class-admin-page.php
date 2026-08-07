@@ -122,6 +122,10 @@ class MG_Admin_Page {
                 'label' => __('Marketing & Mérés', 'mockup-generator'),
                 'icon'  => 'dashicons-chart-line',
             ),
+            'stock' => array(
+                'label' => __('Készlet', 'mockup-generator'),
+                'icon'  => 'dashicons-archive',
+            ),
             'export' => array(
                 'label' => __('Export & Feedek', 'mockup-generator'),
                 'icon'  => 'dashicons-migrate',
@@ -236,9 +240,49 @@ class MG_Admin_Page {
                 'group'      => 'marketing',
                 'capability' => 'manage_options',
             ),
+            'stock_matrix' => array(
+                'label'      => __('Készletmátrix', 'mockup-generator'),
+                'type'       => 'local_stock',
+                'screen'     => 'matrix',
+                'group'      => 'stock',
+                'capability' => 'manage_woocommerce',
+            ),
+            'stock_goods_in' => array(
+                'label'      => __('Bevételezés', 'mockup-generator'),
+                'type'       => 'local_stock',
+                'screen'     => 'goods_in',
+                'group'      => 'stock',
+                'capability' => 'manage_woocommerce',
+            ),
+            'stock_low' => array(
+                'label'      => __('Hiánylista', 'mockup-generator'),
+                'type'       => 'local_stock',
+                'screen'     => 'low',
+                'group'      => 'stock',
+                'capability' => 'manage_woocommerce',
+            ),
+            'stock_log' => array(
+                'label'      => __('Mozgásnapló', 'mockup-generator'),
+                'type'       => 'local_stock',
+                'screen'     => 'log',
+                'group'      => 'stock',
+                'capability' => 'manage_woocommerce',
+            ),
             'temu_export' => array(
                 'label'      => __('Temu Export', 'mockup-generator'),
                 'type'       => 'temu_export',
+                'group'      => 'export',
+                'capability' => 'edit_products',
+            ),
+            'temu_api_export' => array(
+                'label'      => __('Temu API Export', 'mockup-generator'),
+                'type'       => 'temu_api_export',
+                'group'      => 'export',
+                'capability' => 'edit_products',
+            ),
+            'allegro_export' => array(
+                'label'      => __('Allegro Export', 'mockup-generator'),
+                'type'       => 'allegro_export',
                 'group'      => 'export',
                 'capability' => 'edit_products',
             ),
@@ -575,6 +619,21 @@ class MG_Admin_Page {
             case 'temu_export':
                 if (class_exists('MG_Temu_Export_Page')) {
                     MG_Temu_Export_Page::render_page();
+                }
+                break;
+            case 'temu_api_export':
+                if (class_exists('MG_Temu_API_Export_Page')) {
+                    MG_Temu_API_Export_Page::render_page();
+                }
+                break;
+            case 'allegro_export':
+                if (class_exists('MG_Allegro_Export_Page')) {
+                    MG_Allegro_Export_Page::render_page();
+                }
+                break;
+            case 'local_stock':
+                if (class_exists('MG_Local_Stock_Page')) {
+                    MG_Local_Stock_Page::render_page(isset($tab['screen']) ? $tab['screen'] : 'matrix');
                 }
                 break;
             case 'placeholder':

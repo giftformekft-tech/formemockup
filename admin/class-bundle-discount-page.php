@@ -170,7 +170,7 @@ class MG_Bundle_Discount_Page {
                                    min="0" step="1" class="small-text" />
                             Ft &nbsp;→&nbsp;
                             <?php esc_html_e( 'kedvezmény:', 'mockup-generator' ); ?>
-                            <input type="number" name="qty2_amount"
+                            <input type="number" name="amount2_discount"
                                    value="<?php echo esc_attr( $settings['qty2_amount'] ); ?>"
                                    min="0" step="0.01" class="small-text" />
                             <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
@@ -188,7 +188,7 @@ class MG_Bundle_Discount_Page {
                                    min="0" step="1" class="small-text" />
                             Ft &nbsp;→&nbsp;
                             <?php esc_html_e( 'kedvezmény:', 'mockup-generator' ); ?>
-                            <input type="number" name="qty3_amount"
+                            <input type="number" name="amount3_discount"
                                    value="<?php echo esc_attr( $settings['qty3_amount'] ); ?>"
                                    min="0" step="0.01" class="small-text" />
                             <span class="mg-bd-unit"><?php echo esc_html( $settings['type'] === 'percent' ? '%' : 'Ft' ); ?></span>
@@ -327,6 +327,20 @@ class MG_Bundle_Discount_Page {
                 }
             }
             $('input[name="base_threshold_type"]').on('change', updateBaseThresholdFields);
+
+            // ---- Kedvezmény összeg mezők szinkronban tartása ----
+            // A db- és összeghatár-mód külön input-párt használ, de ugyanazt az
+            // értéket tárolják, ezért módváltáskor ne látszódjon régi érték.
+            var syncPairs = [
+                ['qty2_amount', 'amount2_discount'],
+                ['qty3_amount', 'amount3_discount']
+            ];
+            $.each(syncPairs, function(i, pair) {
+                var $a = $('input[name="' + pair[0] + '"]');
+                var $b = $('input[name="' + pair[1] + '"]');
+                $a.on('input', function() { $b.val($(this).val()); });
+                $b.on('input', function() { $a.val($(this).val()); });
+            });
 
             // ---- Alap kedvezmény típus váltás (Ft/%) ----
             var radios = $('input[name="type"]');
@@ -606,12 +620,25 @@ class MG_Bundle_Discount_Page {
 
         $campaigns_raw = isset( $_POST['campaigns'] ) ? wp_unslash( (array) $_POST['campaigns'] ) : array();
 
+        $base_threshold_type = isset( $_POST['base_threshold_type'] ) ? sanitize_key( wp_unslash( $_POST['base_threshold_type'] ) ) : 'qty';
+
+        // A kedvezmény összegét két külön mezőpár tartalmazza (darabszám- és
+        // összeghatár-módhoz), mindkettő beküldésre kerül, ezért az aktív
+        // küszöb-típushoz tartozó mezőket kell figyelembe venni.
+        if ( $base_threshold_type === 'amount' ) {
+            $discount2_key = 'amount2_discount';
+            $discount3_key = 'amount3_discount';
+        } else {
+            $discount2_key = 'qty2_amount';
+            $discount3_key = 'qty3_amount';
+        }
+
         $data = array(
             'enabled'                => ! empty( $_POST['enabled'] ),
             'type'                   => isset( $_POST['type'] ) ? sanitize_key( wp_unslash( $_POST['type'] ) ) : 'fixed',
-            'base_threshold_type'    => isset( $_POST['base_threshold_type'] ) ? sanitize_key( wp_unslash( $_POST['base_threshold_type'] ) ) : 'qty',
-            'qty2_amount'            => isset( $_POST['qty2_amount'] ) ? floatval( wp_unslash( $_POST['qty2_amount'] ) ) : 0.0,
-            'qty3_amount'            => isset( $_POST['qty3_amount'] ) ? floatval( wp_unslash( $_POST['qty3_amount'] ) ) : 0.0,
+            'base_threshold_type'    => $base_threshold_type,
+            'qty2_amount'            => isset( $_POST[ $discount2_key ] ) ? floatval( wp_unslash( $_POST[ $discount2_key ] ) ) : 0.0,
+            'qty3_amount'            => isset( $_POST[ $discount3_key ] ) ? floatval( wp_unslash( $_POST[ $discount3_key ] ) ) : 0.0,
             'base_amount2_threshold' => isset( $_POST['base_amount2_threshold'] ) ? floatval( wp_unslash( $_POST['base_amount2_threshold'] ) ) : 0.0,
             'base_amount3_threshold' => isset( $_POST['base_amount3_threshold'] ) ? floatval( wp_unslash( $_POST['base_amount3_threshold'] ) ) : 0.0,
             'campaigns'              => $campaigns_raw,

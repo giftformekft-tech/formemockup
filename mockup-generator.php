@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.31.1
+Version: 2.33.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.31.1');
+    define('MG_VERSION', '2.33.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -64,6 +64,8 @@ add_action('plugins_loaded', function(){
         'includes/class-size-selection.php',
         'includes/class-delivery-estimate.php',
         'includes/class-variant-display-manager.php',
+        'includes/class-local-stock.php',
+        'admin/class-local-stock-page.php',
         'includes/class-product-image-performance.php',
         'includes/class-surcharge-manager.php',
         'includes/class-surcharge-frontend.php',
@@ -72,9 +74,15 @@ add_action('plugins_loaded', function(){
         'includes/class-design-gallery.php',
         'includes/class-designer-button.php',
         'includes/class-temu-xlsx-writer.php',
+        'includes/class-allegro-exporter.php',
+        'admin/class-temu-api-image-field.php',
+        'includes/class-temu-api-exporter.php',
         'admin/class-temu-export-page.php',
+        'admin/class-temu-api-export-page.php',
+        'admin/class-allegro-export-page.php',
         'admin/class-order-design-download.php',
         'admin/class-order-item-editor.php',
+        'admin/class-order-add-item.php',
         'admin/class-express-order-flag.php',
         'includes/class-google-merchant-feed.php',
         'includes/class-facebook-catalog-feed.php',
@@ -93,6 +101,7 @@ add_action('plugins_loaded', function(){
         'includes/class-facebook-pixel-reliability.php',
         'includes/class-facebook-pixel-settings.php',
         'includes/class-ai-seo-generator.php',
+        'includes/class-ai-tag-generator.php',
         'admin/class-ai-seo-page.php',
 
         'includes/class-email-footer.php',
@@ -228,6 +237,12 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Virtual_Variant_Manager')) {
         MG_Virtual_Variant_Manager::init();
     }
+    if (class_exists('MG_Local_Stock')) {
+        MG_Local_Stock::init();
+    }
+    if (class_exists('MG_Local_Stock_Page')) {
+        MG_Local_Stock_Page::init();
+    }
     if (class_exists('MG_Product_Image_Performance')) {
         MG_Product_Image_Performance::init();
     }
@@ -249,11 +264,23 @@ add_action('plugins_loaded', function(){
     if (class_exists('MG_Temu_Export_Page')) {
         MG_Temu_Export_Page::init();
     }
+    if (class_exists('MG_Temu_API_Image_Field')) {
+        MG_Temu_API_Image_Field::init();
+    }
+    if (class_exists('MG_Temu_API_Export_Page')) {
+        MG_Temu_API_Export_Page::init();
+    }
+    if (class_exists('MG_Allegro_Export_Page')) {
+        MG_Allegro_Export_Page::init();
+    }
     if (class_exists('MG_Order_Design_Download')) {
         MG_Order_Design_Download::init();
     }
     if (class_exists('MG_Order_Item_Editor')) {
         MG_Order_Item_Editor::init();
+    }
+    if (class_exists('MG_Order_Add_Item')) {
+        MG_Order_Add_Item::init();
     }
     if (class_exists('MG_Express_Order_Flag')) {
         MG_Express_Order_Flag::init();
@@ -308,6 +335,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_AI_SEO_Generator')) {
         MG_AI_SEO_Generator::init();
+    }
+    if (class_exists('MG_AI_Tag_Generator')) {
+        MG_AI_Tag_Generator::init();
     }
     if (class_exists('MG_AI_SEO_Page')) {
         MG_AI_SEO_Page::init();

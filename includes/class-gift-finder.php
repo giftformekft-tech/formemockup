@@ -17,10 +17,17 @@ class MG_Gift_Finder {
     const HARD_CANDIDATE_LIMIT = 600;
     const RELATED_PER_CHOICE = 120;
 
+    /** Tag módban egy válaszon belül a legerősebb egyezés súlya. */
+    const TAG_MATCH_WEIGHT = 3;
+    const CATEGORY_MATCH_WEIGHT = 2;
+    const KEYWORD_MATCH_WEIGHT = 1;
+
     /** Az élő találatszámláló végpontja és ütemkorlátja (kérés / ablak, másodpercben). */
     const COUNT_ACTION = 'mg_gift_counts';
     const COUNT_RATE_LIMIT = 60;
     const COUNT_RATE_WINDOW = 300;
+
+    private static $tag_term_ids = null;
 
     public static function init() {
         add_action( 'init', array( __CLASS__, 'register_block_and_shortcodes' ) );
@@ -39,10 +46,18 @@ class MG_Gift_Finder {
             'edited_product_cat',
             'created_product_cat',
             'delete_product_cat',
+            'edited_product_tag',
+            'created_product_tag',
+            'delete_product_tag',
             'update_option_' . self::OPTION_KEY,
         ) as $hook ) {
             add_action( $hook, array( __CLASS__, 'bump_cache_version' ) );
         }
+        add_action( 'set_object_terms', array( __CLASS__, 'maybe_bump_for_term_assignment' ), 10, 6 );
+    }
+
+    public static function maybe_bump_for_term_assignment( $object_id, $terms, $tt_ids, $taxonomy ) {
+        if ( $taxonomy === 'product_tag' ) self::bump_cache_version();
     }
 
     /** A rangsor-gyorsítótár kulcsába épített verzió. A facet-halmazok is ezt használják. */
@@ -71,6 +86,9 @@ class MG_Gift_Finder {
             'cards'     => array(),
             'budgets'   => array(),
             'bundles'   => array(),
+            'tag_mode'  => array(
+                'enabled' => 0,
+            ),
             'colors'    => array(
                 'accent'      => '#c6503e',
                 'accent_dark' => '#9d392b',
@@ -127,6 +145,10 @@ class MG_Gift_Finder {
         // kínálatáig tágulhatna, és a találat elveszítené a személyre szólását.
         $facets['levels']['recipient'] = 1;
         $settings['facets'] = $facets;
+        $tag_mode = is_array( $settings['tag_mode'] ?? null ) ? $settings['tag_mode'] : array();
+        $settings['tag_mode'] = array(
+            'enabled' => ! empty( $tag_mode['enabled'] ) ? 1 : 0,
+        );
         $settings['budgets'] = array();
         return $settings;
     }
@@ -558,6 +580,166 @@ class MG_Gift_Finder {
         return array_values( array_unique( $category_ids ) );
     }
 
+    public static function is_tag_mode_enabled( $settings = null ) {
+        $settings = is_array( $settings ) ? $settings : self::get_settings();
+        return ! empty( $settings['tag_mode']['enabled'] );
+    }
+
+    /** A tagger kanonikus szótára az ajándékkereső egyetlen engedélyezett forrása. */
+    public static function get_canonical_tag_labels() {
+        if ( ! class_exists( 'MG_AI_Tag_Generator' ) || ! method_exists( 'MG_AI_Tag_Generator', 'get_dictionary_labels' ) ) {
+            return array();
+        }
+        return array_values( array_unique( array_filter( array_map( 'strval', MG_AI_Tag_Generator::get_dictionary_labels() ) ) ) );
+    }
+
+    public static function get_canonical_tag_groups() {
+        if ( class_exists( 'MG_AI_Tag_Generator' ) && method_exists( 'MG_AI_Tag_Generator', 'get_dictionary' ) ) {
+            $dictionary = MG_AI_Tag_Generator::get_dictionary();
+            if ( is_array( $dictionary ) && ! empty( $dictionary['groups'] ) ) return $dictionary['groups'];
+        }
+        return array( 'Egyéb' => self::get_canonical_tag_labels() );
+    }
+
+    /**
+     * A jelenlegi válaszokhoz kezdeti, importálható tagkapcsolatokat készít.
+     * A kézzel megadott tagkapcsolatokat érintetlenül hagyja.
+     */
+    public static function apply_initial_tag_mapping( $settings ) {
+        if ( ! is_array( $settings ) ) return $settings;
+        $questions = is_array( $settings['questions'] ?? null ) ? $settings['questions'] : array();
+        foreach ( $questions as $question_key => &$question ) {
+            $options = is_array( $question['options'] ?? null ) ? $question['options'] : array();
+            foreach ( $options as &$option ) {
+                if ( ! empty( $option['tag_labels'] ) ) {
+                    $option['tag_labels'] = self::sanitize_tag_labels( $option['tag_labels'] );
+                    continue;
+                }
+                $option['tag_labels'] = self::suggest_initial_tag_labels( $question_key, $option );
+            }
+            unset( $option );
+            $question['options'] = $options;
+        }
+        unset( $question );
+        $settings['questions'] = $questions;
+        return $settings;
+    }
+
+    private static function normalize_tag_mapping_text( $value ) {
+        $value = mb_strtolower( remove_accents( sanitize_text_field( (string) $value ) ) );
+        return trim( preg_replace( '/[^a-z0-9]+/', ' ', $value ) );
+    }
+
+    private static function tag_mapping_contains( $source_text, $tag_text ) {
+        $source_words = preg_split( '/\s+/', trim( (string) $source_text ), -1, PREG_SPLIT_NO_EMPTY );
+        $tag_words = preg_split( '/\s+/', trim( (string) $tag_text ), -1, PREG_SPLIT_NO_EMPTY );
+        if ( empty( $source_words ) || empty( $tag_words ) || count( $tag_words ) > count( $source_words ) ) return false;
+        foreach ( $source_words as $start => $source_word ) {
+            if ( $start + count( $tag_words ) > count( $source_words ) ) break;
+            $matches = true;
+            foreach ( $tag_words as $offset => $tag_word ) {
+                $source_word = $source_words[ $start + $offset ];
+                // A hárombetűs címke csak teljes szónak számítson: így a
+                // „Hal” nem talál rá véletlenül a „Halloween” kifejezésre.
+                if ( mb_strlen( $tag_word ) < 4 && count( $tag_words ) === 1 ) {
+                    if ( $source_word !== $tag_word ) $matches = false;
+                } elseif ( mb_strpos( $source_word, $tag_word ) !== 0 ) {
+                    $matches = false;
+                }
+                if ( ! $matches ) break;
+            }
+            if ( $matches ) return true;
+        }
+        return false;
+    }
+
+    private static function suggest_initial_tag_labels( $question_key, $option ) {
+        $allowed = array_fill_keys( self::get_canonical_tag_labels(), true );
+        if ( empty( $allowed ) ) return array();
+        $label = (string) ( $option['label'] ?? '' );
+        $normalized = self::normalize_tag_mapping_text( $label );
+        $key = $question_key . '|' . $normalized;
+        $families = array(
+            'interest|gamer' => array( 'Gamer', 'Among Us', 'Apex Legends', 'Brawl Stars', 'Clash', 'Diablo', 'Dota', 'Fall Guys', 'FNAF', 'Fortnite', 'GTA', 'League of Legends', 'Minecraft', 'Overwatch', 'Palworld', 'PUBG', 'Roblox', 'Stumble Guys', 'Valorant', 'World of Warcraft' ),
+            'interest|sportos' => array( 'Sport', 'Fitness és edzés', 'Futás', 'Jóga', 'Labdarúgás', 'Forma–1', 'Darts', 'Karate', 'Kézilabda', 'Konditerem', 'Kosárlabda', 'Röplabda', 'Úszás', 'Vízilabda' ),
+            'interest|allatbarat' => array( 'Állatok', 'Állatbarát', 'Macska', 'Kutya', 'Ló vagy lovaglás', 'Hal', 'Cápa', 'Méh', 'Dinoszaurusz', 'Hörcsög', 'Kígyó', 'Nyuszi', 'Rovarok', 'Unikornis', 'Vidra', 'Capybara' ),
+            'interest|horgaszik' => array( 'Horgászat' ),
+            'interest|kerteszkedik' => array( 'Kertészkedés' ),
+            'interest|auto vagy motorrajongo' => array( 'Autó', 'Motor' ),
+            'interest|filmeket es sorozatokat szeret' => array( 'Filmek és sorozatok', 'Bud Spencer', 'Star Wars', 'Anime', 'Labubu', 'A nagy pénzrablás', 'Squid Game', 'Stranger Things', 'Wednesday' ),
+            'interest|szereti a zenet' => array( 'Zene', 'Zenekarok', 'Dobosok', 'Gitár' ),
+            'interest|szeret utazni es kirandulni' => array( 'Utazás', 'Kirándulás', 'Túrázás' ),
+            'interest|szeret sutni fozni vagy grillezni' => array( 'Sütés, főzés vagy grillezés' ),
+            'recipient|keresztanyanak' => array( 'Keresztszülőnek' ),
+            'recipient|keresztapanak' => array( 'Keresztszülőnek' ),
+            'recipient|egy parnak hazasoknak' => array( 'Egy párnak' ),
+            'recipient|baratnak baratnonek' => array( 'Barátnak vagy barátnőnek' ),
+            'occupation|fonok' => array( 'Főnöknek' ),
+            'occasion|csak ugy meglepeteskent' => array( 'Csak úgy vagy meglepetés' ),
+            'occasion|hazassaghoz kapcsolodo esemenyre' => array( 'Esküvő', 'Eljegyzés', 'Házassági évforduló' ),
+            'wedding_type|evfordulora' => array( 'Házassági évforduló' ),
+        );
+        $suggested = $families[ $key ] ?? array();
+        $sources = array( $label );
+        foreach ( (array) ( $option['keywords'] ?? array() ) as $keyword ) $sources[] = (string) $keyword;
+        $source_text = self::normalize_tag_mapping_text( implode( ' ', $sources ) );
+        $exact_mapping = in_array( $question_key, array( 'recipient', 'occupation' ), true );
+        foreach ( self::get_canonical_tag_labels() as $tag ) {
+            $tag_text = self::normalize_tag_mapping_text( $tag );
+            if ( mb_strlen( $tag_text ) < 3 ) continue;
+            if ( $tag_text === '' ) continue;
+            if ( ( $exact_mapping && $tag_text === $normalized ) || ( ! $exact_mapping && self::tag_mapping_contains( $source_text, $tag_text ) ) ) $suggested[] = $tag;
+        }
+        $suggested = array_values( array_unique( array_filter( $suggested, function( $tag ) use ( $allowed ) { return isset( $allowed[ $tag ] ); } ) ) );
+        return $suggested;
+    }
+
+    public static function sanitize_tag_labels( $value ) {
+        if ( is_string( $value ) ) $value = preg_split( '/[,;\r\n]+/', $value );
+        $allowed = array_fill_keys( self::get_canonical_tag_labels(), true );
+        $labels = array();
+        foreach ( (array) $value as $label ) {
+            $label = sanitize_text_field( (string) $label );
+            if ( $label !== '' && isset( $allowed[ $label ] ) && ! in_array( $label, $labels, true ) ) {
+                $labels[] = $label;
+            }
+        }
+        return $labels;
+    }
+
+    public static function get_option_tag_labels( $option ) {
+        return self::sanitize_tag_labels( $option['tag_labels'] ?? array() );
+    }
+
+    /** Kanonikus címke → meglévő WooCommerce product_tag term ID feloldás, kötegelt cache-sel. */
+    public static function get_tag_term_ids( $labels ) {
+        $labels = self::sanitize_tag_labels( $labels );
+        if ( empty( $labels ) ) return array();
+        if ( self::$tag_term_ids === null ) {
+            self::$tag_term_ids = array( 'name' => array(), 'slug' => array(), 'loaded' => array() );
+        }
+        // Nem töltjük be a teljes, akár több tízezres régi tagbázist: csak a
+        // jelenlegi válasz kanonikus slugjait kérjük le, és kérésen belül cache-eljük.
+        $requested_slugs = array_values( array_unique( array_filter( array_map( 'sanitize_title', $labels ) ) ) );
+        $missing_slugs = array_values( array_diff( $requested_slugs, array_keys( self::$tag_term_ids['loaded'] ) ) );
+        if ( ! empty( $missing_slugs ) ) {
+            $terms = get_terms( array( 'taxonomy' => 'product_tag', 'hide_empty' => false, 'fields' => 'all', 'slug' => $missing_slugs ) );
+            if ( ! is_wp_error( $terms ) ) {
+                foreach ( $missing_slugs as $slug ) self::$tag_term_ids['loaded'][ $slug ] = true;
+                foreach ( $terms as $term ) {
+                    self::$tag_term_ids['name'][ (string) $term->name ] = (int) $term->term_id;
+                    self::$tag_term_ids['slug'][ (string) $term->slug ] = (int) $term->term_id;
+                }
+            }
+        }
+        $ids = array();
+        foreach ( $labels as $label ) {
+            $term_id = self::$tag_term_ids['name'][ $label ] ?? ( self::$tag_term_ids['slug'][ sanitize_title( $label ) ] ?? 0 );
+            if ( $term_id ) $ids[] = (int) $term_id;
+        }
+        return array_values( array_unique( $ids ) );
+    }
+
     private static function option_matches_value( $option, $value ) {
         $value = (string) $value;
         if ( $value === '' ) return false;
@@ -626,6 +808,7 @@ class MG_Gift_Finder {
             'label'               => sanitize_text_field( $option['label'] ?? '' ),
             'category_id'         => (int) ( $category_ids[0] ?? 0 ),
             'category_ids'        => $category_ids,
+            'tag_labels'          => self::get_option_tag_labels( $option ),
             'parent_category_ids' => array_values( array_filter( array_map( 'intval', (array) ( $option['parent_category_ids'] ?? array() ) ) ) ),
             'keywords'            => self::get_option_keywords( $option ),
             'priority_keywords'   => self::get_explicit_keywords( $option ),
@@ -667,7 +850,7 @@ class MG_Gift_Finder {
         $scoring_choices = $choices;
         foreach ( $term_ids as $term_id ) {
             $already_selected = array_filter( $scoring_choices, function( $choice ) use ( $term_id ) { return in_array( $term_id, array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ), true ); } );
-            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'keywords' => array(), 'priority_keywords' => array(), 'keyword_priority' => false );
+            if ( empty( $already_selected ) ) $scoring_choices[] = array( 'question' => 'start', 'label' => '', 'category_id' => $term_id, 'category_ids' => array( $term_id ), 'tag_labels' => array(), 'keywords' => array(), 'priority_keywords' => array(), 'keyword_priority' => false );
         }
         return $scoring_choices;
     }
@@ -683,9 +866,11 @@ class MG_Gift_Finder {
      * @return array<int,array{product_id:int,score:int,tier:string}>
      */
     private static function get_ranked_results( array $scoring_choices, $hard_ids = null ) {
+        $tag_mode = self::is_tag_mode_enabled();
         $signature = array(
             'v'   => self::cache_version(),
             'oos' => get_option( 'woocommerce_hide_out_of_stock_items' ),
+            'tag_mode' => $tag_mode ? 1 : 0,
             // A kemény facet találatköre a kulcs része: ugyanaz a
             // válaszkombináció más lazítási szinten más listát ad.
             'facet' => is_array( $hard_ids ) ? md5( implode( ',', $hard_ids ) ) : '',
@@ -695,7 +880,9 @@ class MG_Gift_Finder {
             sort( $categories );
             $keywords = self::get_option_keywords( $choice );
             sort( $keywords );
-            $signature[] = array( $choice['question'] ?? '', $categories, $keywords );
+            $tag_labels = $tag_mode ? self::get_option_tag_labels( $choice ) : array();
+            sort( $tag_labels );
+            $signature[] = array( $choice['question'] ?? '', $categories, $tag_labels, $keywords );
         }
         $key = 'mg_gift_rank_' . md5( (string) wp_json_encode( $signature ) );
 
@@ -714,6 +901,7 @@ class MG_Gift_Finder {
      * @param int[]|null $hard_ids        A kemény (metszetes) találatok, vagy null a régi, unió szerinti gyűjtéshez.
      */
     private static function compute_ranked_results( array $scoring_choices, $hard_ids = null ) {
+        $tag_mode = self::is_tag_mode_enabled();
         if ( is_array( $hard_ids ) ) {
             $pool = self::build_candidate_pool( $scoring_choices, $hard_ids );
             return self::rank_candidates( $pool['candidates'], $scoring_choices, $pool['hard'] );
@@ -743,6 +931,10 @@ class MG_Gift_Finder {
             $choice_filter = array( 'relation' => 'OR' );
             $category_ids = array_values( array_filter( array_map( 'intval', (array) ( $choice['category_ids'] ?? array() ) ) ) );
             if ( ! empty( $category_ids ) ) $choice_filter[] = array( 'taxonomy' => 'product_cat', 'field' => 'term_id', 'terms' => $category_ids, 'operator' => 'IN', 'include_children' => true );
+            if ( $tag_mode ) {
+                $tag_ids = self::get_tag_term_ids( $choice['tag_labels'] ?? array() );
+                if ( ! empty( $tag_ids ) ) $choice_filter[] = array( 'taxonomy' => 'product_tag', 'field' => 'term_id', 'terms' => $tag_ids, 'operator' => 'IN' );
+            }
             if ( count( $choice_filter ) === 1 ) continue;
             $query_tax = $tax_query;
             $query_tax[] = $choice_filter;
@@ -827,6 +1019,7 @@ class MG_Gift_Finder {
 
     /** A jelöltek pontozása és sorba rendezése. */
     private static function rank_candidates( array $candidate_ids, array $scoring_choices, $hard_ids = null ) {
+        $tag_mode = self::is_tag_mode_enabled();
         // A jelölteket `fields => 'ids'` adja vissza, ami nem tölti fel a post
         // cache-t – enélkül a pontozó ciklus `get_the_title()` hívása
         // termékenként külön lekérdezést indítana.
@@ -840,7 +1033,14 @@ class MG_Gift_Finder {
             if ( ! is_wp_error( $category_terms ) ) foreach ( $category_terms as $term ) $product_categories[ (int) $term->object_id ][] = (int) $term->term_id;
         }
 
+        $product_tags = array_fill_keys( $candidate_ids, array() );
+        if ( $tag_mode && ! empty( $candidate_ids ) ) {
+            $tag_terms = wp_get_object_terms( $candidate_ids, 'product_tag', array( 'fields' => 'all_with_object_id' ) );
+            if ( ! is_wp_error( $tag_terms ) ) foreach ( $tag_terms as $term ) $product_tags[ (int) $term->object_id ][] = (int) $term->term_id;
+        }
+
         $choice_families = array();
+        $choice_tag_ids = array();
         $choice_keywords = array();
         $choice_priority_keywords = array();
         foreach ( $scoring_choices as $index => $choice ) {
@@ -852,18 +1052,23 @@ class MG_Gift_Finder {
                 $choice_families[ $index ] = array_merge( $choice_families[ $index ], array( $category_id ), is_wp_error( $children ) ? array() : array_map( 'intval', $children ) );
             }
             $choice_families[ $index ] = array_values( array_unique( $choice_families[ $index ] ) );
+            $choice_tag_ids[ $index ] = $tag_mode ? self::get_tag_term_ids( $choice['tag_labels'] ?? array() ) : array();
         }
 
         $ranked = array();
         foreach ( $candidate_ids as $product_id ) {
             $match_count = 0;
+            $weighted_score = 0;
+            $tag_score = 0;
             $tie_score = 0;
             $name_score = 0;
+            $tag_matches = array();
             $category_matches = array();
             $keyword_matches = array();
             $priority_keyword_matches = array();
             $normalized_title = mb_strtolower( remove_accents( get_the_title( $product_id ) ) );
             foreach ( $scoring_choices as $index => $choice ) {
+                $tag_match = $tag_mode && ! empty( $choice_tag_ids[ $index ] ) && (bool) array_intersect( $choice_tag_ids[ $index ], $product_tags[ $product_id ] ?? array() );
                 $category_match = ! empty( $choice_families[ $index ] ) && (bool) array_intersect( $choice_families[ $index ], $product_categories[ $product_id ] ?? array() );
                 $keyword_match_count = 0;
                 foreach ( $choice_keywords[ $index ] as $keyword ) {
@@ -873,11 +1078,20 @@ class MG_Gift_Finder {
                         break;
                     }
                 }
-                if ( $category_match || $keyword_match_count > 0 ) {
+                if ( $tag_match || $category_match || $keyword_match_count > 0 ) {
                     $match_count++;
                     $tie_score += 1 << min( $index, 20 );
+                    if ( $tag_match ) {
+                        $weighted_score += self::TAG_MATCH_WEIGHT;
+                        $tag_score++;
+                    } elseif ( $category_match ) {
+                        $weighted_score += self::CATEGORY_MATCH_WEIGHT;
+                    } else {
+                        $weighted_score += self::KEYWORD_MATCH_WEIGHT;
+                    }
                 }
                 if ( $keyword_match_count > 0 ) $name_score += $keyword_match_count;
+                $tag_matches[ $index ] = $tag_match;
                 $category_matches[ $index ] = $category_match;
                 $keyword_matches[ $index ] = $keyword_match_count > 0;
                 $priority_keyword_matches[ $index ] = false;
@@ -892,7 +1106,10 @@ class MG_Gift_Finder {
             $ranked[] = array(
                 'product_id'               => $product_id,
                 'score'                    => $match_count,
+                'weighted_score'           => $weighted_score,
+                'tag_score'                => $tag_score,
                 'name_score'               => $name_score,
+                'tag_matches'              => $tag_matches,
                 'tie'                      => $tie_score,
                 'category_matches'         => $category_matches,
                 'keyword_matches'          => $keyword_matches,
@@ -1272,7 +1489,7 @@ class MG_Gift_Finder {
         } else {
             $primary_index = reset( $choice_indexes );
             $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
-                return ! empty( $item['category_matches'][ $primary_index ] );
+                return ! empty( $item['tag_matches'][ $primary_index ] ) || ! empty( $item['category_matches'][ $primary_index ] );
             } ) );
             if ( empty( $primary ) ) {
                 $primary = array_values( array_filter( $all_items, function( $item ) use ( $primary_index ) {
@@ -1288,19 +1505,25 @@ class MG_Gift_Finder {
         $buckets = array();
         foreach ( $bucket_indexes as $choice_index ) {
             $keyword_first = ! empty( $choices[ $choice_index ]['keyword_priority'] );
+            $tag_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids ) {
+                return empty( $primary_ids[ (int) $item['product_id'] ] ) && ! empty( $item['tag_matches'][ $choice_index ] );
+            } ) );
             $category_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids, $keyword_first ) {
                 return empty( $primary_ids[ (int) $item['product_id'] ] )
+                    && empty( $item['tag_matches'][ $choice_index ] )
                     && ! empty( $item['category_matches'][ $choice_index ] )
                     && ( ! $keyword_first || empty( $item['priority_keyword_matches'][ $choice_index ] ) );
             } ) );
             $keyword_bucket = array_values( array_filter( $all_items, function( $item ) use ( $choice_index, $primary_ids, $keyword_first ) {
                 return empty( $primary_ids[ (int) $item['product_id'] ] )
+                    && empty( $item['tag_matches'][ $choice_index ] )
                     && ( $keyword_first ? ! empty( $item['priority_keyword_matches'][ $choice_index ] ) : ! empty( $item['keyword_matches'][ $choice_index ] ) )
                     && ( $keyword_first || empty( $item['category_matches'][ $choice_index ] ) );
             } ) );
+            self::sort_ranked_items( $tag_bucket );
             self::sort_ranked_items( $category_bucket );
             self::sort_ranked_items( $keyword_bucket );
-            $bucket = $keyword_first ? array_merge( $keyword_bucket, $category_bucket ) : array_merge( $category_bucket, $keyword_bucket );
+            $bucket = $keyword_first ? array_merge( $tag_bucket, $keyword_bucket, $category_bucket ) : array_merge( $tag_bucket, $category_bucket, $keyword_bucket );
             if ( ! empty( $bucket ) ) $buckets[] = $bucket;
         }
 
@@ -1349,6 +1572,10 @@ class MG_Gift_Finder {
     private static function sort_ranked_items( &$items ) {
         usort( $items, function( $a, $b ) {
             if ( $a['score'] !== $b['score'] ) return $b['score'] <=> $a['score'];
+            if ( self::is_tag_mode_enabled() ) {
+                if ( ( $a['weighted_score'] ?? 0 ) !== ( $b['weighted_score'] ?? 0 ) ) return ( $b['weighted_score'] ?? 0 ) <=> ( $a['weighted_score'] ?? 0 );
+                if ( ( $a['tag_score'] ?? 0 ) !== ( $b['tag_score'] ?? 0 ) ) return ( $b['tag_score'] ?? 0 ) <=> ( $a['tag_score'] ?? 0 );
+            }
             if ( $a['name_score'] !== $b['name_score'] ) return $b['name_score'] <=> $a['name_score'];
             if ( $a['tie'] !== $b['tie'] ) return $b['tie'] <=> $a['tie'];
             return (int) get_post_meta( $b['product_id'], 'total_sales', true ) <=> (int) get_post_meta( $a['product_id'], 'total_sales', true );
