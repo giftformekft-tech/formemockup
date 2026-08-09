@@ -16,19 +16,26 @@
     var CONCURRENCY = 3;
     var queue = [], active = 0, done = 0, total = 0;
 
+    function createBulkBatchId() {
+      var now = new Date();
+      function pad(value) { return ('0' + value).slice(-2); }
+      var stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+      return 'bulk-' + stamp + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
     function startBulk(files, keys){
       $('#mg-bulk-status').addClass('is-visible').show();
       total = files.length;
       $('#mg-bulk-total').text(total);
       queue = Array.from(files);
-      pump(keys);
+      pump(keys, createBulkBatchId());
     }
 
-    function pump(keys){
+    function pump(keys, batchId){
       while (active < CONCURRENCY && queue.length){
         var file = queue.shift();
         active++;
-        processOne(file, keys).always(function(){
+        processOne(file, keys, batchId).always(function(){
           active--;
           done++;
           var percent = Math.round(done/total*100);
@@ -38,17 +45,18 @@
           if (done >= total){
             log('Kész.');
           } else {
-            pump(keys);
+            pump(keys, batchId);
           }
         });
       }
     }
 
-    function processOne(file, keys){
+    function processOne(file, keys, batchId){
       var fd = new FormData();
       fd.append('action','mg_bulk_process_one');
       fd.append('nonce', MG_AJAX.nonce);
       fd.append('parent_name', file.name.replace(/\.[^.]+$/, ''));
+      fd.append('batch_id', batchId || '');
       keys.forEach(function(k){ fd.append('product_keys[]', k); });
       fd.append('design', file, file.name);
       return $.ajax({ url: MG_AJAX.ajax_url, method: 'POST', data: fd, processData: false, contentType: false })

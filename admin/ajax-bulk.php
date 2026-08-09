@@ -253,6 +253,9 @@ add_action('wp_ajax_mg_bulk_process', function(){
 
         $parent_id = intval($_POST['parent_id'] ?? 0);
         $parent_name = sanitize_text_field($_POST['product_name'] ?? pathinfo($design_path, PATHINFO_FILENAME));
+        $batch_id = class_exists('MG_Bulk_Batch')
+            ? MG_Bulk_Batch::sanitize_batch_id($_POST['batch_id'] ?? '')
+            : '';
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
@@ -359,6 +362,9 @@ add_action('wp_ajax_mg_bulk_process', function(){
             if ($guard_key !== '') {
                 set_transient($guard_key, array('product_id' => $parent_id), DAY_IN_SECONDS);
             }
+            if ($batch_id !== '' && class_exists('MG_Bulk_Batch')) {
+                MG_Bulk_Batch::register_product($parent_id, $batch_id);
+            }
             wp_send_json_success(array('product_id'=>$parent_id));
         } else {
             // Pass the pre-created ID to the creator
@@ -384,6 +390,9 @@ add_action('wp_ajax_mg_bulk_process', function(){
             }
             if ($guard_key !== '') {
                 set_transient($guard_key, array('product_id' => $pid), DAY_IN_SECONDS);
+            }
+            if ($batch_id !== '' && class_exists('MG_Bulk_Batch')) {
+                MG_Bulk_Batch::register_product($pid, $batch_id);
             }
             wp_send_json_success(array('product_id'=>$pid));
         }
@@ -427,6 +436,9 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
 
         $parent_id = intval($_POST['parent_id'] ?? 0);
         $parent_name = sanitize_text_field($_POST['product_name'] ?? pathinfo($design_path, PATHINFO_FILENAME));
+        $batch_id = class_exists('MG_Bulk_Batch')
+            ? MG_Bulk_Batch::sanitize_batch_id($_POST['batch_id'] ?? '')
+            : '';
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
         $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
@@ -474,6 +486,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             'product_keys' => $keys,
             'parent_id' => $parent_id,
             'parent_name' => $parent_name,
+            'batch_id' => $batch_id,
             'categories' => array('main' => $main_cat, 'subs' => $sub_cats),
             'defaults' => $defaults,
             'tags' => $tags,

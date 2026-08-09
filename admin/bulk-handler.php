@@ -77,6 +77,9 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     $design_path = $uploaded['file'];
 
     $parent_name = sanitize_text_field($_POST['parent_name'] ?? basename($design_path));
+    $batch_id = class_exists('MG_Bulk_Batch')
+        ? MG_Bulk_Batch::sanitize_batch_id($_POST['batch_id'] ?? '')
+        : '';
     $keys = isset($_POST['product_keys']) ? (array) $_POST['product_keys'] : array();
     $keys = array_map('sanitize_text_field', $keys);
     if (empty($keys)) wp_send_json_error(array('message'=>'Nincs kiválasztott terméktípus.'), 400);
@@ -147,6 +150,10 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         MG_Custom_Fields_Manager::set_custom_product($product_id, $is_custom_product);
         if ($is_custom_product && $preset_id !== '') {
             MG_Custom_Fields_Manager::apply_preset_to_product($product_id, $preset_id);
+        }
+
+        if ($batch_id !== '' && class_exists('MG_Bulk_Batch')) {
+            MG_Bulk_Batch::register_product($product_id, $batch_id);
         }
 
         wp_send_json_success(array('product_id'=>$product_id, 'name'=>$parent_name));

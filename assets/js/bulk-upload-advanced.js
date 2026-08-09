@@ -4,6 +4,12 @@
   var MG_AJAX_MAX_RETRIES = 3;
   var MG_AJAX_RETRY_DELAY = 1000; // 1 second base delay
   var MG_AJAX_TIMEOUT = 120000; // 120 seconds
+  function createBulkBatchId() {
+    var now = new Date();
+    function pad(value) { return ('0' + value).slice(-2); }
+    var stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    return 'bulk-' + stamp + '-' + Math.random().toString(36).slice(2, 8);
+  }
   function basename(name) { return (name || '').replace(/\.[^.]+$/, ''); }
   function normalizeLabel(value) { return (value || '').toString().trim().toLowerCase(); }
   function normalizeDuplicateName(value) {
@@ -1080,7 +1086,7 @@
     return deferred.promise();
   }
 
-  function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot) {
+  function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot, batchId) {
     var rows = $rowsCollection.toArray();
     var total = rows.length;
     var active = 0;
@@ -1217,6 +1223,7 @@
       form.append('design_file', file);
       keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
+      form.append('batch_id', batchId || '');
       form.append('main_cat', $mainSel.val() || '0');
       collectSubValues($subsSel).forEach(function (id) { form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));
@@ -1285,10 +1292,11 @@
     if (!$rowsCollection.length) { alert('Nincs feldolgozható sor.'); return; }
 
     var defaultsSnapshot = $.extend({}, window.MG_BULK_ADV.activeDefaults || {});
+    var batchId = createBulkBatchId();
 
     mgDedupeTagInputs();
     if (getBulkMode() === 'queue') {
-      startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot);
+      startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot, batchId);
       return;
     }
 
@@ -1393,6 +1401,7 @@
       form.append('design_file', file);
       keys.forEach(function (k) { form.append('product_keys[]', k); });
       form.append('product_name', $name.val().trim());
+      form.append('batch_id', batchId);
       form.append('main_cat', $mainSel.val() || '0');
       collectSubValues($subsSel).forEach(function (id) { form.append('sub_cats[]', id); });
       form.append('parent_id', String(parentId));

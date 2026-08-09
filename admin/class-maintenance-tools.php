@@ -21,6 +21,149 @@ add_action('admin_menu', function() {
     );
 }, 105);
 
+function mg_name_rename_normalize($value) {
+    $value = wp_strip_all_tags((string) $value);
+    if (function_exists('remove_accents')) {
+        $value = remove_accents($value);
+    }
+    $value = function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
+    $value = preg_replace('/\s+/u', ' ', trim($value));
+    return is_string($value) ? $value : '';
+}
+
+function mg_name_rename_category_names($product_id) {
+    $result = array('main' => array(), 'sub' => array());
+    $terms = get_the_terms(absint($product_id), 'product_cat');
+    if (empty($terms) || is_wp_error($terms)) {
+        return $result;
+    }
+
+    foreach ($terms as $term) {
+        $name = trim(wp_strip_all_tags($term->name));
+        if ($name === '') {
+            continue;
+        }
+        $bucket = ((int) $term->parent > 0) ? 'sub' : 'main';
+        if (!in_array($name, $result[$bucket], true)) {
+            $result[$bucket][] = $name;
+        }
+    }
+
+    foreach (array('main', 'sub') as $bucket) {
+        usort($result[$bucket], function($left, $right) {
+            return strcasecmp($left, $right);
+        });
+    }
+    return $result;
+}
+
+function mg_name_rename_build_row($product_id, $category_mode) {
+    $product_id = absint($product_id);
+    $product = function_exists('wc_get_product') ? wc_get_product($product_id) : false;
+    if (!$product || !$product->get_id()) {
+        return null;
+    }
+
+    $category_mode = in_array($category_mode, array('main', 'sub', 'both'), true) ? $category_mode : 'main';
+    $categories = mg_name_rename_category_names($product_id);
+    $labels = array();
+    if ($category_mode === 'main' || $category_mode === 'both') {
+        $labels = array_merge($labels, $categories['main']);
+    }
+    if ($category_mode === 'sub' || $category_mode === 'both') {
+        $labels = array_merge($labels, $categories['sub']);
+    }
+
+    $old_name = trim((string) $product->get_name('edit'));
+    $new_name = $old_name;
+    $normalized_name = mg_name_rename_normalize($old_name);
+    $added = array();
+    $seen_labels = array();
+
+    foreach ($labels as $label) {
+        $normalized_label = mg_name_rename_normalize($label);
+        if ($normalized_label === '' || isset($seen_labels[$normalized_label])) {
+            continue;
+        }
+        $seen_labels[$normalized_label] = true;
+        if (strpos($normalized_name, $normalized_label) !== false) {
+            continue;
+        }
+        $new_name = $new_name === '' ? $label : $new_name . ' - ' . $label;
+        $normalized_name = mg_name_rename_normalize($new_name);
+        $added[] = $label;
+    }
+
+    return array(
+        'id' => $product_id,
+        'created' => (string) get_post_field('post_date', $product_id),
+        'name' => $old_name,
+        'new_name' => $new_name,
+        'main_categories' => implode(', ', $categories['main']),
+        'sub_categories' => implode(', ', $categories['sub']),
+        'added' => implode(', ', $added),
+        'changed' => ($new_name !== $old_name),
+    );
+}
+
+function mg_name_rename_parse_datetime($value) {
+    $value = sanitize_text_field((string) $value);
+    if ($value === '') {
+        return '';
+    }
+    $timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone(date_default_timezone_get());
+    $date = DateTime::createFromFormat('Y-m-d\\TH:i', $value, $timezone);
+    return $date ? $date->format('Y-m-d H:i:s') : '';
+}
+
+function mg_name_rename_find_product_ids($selection_mode, $batch_id, $from, $to, $only_untracked, $limit = 500, &$truncated = false) {
+    $limit = max(1, min(500, absint($limit)));
+    $truncated = false;
+
+    if ($selection_mode === 'batch') {
+        if (!class_exists('MG_Bulk_Batch')) {
+            return array();
+        }
+        $ids = MG_Bulk_Batch::get_product_ids($batch_id, $limit + 1);
+        if (count($ids) > $limit) {
+            $truncated = true;
+            $ids = array_slice($ids, 0, $limit);
+        }
+        return $ids;
+    }
+
+    $args = array(
+        'post_type'      => 'product',
+        'post_status'    => array('publish', 'draft', 'pending', 'private'),
+        'posts_per_page' => $limit + 1,
+        'fields'         => 'ids',
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+        'date_query'     => array(
+            array(
+                'after'     => $from,
+                'before'    => $to,
+                'inclusive' => true,
+            ),
+        ),
+    );
+    if ($only_untracked && class_exists('MG_Bulk_Batch')) {
+        $args['meta_query'] = array(
+            array(
+                'key'     => MG_Bulk_Batch::META_BATCH_ID,
+                'compare' => 'NOT EXISTS',
+            ),
+        );
+    }
+
+    $ids = get_posts($args);
+    if (count($ids) > $limit) {
+        $truncated = true;
+        $ids = array_slice($ids, 0, $limit);
+    }
+    return array_values(array_filter(array_map('absint', (array) $ids)));
+}
+
 function mg_render_maintenance_page() {
     if (!current_user_can('manage_woocommerce')) {
         wp_die('Unauthorized');
@@ -35,6 +178,11 @@ function mg_render_maintenance_page() {
     $base_dir = $upload_dir['basedir'];
     $mockup_dir = $base_dir . '/mg_mockups';
     $renders_dir = $base_dir . '/mockup-renders';
+    $rename_timezone = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone(date_default_timezone_get());
+    $rename_to = new DateTime('now', $rename_timezone);
+    $rename_from = clone $rename_to;
+    $rename_from->modify('-1 day');
+    $rename_batches = class_exists('MG_Bulk_Batch') ? MG_Bulk_Batch::get_recent_batches(50) : array();
     
     ?>
     <div class="wrap">
@@ -111,6 +259,83 @@ function mg_render_maintenance_page() {
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- PRODUCT NAME CATEGORY TOOL -->
+        <div class="card" style="max-width: 1100px; margin-top: 20px;">
+            <h2>Terméknév kiegészítése kategóriával</h2>
+            <p>Először csak előnézet készül. A jelenlegi, batch nélküli feltöltés dátumtartománnyal is kiválasztható.</p>
+            <table class="widefat striped">
+                <tbody>
+                    <tr>
+                        <th scope="row" style="width: 220px;">Módosítandó termékek</th>
+                        <td>
+                            <select id="mg-name-rename-selection" style="min-width: 360px;">
+                                <option value="date">Dátumtartomány – régi/batch nélküli feltöltés</option>
+                                <?php foreach ($rename_batches as $rename_batch): ?>
+                                    <?php
+                                    $batch_value = isset($rename_batch['batch_id']) ? (string) $rename_batch['batch_id'] : '';
+                                    $batch_count = isset($rename_batch['product_count']) ? absint($rename_batch['product_count']) : 0;
+                                    $batch_date = isset($rename_batch['latest_date']) ? mysql2date('Y.m.d H:i', $rename_batch['latest_date']) : '';
+                                    ?>
+                                    <?php if ($batch_value !== ''): ?>
+                                        <option value="batch" data-batch-id="<?php echo esc_attr($batch_value); ?>">
+                                            <?php echo esc_html($batch_value . ' – ' . $batch_count . ' termék – ' . $batch_date); ?>
+                                        </option>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">Az új feltöltések batch azonosítóval jelennek meg itt. A régi feltöltéshez válaszd a dátumtartományt.</p>
+                            <div id="mg-name-rename-date-fields" style="margin-top: 10px;">
+                                <label style="margin-right: 18px;">Kezdete:
+                                    <input type="datetime-local" id="mg-name-rename-from" value="<?php echo esc_attr($rename_from->format('Y-m-d\\TH:i')); ?>" />
+                                </label>
+                                <label>Vége:
+                                    <input type="datetime-local" id="mg-name-rename-to" value="<?php echo esc_attr($rename_to->format('Y-m-d\\TH:i')); ?>" />
+                                </label>
+                                <label style="display: block; margin-top: 8px;">
+                                    <input type="checkbox" id="mg-name-rename-only-untracked" checked />
+                                    Csak batch nélküli termékek
+                                </label>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Kategória a névben</th>
+                        <td>
+                            <label style="margin-right: 18px;"><input type="radio" name="mg-name-category-mode" value="main" checked /> Fő kategória</label>
+                            <label style="margin-right: 18px;"><input type="radio" name="mg-name-category-mode" value="sub" /> Alkategória</label>
+                            <label><input type="radio" name="mg-name-category-mode" value="both" /> Mindkettő</label>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="margin-top: 12px;">
+                <button type="button" class="button button-primary" id="mg-name-rename-preview">Előnézet készítése</button>
+                <span id="mg-name-rename-status" style="margin-left: 10px;" aria-live="polite"></span>
+            </p>
+            <div id="mg-name-rename-preview-wrap" style="display: none;">
+                <p id="mg-name-rename-summary"></p>
+                <div style="max-height: 520px; overflow: auto; border: 1px solid #dcdcde;">
+                    <table class="widefat striped" id="mg-name-rename-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 32px;"><input type="checkbox" id="mg-name-rename-select-all" checked /></th>
+                                <th>ID</th>
+                                <th>Létrehozva</th>
+                                <th>Jelenlegi név</th>
+                                <th>Kategóriák</th>
+                                <th>Új név</th>
+                                <th>Állapot</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mg-name-rename-rows"></tbody>
+                    </table>
+                </div>
+                <p style="margin-bottom: 0;">
+                    <button type="button" class="button button-primary" id="mg-name-rename-apply" disabled>Kijelölt nevek módosítása</button>
+                </p>
+            </div>
         </div>
 
         <!-- DANGER ZONE -->
@@ -387,10 +612,327 @@ function mg_render_maintenance_page() {
                 }
             });
         }
+
+        // --- PRODUCT NAME CATEGORY TOOL ---
+        var mgNameRenameToken = '';
+
+        function mgNameRenameEscape(value) {
+            return $('<div>').text(value === null || typeof value === 'undefined' ? '' : String(value)).html();
+        }
+
+        function mgNameRenameSetStatus(message, color) {
+            $('#mg-name-rename-status').text(message || '').css('color', color || '');
+        }
+
+        function mgNameRenameToggleSelectionFields() {
+            var isBatch = $('#mg-name-rename-selection').val() === 'batch';
+            $('#mg-name-rename-date-fields').toggle(!isBatch);
+        }
+
+        function mgNameRenameSelectionData() {
+            var $select = $('#mg-name-rename-selection');
+            var isBatch = $select.val() === 'batch';
+            var $option = $select.find('option:selected');
+            return {
+                selection_mode: isBatch ? 'batch' : 'date',
+                batch_id: isBatch ? ($option.attr('data-batch-id') || '') : '',
+                from: $('#mg-name-rename-from').val() || '',
+                to: $('#mg-name-rename-to').val() || '',
+                only_untracked: $('#mg-name-rename-only-untracked').is(':checked') ? '1' : '0'
+            };
+        }
+
+        $('#mg-name-rename-selection').on('change', mgNameRenameToggleSelectionFields);
+        mgNameRenameToggleSelectionFields();
+
+        $('#mg-name-rename-preview').on('click', function() {
+            var $button = $(this);
+            var selection = mgNameRenameSelectionData();
+            var categoryMode = $('input[name="mg-name-category-mode"]:checked').val() || 'main';
+            if (selection.selection_mode === 'date' && (!selection.from || !selection.to)) {
+                mgNameRenameSetStatus('Add meg a kezdési és befejezési időt.', '#b32d2e');
+                return;
+            }
+
+            $button.prop('disabled', true);
+            $('#mg-name-rename-apply').prop('disabled', true);
+            $('#mg-name-rename-preview-wrap').hide();
+            mgNameRenameSetStatus('Előnézet készül…', '#50575e');
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'mg_name_rename_preview',
+                    nonce: '<?php echo wp_create_nonce("mg_maintenance"); ?>',
+                    category_mode: categoryMode,
+                    selection_mode: selection.selection_mode,
+                    batch_id: selection.batch_id,
+                    from: selection.from,
+                    to: selection.to,
+                    only_untracked: selection.only_untracked
+                }
+            }).done(function(response) {
+                if (!response || !response.success || !response.data) {
+                    var error = response && response.data && response.data.message ? response.data.message : 'Nem sikerült az előnézet.';
+                    mgNameRenameSetStatus(error, '#b32d2e');
+                    return;
+                }
+                mgNameRenameToken = response.data.token || '';
+                var rows = response.data.rows || [];
+                var changedCount = parseInt(response.data.changed_count, 10) || 0;
+                var html = '';
+                rows.forEach(function(row) {
+                    var categories = [];
+                    if (row.main_categories) { categories.push('Fő: ' + row.main_categories); }
+                    if (row.sub_categories) { categories.push('Al: ' + row.sub_categories); }
+                    var changed = !!row.changed;
+                    var state = changed ? 'Módosítandó' : (categories.length ? 'Már tartalmazza' : 'Nincs kategória');
+                    html += '<tr data-product-id="' + mgNameRenameEscape(row.id) + '">'
+                        + '<td><input type="checkbox" class="mg-name-rename-check" value="' + mgNameRenameEscape(row.id) + '"' + (changed ? ' checked' : ' disabled') + ' /></td>'
+                        + '<td>' + mgNameRenameEscape(row.id) + '</td>'
+                        + '<td>' + mgNameRenameEscape(row.created) + '</td>'
+                        + '<td>' + mgNameRenameEscape(row.name) + '</td>'
+                        + '<td>' + mgNameRenameEscape(categories.join(' | ')) + '</td>'
+                        + '<td>' + mgNameRenameEscape(row.new_name) + '</td>'
+                        + '<td>' + mgNameRenameEscape(state) + '</td>'
+                        + '</tr>';
+                });
+                if (!html) {
+                    html = '<tr><td colspan="7">Nincs találat a megadott feltételekkel.</td></tr>';
+                }
+                $('#mg-name-rename-rows').html(html);
+                $('#mg-name-rename-select-all').prop('checked', changedCount > 0);
+                $('#mg-name-rename-apply').prop('disabled', !mgNameRenameToken || changedCount === 0);
+                var summary = 'Találat: ' + rows.length + ' termék; módosítható: ' + changedCount + '.';
+                if (response.data.truncated) {
+                    summary += ' A lista 500 terméknél korlátozva lett, szűkítsd a dátumtartományt.';
+                }
+                $('#mg-name-rename-summary').text(summary);
+                $('#mg-name-rename-preview-wrap').show();
+                mgNameRenameSetStatus('Az előnézet elkészült.', '#008a20');
+            }).fail(function() {
+                mgNameRenameSetStatus('Szerverhiba az előnézet készítése közben.', '#b32d2e');
+            }).always(function() {
+                $button.prop('disabled', false);
+            });
+        });
+
+        $('#mg-name-rename-select-all').on('change', function() {
+            $('.mg-name-rename-check:not(:disabled)').prop('checked', $(this).is(':checked'));
+        });
+
+        $('#mg-name-rename-apply').on('click', function() {
+            var $button = $(this);
+            var ids = $('.mg-name-rename-check:checked').map(function() { return $(this).val(); }).get();
+            if (!mgNameRenameToken || !ids.length) {
+                mgNameRenameSetStatus('Jelölj ki legalább egy módosítandó terméket.', '#b32d2e');
+                return;
+            }
+            if (!confirm('Biztosan módosítod a kijelölt ' + ids.length + ' terméknevet?')) {
+                return;
+            }
+
+            $button.prop('disabled', true);
+            mgNameRenameSetStatus('Módosítás folyamatban…', '#50575e');
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'mg_name_rename_apply',
+                    nonce: '<?php echo wp_create_nonce("mg_maintenance"); ?>',
+                    preview_token: mgNameRenameToken,
+                    product_ids: ids
+                }
+            }).done(function(response) {
+                if (!response || !response.success || !response.data) {
+                    var error = response && response.data && response.data.message ? response.data.message : 'Nem sikerült a módosítás.';
+                    mgNameRenameSetStatus(error, '#b32d2e');
+                    $button.prop('disabled', false);
+                    return;
+                }
+                var updated = parseInt(response.data.updated, 10) || 0;
+                var skipped = parseInt(response.data.skipped, 10) || 0;
+                ids.forEach(function(id) {
+                    var $check = $('.mg-name-rename-check[value="' + id.replace(/"/g, '\\"') + '"]');
+                    $check.prop('checked', false).prop('disabled', true);
+                    $check.closest('tr').children().last().text('Módosítva');
+                });
+                $('#mg-name-rename-select-all').prop('checked', false);
+                mgNameRenameSetStatus('Kész: ' + updated + ' módosítva, ' + skipped + ' kihagyva.', '#008a20');
+            }).fail(function() {
+                mgNameRenameSetStatus('Szerverhiba a nevek módosítása közben.', '#b32d2e');
+                $button.prop('disabled', false);
+            });
+        });
     });
     </script>
     <?php
 }
+
+// AJAX: Preview product-name category additions.
+add_action('wp_ajax_mg_name_rename_preview', function() {
+    check_ajax_referer('mg_maintenance', 'nonce');
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Nincs jogosultság.'), 403);
+    }
+
+    $selection_mode = sanitize_key($_POST['selection_mode'] ?? 'date');
+    $category_mode = sanitize_key($_POST['category_mode'] ?? 'main');
+    if (!in_array($selection_mode, array('date', 'batch'), true)) {
+        $selection_mode = 'date';
+    }
+    if (!in_array($category_mode, array('main', 'sub', 'both'), true)) {
+        $category_mode = 'main';
+    }
+
+    $batch_id = class_exists('MG_Bulk_Batch')
+        ? MG_Bulk_Batch::sanitize_batch_id($_POST['batch_id'] ?? '')
+        : '';
+    $from = '';
+    $to = '';
+    if ($selection_mode === 'batch') {
+        if ($batch_id === '') {
+            wp_send_json_error(array('message' => 'Nincs kiválasztott batch.'), 400);
+        }
+    } else {
+        $from = mg_name_rename_parse_datetime($_POST['from'] ?? '');
+        $to = mg_name_rename_parse_datetime($_POST['to'] ?? '');
+        if ($from === '' || $to === '') {
+            wp_send_json_error(array('message' => 'Érvénytelen dátumtartomány.'), 400);
+        }
+        if (strtotime($from) > strtotime($to)) {
+            wp_send_json_error(array('message' => 'A kezdő időpont nem lehet későbbi a végénél.'), 400);
+        }
+    }
+
+    $truncated = false;
+    $ids = mg_name_rename_find_product_ids(
+        $selection_mode,
+        $batch_id,
+        $from,
+        $to,
+        !empty($_POST['only_untracked']),
+        500,
+        $truncated
+    );
+    $rows = array();
+    $changed_count = 0;
+    foreach ($ids as $product_id) {
+        $row = mg_name_rename_build_row($product_id, $category_mode);
+        if (!$row) {
+            continue;
+        }
+        if (!empty($row['changed'])) {
+            $changed_count++;
+        }
+        $rows[] = $row;
+    }
+
+    $token = wp_generate_uuid4();
+    $transient_key = 'mg_name_rename_preview_' . get_current_user_id() . '_' . sanitize_key($token);
+    set_transient($transient_key, array(
+        'product_ids' => array_values(array_map('absint', $ids)),
+        'selection_mode' => $selection_mode,
+        'batch_id' => $batch_id,
+        'category_mode' => $category_mode,
+    ), HOUR_IN_SECONDS);
+
+    wp_send_json_success(array(
+        'token' => $token,
+        'rows' => $rows,
+        'changed_count' => $changed_count,
+        'truncated' => $truncated,
+    ));
+});
+
+// AJAX: Apply the confirmed product-name category additions.
+add_action('wp_ajax_mg_name_rename_apply', function() {
+    check_ajax_referer('mg_maintenance', 'nonce');
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Nincs jogosultság.'), 403);
+    }
+
+    $token = sanitize_key($_POST['preview_token'] ?? '');
+    if ($token === '') {
+        wp_send_json_error(array('message' => 'Lejárt vagy hiányzó előnézet.'), 400);
+    }
+    $transient_key = 'mg_name_rename_preview_' . get_current_user_id() . '_' . $token;
+    $preview = get_transient($transient_key);
+    if (!is_array($preview) || empty($preview['product_ids'])) {
+        wp_send_json_error(array('message' => 'Lejárt vagy hiányzó előnézet. Készíts új előnézetet.'), 400);
+    }
+
+    $allowed_ids = array_values(array_filter(array_map('absint', (array) $preview['product_ids'])));
+    $requested_ids = array_values(array_filter(array_map('absint', (array) ($_POST['product_ids'] ?? array()))));
+    $selected_ids = array_values(array_intersect($allowed_ids, $requested_ids));
+    if (empty($selected_ids)) {
+        wp_send_json_error(array('message' => 'Nincs kijelölt módosítandó termék.'), 400);
+    }
+
+    $category_mode = isset($preview['category_mode']) ? sanitize_key($preview['category_mode']) : 'main';
+    if (!in_array($category_mode, array('main', 'sub', 'both'), true)) {
+        $category_mode = 'main';
+    }
+    $batch_id = isset($preview['batch_id']) && class_exists('MG_Bulk_Batch')
+        ? MG_Bulk_Batch::sanitize_batch_id($preview['batch_id'])
+        : '';
+
+    $updated = 0;
+    $skipped = 0;
+    $errors = array();
+    foreach ($selected_ids as $product_id) {
+        if ($batch_id !== '' && class_exists('MG_Bulk_Batch')) {
+            $current_batch = MG_Bulk_Batch::sanitize_batch_id(get_post_meta($product_id, MG_Bulk_Batch::META_BATCH_ID, true));
+            if ($current_batch !== $batch_id) {
+                $skipped++;
+                continue;
+            }
+        }
+
+        $row = mg_name_rename_build_row($product_id, $category_mode);
+        if (!$row || empty($row['changed'])) {
+            $skipped++;
+            continue;
+        }
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            $skipped++;
+            continue;
+        }
+
+        $old_slug = (string) get_post_field('post_name', $product_id);
+        try {
+            $product->set_name($row['new_name']);
+            $saved_id = $product->save();
+            if (!$saved_id) {
+                $errors[] = $product_id;
+                continue;
+            }
+            // Keep existing URLs stable when WooCommerce updates the title.
+            if ($old_slug !== '' && get_post_field('post_name', $product_id) !== $old_slug) {
+                wp_update_post(array('ID' => $product_id, 'post_name' => $old_slug));
+            }
+            update_post_meta($product_id, '_mg_name_category_update', array(
+                'updated_at' => current_time('mysql'),
+                'category_mode' => $category_mode,
+                'added' => $row['added'],
+            ));
+            $updated++;
+        } catch (Throwable $e) {
+            $errors[] = $product_id;
+        }
+    }
+
+    delete_transient($transient_key);
+    wp_send_json_success(array(
+        'updated' => $updated,
+        'skipped' => $skipped,
+        'errors' => $errors,
+    ));
+});
 
 // AJAX: Analyze Storage
 add_action('wp_ajax_mg_analyze_storage', function() {

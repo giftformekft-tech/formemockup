@@ -455,6 +455,9 @@ class MG_Bulk_Queue {
             );
             $context_trigger = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
             $sample_seo = isset($payload['sample_seo']) ? (string) $payload['sample_seo'] : '';
+            $batch_id = class_exists('MG_Bulk_Batch')
+                ? MG_Bulk_Batch::sanitize_batch_id($payload['batch_id'] ?? '')
+                : '';
 
             $creator = new MG_Product_Creator();
             $result_product_id = 0;
@@ -644,6 +647,10 @@ class MG_Bulk_Queue {
                 }
             } elseif ($result_product_id > 0) {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, false);
+            }
+
+            if ($result_product_id > 0 && $batch_id !== '' && class_exists('MG_Bulk_Batch')) {
+                MG_Bulk_Batch::register_product($result_product_id, $batch_id);
             }
 
             if (!self::owns_job($job_id, $worker_id)) {
@@ -891,6 +898,9 @@ class MG_Bulk_Queue {
         $clean['product_keys'] = array_values(array_filter(array_unique(array_map('sanitize_text_field', isset($payload['product_keys']) ? (array)$payload['product_keys'] : array()))));
         $clean['parent_id'] = isset($payload['parent_id']) ? intval($payload['parent_id']) : 0;
         $clean['parent_name'] = isset($payload['parent_name']) ? sanitize_text_field($payload['parent_name']) : '';
+        $clean['batch_id'] = class_exists('MG_Bulk_Batch')
+            ? MG_Bulk_Batch::sanitize_batch_id($payload['batch_id'] ?? '')
+            : '';
         $cats = isset($payload['categories']) && is_array($payload['categories']) ? $payload['categories'] : array();
         $subs = isset($cats['subs']) ? array_map('intval', (array)$cats['subs']) : array();
         $subs = array_values(array_filter($subs, function($v){ return $v > 0; }));
