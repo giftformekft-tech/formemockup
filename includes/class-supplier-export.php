@@ -6,6 +6,9 @@ class MG_Supplier_Export {
     /** Rejtett admin oldal, ahol a levonás előtti előnézet megjelenik. */
     const PREVIEW_SLUG = 'mg-nagyker-preview';
 
+    /** A rendeléslistáról indítható export jogosultsága. */
+    const EXPORT_CAPABILITY = 'edit_shop_orders';
+
     /** Az előnézetre átadott rendeléslista transient előtagja. */
     const PREVIEW_TRANSIENT = 'mg_nagyker_preview_';
 
@@ -408,7 +411,7 @@ class MG_Supplier_Export {
             'mockup-generator',
             __('Nagyker rendelés előnézet', 'mockup-generator'),
             __('Nagyker rendelés előnézet', 'mockup-generator'),
-            'manage_woocommerce',
+            self::EXPORT_CAPABILITY,
             self::PREVIEW_SLUG,
             array(self::class, 'render_preview_page')
         );
@@ -420,7 +423,7 @@ class MG_Supplier_Export {
     }
 
     public static function render_preview_page() {
-        if (!current_user_can('manage_woocommerce')) {
+        if (!current_user_can(self::EXPORT_CAPABILITY)) {
             wp_die(esc_html__('Nincs jogosultságod a nagyker exporthoz.', 'mockup-generator'));
         }
 
@@ -559,7 +562,7 @@ class MG_Supplier_Export {
     }
 
     public static function handle_preview_confirm() {
-        if (!current_user_can('manage_woocommerce')) {
+        if (!current_user_can(self::EXPORT_CAPABILITY)) {
             wp_die(esc_html__('Nincs jogosultságod a nagyker exporthoz.', 'mockup-generator'));
         }
 
