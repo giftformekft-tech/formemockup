@@ -1,7 +1,7 @@
 
 (function ($) {
   // AJAX retry configuration
-  var MG_AJAX_MAX_RETRIES = 3;
+  var MG_AJAX_MAX_RETRIES = 0; // 0 = no retry limit
   var MG_AJAX_RETRY_DELAY = 1000; // 1 second base delay
   var MG_AJAX_TIMEOUT = 120000; // 120 seconds
   function createBulkBatchId() {
@@ -1049,15 +1049,27 @@
         deferred.resolve(data, textStatus, jqXHR);
       })
       .fail(function (xhr, status, error) {
-        if (retryCount < maxRetries) {
-          var delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff: 1s, 2s, 4s
-          var attemptMsg = 'Újrapróbálkozás ' + (retryCount + 1) + '/' + maxRetries + ' (' + (delay / 1000) + 's)...';
+        var statusCode = xhr && typeof xhr.status === 'number' ? xhr.status : 0;
+        var retryable = status === 'timeout'
+          || statusCode === 0
+          || statusCode === 408
+          || statusCode === 429
+          || statusCode >= 500;
+
+        if (retryable && (maxRetries === 0 || retryCount < maxRetries)) {
+          // Keep retrying transient failures, but cap the backoff so a long
+          // outage neither hammers the server nor overflows the delay value.
+          var delay = Math.min(baseDelay * Math.pow(2, Math.min(retryCount, 5)), 30000);
+          var attemptNumber = retryCount + 1;
+          var attemptMsg = 'Újrapróbálkozás ' + attemptNumber
+            + (maxRetries > 0 ? '/' + maxRetries : '')
+            + ' (' + (delay / 1000) + 's)...';
 
           if ($statusElement && $statusElement.length) {
             $statusElement.text(attemptMsg);
           }
 
-          console.log('AJAX failed, retrying in ' + delay + 'ms... (attempt ' + (retryCount + 1) + '/' + maxRetries + ')', {
+          console.log('AJAX failed, retrying in ' + delay + 'ms... (attempt ' + attemptNumber + ')', {
             status: status,
             error: error,
             url: options.url
@@ -1073,8 +1085,8 @@
               });
           }, delay);
         } else {
-          // Max retries exceeded
-          console.error('AJAX failed after ' + maxRetries + ' retries', {
+          // Permanent request errors should still fail immediately.
+          console.error(retryable ? 'AJAX retry limit reached' : 'AJAX request is not retryable', {
             status: status,
             error: error,
             xhr: xhr
