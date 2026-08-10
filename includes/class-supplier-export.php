@@ -35,10 +35,11 @@ class MG_Supplier_Export {
         add_action('admin_footer', [self::class, 'inject_bulk_action_js'], 999);
 
         // Levonás előtti megerősítő képernyő (rejtett oldal + POST kezelő).
-        // A menüpontot a regisztráció után elrejtjük: az oldal csak a bulk
-        // actionből, tokennel érhető el, a sávban nincs helye.
+        // Az oldal csak a bulk actionből, tokennel érhető el. A menüpontot
+        // CSS-sel rejtjük el, mert a remove_submenu_page() az oldal közvetlen
+        // elérését is letiltja a WordPressben.
         add_action('admin_menu', [self::class, 'register_preview_page']);
-        add_action('admin_menu', [self::class, 'hide_preview_page'], 1000);
+        add_action('admin_head', [self::class, 'hide_preview_menu_item']);
         add_action('admin_post_mg_nagyker_export_confirm', [self::class, 'handle_preview_confirm']);
     }
 
@@ -420,9 +421,9 @@ class MG_Supplier_Export {
         );
     }
 
-    /** Az oldal regisztrálva marad, csak a sidebarból tűnik el. */
-    public static function hide_preview_page() {
-        remove_submenu_page('mockup-generator', self::PREVIEW_SLUG);
+    /** Az oldal regisztrálva marad, csak a sidebarban nem látszik. */
+    public static function hide_preview_menu_item() {
+        echo '<style>#toplevel_page_mockup-generator .wp-submenu a[href="admin.php?page=' . esc_attr(self::PREVIEW_SLUG) . '"]{display:none!important}</style>';
     }
 
     public static function render_preview_page() {
