@@ -57,6 +57,12 @@ class MG_Variant_Display_Manager {
     }
 }
 
+// Az éles oldalon ez a függvény létezik, de a globális katalógus szándékosan
+// nem tartalmazza a külön mg_products optionben tárolt UTT cikkszámokat.
+function mg_get_catalog_products() {
+    return MG_Variant_Display_Manager::$catalog;
+}
+
 require_once dirname(__DIR__) . '/includes/class-local-stock.php';
 
 $failures = 0;
@@ -123,6 +129,13 @@ $GLOBALS['mg_test_options'] = array(
             'utt_skus' => array('feher' => 'bb100'),
         ),
     ),
+);
+
+$lookup = MG_Local_Stock::product_lookup();
+expect_same(
+    'gi2000as',
+    $lookup['polo']['utt_skus']['feher'],
+    'Az UTT cikkszám a globális katalógus mellett is az mg_products optionből jön.'
 );
 
 $matrix = MG_Local_Stock::get_type_matrix('polo');

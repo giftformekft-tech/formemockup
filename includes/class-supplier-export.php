@@ -457,20 +457,31 @@ class MG_Supplier_Export {
         foreach ($plan['local'] as $row) {
             $local_total += $row['qty'];
         }
+        $missing_total = 0;
+        foreach ($plan['missing_sku'] as $row) {
+            $missing_total += $row['qty'];
+        }
 
         echo '<p>' . sprintf(
-            /* translators: 1: order count, 2: pieces to order, 3: pieces covered locally */
-            esc_html__('%1$d rendelés feldolgozva: %2$d db megrendelendő, %3$d db fedezve a helyi készletből.', 'mockup-generator'),
+            /* translators: 1: order count, 2: pieces to order, 3: pieces covered locally, 4: pieces without UTT SKU */
+            esc_html__('%1$d rendelés feldolgozva: %2$d db megrendelendő, %3$d db fedezve a helyi készletből, %4$d db hiányzó UTT cikkszám miatt kihagyva.', 'mockup-generator'),
             count($order_ids),
             $order_total,
-            $local_total
+            $local_total,
+            $missing_total
         ) . '</p>';
         echo '<p class="description">' . esc_html__('A helyi készlet levonása és a rendelések „Gyártás alatt” státuszba léptetése csak a megerősítés után történik meg.', 'mockup-generator') . '</p>';
 
         // Megrendelendő sorok
         echo '<h2>' . esc_html__('Nagyker rendelés (CSV tartalma)', 'mockup-generator') . '</h2>';
         if (empty($plan['lines'])) {
-            echo '<div class="notice notice-success inline"><p>' . esc_html__('Nincs megrendelendő tétel – mindent fedez a helyi készlet.', 'mockup-generator') . '</p></div>';
+            if (!empty($plan['missing_sku'])) {
+                echo '<div class="notice notice-warning inline"><p>' . esc_html__('Nincs CSV-be írható tétel – a megrendelendő variánsokhoz hiányzik az UTT cikkszám.', 'mockup-generator') . '</p></div>';
+            } elseif (!empty($plan['local'])) {
+                echo '<div class="notice notice-success inline"><p>' . esc_html__('Nincs megrendelendő tétel – mindent fedez a helyi készlet.', 'mockup-generator') . '</p></div>';
+            } else {
+                echo '<div class="notice notice-warning inline"><p>' . esc_html__('Nincs exportálható tétel a kiválasztott rendelésekben.', 'mockup-generator') . '</p></div>';
+            }
         } else {
             echo '<table class="widefat striped"><thead><tr>';
             echo '<th>' . esc_html__('Cikkszám', 'mockup-generator') . '</th>';
@@ -515,7 +526,7 @@ class MG_Supplier_Export {
         // Figyelmeztetések
         if (!empty($plan['missing_sku'])) {
             echo '<h2>' . esc_html__('Nem rendelhető (hiányzó UTT cikkszám)', 'mockup-generator') . '</h2>';
-            echo '<div class="notice notice-warning inline"><p>' . esc_html__('Ezekhez a variánsokhoz nincs beállítva nagyker cikkszám, ezért nem kerülnek a CSV-be. A helyi készletet viszont fogyasztják, mert fizikailag elmennek a polcról.', 'mockup-generator') . '</p></div>';
+            echo '<div class="notice notice-warning inline"><p>' . esc_html__('Ezekhez a variánsokhoz nincs beállítva nagyker cikkszám, ezért nem kerülnek a CSV-be. Ha valamelyikből van helyi készlet, a megerősítéskor csak az abból fedezett darabok kerülnek levonásra.', 'mockup-generator') . '</p></div>';
             echo '<table class="widefat striped"><thead><tr>';
             echo '<th>' . esc_html__('Terméktípus', 'mockup-generator') . '</th>';
             echo '<th>' . esc_html__('Szín', 'mockup-generator') . '</th>';

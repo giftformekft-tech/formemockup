@@ -213,9 +213,10 @@ class MG_Local_Stock {
         if ($cache !== null) {
             return $cache;
         }
-        $products = function_exists('mg_get_catalog_products')
-            ? mg_get_catalog_products()
-            : get_option('mg_products', array());
+        // Az UTT cikkszámok nem részei a globális katalógusnak: ezeket a
+        // terméktípus-szerkesztő továbbra is az mg_products optionbe menti.
+        // A globális katalógus használata itt minden cikkszámot elveszítene.
+        $products = get_option('mg_products', array());
 
         $cache = array();
         foreach ((array) $products as $product) {
