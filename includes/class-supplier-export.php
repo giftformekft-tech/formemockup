@@ -6,6 +6,9 @@ class MG_Supplier_Export {
     /** Rejtett admin oldal, ahol a levonás előtti előnézet megjelenik. */
     const PREVIEW_SLUG = 'mg-nagyker-preview';
 
+    /** A rejtett admin oldal regisztrációjához szükséges minimális cap. */
+    const PREVIEW_PAGE_CAPABILITY = 'read';
+
     /** A rendeléslistáról indítható export jogosultsága. */
     const EXPORT_CAPABILITY = 'edit_shop_orders';
 
@@ -411,7 +414,7 @@ class MG_Supplier_Export {
             'mockup-generator',
             __('Nagyker rendelés előnézet', 'mockup-generator'),
             __('Nagyker rendelés előnézet', 'mockup-generator'),
-            self::EXPORT_CAPABILITY,
+            self::PREVIEW_PAGE_CAPABILITY,
             self::PREVIEW_SLUG,
             array(self::class, 'render_preview_page')
         );
@@ -423,7 +426,7 @@ class MG_Supplier_Export {
     }
 
     public static function render_preview_page() {
-        if (!current_user_can(self::EXPORT_CAPABILITY)) {
+        if (!self::can_export()) {
             wp_die(esc_html__('Nincs jogosultságod a nagyker exporthoz.', 'mockup-generator'));
         }
 
@@ -562,7 +565,7 @@ class MG_Supplier_Export {
     }
 
     public static function handle_preview_confirm() {
-        if (!current_user_can(self::EXPORT_CAPABILITY)) {
+        if (!self::can_export()) {
             wp_die(esc_html__('Nincs jogosultságod a nagyker exporthoz.', 'mockup-generator'));
         }
 
@@ -581,6 +584,16 @@ class MG_Supplier_Export {
 
         $redirect_to = !empty($payload['redirect_to']) ? $payload['redirect_to'] : admin_url('admin.php?page=wc-orders');
         self::run_export(array_map('absint', (array) $payload['orders']), $redirect_to);
+    }
+
+    /**
+     * Az exportot a rendeléskezelő és a WooCommerce-admin szerepkörök is
+     * használhatják; a rejtett oldal regisztrációját ettől külön kezeljük.
+     */
+    private static function can_export() {
+        return current_user_can(self::EXPORT_CAPABILITY)
+            || current_user_can('manage_woocommerce')
+            || current_user_can('manage_options');
     }
 
     public static function show_export_notices() {
