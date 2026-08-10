@@ -12,6 +12,31 @@ if (!defined('ABSPATH')) {
  */
 class MG_Order_Item_Editor {
 
+    /**
+     * Return the active catalog, falling back to the saved product settings.
+     *
+     * The file-based global catalog can legitimately be empty on installations
+     * that still keep their variant definitions in the mg_products option. The
+     * order editor must continue to support those existing virtual variants.
+     */
+    protected static function get_catalog_index() {
+        if (!class_exists('MG_Variant_Display_Manager')) {
+            return array();
+        }
+
+        $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        if (!empty($catalog)) {
+            return $catalog;
+        }
+
+        $saved_products = get_option('mg_products', array());
+        if (!is_array($saved_products) || empty($saved_products)) {
+            return array();
+        }
+
+        return MG_Variant_Display_Manager::get_catalog_index($saved_products);
+    }
+
     public static function init() {
         add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_edit_button'), 10, 3);
         add_action('admin_footer', array(__CLASS__, 'render_modal'));
@@ -233,7 +258,13 @@ class MG_Order_Item_Editor {
             wp_send_json_error(array('message' => __('A katalógus nem elérhető.', 'mgdtp')));
         }
 
-        $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        $catalog = self::get_catalog_index();
+
+        if (empty($catalog)) {
+            wp_send_json_error(array(
+                'message' => __('A terméktípus-katalógus üres. Ellenőrizd a terméktípusok beállításait.', 'mgdtp'),
+            ));
+        }
 
         $colors = array();
         $sizes  = array();
@@ -329,7 +360,7 @@ class MG_Order_Item_Editor {
             // Update the human-readable meta with the type label from the catalog.
             $new_type_label = $new_type;
             if (class_exists('MG_Variant_Display_Manager')) {
-                $catalog = MG_Variant_Display_Manager::get_catalog_index();
+                $catalog = self::get_catalog_index();
                 if (isset($catalog[$new_type]['label'])) {
                     $new_type_label = $catalog[$new_type]['label'];
                 }

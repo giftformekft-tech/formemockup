@@ -917,8 +917,10 @@ class MG_Variant_Display_Manager {
         return '';
     }
 
-    public static function get_catalog_index() {
-        if (function_exists('mg_get_catalog_products')) {
+    public static function get_catalog_index($products = null) {
+        if (is_array($products)) {
+            $all = $products;
+        } elseif (function_exists('mg_get_catalog_products')) {
             $all = mg_get_catalog_products();
         } else {
             $all = get_option('mg_products', array());
