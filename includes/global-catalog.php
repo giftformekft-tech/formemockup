@@ -277,5 +277,18 @@ function mg_apply_global_catalog_to_product($product, $catalog = null) {
 }
 
 function mg_get_catalog_products($products = null) {
-    return mg_get_global_catalog();
+    $catalog = mg_get_global_catalog();
+    if (!empty($catalog)) {
+        return $catalog;
+    }
+
+    // Plugin updates replace the plugin directory, so the generated
+    // global-attributes.php file can be missing or contain no products until
+    // the admin migration runs again. Keep the storefront operational by
+    // falling back to the product definitions stored in WordPress.
+    if ($products === null) {
+        $products = get_option('mg_products', array());
+    }
+
+    return is_array($products) ? $products : array();
 }
