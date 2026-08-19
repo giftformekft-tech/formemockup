@@ -247,6 +247,10 @@ class MG_Custom_Fields_Frontend {
         $surcharge_amount = isset($field['surcharge_amount']) ? floatval($field['surcharge_amount']) : 0.0;
         $position = isset($field['position']) ? intval($field['position']) : 0;
 
+        if ($type === 'select' && !empty($field['linked_product_variants']) && self::render_linked_product_selector($field)) {
+            return;
+        }
+
         $input_id = sanitize_html_class('mgcf_' . $id);
         $name_attr = 'mg_custom_fields[' . $id . ']';
         $required_attr = $required ? ' required' : '';
@@ -320,6 +324,73 @@ class MG_Custom_Fields_Frontend {
             echo '<p class="description">' . esc_html($description) . '</p>';
         }
         echo '</div>';
+    }
+
+    /**
+     * Render crawlable links between generated products. Before generation,
+     * or without a complete PNG mapping, the caller falls back to the legacy
+     * select input unchanged.
+     */
+    protected static function render_linked_product_selector($field) {
+        if (!class_exists('MG_Custom_Field_Product_Variants')) {
+            return false;
+        }
+        $product_id = absint(self::$current_product_id);
+        $field_id = !empty($field['id']) ? sanitize_key($field['id']) : '';
+        if ($product_id <= 0 || $field_id === '') {
+            return false;
+        }
+        $payload = MG_Custom_Field_Product_Variants::get_frontend_payload($product_id, $field_id);
+        if (empty($payload['enabled']) || empty($payload['options']) || !is_array($payload['options'])) {
+            return false;
+        }
+
+        $current_label = sanitize_text_field(get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_OPTION_LABEL, true));
+        $field_options = !empty($field['options']) && is_array($field['options']) ? $field['options'] : array();
+        if ($current_label === '' || !in_array($current_label, $field_options, true)) {
+            return false;
+        }
+
+        $label = isset($field['label']) ? $field['label'] : '';
+        $required = !empty($field['required']);
+        $description = isset($field['description']) ? $field['description'] : '';
+        $placement = isset($field['placement']) ? MG_Custom_Fields_Manager::normalize_placement($field['placement']) : 'variant_bottom';
+        $position = isset($field['position']) ? intval($field['position']) : 0;
+        $name_attr = 'mg_custom_fields[' . $field_id . ']';
+        $wrapper_classes = array('mg-custom-field', 'mg-custom-field--select', 'mg-custom-field--linked-products');
+        if ($placement !== '') {
+            $wrapper_classes[] = 'mg-custom-field--placement-' . sanitize_html_class($placement);
+        }
+
+        echo '<div class="' . esc_attr(implode(' ', $wrapper_classes)) . '" data-field-id="' . esc_attr($field_id) . '" data-mgcf-order="' . esc_attr($position) . '">';
+        echo '<span class="mg-custom-field__label">' . esc_html($label);
+        if ($required) {
+            echo ' <span class="mg-required">*</span>';
+        }
+        echo '</span>';
+        echo '<input type="hidden" name="' . esc_attr($name_attr) . '" value="' . esc_attr($current_label) . '" />';
+        echo '<nav class="mg-linked-product-options" aria-label="' . esc_attr($label) . '">';
+        foreach ($payload['options'] as $option) {
+            $target_id = !empty($option['product_id']) ? absint($option['product_id']) : 0;
+            $option_label = isset($option['label']) ? sanitize_text_field($option['label']) : '';
+            $url = isset($option['url']) ? $option['url'] : '';
+            if ($target_id <= 0 || $option_label === '' || $url === '') {
+                continue;
+            }
+            $is_current = ($target_id === $product_id);
+            $classes = 'mg-linked-product-option' . ($is_current ? ' is-current' : '');
+            if ($is_current) {
+                echo '<span class="' . esc_attr($classes) . '" aria-current="page">' . esc_html($option_label) . '</span>';
+            } else {
+                echo '<a class="' . esc_attr($classes) . '" href="' . esc_url($url) . '">' . esc_html($option_label) . '</a>';
+            }
+        }
+        echo '</nav>';
+        if ($description !== '') {
+            echo '<p class="description">' . esc_html($description) . '</p>';
+        }
+        echo '</div>';
+        return true;
     }
 
     public static function validate_fields($passed, $product_id, $quantity, $variation_id = 0, $variations = null) {

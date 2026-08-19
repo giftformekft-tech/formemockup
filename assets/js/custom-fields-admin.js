@@ -124,6 +124,58 @@
                 $('#mgcf-search-select-all').prop('checked', total === checked);
             });
 
+            // PNG-only media picker for linked custom-field products.
+            $(document).on('click', '.mgcf-png-select', function(e) {
+                e.preventDefault();
+                if (typeof wp === 'undefined' || !wp.media) {
+                    alert('A WordPress média könyvtár nem érhető el.');
+                    return;
+                }
+
+                var button = $(this);
+                var input = $(button.data('input'));
+                var preview = $(button.data('preview'));
+                var remove = button.siblings('.mgcf-png-remove');
+                var frame = wp.media({
+                    title: 'PNG minta kiválasztása',
+                    button: { text: 'PNG használata' },
+                    multiple: false,
+                    // The library query is PNG-only; the select callback also
+                    // validates the MIME/filename for defense in depth.
+                    library: { type: 'image', mime: 'image/png' }
+                });
+
+                frame.on('select', function() {
+                    var attachment = frame.state().get('selection').first().toJSON();
+                    var mime = (attachment.mime || '').toLowerCase();
+                    var filename = (attachment.filename || attachment.url || '').toLowerCase();
+                    if (mime !== 'image/png' && !/\.png(?:$|\?)/i.test(filename)) {
+                        alert('Csak PNG kép választható.');
+                        return;
+                    }
+                    var imageUrl = attachment.url || '';
+                    if (attachment.sizes && attachment.sizes.thumbnail && attachment.sizes.thumbnail.url) {
+                        imageUrl = attachment.sizes.thumbnail.url;
+                    }
+                    input.val(parseInt(attachment.id, 10) || 0);
+                    preview.replaceWith('<img id="' + preview.attr('id') + '" class="mgcf-variant-png-preview" alt="" />');
+                    preview = $(button.data('preview'));
+                    preview.attr('src', imageUrl);
+                    remove.show();
+                });
+                frame.open();
+            });
+
+            $(document).on('click', '.mgcf-png-remove', function(e) {
+                e.preventDefault();
+                var button = $(this);
+                var input = $(button.data('input'));
+                var preview = $(button.data('preview'));
+                input.val('0');
+                preview.replaceWith('<span id="' + preview.attr('id') + '" class="mgcf-no-image">—</span>');
+                button.hide();
+            });
+
             // Assign searched products
             $('#mgcf-search-assign-btn').on('click', function(e) {
                 e.preventDefault();

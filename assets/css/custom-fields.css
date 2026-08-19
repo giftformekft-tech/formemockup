@@ -819,6 +819,90 @@ body.mgcf-modal-open {
     background-color: #fffbf0 !important;
 }
 
+.mg-custom-field__label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.mg-linked-product-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mg-linked-product-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #fff;
+    color: #0f172a;
+    font-weight: 600;
+    line-height: 1.2;
+    text-decoration: none;
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.mg-linked-product-option:hover,
+.mg-linked-product-option:focus-visible {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, .15);
+    color: #1d4ed8;
+}
+
+.mg-linked-product-option.is-current {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+
+/* Linked custom-field product PNG mapping */
+.mgcf-variant-mapping-form,
+.mgcf-variant-generation-form {
+    margin-top: 18px;
+}
+
+.mgcf-variant-mapping-table th:first-child {
+    width: 28%;
+}
+
+.mgcf-variant-mapping__asset {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.mgcf-variant-mapping__preview {
+    width: 110px;
+    min-height: 70px;
+    vertical-align: middle;
+}
+
+.mgcf-variant-png-preview {
+    display: block;
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    border: 1px solid #dcdcde;
+    background: #fff;
+    padding: 3px;
+}
+
+.mgcf-variant-generation-status {
+    display: inline-block;
+    margin: 0 16px 0 0;
+    color: #50575e;
+}
+
+.mgcf-variant-group-section {
+    margin-top: 22px;
+}
+
 /* ============================================================
    Cart Confirm Popup (Frontend) – native <dialog> in top layer
    ============================================================ */

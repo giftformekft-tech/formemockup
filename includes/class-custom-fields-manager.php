@@ -684,6 +684,7 @@ class MG_Custom_Fields_Manager {
             $mockup['additional'] = isset($field['mockup']['additional']) ? sanitize_text_field($field['mockup']['additional']) : '';
         }
         $description = isset($field['description']) ? sanitize_textarea_field($field['description']) : '';
+        $linked_product_variants = ($type === 'select' && !empty($field['linked_product_variants']));
 
         return array(
             'id'              => $id,
@@ -700,6 +701,7 @@ class MG_Custom_Fields_Manager {
             'surcharge_amount'=> $surcharge_type === 'none' ? 0.0 : $surcharge_amount,
             'mockup'          => $mockup,
             'description'     => $description,
+            'linked_product_variants' => $linked_product_variants,
         );
     }
 
