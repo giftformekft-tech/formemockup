@@ -117,14 +117,22 @@ class MG_Temu_Xlsx_Writer {
      * @param array  $rows          Adatsorok: [['name','sku','sub_sku','desc','size','color','img'], ...]
      *                              A szín itt már a VÉGSŐ (angol) érték — a map_color-t a hívó futtatja.
      * @param string $out_path      A kimeneti xlsx útvonala.
+     * @param array  $options       Opcionális felülírások, pl. base_price.
      * @return array{rows:int,sheet_path:string}
      */
-    public static function generate($template_path, array $rows, $out_path) {
+    public static function generate($template_path, array $rows, $out_path, array $options = []) {
         if (empty($rows)) {
             throw new MG_Temu_Xlsx_Error('Nincs exportálható adatsor.');
         }
         if (!is_file($template_path)) {
             throw new MG_Temu_Xlsx_Error('A Temu mestersablon nem található — töltsd fel a beállításoknál.');
+        }
+        $base_price_override = null;
+        if (array_key_exists('base_price', $options) && $options['base_price'] !== null && $options['base_price'] !== '') {
+            $base_price_override = self::normalize_numeric_value($options['base_price']);
+            if ($base_price_override === null) {
+                throw new MG_Temu_Xlsx_Error('A Base Price értéke nem érvényes szám.');
+            }
         }
         if (!@copy($template_path, $out_path)) {
             throw new MG_Temu_Xlsx_Error('Nem sikerült létrehozni a kimeneti fájlt (írási jogosultság?).');
@@ -135,7 +143,7 @@ class MG_Temu_Xlsx_Writer {
         $closed = false;
         try {
             $zip = self::open_zip($out_path);
-            $tpl = self::parse_template($zip);
+            $tpl = self::parse_template($zip, $base_price_override);
 
             // Az új sheet XML-t fájlba streameljük (309 oszlop × sok sor —
             // nem tartjuk az egészet egyben a memóriában), majd az addFile()
@@ -351,7 +359,7 @@ class MG_Temu_Xlsx_Writer {
      * @param ZipArchive $zip
      * @return array
      */
-    private static function parse_template(ZipArchive $zip) {
+    private static function parse_template(ZipArchive $zip, $base_price_override = null) {
         $sheet_path = self::locate_template_sheet($zip);
         $sheet_xml = $zip->getFromName($sheet_path);
         if ($sheet_xml === false) {
@@ -365,6 +373,7 @@ class MG_Temu_Xlsx_Writer {
         }
         $key_col = [];
         $bullet_cols = []; // az összes Bullet Point oszlop, sorrendben
+        $base_price_cols = []; // Base Price oszlop(ok), sablonverziótól függetlenül
         foreach (self::parse_cells($m[0]) as $cell) {
             $text = self::cell_text($cell, $shared);
             if ($text === '') {
@@ -373,9 +382,16 @@ class MG_Temu_Xlsx_Writer {
             if ($text === self::BULLET_KEY) {
                 $bullet_cols[] = $cell['col'];
             }
+            if (self::is_base_price_key($text)) {
+                $base_price_cols[] = $cell['col'];
+            }
             if (!isset($key_col[$text])) {
                 $key_col[$text] = $cell['col'];
             }
+        }
+        $base_price_cols = array_values(array_unique($base_price_cols));
+        if ($base_price_override !== null && empty($base_price_cols)) {
+            throw new MG_Temu_Xlsx_Error('A Template lapon nem található Base Price mezőkulcs.');
         }
         $missing = [];
         $field_col = []; // adatmező -> oszlopbetű
@@ -450,6 +466,11 @@ class MG_Temu_Xlsx_Writer {
         $plan = []; // oszlopindex => cellaterv
         foreach ($by_col as $col => $cell) {
             $idx = self::col_index($col);
+            if ($base_price_override !== null && in_array($col, $base_price_cols, true)) {
+                // A Base Price numerikus cella legyen az XML-ben, ne inline szöveg.
+                $plan[$idx] = ['kind' => 'number', 'col' => $col, 'value' => $base_price_override, 's' => $cell['s']];
+                continue;
+            }
             if (isset($bullet_field[$col])) {
                 // Bullet Point: ha a sor ad értéket, az megy be, különben a
                 // mintasor értéke (mint bármely más fix oszlopnál)
@@ -479,6 +500,17 @@ class MG_Temu_Xlsx_Writer {
             } elseif ($cell['s'] !== null) {
                 // üres, de formázott cella: a stílust megőrizzük
                 $plan[$idx] = ['kind' => 'blank', 'col' => $col, 's' => $cell['s']];
+            }
+        }
+        // Ha a Base Price mezőnek nincs cellája a mintasorban, az override akkor
+        // is kerüljön be a kimeneti XML-be; a sablon stílusát ilyenkor nem tudjuk
+        // átvenni, ezért üres stílussal írjuk ki.
+        if ($base_price_override !== null) {
+            foreach ($base_price_cols as $col) {
+                $idx = self::col_index($col);
+                if (!isset($plan[$idx])) {
+                    $plan[$idx] = ['kind' => 'number', 'col' => $col, 'value' => $base_price_override, 's' => null];
+                }
             }
         }
         // változó oszlop, aminek a mintasorban nincs cellája (pl. üres leírás)
@@ -752,6 +784,12 @@ class MG_Temu_Xlsx_Writer {
                     $t_attr = ($spec['t'] !== null && $spec['t'] !== '' && $spec['t'] !== 'n') ? ' t="' . $spec['t'] . '"' : '';
                     $xml .= '<c r="' . $ref . '"' . $s_attr . $t_attr . '><v>' . $spec['v'] . '</v></c>';
                     break;
+                case 'number':
+                    // A Base Price numerikus XML-érték legyen, hogy a Temu ne
+                    // szövegként értelmezze a felülírt árat.
+                    $xml .= '<c r="' . $ref . '"' . $s_attr . '><v>'
+                        . self::xml_encode($spec['value']) . '</v></c>';
+                    break;
                 case 'blank':
                 default:
                     $xml .= '<c r="' . $ref . '"' . $s_attr . '/>';
@@ -833,6 +871,45 @@ class MG_Temu_Xlsx_Writer {
             $n = $n * 26 + (ord($letters[$i]) - 64);
         }
         return $n;
+    }
+
+    /**
+     * Numerikus exportérték normalizálása. A kimenetben csak szám maradhat,
+     * mert ezt közvetlenül a worksheet XML <v> elemébe írjuk.
+     *
+     * @param mixed $value
+     * @return string|null
+     */
+    private static function normalize_numeric_value($value) {
+        if (is_array($value) || is_object($value)) {
+            return null;
+        }
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+        $value = str_replace(["\xC2\xA0", ' '], '', $value);
+        $value = str_replace(',', '.', $value);
+        if (!preg_match('/^\d+(?:\.\d{1,4})?$/', $value)) {
+            return null;
+        }
+        $number = (float) $value;
+        if (!is_finite($number) || $number < 0) {
+            return null;
+        }
+        $normalized = rtrim(rtrim(number_format($number, 4, '.', ''), '0'), '.');
+        return $normalized === '' ? '0' : $normalized;
+    }
+
+    /**
+     * A Temu sablonok Base Price mezőkulcsa verziónként eltérő prefixet
+     * használhat (pl. t_1_Base Price), ezért nem teljes kulcs alapján keresünk.
+     *
+     * @param string $key
+     * @return bool
+     */
+    private static function is_base_price_key($key) {
+        return preg_match('/\bbase\s+price\b/i', trim((string) $key)) === 1;
     }
 
     /**

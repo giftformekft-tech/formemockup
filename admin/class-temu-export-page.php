@@ -287,6 +287,15 @@ class MG_Temu_Export_Page {
 
                     <!-- Step 2: Variant Selection -->
                     <div id="mg-temu-step-2" class="mg-temu-step" style="display:none;">
+                        <div id="mg-temu-price-settings" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:15px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                            <label for="mg-temu-base-price" style="font-weight:600;white-space:nowrap;">
+                                <?php esc_html_e('Base Price:', 'mockup-generator'); ?>
+                            </label>
+                            <input type="number" id="mg-temu-base-price" min="0" step="0.01" inputmode="decimal" placeholder="<?php esc_attr_e('sablon értéke', 'mockup-generator'); ?>" style="width:140px;">
+                            <span style="color:#666;font-size:12px;">
+                                <?php esc_html_e('Ha megadod, ez kerül minden exportált sor Base Price mezőjébe az XML-ben. Üresen hagyva a sablon értéke marad.', 'mockup-generator'); ?>
+                            </span>
+                        </div>
                          <div class="mg-temu-toolbar">
                             <button type="button" class="button" id="mg-temu-back-step"><?php esc_html_e('« Vissza a termékekhez', 'mockup-generator'); ?></button>
                             <div style="display:flex;gap:8px;">
@@ -850,6 +859,7 @@ class MG_Temu_Export_Page {
                     data: {
                         action: 'mg_temu_generate_xlsx',
                         selection: JSON.stringify(selection),
+                        base_price: $('#mg-temu-base-price').val(),
                         nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
                     },
                     success: function(response) {
@@ -1468,6 +1478,28 @@ class MG_Temu_Export_Page {
      * Ugyanazt az adatlekérdezést használja, mint a CSV export
      * (build_export_rows), csak a szín itt magyarról angolra fordul.
      */
+    private static function normalize_temu_base_price($value) {
+        $value = trim((string) $value);
+        if ($value === '') {
+            return null;
+        }
+
+        // Adminból érkezhet tizedesvesszővel vagy szóközzel formázva is.
+        $value = str_replace(["\xC2\xA0", ' '], '', $value);
+        $value = str_replace(',', '.', $value);
+        if (!preg_match('/^\d+(?:\.\d{1,4})?$/', $value)) {
+            return false;
+        }
+
+        $number = (float) $value;
+        if (!is_finite($number) || $number < 0) {
+            return false;
+        }
+
+        $normalized = rtrim(rtrim(number_format($number, 4, '.', ''), '0'), '.');
+        return $normalized === '' ? '0' : $normalized;
+    }
+
     public static function ajax_generate_xlsx() {
         check_ajax_referer('mg_temu_nonce', 'nonce');
         if (!current_user_can('manage_woocommerce')) {
@@ -1480,6 +1512,14 @@ class MG_Temu_Export_Page {
         }
         if (!is_array($selection) || empty($selection)) {
             wp_send_json_error(__('Nincs kiválasztott variáció.', 'mockup-generator'));
+        }
+
+        $base_price_raw = isset($_POST['base_price']) && !is_array($_POST['base_price'])
+            ? wp_unslash($_POST['base_price'])
+            : '';
+        $base_price = self::normalize_temu_base_price($base_price_raw);
+        if ($base_price === false) {
+            wp_send_json_error(__('A Base Price csak 0 vagy pozitív, legfeljebb 4 tizedesjegyű szám lehet.', 'mockup-generator'));
         }
 
         if (!class_exists('MG_Temu_Xlsx_Writer')) {
@@ -1559,7 +1599,9 @@ class MG_Temu_Export_Page {
             $out_path = self::get_template_dir() . '/export-' . $token . '.xlsx';
 
             try {
-                MG_Temu_Xlsx_Writer::generate($templates[$tslug], $rows, $out_path);
+                MG_Temu_Xlsx_Writer::generate($templates[$tslug], $rows, $out_path, [
+                    'base_price' => $base_price,
+                ]);
             } catch (Exception $e) {
                 // a már legenerált fájlokat eldobjuk, hogy ne legyen félkész export
                 foreach ($files as $f) {
