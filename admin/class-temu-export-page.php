@@ -11,6 +11,7 @@ class MG_Temu_Export_Page {
         add_action('wp_ajax_mg_temu_generate_export', [self::class, 'ajax_generate_export']);
         add_action('wp_ajax_mg_temu_mark_exported', [self::class, 'ajax_mark_exported']);
         add_action('wp_ajax_mg_temu_save_name_suffix', [self::class, 'ajax_save_name_suffix']);
+        add_action('wp_ajax_mg_temu_save_name_filter', [self::class, 'ajax_save_name_filter']);
         // Temu XLSX export (sebészi ZIP-módszer, lásd MG_Temu_Xlsx_Writer)
         add_action('wp_ajax_mg_temu_generate_xlsx', [self::class, 'ajax_generate_xlsx']);
         add_action('admin_post_mg_temu_download_xlsx', [self::class, 'handle_download_xlsx']);
@@ -68,6 +69,28 @@ class MG_Temu_Export_Page {
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                </div>
+
+                <div style="margin-bottom:16px;padding:10px 14px;background:#fff;border:1px solid #ddd;border-radius:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                        <strong><?php esc_html_e('Védett nevek szűrése a Temu XLSX-ben', 'mockup-generator'); ?></strong>
+                        <span style="color:#888;font-size:12px;"><?php esc_html_e('Előre feltöltött, szerkeszthető alaplista. Soronként egy név vagy kifejezés; a # karakterrel kezdődő kategóriacímek nem részei a szűrésnek. Csak a legacy Temu XLSX Termék neve mezőjéből törlődik; a Woo-termék neve, a CSV-k és a leírások változatlanok maradnak.', 'mockup-generator'); ?></span>
+                        <button type="button" class="button" id="mg-temu-save-name-filter"><?php esc_html_e('Mentés', 'mockup-generator'); ?></button>
+                        <span id="mg-temu-name-filter-status" style="font-style:italic;color:#666;font-size:12px;"></span>
+                    </div>
+                    <textarea id="mg-temu-protected-name-terms" rows="16" style="width:100%;max-width:720px;font-family:monospace;" placeholder="pl. Marvel&#10;Star Wars&#10;C++"><?php
+                        // A missing option means first use: show the editable
+                        // starter list. A saved empty string intentionally
+                        // disables all filtering and must stay empty.
+                        $protected_name_terms = get_option(MG_Temu_Name_Filter::OPTION_KEY, false);
+                        if ($protected_name_terms === false) {
+                            $protected_name_terms = MG_Temu_Name_Filter::default_terms_text();
+                        }
+                        if (is_array($protected_name_terms)) {
+                            $protected_name_terms = implode("\n", MG_Temu_Name_Filter::parse_terms($protected_name_terms));
+                        }
+                        echo esc_textarea((string) $protected_name_terms);
+                    ?></textarea>
                 </div>
 
                 <?php
@@ -440,6 +463,29 @@ class MG_Temu_Export_Page {
                 }).fail(function() {
                     $btn.prop('disabled', false).text('Mentés');
                     $('#mg-temu-suffix-status').text('Kommunikációs hiba.').css('color', '#d63638');
+                });
+            });
+
+            // --- Védett név/kifejezés lista mentése (csak legacy XLSX) ---
+            $('#mg-temu-save-name-filter').on('click', function() {
+                const val = $('#mg-temu-protected-name-terms').val();
+                const $btn = $(this).prop('disabled', true).text('Mentés...');
+                $('#mg-temu-name-filter-status').text('');
+                $.post(ajaxurl, {
+                    action: 'mg_temu_save_name_filter',
+                    value: val,
+                    nonce: '<?php echo wp_create_nonce('mg_temu_nonce'); ?>'
+                }, function(resp) {
+                    $btn.prop('disabled', false).text('Mentés');
+                    if (resp.success) {
+                        $('#mg-temu-name-filter-status').text('✓ Elmentve').css('color', '#1a7a35');
+                        setTimeout(() => $('#mg-temu-name-filter-status').text(''), 3000);
+                    } else {
+                        $('#mg-temu-name-filter-status').text('Hiba!').css('color', '#d63638');
+                    }
+                }).fail(function() {
+                    $btn.prop('disabled', false).text('Mentés');
+                    $('#mg-temu-name-filter-status').text('Kommunikációs hiba.').css('color', '#d63638');
                 });
             });
 
@@ -1562,11 +1608,27 @@ class MG_Temu_Export_Page {
         $unknown_sizes = [];
         $allowed_sizes_cache = [];
         $files = [];
+        $configured_name_terms = get_option(MG_Temu_Name_Filter::OPTION_KEY, false);
+        $protected_name_terms = $configured_name_terms === false
+            ? MG_Temu_Name_Filter::default_terms()
+            : MG_Temu_Name_Filter::parse_terms($configured_name_terms);
 
         foreach ($by_type as $tslug => $items) {
             $rows = self::build_export_rows($items);
             if (empty($rows)) {
                 continue;
+            }
+
+            // The protected-name transform belongs exclusively to this XLSX
+            // boundary. build_export_rows() is also used by the legacy CSV,
+            // so it must continue returning the original product-derived name.
+            foreach ($rows as $row_index => $row) {
+                if (isset($row['name']) && !empty($protected_name_terms)) {
+                    $rows[$row_index]['name'] = MG_Temu_Name_Filter::filter(
+                        $row['name'],
+                        $protected_name_terms
+                    );
+                }
             }
 
             // A sablon Size lenyílójának engedélyezett értékei (sablononként
@@ -1747,6 +1809,28 @@ class MG_Temu_Export_Page {
             }
             update_option('mg_temu_name_suffix_types', $types);
         }
+        wp_send_json_success();
+    }
+
+    /**
+     * Save the protected name terms used only by the legacy Temu XLSX export.
+     */
+    public static function ajax_save_name_filter() {
+        check_ajax_referer('mg_temu_nonce', 'nonce');
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(__('Nincs jogosultság.', 'mockup-generator'));
+        }
+
+        $raw = isset($_POST['value']) && !is_array($_POST['value'])
+            ? wp_unslash($_POST['value'])
+            : '';
+        // Keep # category headers and line grouping in the editable textarea;
+        // parse_terms() ignores them when the XLSX rows are filtered. Saving
+        // an empty value writes an empty string, which intentionally overrides
+        // the built-in starter list and disables filtering.
+        $raw = str_replace(["\r\n", "\r"], "\n", (string) $raw);
+        update_option(MG_Temu_Name_Filter::OPTION_KEY, trim($raw));
+
         wp_send_json_success();
     }
 

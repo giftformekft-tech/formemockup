@@ -76,6 +76,7 @@ add_action('plugins_loaded', function(){
         'includes/class-design-gallery.php',
         'includes/class-designer-button.php',
         'includes/class-temu-xlsx-writer.php',
+        'includes/class-temu-name-filter.php',
         'includes/class-allegro-exporter.php',
         'admin/class-temu-api-image-field.php',
         'includes/class-temu-api-exporter.php',
