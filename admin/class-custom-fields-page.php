@@ -160,6 +160,42 @@ class MG_Custom_Fields_Page {
                 wp_safe_redirect(self::get_variant_mapping_url($preset_id, $variant_product_id, $variant_field_id));
                 exit;
 
+            case 'import_product_variant_pngs':
+                $variant_product_id = isset($_POST['variant_product_id']) ? absint($_POST['variant_product_id']) : 0;
+                $variant_field_id = isset($_POST['field_id']) ? sanitize_key($_POST['field_id']) : '';
+                $variant_context = self::get_variant_context($preset_id, $variant_product_id, $variant_field_id);
+                if (is_wp_error($variant_context)) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_variant_ai_invalid', $variant_context->get_error_message(), 'error');
+                    break;
+                }
+                if (empty($_POST['variant_ai_enabled'])) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_variant_ai_disabled', __('Az AI/JSON mód nincs bekapcsolva.', 'mgcf'), 'error');
+                    break;
+                }
+
+                $imported = self::import_variant_ai_pngs($variant_context);
+                if (is_wp_error($imported)) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_variant_ai_failed', $imported->get_error_message(), 'error');
+                    break;
+                }
+
+                $counts = self::get_variant_mapping_counts($variant_product_id, $variant_field_id, $variant_context['field']);
+                set_transient(
+                    'mg_custom_fields_notice_' . get_current_user_id(),
+                    array(
+                        'type' => 'updated',
+                        'message' => sprintf(
+                            __('AI/JSON PNG-import kész: %1$d PNG hozzárendelve (%2$d/%3$d értékhez). A kapcsolt termékek generálása továbbra is külön művelet.', 'mgcf'),
+                            absint($imported['imported']),
+                            $counts['mapped'],
+                            $counts['total']
+                        ),
+                    ),
+                    60
+                );
+                wp_safe_redirect(self::get_variant_mapping_url($preset_id, $variant_product_id, $variant_field_id));
+                exit;
+
             case 'generate_product_variants':
                 @set_time_limit(1200);
                 @ini_set('memory_limit', '1024M');
@@ -608,6 +644,35 @@ class MG_Custom_Fields_Page {
         echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Mapping mentése', 'mgcf') . '</button></p>';
         echo '</form>';
 
+        $ai_options = array();
+        foreach (self::get_variant_options($field) as $option) {
+            $ai_options[] = array(
+                'slug' => $option['slug'],
+                'label' => $option['label'],
+            );
+        }
+        echo '<section class="mgcf-variant-ai-section">';
+        echo '<div class="mgcf-variant-ai__header">';
+        echo '<h3>' . esc_html__('AI adatok mód – PNG hozzárendelés', 'mgcf') . '</h3>';
+        echo '<p>' . esc_html__('Opcionális mód: válassz azonos nevű PNG és JSON párokat. A JSON categories.main vagy categories.sub mezője alapján történik az érték felismerése. A kiválasztás csak előnézetet készít; importálás kizárólag a külön gombbal indul.', 'mgcf') . '</p>';
+        echo '</div>';
+        echo '<form method="post" enctype="multipart/form-data" id="mgcf-variant-ai-import-form" class="mgcf-variant-ai-import-form" data-options="' . esc_attr(wp_json_encode($ai_options)) . '">';
+        wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
+        echo '<input type="hidden" name="mg_custom_fields_action" value="import_product_variant_pngs" />';
+        echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
+        echo '<input type="hidden" name="variant_product_id" value="' . esc_attr($product_id) . '" />';
+        echo '<input type="hidden" name="field_id" value="' . esc_attr($field_id) . '" />';
+        echo '<p><label><input type="checkbox" id="mgcf-variant-ai-toggle" name="variant_ai_enabled" value="1" /> ' . esc_html__('AI/JSON mód bekapcsolása', 'mgcf') . '</label></p>';
+        echo '<div id="mgcf-variant-ai-controls" class="mgcf-variant-ai__controls" style="display:none;">';
+        echo '<p><label for="mgcf-variant-ai-files"><strong>' . esc_html__('PNG és JSON fájlok', 'mgcf') . '</strong></label><br /><input type="file" id="mgcf-variant-ai-files" name="variant_ai_files[]" accept=".png,.json,image/png,application/json" multiple /></p>';
+        echo '<p class="description">' . esc_html__('Válaszd ki egyben a fájlokat. Ugyanannak a párnak ugyanaz legyen a fájlnév alapja, a kiterjesztéstől eltekintve. Példa: januar.png + januar.json.', 'mgcf') . '</p>';
+        echo '<div id="mgcf-variant-ai-status" class="mgcf-variant-ai__status" role="status" aria-live="polite">' . esc_html__('Válassz fájlokat az előnézethez.', 'mgcf') . '</div>';
+        echo '<div class="mgcf-table-wrap"><table class="widefat striped mgcf-table mgcf-variant-ai-table"><thead><tr><th>' . esc_html__('PNG', 'mgcf') . '</th><th>' . esc_html__('JSON pár', 'mgcf') . '</th><th>' . esc_html__('Felismerés', 'mgcf') . '</th><th>' . esc_html__('Állapot', 'mgcf') . '</th></tr></thead><tbody id="mgcf-variant-ai-preview"><tr class="no-items"><td colspan="4">' . esc_html__('Még nincs kiválasztott fájl.', 'mgcf') . '</td></tr></tbody></table></div>';
+        echo '<p class="submit"><button type="submit" id="mgcf-variant-ai-submit" class="button button-primary" disabled="disabled">' . esc_html__('Érvényes PNG-párok importálása', 'mgcf') . '</button></p>';
+        echo '</div>';
+        echo '</form>';
+        echo '</section>';
+
         echo '<form method="post" class="mgcf-variant-generation-form">';
         wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
         echo '<input type="hidden" name="mg_custom_fields_action" value="generate_product_variants" />';
@@ -940,6 +1005,279 @@ class MG_Custom_Fields_Page {
             return true;
         }
         return (bool) preg_match('/\.png(?:\?|$)/i', $path !== '' ? $path : $url);
+    }
+
+    /**
+     * Validate, upload and map one complete AI/JSON PNG batch.
+     *
+     * Validation deliberately happens before the first sideload. The browser
+     * preview is only a convenience; this method re-parses every JSON file and
+     * derives every target from the current field definition on the server.
+     */
+    protected static function import_variant_ai_pngs($context) {
+        $validated = self::validate_variant_ai_uploads($context['field']);
+        if (is_wp_error($validated)) {
+            return $validated;
+        }
+
+        if (!function_exists('media_handle_sideload')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+        if (!function_exists('media_handle_sideload')) {
+            return new WP_Error('mgcf_variant_ai_media_missing', __('A WordPress média-feltöltő nem érhető el.', 'mgcf'));
+        }
+
+        $created = array();
+        $uploaded_rows = array();
+        foreach ($validated['rows'] as $row) {
+            $png = $row['png'];
+            $attachment_id = media_handle_sideload(
+                array(
+                    'name' => sanitize_file_name($png['name']),
+                    'type' => 'image/png',
+                    'tmp_name' => $png['tmp_name'],
+                    'error' => UPLOAD_ERR_OK,
+                    'size' => absint($png['size']),
+                ),
+                absint($context['product_id']),
+                null,
+                array(
+                    'post_title' => $row['option']['label'],
+                    'post_excerpt' => '',
+                )
+            );
+            if (is_wp_error($attachment_id) || absint($attachment_id) <= 0) {
+                self::delete_variant_ai_attachments($created);
+                $message = is_wp_error($attachment_id)
+                    ? $attachment_id->get_error_message()
+                    : __('A PNG médiaelem létrehozása sikertelen.', 'mgcf');
+                return new WP_Error('mgcf_variant_ai_upload_failed', sprintf(__('A(z) %1$s PNG importja sikertelen: %2$s', 'mgcf'), $png['name'], $message));
+            }
+            $attachment_id = absint($attachment_id);
+            if (!self::is_png_attachment($attachment_id)) {
+                self::delete_variant_ai_attachments(array_merge($created, array($attachment_id)));
+                return new WP_Error('mgcf_variant_ai_upload_invalid', sprintf(__('A(z) %s feltöltött média nem PNG-ként került felismerésre.', 'mgcf'), $png['name']));
+            }
+            $created[] = $attachment_id;
+            $row['attachment_id'] = $attachment_id;
+            $uploaded_rows[] = $row;
+        }
+
+        $existing = class_exists('MG_Custom_Field_Product_Variants')
+            ? MG_Custom_Field_Product_Variants::get_mapping($context['product_id'], $context['field_id'])
+            : array();
+        $mapping = is_array($existing) ? $existing : array();
+        foreach (self::get_variant_options($context['field']) as $option) {
+            $slug = $option['slug'];
+            $entry = isset($mapping[$slug]) && is_array($mapping[$slug]) ? $mapping[$slug] : array();
+            $entry['slug'] = $slug;
+            $entry['label'] = $option['label'];
+            $entry['attachment_id'] = !empty($entry['attachment_id']) ? absint($entry['attachment_id']) : 0;
+            $mapping[$slug] = $entry;
+        }
+        foreach ($uploaded_rows as $row) {
+            $slug = $row['option']['slug'];
+            if (!isset($mapping[$slug]) || !is_array($mapping[$slug])) {
+                $mapping[$slug] = array('slug' => $slug, 'label' => $row['option']['label']);
+            }
+            $mapping[$slug]['slug'] = $slug;
+            $mapping[$slug]['label'] = $row['option']['label'];
+            $mapping[$slug]['attachment_id'] = absint($row['attachment_id']);
+        }
+
+        $saved = MG_Custom_Field_Product_Variants::save_mapping($context['product_id'], $context['field_id'], $mapping);
+        if (is_wp_error($saved)) {
+            self::delete_variant_ai_attachments($created);
+            return $saved;
+        }
+
+        return array('imported' => count($uploaded_rows));
+    }
+
+    protected static function delete_variant_ai_attachments($attachment_ids) {
+        foreach ((array) $attachment_ids as $attachment_id) {
+            $attachment_id = absint($attachment_id);
+            if ($attachment_id > 0 && function_exists('wp_delete_attachment')) {
+                wp_delete_attachment($attachment_id, true);
+            }
+        }
+    }
+
+    protected static function validate_variant_ai_uploads($field) {
+        $all_uploads = self::normalise_variant_uploads(isset($_FILES['variant_ai_files']) ? $_FILES['variant_ai_files'] : array());
+        $png_uploads = array();
+        $json_uploads = array();
+        foreach ($all_uploads as $upload) {
+            $extension = strtolower(pathinfo($upload['name'], PATHINFO_EXTENSION));
+            if ($extension === 'png') {
+                $png_uploads[] = $upload;
+            } elseif ($extension === 'json') {
+                $json_uploads[] = $upload;
+            } else {
+                return new WP_Error('mgcf_variant_ai_bad_extension', sprintf(__('Csak PNG és JSON fájl fogadható el: %s.', 'mgcf'), $upload['name']));
+            }
+        }
+        if (empty($png_uploads) || empty($json_uploads)) {
+            return new WP_Error('mgcf_variant_ai_missing_files', __('Válassz legalább egy PNG és a hozzá tartozó JSON fájlt.', 'mgcf'));
+        }
+
+        $png_by_base = array();
+        foreach ($png_uploads as $upload) {
+            $validation = self::validate_variant_ai_upload_record($upload, 'png');
+            if (is_wp_error($validation)) {
+                return $validation;
+            }
+            $key = self::variant_ai_basename_key($upload['name']);
+            if ($key === '') {
+                return new WP_Error('mgcf_variant_ai_bad_basename', __('Egy PNG fájlnak nincs használható neve.', 'mgcf'));
+            }
+            if (isset($png_by_base[$key])) {
+                return new WP_Error('mgcf_variant_ai_duplicate_png', sprintf(__('Több PNG ugyanahhoz a fájlnév-alaphoz tartozik: %s.', 'mgcf'), $upload['name']));
+            }
+            $png_by_base[$key] = $upload;
+        }
+
+        $json_by_base = array();
+        $json_payloads = array();
+        foreach ($json_uploads as $upload) {
+            $validation = self::validate_variant_ai_upload_record($upload, 'json');
+            if (is_wp_error($validation)) {
+                return $validation;
+            }
+            $key = self::variant_ai_basename_key($upload['name']);
+            if ($key === '') {
+                return new WP_Error('mgcf_variant_ai_bad_basename', __('Egy JSON fájlnak nincs használható neve.', 'mgcf'));
+            }
+            if (isset($json_by_base[$key])) {
+                return new WP_Error('mgcf_variant_ai_duplicate_json', sprintf(__('Több JSON ugyanahhoz a fájlnév-alaphoz tartozik: %s.', 'mgcf'), $upload['name']));
+            }
+            $raw = file_get_contents($upload['tmp_name']);
+            if (!is_string($raw) || $raw === '') {
+                return new WP_Error('mgcf_variant_ai_json_read', sprintf(__('A(z) %s JSON nem olvasható.', 'mgcf'), $upload['name']));
+            }
+            if (substr($raw, 0, 3) === "\xEF\xBB\xBF") {
+                $raw = substr($raw, 3);
+            }
+            $payload = json_decode($raw, true);
+            if (!is_array($payload) || json_last_error() !== JSON_ERROR_NONE) {
+                return new WP_Error('mgcf_variant_ai_json_invalid', sprintf(__('A(z) %s JSON hibás.', 'mgcf'), $upload['name']));
+            }
+            $json_by_base[$key] = $upload;
+            $json_payloads[$key] = $payload;
+        }
+
+        $options = self::get_variant_options($field);
+        if (empty($options)) {
+            return new WP_Error('mgcf_variant_ai_options_missing', __('A kapcsolt választómezőnek nincsenek értékei.', 'mgcf'));
+        }
+        $rows = array();
+        $seen_targets = array();
+        $keys = array_unique(array_merge(array_keys($png_by_base), array_keys($json_by_base)));
+        sort($keys);
+        foreach ($keys as $key) {
+            if (!isset($png_by_base[$key]) || !isset($json_by_base[$key])) {
+                return new WP_Error('mgcf_variant_ai_unpaired', sprintf(__('Hiányzó PNG vagy JSON pár a(z) %s fájlnév-alaphoz.', 'mgcf'), $key));
+            }
+            $target = self::match_variant_ai_target($json_payloads[$key], $options);
+            if (is_wp_error($target)) {
+                return new WP_Error($target->get_error_code(), sprintf('%s (%s)', $png_by_base[$key]['name'], $target->get_error_message()));
+            }
+            if (isset($seen_targets[$target['slug']])) {
+                return new WP_Error('mgcf_variant_ai_duplicate_target', sprintf(__('Több PNG ugyanahhoz a választási értékhez tartozik: %s.', 'mgcf'), $target['label']));
+            }
+            $seen_targets[$target['slug']] = true;
+            $rows[] = array('png' => $png_by_base[$key], 'json' => $json_by_base[$key], 'option' => $target);
+        }
+        return array('rows' => $rows);
+    }
+
+    protected static function normalise_variant_uploads($raw) {
+        if (!is_array($raw) || !isset($raw['name'])) {
+            return array();
+        }
+        $names = is_array($raw['name']) ? $raw['name'] : array($raw['name']);
+        $uploads = array();
+        foreach ($names as $index => $name) {
+            $uploads[] = array(
+                'name' => is_array($name) ? '' : (string) $name,
+                'type' => is_array($raw['type']) && isset($raw['type'][$index]) ? (string) $raw['type'][$index] : (isset($raw['type']) && !is_array($raw['type']) ? (string) $raw['type'] : ''),
+                'tmp_name' => is_array($raw['tmp_name']) && isset($raw['tmp_name'][$index]) ? (string) $raw['tmp_name'][$index] : (isset($raw['tmp_name']) && !is_array($raw['tmp_name']) ? (string) $raw['tmp_name'] : ''),
+                'error' => is_array($raw['error']) && isset($raw['error'][$index]) ? (int) $raw['error'][$index] : (isset($raw['error']) && !is_array($raw['error']) ? (int) $raw['error'] : UPLOAD_ERR_NO_FILE),
+                'size' => is_array($raw['size']) && isset($raw['size'][$index]) ? (int) $raw['size'][$index] : (isset($raw['size']) && !is_array($raw['size']) ? (int) $raw['size'] : 0),
+            );
+        }
+        return $uploads;
+    }
+
+    protected static function variant_ai_basename_key($name) {
+        $base = (string) pathinfo((string) $name, PATHINFO_FILENAME);
+        return function_exists('mb_strtolower') ? mb_strtolower($base, 'UTF-8') : strtolower($base);
+    }
+
+    protected static function validate_variant_ai_upload_record($upload, $kind) {
+        if (!is_array($upload) || !isset($upload['name']) || (int) $upload['error'] !== UPLOAD_ERR_OK || empty($upload['tmp_name']) || !is_readable($upload['tmp_name'])) {
+            return new WP_Error('mgcf_variant_ai_upload_error', sprintf(__('A(z) %s feltöltés nem olvasható.', 'mgcf'), isset($upload['name']) ? $upload['name'] : __('ismeretlen fájl', 'mgcf')));
+        }
+        $extension = strtolower(pathinfo($upload['name'], PATHINFO_EXTENSION));
+        if ($kind === 'png') {
+            if ($extension !== 'png') {
+                return new WP_Error('mgcf_variant_ai_not_png', sprintf(__('Csak PNG fogadható el: %s.', 'mgcf'), $upload['name']));
+            }
+            $checked = function_exists('wp_check_filetype_and_ext') ? wp_check_filetype_and_ext($upload['tmp_name'], $upload['name'], array('png' => 'image/png')) : array();
+            if (!empty($checked['type']) && strtolower($checked['type']) !== 'image/png') {
+                return new WP_Error('mgcf_variant_ai_not_png', sprintf(__('A(z) %s fájl nem érvényes PNG.', 'mgcf'), $upload['name']));
+            }
+            $image_info = @getimagesize($upload['tmp_name']);
+            if (!is_array($image_info) || empty($image_info['mime']) || strtolower($image_info['mime']) !== 'image/png') {
+                return new WP_Error('mgcf_variant_ai_not_png', sprintf(__('A(z) %s fájl nem érvényes PNG.', 'mgcf'), $upload['name']));
+            }
+        } elseif ($extension !== 'json') {
+            return new WP_Error('mgcf_variant_ai_not_json', sprintf(__('Csak JSON fogadható el: %s.', 'mgcf'), $upload['name']));
+        }
+        return true;
+    }
+
+    protected static function match_variant_ai_target($payload, $options) {
+        if (!is_array($payload) || !isset($payload['categories']) || !is_array($payload['categories'])) {
+            return new WP_Error('mgcf_variant_ai_categories_missing', __('Hiányzik vagy hibás a categories objektum.', 'mgcf'));
+        }
+        $categories = $payload['categories'];
+        foreach (array('main', 'sub') as $key) {
+            if (array_key_exists($key, $categories) && $categories[$key] !== '' && !is_string($categories[$key])) {
+                return new WP_Error('mgcf_variant_ai_categories_invalid', sprintf(__('A categories.%s mezőnek szövegnek kell lennie.', 'mgcf'), $key));
+            }
+        }
+        $matches = array();
+        foreach (array('main', 'sub') as $key) {
+            $value = isset($categories[$key]) && is_string($categories[$key]) ? trim($categories[$key]) : '';
+            if ($value === '') {
+                continue;
+            }
+            $needle = sanitize_title($value);
+            $field_matches = array();
+            foreach ((array) $options as $option) {
+                $label_slug = sanitize_title($option['label']);
+                $option_slug = sanitize_title($option['slug']);
+                if ($needle !== '' && ($needle === $label_slug || $needle === $option_slug)) {
+                    $field_matches[$option['slug']] = $option;
+                }
+            }
+            if (count($field_matches) > 1) {
+                return new WP_Error('mgcf_variant_ai_ambiguous', sprintf(__('A categories.%1$s érték több választási értékre illeszkedik: %2$s.', 'mgcf'), $key, $value));
+            }
+            foreach ($field_matches as $slug => $option) {
+                $matches[$slug] = $option;
+            }
+        }
+        if (count($matches) > 1) {
+            return new WP_Error('mgcf_variant_ai_ambiguous', __('A categories.main és categories.sub eltérő választási értéket azonosít.', 'mgcf'));
+        }
+        if (empty($matches)) {
+            return new WP_Error('mgcf_variant_ai_unmatched', __('A categories.main/sub egyik értéke sem egyezik pontosan egy választási értékkel.', 'mgcf'));
+        }
+        return reset($matches);
     }
 
     protected static function render_product_search_section($preset_id) {

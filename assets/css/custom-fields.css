@@ -893,6 +893,73 @@ body.mgcf-modal-open {
     padding: 3px;
 }
 
+.mgcf-variant-ai-section {
+    margin-top: 24px;
+    padding: 18px;
+    border: 1px solid #dcdcde;
+    background: #fff;
+}
+
+.mgcf-variant-ai__header h3 {
+    margin: 0 0 6px;
+}
+
+.mgcf-variant-ai__header p {
+    max-width: 900px;
+    margin-top: 0;
+}
+
+.mgcf-variant-ai__controls {
+    margin-top: 14px;
+}
+
+.mgcf-variant-ai__status {
+    margin: 12px 0;
+    padding: 8px 10px;
+    border-left: 4px solid #8c8f94;
+    background: #f6f7f7;
+}
+
+.mgcf-variant-ai__status.is-success {
+    border-left-color: #00a32a;
+}
+
+.mgcf-variant-ai__status.is-warning {
+    border-left-color: #dba617;
+}
+
+.mgcf-variant-ai__status.is-error {
+    border-left-color: #d63638;
+}
+
+.mgcf-variant-ai-table .mgcf-variant-ai__file {
+    min-width: 170px;
+    vertical-align: middle;
+}
+
+.mgcf-variant-ai__thumb {
+    display: inline-block;
+    width: 54px;
+    height: 54px;
+    margin-right: 8px;
+    vertical-align: middle;
+    object-fit: contain;
+    border: 1px solid #dcdcde;
+    background: #fff;
+}
+
+.mgcf-variant-ai-table tr.is-error {
+    background: #fcf0f1;
+}
+
+.mgcf-variant-ai-table tr.is-success {
+    background: #f0f8f1;
+}
+
+.mgcf-variant-ai__row-state {
+    color: #50575e;
+}
+
 .mgcf-variant-generation-status {
     display: inline-block;
     margin: 0 16px 0 0;
