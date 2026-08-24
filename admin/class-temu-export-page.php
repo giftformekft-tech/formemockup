@@ -5,6 +5,41 @@ if (!defined('ABSPATH')) {
 
 class MG_Temu_Export_Page {
 
+    /**
+     * Build the Temu family SKU for a product type.
+     *
+     * The original Temu export used the base SKU for every type, so the
+     * default men's T-shirt type must remain unchanged for backwards
+     * compatibility.  Other built-in types get their short legacy suffix,
+     * while future types use their normalized slug to keep families apart.
+     *
+     * @param string $base_sku  Product's base SKU.
+     * @param string $type_slug Virtual product type slug.
+     * @return string
+     */
+    public static function build_family_sku($base_sku, $type_slug) {
+        $base_sku = (string) $base_sku;
+        $type_slug = sanitize_title((string) $type_slug);
+        // Treat common separator aliases (for example noi_polo) as the same
+        // canonical type slug before applying the legacy shortcuts.
+        $type_slug = trim((string) preg_replace('/[^a-z0-9]+/i', '-', $type_slug), '-');
+
+        if ($type_slug === '' || $type_slug === 'ferfi-polo') {
+            return $base_sku;
+        }
+        if ($type_slug === 'noi-polo') {
+            return $base_sku . '-NOI';
+        }
+        if ($type_slug === 'gyerek-polo') {
+            return $base_sku . '-GYEREK';
+        }
+
+        // Keep unknown/premium aliases stable and collision-resistant while
+        // leaving the type slug used by image paths untouched elsewhere.
+        $suffix = strtoupper($type_slug);
+        return $suffix === '' ? $base_sku : $base_sku . '-' . $suffix;
+    }
+
     public static function init() {
         add_action('wp_ajax_mg_temu_get_products', [self::class, 'ajax_get_products']);
         add_action('wp_ajax_mg_temu_get_variants', [self::class, 'ajax_get_variants']);
@@ -1071,8 +1106,8 @@ class MG_Temu_Export_Page {
                             continue; 
                         }
 
-                        // SKU Logic: {BaseSKU} (Simple, same for all rows)
-                        $sku_generated = $base_sku;
+                        // The family SKU is determined by product type, not size.
+                        $sku_generated = self::build_family_sku($base_sku, $type_slug);
 
                         foreach ($sizes as $size) {
                             $variants[] = [
@@ -1226,12 +1261,8 @@ class MG_Temu_Export_Page {
             // Fallback for SKU
             if (empty($base_sku)) $base_sku = 'SKU_' . $pid;
             
-            $sku_generated = $base_sku;
-
-            // Ha gyerekméret (2..12 vagy páros 1/2..12/13), hozzátesszük az SKU-hoz, hogy GYEREK
-            if (in_array($normalized_size, ['2', '4', '6', '8', '10', '12', '1/2', '3/4', '5/6', '7/8', '9/11', '12/13'], true)) {
-                $sku_generated .= '-GYEREK';
-            }
+            // The family SKU is determined by product type, not size.
+            $sku_generated = self::build_family_sku($base_sku, $type_slug);
             
             // Generate Sub SKU: sku + random 3 letters + 3 numbers
             $letters = substr(str_shuffle("ABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 3);
