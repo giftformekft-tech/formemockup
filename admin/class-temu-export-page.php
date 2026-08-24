@@ -8,10 +8,8 @@ class MG_Temu_Export_Page {
     /**
      * Build the Temu family SKU for a product type.
      *
-     * The original Temu export used the base SKU for every type, so the
-     * default men's T-shirt type must remain unchanged for backwards
-     * compatibility.  Other built-in types get their short legacy suffix,
-     * while future types use their normalized slug to keep families apart.
+     * Built-in types get a short suffix, while future types use their
+     * normalized slug to keep families apart.
      *
      * @param string $base_sku  Product's base SKU.
      * @param string $type_slug Virtual product type slug.
@@ -24,8 +22,11 @@ class MG_Temu_Export_Page {
         // canonical type slug before applying the legacy shortcuts.
         $type_slug = trim((string) preg_replace('/[^a-z0-9]+/i', '-', $type_slug), '-');
 
-        if ($type_slug === '' || $type_slug === 'ferfi-polo') {
+        if ($type_slug === '') {
             return $base_sku;
+        }
+        if ($type_slug === 'ferfi-polo') {
+            return $base_sku . '-FERFI';
         }
         if ($type_slug === 'noi-polo') {
             return $base_sku . '-NOI';

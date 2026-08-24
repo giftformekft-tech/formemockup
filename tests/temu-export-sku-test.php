@@ -29,7 +29,8 @@ function expect_temu_export_sku($expected, $actual, $message) {
     }
 }
 
-expect_temu_export_sku('ABC123', MG_Temu_Export_Page::build_family_sku('ABC123', 'ferfi-polo'), 'Male T-shirt keeps the legacy base SKU.');
+expect_temu_export_sku('ABC123-FERFI', MG_Temu_Export_Page::build_family_sku('ABC123', 'ferfi-polo'), 'Male T-shirt gets a separate family SKU.');
+expect_temu_export_sku('ABC123-FERFI', MG_Temu_Export_Page::build_family_sku('ABC123', 'ferfi_polo'), 'Male type aliases resolve to the same family SKU.');
 expect_temu_export_sku('ABC123-NOI', MG_Temu_Export_Page::build_family_sku('ABC123', 'noi-polo'), 'Female T-shirt gets a separate family SKU.');
 expect_temu_export_sku('ABC123-NOI', MG_Temu_Export_Page::build_family_sku('ABC123', 'noi_polo'), 'Female type aliases resolve to the same family SKU.');
 expect_temu_export_sku('ABC123-GYEREK', MG_Temu_Export_Page::build_family_sku('ABC123', 'gyerek-polo'), 'Child T-shirt keeps the child family suffix.');
