@@ -268,14 +268,27 @@ class MG_Google_Merchant_Feed {
 
             $output .= '<g:product_type>' . self::xml_sanitize(implode(' > ', $product_type_parts)) . '</g:product_type>' . PHP_EOL;
             
-            // Custom Label 0 for Type slug (useful for filtering campaigns)
-            $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+            $performance_slot = null;
+            $performance_label = '';
+            if (class_exists('MG_Google_Ads_Product_Performance') && MG_Google_Ads_Product_Performance::is_enabled()) {
+                $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
+                $performance_label = MG_Google_Ads_Product_Performance::get_feed_label($product_id);
+            }
 
-            if ($main_cat) {
+            // The selected performance slot replaces the old value in that
+            // slot, so the XML never contains the same custom label twice.
+            if ($performance_slot !== 0) {
+                $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+            }
+
+            if ($main_cat && $performance_slot !== 2) {
                 $output .= '<g:custom_label_2>' . self::xml_sanitize($main_cat) . '</g:custom_label_2>' . PHP_EOL;
             }
-            if ($sub_cat) {
+            if ($sub_cat && $performance_slot !== 3) {
                 $output .= '<g:custom_label_3>' . self::xml_sanitize($sub_cat) . '</g:custom_label_3>' . PHP_EOL;
+            }
+            if ($performance_label !== '') {
+                $output .= '<g:custom_label_' . absint($performance_slot) . '>' . self::xml_sanitize($performance_label) . '</g:custom_label_' . absint($performance_slot) . '>' . PHP_EOL;
             }
 
             // New Mandatory Fields

@@ -431,7 +431,15 @@ class MG_Custom_Feed_Manager {
             $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
             $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
             // $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL;
-            $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+            $performance_slot = null;
+            $performance_label = '';
+            if (class_exists('MG_Google_Ads_Product_Performance') && MG_Google_Ads_Product_Performance::is_enabled()) {
+                $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
+                $performance_label = MG_Google_Ads_Product_Performance::get_feed_label($product_id);
+            }
+            if ($performance_slot !== 0) {
+                $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;
+            }
             
             // Categories logic (simple)
             // Product Type: Ruházat > terméktípus > főkategória > alkategória
@@ -471,11 +479,14 @@ class MG_Custom_Feed_Manager {
                     $main_cat_cf = $term_cf->name;
                 }
             }
-            if ($main_cat_cf) {
+            if ($main_cat_cf && $performance_slot !== 2) {
                 $output .= '<g:custom_label_2>' . self::xml_sanitize($main_cat_cf) . '</g:custom_label_2>' . PHP_EOL;
             }
-            if ($sub_cat_cf) {
+            if ($sub_cat_cf && $performance_slot !== 3) {
                 $output .= '<g:custom_label_3>' . self::xml_sanitize($sub_cat_cf) . '</g:custom_label_3>' . PHP_EOL;
+            }
+            if ($performance_label !== '') {
+                $output .= '<g:custom_label_' . absint($performance_slot) . '>' . self::xml_sanitize($performance_label) . '</g:custom_label_' . absint($performance_slot) . '>' . PHP_EOL;
             }
 
             // New Mandatory Fields
