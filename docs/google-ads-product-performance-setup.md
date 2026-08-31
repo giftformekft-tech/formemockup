@@ -12,12 +12,14 @@ Ez a kiadás új importprotokollt használ. A frissítés utáni migráció szá
 4. Add meg a Winner küszöböt és a Loser szabályt.
    - Költésalapú Loser szabály csak HUF pénznemű Ads-fiókkal használható.
    - Kattintásalapú módban a költési küszöb nem vesz részt a döntésben.
-5. Add meg a konverziós késést. A javasolt induló érték 3 nap.
-6. Add meg a webshop történetének kezdőnapját.
-7. Add meg a Google Ads customer ID-t kötőjelek nélkül.
-8. Ha csak egy konkrét Purchase művelet számítson, írd be annak pontos Google Ads-nevét. Üresen a `metrics.conversions` összes, Conversions oszlopban szereplő konverziója számít.
-9. Opcionálisan add meg a PMax kampányazonosítókat vesszővel elválasztva. Üresen minden PMax kampány bekerül.
-10. Kapcsold be a heti automatizmust, majd mentsd a beállításokat.
+   - A **kattintásküszöböt alapértelmezésben a bolt saját konverziós rátája adja**, nem a kézi érték. Egy átlagos termék is produkál nulla eladást, ha kevés kattintást kap: a valószínűsége `(1 - CVR)^n`. A küszöb az a kattintásszám, ahol ez 5% alá esik: `n = ln(0,05) / ln(1 - CVR)`. 2%-os bolti CVR-nél ez **149 kattintás** – a korábbi kézi 30 kattintás mellett egy teljesen átlagos termék 54,6% eséllyel kapott volna Loser címkét pusztán a szórásból. Az adminfelület kiírja a boltod aktuális CVR-jét és a belőle számolt küszöböt. A kézi érték csak akkor lép életbe, ha kikapcsolod az automatikát, vagy ha még nincs elég importált kattintásadat.
+5. Add meg a **Loser megfigyelési ablakot** (alapérték: 90 nap). A Loser-döntés csak ennyi nap adatát nézi; a Winner továbbra is a teljes történetből dől el és végleges marad. Ez töri meg az önbeteljesítő hurkot: ha egy terméket a Loser címke miatt kiveszel a kampányból, nem kap több kattintást, a régi adatai kifutnak az ablakból, visszakerül `normal` állapotba, és kap egy újabb esélyt. Rögzített ablak nélkül a Loser címke véglegesen kizárná a terméket.
+6. Add meg a konverziós késést. A javasolt induló érték 3 nap.
+7. Add meg a webshop történetének kezdőnapját.
+8. Add meg a Google Ads customer ID-t kötőjelek nélkül.
+9. Ha csak egy konkrét Purchase művelet számítson, írd be annak pontos Google Ads-nevét. Üresen a `metrics.conversions` összes, Conversions oszlopban szereplő konverziója számít.
+10. Opcionálisan add meg a PMax kampányazonosítókat vesszővel elválasztva. Üresen minden PMax kampány bekerül.
+11. Kapcsold be a heti automatizmust, majd mentsd a beállításokat.
 
 ## 2. Google Ads Script telepítése
 
@@ -47,9 +49,11 @@ Az **Induló besorolás futtatása** gombot csak akkor használd, amikor a telje
 3. Nézd át a terméktáblában a konverziót, kattintást, költséget, időszakot és az indoklást.
 4. Külön ellenőrizd a nem párosított offer ID mintákat.
 5. Ellenőrizd néhány ismert terméken, hogy:
-   - a Winner elérte a beállított attribútált konverziós küszöböt;
-   - a Losernek nincs konverziója, viszont elérte a kiválasztott költési vagy kattintási küszöböt;
+   - a Winner elérte a beállított attribútált konverziós küszöböt a **teljes történetben**;
+   - a Losernek a **megfigyelési ablakon belül** nincs konverziója, viszont ott elérte a kiválasztott költési vagy kattintási küszöböt;
    - minden más termék Normal.
+
+A besorolás összesítője kiírja a ténylegesen alkalmazott kattintásküszöböt, a bolt mért CVR-jét és a megfigyelési ablak kezdőnapját, így az indoklás visszafejthető.
 
 A Winner státusz ugyanazon importbeállításokon belül végleges. Importforrás-váltáskor – például másik Ads-fiók, kampánykör vagy Purchase művelet esetén – a rendszer új, tiszta történeti importot kér.
 
@@ -70,6 +74,8 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 - A Google Ads Script fusson naponta; minden normál futás az utolsó 30 napot frissíti.
 - A WordPress heti automatizmusa a teljes importált webshop-történetből újraszámolja a besorolást.
 - A Winner nem évül el; a Loser és Normal állapot az új adatok alapján változhat.
+- A Loser **nem végleges**: a döntés csak a megfigyelési ablakot nézi. Ha a címke miatt kiveszed a terméket a kampányból, a régi kattintásai kifutnak az ablakból, és a termék magától visszakerül `normal` állapotba egy újabb tesztre. Ez szándékos: enélkül a Loser címke önmagát tartaná fenn örökre.
+- A kattintásküszöb automatikus módban együtt mozog a bolt konverziós rátájával, ezért a besorolás beállításváltás nélkül is finomodhat, ahogy nő az adat.
 - Ha a script több mint 30 napig nem fut, a szerver nem enged hézagos gördülő adatot használni: biztonságosan teljes történeti újraimportot kér.
 
 ## 7. Melyik módosítás után mi szükséges?
@@ -83,6 +89,8 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 | Konverziós késés | igen | igen | igen |
 | Winner / Loser küszöb | nem | nem | automatikusan lefut mentéskor |
 | Költéses / kattintásos Loser mód | nem | nem | automatikusan lefut mentéskor |
+| CVR-alapú kattintásküszöb ki-/bekapcsolása | nem | nem | automatikusan lefut mentéskor |
+| Loser megfigyelési ablak | nem | nem | automatikusan lefut mentéskor |
 | Feed custom label helye | nem | nem | nem; a feed regenerálódik |
 | Feedcímke ki-/bekapcsolása | nem | nem | nem; a feed regenerálódik |
 | Importtitok cseréje | igen | nem | nem |
@@ -95,3 +103,5 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 - **A teljes import nem kész:** hagyd futni a napi scriptet; nagy katalógusnál több végrehajtás normális.
 - **Sok nem párosított offer ID:** ellenőrizd a Merchant feed ID-k és a WordPress SKU + típusslug egyezését.
 - **Hibás feederedmény:** első biztonsági lépésként kapcsold ki a feedcímkét és ments. A regenerálás visszaállítja az eredeti custom label mezőket.
+- **Nulla Winner és nulla Loser, minden termék Normal:** ez korábban az offer ID kis-nagybetű eltérése miatt fordult elő – a feed nagybetűs SKU-ból képzi az azonosítót, a Google Ads viszont kisbetűsen adja vissza. A párosítás ma normalizálva történik. Ha mégis ezt látod, a besorolás összesítőjében nézd meg a nem párosított offer ID-k számát.
+- **Túl kevés Loser a vártnál:** valószínűleg a CVR-alapú kattintásküszöb lépett életbe, ami jóval magasabb a korábbi kézi értéknél. Ez szándékos: a régi küszöb az átlagos termékek felét is Losernek jelölte. Az adminfelület kiírja a számolt küszöböt és a mögötte lévő CVR-t.

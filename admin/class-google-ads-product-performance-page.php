@@ -135,7 +135,40 @@ class MG_Google_Ads_Product_Performance_Page {
                             </select>
                             <p>0 eladás és legalább <input class="small-text" type="number" min="1" step="1" name="mg_gads_performance[loser_spend]" value="<?php echo esc_attr($settings['loser_spend']); ?>"> Ft költés</p>
                             <p>vagy kattintásos módban legalább <input id="mg-gads-loser" class="small-text" type="number" min="1" name="mg_gads_performance[loser_clicks]" value="<?php echo esc_attr($settings['loser_clicks']); ?>"> kattintás.</p>
+                            <?php
+                            $baseline_cvr = MG_Google_Ads_Product_Performance::baseline_cvr();
+                            $recommended = MG_Google_Ads_Product_Performance::recommended_loser_clicks($baseline_cvr);
+                            ?>
+                            <p>
+                                <label>
+                                    <input type="checkbox" name="mg_gads_performance[loser_clicks_auto]" value="1" <?php checked(!empty($settings['loser_clicks_auto'])); ?>>
+                                    A kattintásküszöböt a bolt saját konverziós rátája adja
+                                </label>
+                            </p>
+                            <?php if ($recommended > 0): ?>
+                                <p class="description">
+                                    A boltod jelenlegi CVR-je <strong><?php echo esc_html(number_format($baseline_cvr * 100, 2, ',', ' ')); ?>%</strong>,
+                                    ebből a statisztikailag megalapozott küszöb <strong><?php echo (int) $recommended; ?> kattintás</strong>
+                                    (95%-os bizonyosság).
+                                    <?php if (!empty($settings['loser_clicks_auto'])): ?>
+                                        Ezt használja a besorolás; a fenti kézi érték csak akkor lép életbe, ha még nincs elég adat.
+                                    <?php else: ?>
+                                        A kézi <strong><?php echo (int) $settings['loser_clicks']; ?></strong> kattintásnál egy teljesen átlagos termék
+                                        <strong><?php echo esc_html(number_format(pow(1 - $baseline_cvr, (int) $settings['loser_clicks']) * 100, 1, ',', ' ')); ?>%</strong>
+                                        eséllyel kap Loser címkét pusztán a szórásból.
+                                    <?php endif; ?>
+                                </p>
+                            <?php else: ?>
+                                <p class="description">A CVR-alapú küszöbhöz még nincs elég importált kattintásadat; addig a kézi érték érvényes.</p>
+                            <?php endif; ?>
                             <p class="description">A forintos küszöb a Google Ads-fiók pénznemét feltételezi. Az importkártyán ellenőrizd, hogy <code>HUF</code> érkezik.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th><label for="mg-gads-loser-window">Loser megfigyelési ablak</label></th>
+                        <td>
+                            A Loser-döntés csak az utolsó <input id="mg-gads-loser-window" class="small-text" type="number" min="7" max="1095" name="mg_gads_performance[loser_window_days]" value="<?php echo esc_attr($settings['loser_window_days']); ?>"> nap adatát nézi
+                            <p class="description">A Winner továbbra is a teljes történetből dől el és végleges marad. A Loser viszont csak friss adatból: így ha egy terméket a címke miatt kiveszel a kampányból, a kattintásai kifutnak az ablakból, visszakerül <code>normal</code> állapotba, és kap egy újabb esélyt. Enélkül a Loser címke önbeteljesítő lenne.</p>
                         </td>
                     </tr>
                     <tr><th><label for="mg-gads-lag">Konverziós késés</label></th><td>Az utolsó <input id="mg-gads-lag" class="small-text" type="number" min="0" max="14" name="mg_gads_performance[conversion_lag_days]" value="<?php echo esc_attr($settings['conversion_lag_days']); ?>"> nap kimarad a döntésből</td></tr>

@@ -27,6 +27,8 @@ class MG_Google_Ads_Product_Performance {
     const ACTION_GROUP = 'mg-google-ads-product-performance';
     const REST_NAMESPACE = 'mg-ads/v1';
     const REST_ROUTE = '/performance';
+    /** Ekkora bizonyossággal kell kizárni, hogy a nulla eladás puszta szórás. */
+    const LOSER_CONFIDENCE = 0.95;
 
     private static $label_cache = array();
 
@@ -174,6 +176,14 @@ class MG_Google_Ads_Product_Performance {
             'loser_basis' => 'spend',
             'loser_spend' => 10000,
             'loser_clicks' => 30,
+            // A kattintásküszöböt alapértelmezésben a bolt saját konverziós
+            // rátájából számoljuk, mert a kézzel megadott érték statisztikailag
+            // rendszerint túl alacsony (lásd recommended_loser_clicks()).
+            'loser_clicks_auto' => 1,
+            // A Loser-döntés csak ennyi nap adatát nézi. A Winner továbbra is
+            // a teljes történetből dől el, így az elnyomott termék kattintásai
+            // kifutnak az ablakból, kikerül a Loserből és újra tesztelődik.
+            'loser_window_days' => 90,
             'conversion_lag_days' => 3,
             'history_start_date' => wp_date('Y-m-d', strtotime('-9 months')),
             'ads_customer_id' => '',
@@ -211,6 +221,8 @@ class MG_Google_Ads_Product_Performance {
             'loser_basis' => $loser_basis,
             'loser_spend' => max(1, (float) ($input['loser_spend'] ?? 10000)),
             'loser_clicks' => max(1, absint($input['loser_clicks'] ?? 30)),
+            'loser_clicks_auto' => !empty($input['loser_clicks_auto']) ? 1 : 0,
+            'loser_window_days' => min(1095, max(7, absint($input['loser_window_days'] ?? 90))),
             'conversion_lag_days' => min(14, max(0, absint($input['conversion_lag_days'] ?? 3))),
             'history_start_date' => $start,
             'ads_customer_id' => preg_replace('/[^0-9]/', '', (string) ($input['ads_customer_id'] ?? '')),
@@ -235,7 +247,9 @@ class MG_Google_Ads_Product_Performance {
         $classification_settings_changed = (float) $clean['winner_conversions'] !== (float) $old['winner_conversions']
             || (string) $clean['loser_basis'] !== (string) $old['loser_basis']
             || (float) $clean['loser_spend'] !== (float) $old['loser_spend']
-            || (int) $clean['loser_clicks'] !== (int) $old['loser_clicks'];
+            || (int) $clean['loser_clicks'] !== (int) $old['loser_clicks']
+            || (int) $clean['loser_clicks_auto'] !== (int) $old['loser_clicks_auto']
+            || (int) $clean['loser_window_days'] !== (int) $old['loser_window_days'];
         $reclassification_required = $classification_settings_changed && !$import_changed && !empty($old['initial_completed_at']);
         if ($reclassification_required && $clean['loser_basis'] === 'spend') {
             $import_state = self::get_import_state();
@@ -919,25 +933,39 @@ class MG_Google_Ads_Product_Performance {
         return compact('accepted', 'rejected', 'min_date', 'max_date');
     }
 
-    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'spend', $loser_clicks = 30, $loser_spend = 10000) {
+    /**
+     * Egy termék besorolása.
+     *
+     * A Winner a teljes történetből dől el és végleges. A Loser viszont csak a
+     * friss ablak adatait nézi ($recent), különben önbeteljesítő hurok jön
+     * létre: a Losernek címkézett terméket kiveszed a kampányból, így nem kap
+     * több kattintást, és a régi adatai örökre Loserben tartanák. Ha $recent
+     * nincs megadva, a teljes időszak metrikái szolgálnak mindkét döntéshez.
+     *
+     * @param array|null $recent array{conversions:float,clicks:int,cost_micros:int}
+     */
+    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'spend', $loser_clicks = 30, $loser_spend = 10000, $recent = null) {
         $conversions = (float) $conversions;
-        $clicks = (int) $clicks;
-        $spend = max(0, (float) $cost_micros / 1000000);
         if ($conversions >= (float) $winner_threshold) {
             return array('status' => 'winner', 'reason' => 'Legalább ' . self::format_number($winner_threshold) . ' attribútált eladás.');
         }
-        if ($conversions <= 0.000001 && $loser_basis === 'clicks' && $clicks >= (int) $loser_clicks) {
-            return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . (int) $loser_clicks . ' kattintásból.');
+
+        $recent_conversions = is_array($recent) ? (float) ($recent['conversions'] ?? 0) : $conversions;
+        $recent_clicks = is_array($recent) ? (int) ($recent['clicks'] ?? 0) : (int) $clicks;
+        $recent_spend = max(0, (float) (is_array($recent) ? ($recent['cost_micros'] ?? 0) : $cost_micros) / 1000000);
+
+        if ($recent_conversions <= 0.000001 && $loser_basis === 'clicks' && $recent_clicks >= (int) $loser_clicks) {
+            return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . (int) $loser_clicks . ' friss kattintásból.');
         }
-        if ($conversions <= 0.000001 && $loser_basis === 'spend' && $spend >= (float) $loser_spend) {
-            return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . self::format_number($loser_spend) . ' Ft költésből.');
+        if ($recent_conversions <= 0.000001 && $loser_basis === 'spend' && $recent_spend >= (float) $loser_spend) {
+            return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . self::format_number($loser_spend) . ' Ft friss költésből.');
         }
         if ($conversions > 0) {
             $reason = 'Van eladás, de még nem érte el a Winner-küszöböt.';
         } elseif ($loser_basis === 'spend') {
-            $reason = 'Még nem érte el a ' . self::format_number($loser_spend) . ' Ft-os Loser-költést.';
+            $reason = 'A friss ablakban még nem érte el a ' . self::format_number($loser_spend) . ' Ft-os Loser-költést.';
         } else {
-            $reason = 'Még nincs elegendő kattintás a Loser-döntéshez.';
+            $reason = 'A friss ablakban még nincs elegendő kattintás a Loser-döntéshez (' . (int) $loser_clicks . ' kell).';
         }
         return array('status' => 'normal', 'reason' => $reason);
     }
@@ -1042,6 +1070,42 @@ class MG_Google_Ads_Product_Performance {
             $metrics[$product_id]['conversion_value'] += (float) $row['conversion_value'];
         }
 
+        // A Loser-döntés csak a friss ablakot nézi, hogy az elnyomott termékek
+        // kattintásai kifussanak és a besorolás újratesztelje őket.
+        $recent_start = self::loser_window_start($start, $end, $settings);
+        $recent_metrics = $metrics;
+        if ($recent_start > $start) {
+            foreach ($recent_metrics as $product_id => $unused) {
+                $recent_metrics[$product_id] = array('impressions' => 0, 'clicks' => 0, 'cost_micros' => 0, 'conversions' => 0.0, 'conversion_value' => 0.0);
+            }
+            $recent_rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT offer_id, SUM(clicks) AS clicks, SUM(cost_micros) AS cost_micros,
+                        SUM(conversions) AS conversions
+                 FROM {$daily}
+                 WHERE metric_date BETWEEN %s AND %s
+                 GROUP BY offer_id",
+                $recent_start, $end
+            ), ARRAY_A);
+            if (!is_array($recent_rows)) {
+                return new WP_Error('mg_ads_query', 'A friss teljesítményablak nem olvasható.');
+            }
+            foreach ($recent_rows as $row) {
+                $offer_key = self::normalize_offer_id((string) $row['offer_id']);
+                if (!isset($map['offers'][$offer_key])) {
+                    continue;
+                }
+                $product_id = $map['offers'][$offer_key];
+                $recent_metrics[$product_id]['clicks'] += (int) $row['clicks'];
+                $recent_metrics[$product_id]['cost_micros'] += (int) $row['cost_micros'];
+                $recent_metrics[$product_id]['conversions'] += (float) $row['conversions'];
+            }
+        }
+
+        // A kattintásküszöb a bolt saját konverziós rátájából, ugyanabból az
+        // adatból, amit a besorolás is használ.
+        $baseline_cvr = self::baseline_cvr($start, $end);
+        $loser_clicks = self::effective_loser_clicks($settings, $baseline_cvr);
+
         $changed = 0;
         $counts = array('winner' => 0, 'normal' => 0, 'loser' => 0);
         $now = current_time('mysql', true);
@@ -1064,8 +1128,9 @@ class MG_Google_Ads_Product_Performance {
                 $values['cost_micros'],
                 $settings['winner_conversions'],
                 $settings['loser_basis'],
-                $settings['loser_clicks'],
-                $settings['loser_spend']
+                $loser_clicks,
+                $settings['loser_spend'],
+                isset($recent_metrics[$product_id]) ? $recent_metrics[$product_id] : null
             );
             if ($current && self::sanitize_status($current['status']) === 'winner') {
                 $decision = array(
@@ -1112,6 +1177,9 @@ class MG_Google_Ads_Product_Performance {
             'source' => $source,
             'counts' => $counts,
             'changed' => $changed,
+            'baseline_cvr' => $baseline_cvr,
+            'loser_clicks_used' => $loser_clicks,
+            'loser_window_start' => $recent_start,
             'unmatched_count' => count($unmatched),
             'unmatched_sample' => array_slice(array_values(array_unique($unmatched)), 0, 20),
         );
@@ -1299,6 +1367,97 @@ class MG_Google_Ads_Product_Performance {
                 }
             }
         }
+    }
+
+    /**
+     * Hány kattintás után jelent a nulla eladás valódi bizonyítékot.
+     *
+     * Egy átlagos termék is produkál nulla eladást, ha kevés kattintást kap:
+     * a valószínűsége (1 - CVR)^n. A küszöb az a kattintásszám, ahol ez a
+     * valószínűség a megadott bizonyosság alá esik:
+     *
+     *     n = ln(1 - bizonyosság) / ln(1 - CVR)
+     *
+     * 2%-os bolti CVR-nél 95%-os bizonyossághoz ~148 kattintás kell. A régi,
+     * kézzel beírt 30 kattintás mellett egy teljesen átlagos termék 54,6%
+     * eséllyel kapott volna Loser címkét pusztán a szórásból.
+     *
+     * @return int 0, ha a CVR-ből nem számítható küszöb.
+     */
+    public static function recommended_loser_clicks($cvr, $confidence = self::LOSER_CONFIDENCE) {
+        $cvr = (float) $cvr;
+        if ($cvr <= 0 || $cvr >= 1) {
+            return 0;
+        }
+        $confidence = min(0.999, max(0.5, (float) $confidence));
+        return max(1, (int) ceil(log(1 - $confidence) / log(1 - $cvr)));
+    }
+
+    /**
+     * A ténylegesen alkalmazott kattintásküszöb.
+     *
+     * Automatikus módban a bolt saját CVR-jéből számol; ha abból nem jön ki
+     * érvényes érték (még nincs elég adat), a kézi beállításra esik vissza.
+     */
+    public static function effective_loser_clicks(array $settings, $cvr) {
+        $manual = max(1, (int) ($settings['loser_clicks'] ?? 30));
+        if (empty($settings['loser_clicks_auto'])) {
+            return $manual;
+        }
+        $recommended = self::recommended_loser_clicks($cvr);
+        return $recommended > 0 ? $recommended : $manual;
+    }
+
+    /**
+     * A bolt átlagos konverziós rátája az importált adatokból.
+     *
+     * @return float 0.0, ha nincs kattintásadat.
+     */
+    public static function baseline_cvr($start = '', $end = '') {
+        global $wpdb;
+        $daily = self::daily_table();
+        if (self::is_valid_date($start) && self::is_valid_date($end)) {
+            $row = $wpdb->get_row($wpdb->prepare(
+                "SELECT SUM(clicks) AS clicks, SUM(conversions) AS conversions
+                 FROM {$daily} WHERE metric_date BETWEEN %s AND %s",
+                $start, $end
+            ), ARRAY_A);
+        } else {
+            $row = $wpdb->get_row("SELECT SUM(clicks) AS clicks, SUM(conversions) AS conversions FROM {$daily}", ARRAY_A);
+        }
+        $clicks = (int) ($row['clicks'] ?? 0);
+        if ($clicks <= 0) {
+            return 0.0;
+        }
+        return max(0.0, (float) ($row['conversions'] ?? 0)) / $clicks;
+    }
+
+    /** Naptári eltolás Y-m-d alakon. Érvénytelen bemenetre üres sztring. */
+    public static function shift_date($date, $days) {
+        if (!self::is_valid_date($date)) {
+            return '';
+        }
+        $parsed = DateTime::createFromFormat('!Y-m-d', $date);
+        if (!$parsed) {
+            return '';
+        }
+        $days = (int) $days;
+        $parsed->modify(($days >= 0 ? '+' : '-') . abs($days) . ' days');
+        return $parsed->format('Y-m-d');
+    }
+
+    /**
+     * A Loser-döntés gördülő ablakának kezdete.
+     *
+     * Sosem lép a besorolási időszak kezdete elé.
+     */
+    public static function loser_window_start($start, $end, array $settings) {
+        $days = max(1, (int) ($settings['loser_window_days'] ?? 90));
+        $window_start = self::shift_date($end, -1 * ($days - 1));
+        if ($window_start === '' || $window_start < $start) {
+            return $start;
+        }
+        return $window_start;
     }
 
     /**
