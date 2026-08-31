@@ -884,7 +884,9 @@ class MG_Google_Ads_Product_Performance {
         $now = current_time('mysql', true);
 
         foreach ((array) $rows as $row) {
-            $offer_id = isset($row['offer_id']) ? sanitize_text_field($row['offer_id']) : '';
+            // Kanonikus, kisbetűs alakban tároljuk, hogy a besoroláskori
+            // párosítás forrása egységes legyen.
+            $offer_id = isset($row['offer_id']) ? self::normalize_offer_id(sanitize_text_field($row['offer_id'])) : '';
             $date = isset($row['date']) ? sanitize_text_field($row['date']) : '';
             if ($offer_id === '' || strlen($offer_id) > 191 || !self::is_valid_date($date)) {
                 $rejected++;
@@ -1027,11 +1029,12 @@ class MG_Google_Ads_Product_Performance {
         $unmatched = array();
         foreach ($rows as $row) {
             $offer_id = (string) $row['offer_id'];
-            if (!isset($map['offers'][$offer_id])) {
+            $offer_key = self::normalize_offer_id($offer_id);
+            if (!isset($map['offers'][$offer_key])) {
                 $unmatched[] = $offer_id;
                 continue;
             }
-            $product_id = $map['offers'][$offer_id];
+            $product_id = $map['offers'][$offer_key];
             foreach (array('impressions', 'clicks', 'cost_micros') as $key) {
                 $metrics[$product_id][$key] += (int) $row[$key];
             }
@@ -1232,7 +1235,7 @@ class MG_Google_Ads_Product_Performance {
             $base_sku = $product->get_sku() ?: 'ID_' . $product_id;
             $result['product_ids'][$product_id] = $product_id;
             foreach (array_keys($config['types']) as $type_slug) {
-                $result['offers'][$base_sku . '_' . $type_slug] = (int) $product_id;
+                $result['offers'][self::normalize_offer_id($base_sku . '_' . $type_slug)] = (int) $product_id;
             }
         }
         return $result;
@@ -1296,6 +1299,20 @@ class MG_Google_Ads_Product_Performance {
                 }
             }
         }
+    }
+
+    /**
+     * Az ajánlatazonosító összehasonlítható alakja.
+     *
+     * A Merchant feed a `<SKU>_<type_slug>` azonosítót a WooCommerce SKU-ból
+     * képzi, az pedig a MG_Product_Creator::sanitize_sku() miatt csupa nagybetű
+     * (`FORME10001_polo`). A Google Ads riport viszont kisbetűsítve adja vissza
+     * a `segments.product_item_id` mezőt (`forme10001_polo`). A PHP tömbkulcs
+     * kis-nagybetű érzékeny, ezért normalizálás nélkül egyetlen offer sem
+     * párosítható a termékére.
+     */
+    public static function normalize_offer_id($offer_id) {
+        return strtolower(trim((string) $offer_id));
     }
 
     private static function sanitize_status($status) {
