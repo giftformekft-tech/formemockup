@@ -434,8 +434,10 @@ class MG_Custom_Feed_Manager {
             $performance_slot = null;
             $performance_label = '';
             if (class_exists('MG_Google_Ads_Product_Performance') && MG_Google_Ads_Product_Performance::is_enabled()) {
-                $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
                 $performance_label = MG_Google_Ads_Product_Performance::get_feed_label($product_id);
+                if ($performance_label !== '') {
+                    $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
+                }
             }
             if ($performance_slot !== 0) {
                 $output .= '<g:custom_label_0>' . self::xml_sanitize($type_slug) . '</g:custom_label_0>' . PHP_EOL;

@@ -271,8 +271,10 @@ class MG_Google_Merchant_Feed {
             $performance_slot = null;
             $performance_label = '';
             if (class_exists('MG_Google_Ads_Product_Performance') && MG_Google_Ads_Product_Performance::is_enabled()) {
-                $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
                 $performance_label = MG_Google_Ads_Product_Performance::get_feed_label($product_id);
+                if ($performance_label !== '') {
+                    $performance_slot = MG_Google_Ads_Product_Performance::get_label_slot();
+                }
             }
 
             // The selected performance slot replaces the old value in that
