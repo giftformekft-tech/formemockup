@@ -604,6 +604,7 @@ class MG_Custom_Fields_Frontend {
                 'id' => $field['id'],
                 'label' => $field['label'],
                 'value' => $display,
+                'raw_value' => isset($field['value']) ? $field['value'] : '',
                 'surcharge' => isset($field['applied_surcharge']) ? floatval($field['applied_surcharge']) : 0.0,
                 'surcharge_type' => isset($field['surcharge_type']) ? $field['surcharge_type'] : 'none',
                 'surcharge_amount' => isset($field['surcharge_amount']) ? floatval($field['surcharge_amount']) : 0.0,

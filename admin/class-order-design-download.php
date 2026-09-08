@@ -206,7 +206,22 @@ class MG_Order_Design_Download {
                     continue;
                 }
 
+                try {
+                    $ai_prompt = MG_AI_Print_Generator::prompt_for_item($item);
+                } catch (Throwable $e) {
+                    throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: %s', 'mg'), $order_id, $item->get_id(), $e->getMessage()));
+                }
                 $design_path = self::resolve_design_path($product_id);
+                if ($ai_prompt !== '') {
+                    MG_AI_Print_Generator::assert_available();
+                    $reference = $item->get_meta('_mg_print_design_reference', true);
+                    if (is_array($reference) && !empty($reference['design_path'])) {
+                        $design_path = $reference['design_path'];
+                    }
+                    if ($design_path === '' || !is_file($design_path)) {
+                        throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: az AI nyomat alapmintája nem található.', 'mg'), $order_id, $item->get_id()));
+                    }
+                }
                 if ($design_path === '' || !file_exists($design_path)) {
                     continue;
                 }
@@ -225,6 +240,9 @@ class MG_Order_Design_Download {
                     $sequence++;
                     $tasks[] = array(
                         'design_path'      => $design_path,
+                        'order_id'         => $order_id,
+                        'item_id'          => $item->get_id(),
+                        'ai_prompt'        => $ai_prompt,
                         'type'             => $context['type'],
                         'size'             => $context['size'],
                         'large_size'       => $large_size,
@@ -259,7 +277,7 @@ class MG_Order_Design_Download {
             }
 
             $order_ids = isset($_POST['order_ids']) ? array_map('intval', (array) $_POST['order_ids']) : array();
-            $order_ids = array_values(array_filter($order_ids));
+            $order_ids = array_values(array_unique(array_filter($order_ids, function($id) { return $id > 0; })));
             if (empty($order_ids)) {
                 wp_send_json_error(array('message' => __('Nincsenek kiválasztott rendelések.', 'mg')), 400);
             }
@@ -271,7 +289,10 @@ class MG_Order_Design_Download {
 
             $strip_black = !empty($_POST['strip_black']) && $_POST['strip_black'] === '1';
 
-            $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_') . '.zip';
+            $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_');
+            if ($zip_path === false) {
+                throw new RuntimeException(__('Nem sikerült ideiglenes ZIP fájlt létrehozni.', 'mg'));
+            }
             $zip      = new ZipArchive();
             if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
                 wp_send_json_error(array('message' => __('Nem sikerült létrehozni a ZIP fájlt.', 'mg')), 500);
@@ -320,67 +341,129 @@ class MG_Order_Design_Download {
             @ini_set('memory_limit', '512M');
 
             $job_id        = isset($_POST['job_id']) ? sanitize_text_field($_POST['job_id']) : '';
-            $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
-            $job           = $job_id !== '' ? get_transient($transient_key) : false;
+            $result = self::process_export_step($job_id);
+            wp_send_json_success($result);
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /** Keep browser requests short while Action Scheduler performs the image edit. */
+    protected static function process_export_step($job_id) {
+        $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
+        $job = $job_id !== '' ? get_transient($transient_key) : false;
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
+        }
+        $lock = 'mg_export_lock_' . hash('sha256', $job_id);
+        if (!add_option($lock, time(), '', false)) {
+            if (time() - (int) get_option($lock) > 300) {
+                throw new RuntimeException(__('Az export feldolgozása megszakadt. Indíts új exportot.', 'mg'));
+            }
+            return self::progress_payload($job, true);
+        }
+        $zip = null;
+        try {
+            // Re-read after acquiring the lock: another poll may have just committed.
+            $job = get_transient($transient_key);
             if (!is_array($job)) {
-                wp_send_json_error(array('message' => __('A feladat lejárt vagy nem található.', 'mg')), 404);
+                throw new RuntimeException(__('A feladat lejárt vagy már letöltötték.', 'mg'));
             }
-
             if ($job['status'] === 'completed') {
-                wp_send_json_success(array(
-                    'completed' => $job['completed'],
-                    'total'     => $job['total'],
-                    'percent'   => 100,
-                    'done'      => true,
-                ));
+                return self::progress_payload($job);
             }
-
-            $zip = new ZipArchive();
-            if ($zip->open($job['zip_path'], ZipArchive::CREATE) !== true) {
-                wp_send_json_error(array('message' => __('Nem sikerült megnyitni a ZIP fájlt.', 'mg')), 500);
+            if ($job['status'] === 'error') {
+                throw new RuntimeException($job['message']);
             }
-
-            $cache      = $job['cache'];
-            $temp_files = $job['temp_files'];
-            $in_batch   = 0;
-
+            $waiting = false;
+            $message = '';
+            $in_batch = 0;
             while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
-                $task        = $job['tasks'][$job['next_index']];
+                $task = $job['tasks'][$job['next_index']];
+                $design_path = $task['design_path'];
+                if (!empty($task['ai_prompt'])) {
+                    try {
+                        $design_path = MG_AI_Print_Generator::poll($job_id, $task);
+                    } catch (Throwable $e) {
+                        throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: %s', 'mg'), $task['order_id'], $task['item_id'], $e->getMessage()));
+                    }
+                    if ($design_path === '') {
+                        $waiting = true;
+                        $message = sprintf(__('Egyedi AI nyomat készül – rendelés #%d, tétel #%d.', 'mg'), $task['order_id'], $task['item_id']);
+                        break;
+                    }
+                    if (!in_array($design_path, $job['temp_files'], true)) {
+                        $job['temp_files'][] = $design_path;
+                    }
+                }
+                if ($zip === null) {
+                    $zip = new ZipArchive();
+                    if ($zip->open($job['zip_path'], ZipArchive::CREATE) !== true) {
+                        $zip = null;
+                        throw new RuntimeException(__('Nem sikerült megnyitni a ZIP fájlt.', 'mg'));
+                    }
+                }
                 $strip_black = !empty($job['strip_black']) && !empty($task['is_black_garment']);
-                $export_path = self::prepare_export_png($task['design_path'], $task['type'], $task['size'], $cache, $temp_files, !empty($task['large_size']), $strip_black);
-                $zip->addFile($export_path, $task['zip_name']);
+                $export_path = self::prepare_export_png($design_path, $task['type'], $task['size'], $job['cache'], $job['temp_files'], !empty($task['large_size']), $strip_black);
+                if (!$zip->addFile($export_path, $task['zip_name'])) {
+                    throw new RuntimeException(__('Nem sikerült a nyomatot a ZIP fájlba írni.', 'mg'));
+                }
                 $job['next_index']++;
                 $job['completed']++;
                 $in_batch++;
             }
-
-            $zip->close();
-
-            $job['cache']      = $cache;
-            $job['temp_files'] = $temp_files;
-
-            $done = $job['next_index'] >= $job['total'];
-            if ($done) {
+            if ($zip !== null) {
+                $closed = $zip->close();
+                $zip = null;
+                if (!$closed) {
+                    throw new RuntimeException(__('Nem sikerült menteni a ZIP fájlt.', 'mg'));
+                }
+            }
+            if ($job['next_index'] >= $job['total']) {
                 $job['status'] = 'completed';
-                foreach ($job['temp_files'] as $temp_file) {
+                foreach (array_unique($job['temp_files']) as $temp_file) {
                     @unlink($temp_file);
                 }
                 $job['temp_files'] = array();
             }
-
             set_transient($transient_key, $job, self::JOB_TTL);
-
-            $percent = $job['total'] > 0 ? (int) round(($job['completed'] / $job['total']) * 100) : 100;
-
-            wp_send_json_success(array(
-                'completed' => $job['completed'],
-                'total'     => $job['total'],
-                'percent'   => $percent,
-                'done'      => $done,
-            ));
+            return self::progress_payload($job, $waiting, $message);
         } catch (Throwable $e) {
-            wp_send_json_error(array('message' => $e->getMessage()), 500);
+            if (!is_array($job)) {
+                throw $e;
+            }
+            if ($zip !== null) {
+                $zip->close();
+                $zip = null;
+            }
+            foreach (array_unique($job['temp_files']) as $temp_file) {
+                @unlink($temp_file);
+            }
+            $job['temp_files'] = array();
+            if (is_file($job['zip_path'])) {
+                @unlink($job['zip_path']);
+            }
+            $job['status'] = 'error';
+            $job['message'] = $e->getMessage();
+            set_transient($transient_key, $job, self::JOB_TTL);
+            throw $e;
+        } finally {
+            if ($zip !== null) {
+                $zip->close();
+            }
+            delete_option($lock);
         }
+    }
+
+    protected static function progress_payload(array $job, $waiting = false, $message = '') {
+        return array(
+            'completed' => $job['completed'],
+            'total' => $job['total'],
+            'percent' => $job['total'] > 0 ? (int) round($job['completed'] / $job['total'] * 100) : 100,
+            'done' => $job['status'] === 'completed',
+            'waiting' => $waiting,
+            'message' => $message,
+        );
     }
 
     /* ------------------------------------------------------------------ */
@@ -400,7 +483,7 @@ class MG_Order_Design_Download {
         $job_id        = isset($_GET['job_id']) ? sanitize_text_field($_GET['job_id']) : '';
         $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
         $job           = $job_id !== '' ? get_transient($transient_key) : false;
-        if (!is_array($job) || $job['status'] !== 'completed' || !file_exists($job['zip_path'])) {
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id() || $job['status'] !== 'completed' || !file_exists($job['zip_path'])) {
             wp_die(__('A ZIP fájl nem található vagy lejárt.', 'mg'), '', array('response' => 404));
         }
 
@@ -706,7 +789,7 @@ class MG_Order_Design_Download {
         $btn = sprintf(
             '<a href="%s" class="button button-small" style="margin-top:6px;display:inline-block;" target="_blank">&#8595; %s</a>',
             esc_url($url),
-            esc_html__('Minta letöltése', 'mg')
+            esc_html(MG_AI_Print_Generator::has_enabled_fields($product_id) ? __('Alapminta (AI a ZIP-exportban)', 'mg') : __('Minta letöltése', 'mg'))
         );
 
         return $product_html . $btn;

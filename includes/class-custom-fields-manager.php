@@ -702,6 +702,8 @@ class MG_Custom_Fields_Manager {
             'mockup'          => $mockup,
             'description'     => $description,
             'linked_product_variants' => $linked_product_variants,
+            'ai_print_enabled' => !empty($field['ai_print_enabled']),
+            'ai_print_prompt' => isset($field['ai_print_prompt']) && is_string($field['ai_print_prompt']) ? sanitize_textarea_field($field['ai_print_prompt']) : '',
         );
     }
 

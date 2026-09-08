@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.35.1
+Version: 2.36.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.35.1');
+    define('MG_VERSION', '2.36.0');
 }
 
 add_action('plugins_loaded', function(){
@@ -84,6 +84,7 @@ add_action('plugins_loaded', function(){
         'admin/class-temu-api-export-page.php',
         'admin/class-allegro-export-page.php',
         'admin/class-order-design-download.php',
+        'includes/class-ai-print-generator.php',
         'admin/class-order-item-editor.php',
         'admin/class-order-add-item.php',
         'admin/class-express-order-flag.php',
@@ -280,6 +281,7 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Order_Design_Download')) {
         MG_Order_Design_Download::init();
+        MG_AI_Print_Generator::init();
     }
     if (class_exists('MG_Order_Item_Editor')) {
         MG_Order_Item_Editor::init();

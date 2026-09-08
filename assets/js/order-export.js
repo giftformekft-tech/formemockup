@@ -49,8 +49,11 @@
         closeEl.textContent       = i18n.close || 'Close';
 
         closeEl.addEventListener('click', function () {
+            stopped = true;
             overlay.remove();
         });
+        var stopped = false;
+        var started = false;
 
         var showError = function (message) {
             errorEl.textContent = message || i18n.error || 'Error';
@@ -69,10 +72,11 @@
         var updateProgress = function (data) {
             var percent = parseInt(data.percent || 0, 10);
             barEl.style.width = percent + '%';
-            statusEl.textContent = (i18n.processing || '') + ' ' + data.completed + ' / ' + data.total + ' (' + percent + '%)';
+            statusEl.textContent = (data.message || i18n.processing || '') + ' ' + data.completed + ' / ' + data.total + ' (' + percent + '%)';
         };
 
         var step = function (jobId) {
+            if (stopped) { return; }
             var body = 'action=mg_design_export_step&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId);
             postJson(body).then(function (payload) {
                 if (!payload || !payload.success) {
@@ -87,7 +91,7 @@
                     downloadEl.hidden = false;
                     return;
                 }
-                step(jobId);
+                window.setTimeout(function () { step(jobId); }, payload.data.waiting ? 2000 : 100);
             }).catch(function () {
                 showError();
             });
@@ -110,6 +114,8 @@
         };
 
         var beginExport = function (stripBlack) {
+            if (started) { return; }
+            started = true;
             choiceEl.hidden = true;
             barWrapEl.hidden = false;
             statusEl.hidden = false;

@@ -1,6 +1,60 @@
 # formemockup
 mymockup
 
+## AI egyedi nyomat a rendelés ZIP-exportjában (2.36.0)
+
+Az **Egyedi mezők → megfelelő sablon → mező szerkesztése** alatt kapcsold be
+a **Nyomat módosítása AI-val a rendelés ZIP-exportjakor** opciót, és töltsd ki
+a **Képmódosítási utasítás** mezőt. A kötelező `{{ertek}}` helyőrzőbe a vevő
+rendelt mezőértéke kerül. A képen látható példaévszámot vagy hónapot nem kell
+előre megadni. A sablon aktuális promptja a régebbi rendelésekre is érvényes.
+
+Hónap példa:
+
+```text
+A képen látható, személyre szabásra szolgáló hónapmegnevezést cseréld erre:
+{{ertek}}. Kövesd az eredeti felirat kis- és nagybetűzését és nyelvtani
+szerepét, az új hónaphoz helyes magyar toldalékolással.
+Például MÁJUSBAN helyett SZEPTEMBERBEN.
+```
+
+Évszám példa:
+
+```text
+A képen látható születési példaévszámot cseréld erre: {{ertek}}.
+Ha toldalék kapcsolódik hozzá, az új évszámhoz helyesen illeszd.
+Más évszámot vagy feliratot ne módosíts.
+```
+
+Az **AI Minta SEO és tagelés** oldalon megadott OpenAI API-kulcsot használja;
+a SEO-generálást ehhez nem kell bekapcsolni. Rögzített modell: `gpt-image-2`,
+minőség: `low`, egy PNG. A kimenet a forrás képarányát legfeljebb 1% eltéréssel
+követő legkisebb támogatott képméret (655 360–750 000 képpont). Nincs automatikus
+váltás drágább minőségre vagy felbontásra. Az átlátszó háttér megőrzését külön
+kéri és ellenőrzi; az API ezt jelenleg preview funkcióként támogatja.
+
+A **Minták letöltése (ZIP)** export indítja a szerkesztést. Egy tétel több
+AI-mezője egy hívásban módosul, a darabszám szerinti másolatok ugyanazt a
+képet használják. Minden új export új generálást indít. Az eredeti termékminta
+érintetlen marad; a hagyományos egyedi alapminta-letöltés nem generál.
+
+Az exportablak mutatja az AI-ra váró rendelést és tételt. A WooCommerce
+Action Scheduler háttérben végzi a hosszabb hívást, ezért működő ütemezett
+műveletek/loopback és Imagick szükséges. Hiányzó kötelező érték, hibás prompt,
+API-hiba, hibás PNG vagy elveszett átlátszóság esetén a ZIP-export leáll, és
+nem helyettesíti az egyedi nyomatot a régi alapképpel. Nincs automatikus fizetős
+újrapróbálás. A mezőértéket és a nyomatot küldi el, nem a teljes rendelést.
+
+Az elkészült PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
+megy keresztül. A `low` eredmény szöveghűségét és nyomtatási minőségét valódi
+mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot.
+
+Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
+`php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
+Az AI-export teszt valódi PNG-adatot és ZIP-fájlt használ, de a WordPress,
+az ütemező, az OpenAI HTTP-válasz és az Imagick helyettesített; nem éles AI-próba.
+API-forrás: [OpenAI képgenerálás](https://developers.openai.com/api/docs/guides/image-generation).
+
 ## Helyi készlet (Készlet menü)
 
 A WordPress adminban a **Készlet** csoport tartja nyilván, hány darab van

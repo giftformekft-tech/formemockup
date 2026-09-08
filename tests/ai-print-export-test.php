@@ -1,0 +1,281 @@
+<?php
+/**
+ * php -d extension=zip tests/ai-print-export-test.php
+ * Real PNG bytes and ZIP I/O; WordPress, scheduler, HTTP and Imagick are doubles.
+ * No paid API calls. This does not validate model output or real Imagick rendering.
+ */
+define('ABSPATH', __DIR__);
+define('HOUR_IN_SECONDS', 3600);
+$options = $transients = $actions = $http_calls = $posts = $orders = array();
+$current_user = 7;
+$http_mode = 'ok';
+$test_dir = sys_get_temp_dir() . '/mg-ai-test-' . bin2hex(random_bytes(6));
+mkdir($test_dir);
+function __($s) { return $s; }
+function sanitize_key($s) { return preg_replace('/[^a-z0-9_-]/', '', strtolower($s)); }
+function sanitize_text_field($s) { return trim(strip_tags((string) $s)); }
+function sanitize_textarea_field($s) { return trim(strip_tags((string) $s)); }
+function sanitize_title($s) { return $s; }
+function sanitize_file_name($s) { return str_replace(array('/', '\\'), '_', $s); }
+function wp_strip_all_tags($s) { return strip_tags($s); }
+function wp_unslash($s) { return stripslashes($s); }
+function esc_attr($s) { return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8'); }
+function esc_html($s) { return esc_attr($s); }
+function esc_textarea($s) { return esc_attr($s); }
+function esc_url($s) { return esc_attr($s); }
+function esc_js($s) { return addslashes($s); }
+function esc_attr__($s) { return esc_attr($s); }
+function esc_html__($s) { return esc_attr($s); }
+function checked($a, $b, $echo = true) { return $a == $b ? ' checked="checked"' : ''; }
+function selected($a, $b, $echo = true) { return $a == $b ? ' selected="selected"' : ''; }
+function wp_nonce_field($action, $field) {}
+function admin_url($path) { return 'https://example.test/wp-admin/' . $path; }
+function apply_filters($hook, $value, ...$args) { return $value; }
+function wc_get_product($id) { return new class { public function get_parent_id() { return 0; } }; }
+function wp_json_encode($s, $flags = 0) { return json_encode($s, $flags); }
+function wp_normalize_path($s) { return str_replace('\\', '/', $s); }
+function trailingslashit($s) { return rtrim($s, '/\\') . '/'; }
+function get_temp_dir() { return $GLOBALS['test_dir']; }
+function wp_upload_dir() { return array('basedir' => $GLOBALS['test_dir']); }
+function get_option($key, $default = false) { return $GLOBALS['options'][$key] ?? $default; }
+function update_option($key, $value, $autoload = null) { $GLOBALS['options'][$key] = $value; return true; }
+function add_option($key, $value, $deprecated = '', $autoload = null) {
+    if (array_key_exists($key, $GLOBALS['options'])) { return false; }
+    return update_option($key, $value);
+}
+function delete_option($key) { unset($GLOBALS['options'][$key]); }
+function set_transient($key, $value, $ttl) { $GLOBALS['transients'][$key] = $value; }
+function get_transient($key) { return $GLOBALS['transients'][$key] ?? false; }
+function delete_transient($key) { unset($GLOBALS['transients'][$key]); }
+function current_time($format) { return '2026-09-08 12:00:00'; }
+function get_current_user_id() { return $GLOBALS['current_user']; }
+function user_can($id, $cap) { return $id === 7; }
+function wp_generate_uuid4() { return bin2hex(random_bytes(16)); }
+function wp_schedule_single_event($time, $hook, $args) { return true; }
+function as_enqueue_async_action($hook, $args, $group, $unique) {
+    $GLOBALS['actions'][] = array($hook, $args);
+    return count($GLOBALS['actions']);
+}
+function get_post_meta($id, $key, $single) { return $GLOBALS['posts'][$id][$key] ?? ''; }
+function get_the_title($id) { return 'Minta ' . $id; }
+function wc_get_order($id) { return $GLOBALS['orders'][$id] ?? false; }
+function is_wp_error($r) { return $r instanceof WP_Error; }
+function wp_remote_retrieve_response_code($r) { return $r['code']; }
+function wp_remote_retrieve_body($r) { return $r['body']; }
+class WP_Error {}
+function png_chunk($type, $data) { return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data)); }
+function make_png($w, $h, $red, $alpha = true) {
+    $pixel = chr($red) . "\x00\x00" . ($alpha ? "\x00" : '');
+    $rows = str_repeat("\x00" . str_repeat($pixel, $w), $h);
+    return "\x89PNG\r\n\x1a\n" . png_chunk('IHDR', pack('NNCCCCC', $w, $h, 8, $alpha ? 6 : 2, 0, 0, 0)) . png_chunk('IDAT', gzcompress($rows)) . png_chunk('IEND', '');
+}
+function wp_remote_post($url, $request) {
+    $GLOBALS['http_calls'][] = array($url, $request);
+    $mode = $GLOBALS['http_mode'];
+    if ($mode === 'network') { return new WP_Error(); }
+    if ($mode === '429') { return array('code' => 429, 'body' => 'secret provider message'); }
+    preg_match('/name="size"\r\n\r\n(\d+)x(\d+)/', $request['body'], $size);
+    $png = make_png((int) $size[1], (int) $size[2], count($GLOBALS['http_calls']), $mode !== 'opaque');
+    if ($mode === 'bad') { $png = 'not a PNG'; }
+    if ($mode === 'size') { $png = make_png(16, 16, 42); }
+    return array('code' => 200, 'body' => json_encode(array('data' => array(array('b64_json' => base64_encode($png))))));
+}
+class Imagick {
+    const CHANNEL_ALPHA = 8;
+    private $bytes = '';
+    public function __construct($path = null) { if ($path) { $this->bytes = file_get_contents($path); } }
+    public function getImageAlphaChannel() { return ord($this->bytes[25]) === 6; }
+    public function getImageChannelExtrema($channel) { return array('minima' => 0, 'maxima' => 65535); }
+    public static function getQuantumRange() { return array('quantumRangeLong' => 65535); }
+    public function readImageBlob($bytes) { $this->bytes = $bytes; }
+    public function setImageFormat($format) {}
+    public function writeImage($path) { file_put_contents($path, $this->bytes); }
+    public function clear() {}
+    public function destroy() {}
+}
+class MG_Image_Utils {
+    public static $stripped = 0;
+    public static function strip_color_to_transparent($image, $color) { self::$stripped++; }
+    public static function trim_transparent_bounds($image) {}
+    public static function rotate_portrait_to_landscape($image) {}
+    public static function rotate_landscape_to_portrait($image) {}
+    public static function threshold_alpha_binary($image, $value) {}
+    public static function force_png_dpi($path, $dpi) {}
+}
+class WC_Order_Item_Product {
+    public $meta;
+    public function __construct(public $id, public $product_id, public $quantity, $fields) {
+        $this->meta = array('_mg_custom_fields' => $fields, 'mg_product_type' => 'polo', 'mg_size' => 'M', 'mg_color' => 'fekete');
+    }
+    public function get_meta($key, $single = true) { return $this->meta[$key] ?? ''; }
+    public function get_id() { return $this->id; }
+    public function get_product_id() { return $this->product_id; }
+    public function get_quantity() { return $this->quantity; }
+    public function add_meta_data($key, $value, $unique = false) { $this->meta[$key] = $value; }
+}
+class Test_Order {
+    public function __construct(public $items) {}
+    public function get_id() { return 90; }
+    public function get_items() { return $this->items; }
+    public function get_date_created() { return new DateTime('2026-09-08'); }
+}
+require_once dirname(__DIR__) . '/includes/class-custom-fields-manager.php';
+require_once dirname(__DIR__) . '/includes/class-custom-fields-frontend.php';
+require_once dirname(__DIR__) . '/includes/class-ai-seo-generator.php';
+require_once dirname(__DIR__) . '/includes/class-ai-print-generator.php';
+require_once dirname(__DIR__) . '/admin/class-order-design-download.php';
+require_once dirname(__DIR__) . '/admin/class-custom-fields-page.php';
+function call_hidden($class, $method, ...$args) { return (new ReflectionMethod($class, $method))->invoke(null, ...$args); }
+$assertions = 0;
+function check($condition, $message) {
+    $GLOBALS['assertions']++;
+    if (!$condition) { throw new RuntimeException('FAIL: ' . $message); }
+    echo 'ok - ' . $message . "\n";
+}
+function expect_error($callback, $text) {
+    try { $callback(); } catch (RuntimeException $e) { check(str_contains($e->getMessage(), $text), $text); return; }
+    throw new RuntimeException('Expected error: ' . $text);
+}
+function set_fields($fields) {
+    update_option('mg_custom_fields', array(42 => array('fields' => $fields)));
+    update_option('mg_custom_field_presets', array());
+    (new ReflectionProperty('MG_Custom_Fields_Manager', 'cached_presets'))->setValue(null, null);
+}
+function make_job($id, $tasks) {
+    $job = array('tasks' => $tasks, 'next_index' => 0, 'total' => count($tasks), 'completed' => 0, 'zip_path' => $GLOBALS['test_dir'] . '/' . $id . '.zip', 'strip_black' => true, 'cache' => array(), 'temp_files' => array(), 'status' => 'processing', 'user_id' => 7);
+    set_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $id, $job, 3600);
+    return $job;
+}
+try {
+    check(class_exists('ZipArchive'), 'real ZIP extension available');
+    $fields = array(
+        array('id' => 'month', 'label' => 'Hónap', 'type' => 'select', 'required' => true, 'ai_print_enabled' => true, 'ai_print_prompt' => 'A képen látható hónapot cseréld erre: {{ertek}}. Kövesd a ragozást.'),
+        array('id' => 'year', 'label' => 'Év', 'type' => 'number', 'required' => true, 'ai_print_enabled' => true, 'ai_print_prompt' => 'A születési évet cseréld erre: {{ertek}}.'),
+    );
+    set_fields($fields);
+    update_option('mg_ai_seo_settings', array('api_key' => 'test-key', 'enabled' => false));
+    $item = new WC_Order_Item_Product(11, 42, 2, array(array('id' => 'month', 'value' => 'szeptember'), array('id' => 'year', 'value' => '1995')));
+    $prompt = MG_AI_Print_Generator::prompt_for_item($item);
+    check(str_contains($prompt, '"szeptember"') && str_contains($prompt, '"1995"'), 'legacy order values combine into one prompt');
+    check(!str_contains($prompt, '{{ertek}}'), 'all placeholders replaced');
+    $item->meta['_mg_custom_fields'][0]['raw_value'] = 'július';
+    check(str_contains(MG_AI_Print_Generator::prompt_for_item($item), '"július"'), 'new raw order value takes precedence');
+    unset($item->meta['_mg_custom_fields'][0]['raw_value']);
+    $_POST = array('field_ai_print_enabled' => '1', 'field_ai_print_prompt' => addslashes('Csere: {{ertek}}. "Példa"'));
+    $request_field = call_hidden('MG_Custom_Fields_Page', 'read_field_from_request');
+    check($request_field['ai_print_enabled'] && $request_field['ai_print_prompt'] === 'Csere: {{ertek}}. "Példa"', 'admin save preserves prompt quotes and enabled flag');
+    $render_field = $fields[0];
+    $render_field['ai_print_prompt'] = 'Csere: {{ertek}}. </textarea><script>bad</script>';
+    ob_start();
+    call_hidden('MG_Custom_Fields_Page', 'render_field_editor_form', 'birthday', $render_field, false);
+    $html = ob_get_clean();
+    check(str_contains($html, 'name="field_ai_print_enabled" value="1" checked="checked"'), 'admin checkbox renders saved state');
+    check(str_contains($html, 'name="field_ai_print_prompt"') && !str_contains($html, '<script>bad</script>'), 'admin prompt textarea escapes stored markup');
+    check(!call_hidden('MG_Custom_Fields_Manager', 'sanitize_field', array('id' => 'legacy'))['ai_print_enabled'], 'existing fields default off');
+    update_option('mg_custom_field_presets', array('birthday' => array('name' => 'Születésnap', 'product_ids' => array(42), 'fields' => $fields)));
+    (new ReflectionProperty('MG_Custom_Fields_Manager', 'cached_presets'))->setValue(null, null);
+    $updated = $fields;
+    $updated[1]['ai_print_prompt'] = 'AKTUÁLIS év: {{ertek}}.';
+    MG_Custom_Fields_Manager::update_preset('birthday', array('fields' => $updated));
+    check(str_contains(MG_AI_Print_Generator::prompt_for_item($item), 'AKTUÁLIS'), 'current preset prompt applies without reassigning products');
+    $updated[1]['ai_print_enabled'] = false;
+    MG_Custom_Fields_Manager::update_preset('birthday', array('fields' => $updated));
+    check(!str_contains(MG_AI_Print_Generator::prompt_for_item($item), '1995'), 'disabling preset AI immediately stops that edit');
+    MG_Custom_Fields_Manager::update_preset('birthday', array('fields' => array()));
+    check(MG_AI_Print_Generator::prompt_for_item($item) === '', 'deleted preset fields do not use stale product copies');
+    set_fields($fields);
+    $empty_item = new WC_Order_Item_Product(12, 42, 1, array());
+    expect_error(fn() => MG_AI_Print_Generator::prompt_for_item($empty_item), 'Hiányzik a rendelt érték');
+    $optional = $fields;
+    $optional[0]['required'] = $optional[1]['required'] = false;
+    set_fields($optional);
+    check(MG_AI_Print_Generator::prompt_for_item($empty_item) === '', 'empty optional values do not generate');
+    $bad_prompt = $fields;
+    $bad_prompt[0]['ai_print_prompt'] = 'no placeholder';
+    set_fields($bad_prompt);
+    expect_error(fn() => MG_AI_Print_Generator::prompt_for_item($item), 'Hiányzó vagy hibás AI');
+    set_fields($fields);
+    foreach (array(array(3000, 4000), array(1000, 1000), array(4000, 3000), array(3000, 1000), array(1000, 3000)) as [$w, $h]) {
+        [$rw, $rh] = array_map('intval', explode('x', MG_AI_Print_Generator::economical_size($w, $h)));
+        check($rw % 16 === 0 && $rh % 16 === 0 && $rw * $rh >= 655360 && $rw * $rh <= 750000 && abs(($rw / $rh) / ($w / $h) - 1) <= 0.01, 'economical valid dimensions ' . $w . 'x' . $h);
+    }
+    expect_error(fn() => MG_AI_Print_Generator::economical_size(4000, 1000), 'képaránya');
+    $source_path = $test_dir . '/source.png';
+    $source_bytes = make_png(300, 400, 255);
+    file_put_contents($source_path, $source_bytes);
+    $posts[42] = $posts[99] = array('_mg_last_design_path' => $source_path);
+    $checkout_item = new WC_Order_Item_Product(14, 42, 1, array());
+    MG_Custom_Fields_Frontend::add_order_item_meta($checkout_item, 'cart-key', array('mg_custom_fields' => array(array('id' => 'year', 'label' => 'Év', 'value' => '1995', 'display' => '1995'))), null);
+    check($checkout_item->meta['_mg_custom_fields'][0]['raw_value'] === '1995', 'checkout persists the raw customer value');
+    $other = new WC_Order_Item_Product(12, 42, 1, array(array('id' => 'month', 'value' => 'május'), array('id' => 'year', 'value' => '2001')));
+    $normal = new WC_Order_Item_Product(13, 99, 1, array());
+    $normal->meta['mg_color'] = 'feher';
+    $orders[90] = new Test_Order(array($item, $other, $normal));
+    $tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
+    check(count($tasks) === 4 && $tasks[0]['item_id'] === $tasks[1]['item_id'], 'one export file per quantity, same item shares edit');
+    check($tasks[0]['ai_prompt'] !== $tasks[2]['ai_prompt'] && $tasks[3]['ai_prompt'] === '', 'different customer values stay isolated; normal product bypasses AI');
+    check(!$actions && !$http_calls, 'building export plan does not generate');
+    $job = make_job('job1', $tasks);
+    $progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
+    check($progress['waiting'] && $progress['completed'] === 0 && count($actions) === 1, 'first step dispatches once and returns promptly');
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
+    check(count($actions) === 1, 'repeated polling does not enqueue twice');
+    MG_AI_Print_Generator::run($actions[0][1][0]);
+    MG_AI_Print_Generator::run($actions[0][1][0]);
+    check(count($http_calls) === 1, 'duplicate worker delivery does not charge twice');
+    [$url, $request] = $http_calls[0];
+    check($url === 'https://api.openai.com/v1/images/edits' && $request['redirection'] === 0, 'fixed image edit endpoint without redirecting credentials');
+    foreach (array('model' => 'gpt-image-2', 'quality' => 'low', 'n' => '1', 'output_format' => 'png', 'background' => 'transparent') as $name => $value) {
+        check(str_contains($request['body'], 'name="' . $name . "\"\r\n\r\n" . $value . "\r\n"), 'API parameter ' . $name . '=' . $value);
+    }
+    check(str_contains($request['body'], $source_bytes) && !str_contains($request['body'], 'input_fidelity'), 'source PNG is uploaded and unsupported fidelity option omitted');
+    $progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
+    check($progress['waiting'] && $progress['completed'] === 2 && count($actions) === 2, 'quantity copies reuse image before next item is generated');
+    MG_AI_Print_Generator::run($actions[1][1][0]);
+    $progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
+    check($progress['done'] && $progress['completed'] === 4 && count($http_calls) === 2, 'mixed export completes with exactly two edits');
+    $zip = new ZipArchive();
+    $zip->open($job['zip_path']);
+    check($zip->numFiles === 4, 'actual ZIP contains all ordered copies');
+    check($zip->getFromIndex(0) === $zip->getFromIndex(1), 'quantity copies contain identical edited PNG');
+    check($zip->getFromIndex(0) !== $source_bytes && $zip->getFromIndex(0) !== $zip->getFromIndex(2), 'ZIP uses generated bytes, with distinct results per item');
+    check($zip->getFromIndex(3) === $source_bytes && file_get_contents($source_path) === $source_bytes, 'normal export and original design preserved');
+    $zip->close();
+    check(MG_Image_Utils::$stripped === 2, 'existing black garment export processing runs on the edited design only');
+    check(!file_exists($test_dir . '/mg-ai-print-' . $actions[0][1][0] . '.png'), 'completed export removes generated temporary PNG');
+    make_job('job2', array($tasks[0]));
+    $current_user = 8;
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'job2'), 'más felhasználóhoz');
+    $current_user = 7;
+    $lock = 'mg_export_lock_' . hash('sha256', 'job2');
+    add_option($lock, time());
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'job2')['waiting'], 'concurrent ZIP step waits without mutation');
+    delete_option($lock);
+    foreach (array('429' => 'HTTP 429', 'network' => 'hálózati hibával', 'bad' => 'érvényes PNG', 'size' => 'érvényes PNG', 'opaque' => 'átlátszó hátteret') as $mode => $error) {
+        $http_mode = (string) $mode;
+        $id = 'failure-' . $mode;
+        make_job($id, array($tasks[0]));
+        call_hidden('MG_Order_Design_Download', 'process_export_step', $id);
+        $last = end($actions);
+        MG_AI_Print_Generator::run($last[1][0]);
+        $before = count($http_calls);
+        expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', $id), $error);
+        MG_AI_Print_Generator::run($last[1][0]);
+        check(count($http_calls) === $before, 'failure is not automatically retried: ' . $mode);
+        $failed = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $id);
+        check($failed['status'] === 'error' && $failed['completed'] === 0 && !file_exists($failed['zip_path']), 'failure never exports the original: ' . $mode);
+    }
+    $http_mode = 'ok';
+    update_option('mg_ai_seo_settings', array('api_key' => ''));
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90)), 'OpenAI API-kulcsot');
+    update_option('mg_ai_seo_settings', array('api_key' => 'test-key'));
+    $item->meta['_mg_print_design_reference'] = array('design_path' => $test_dir . '/missing.png');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90)), 'alapmintája nem található');
+    echo "\n" . $assertions . " assertions passed. HTTP/scheduler/Imagick mocked; ZIP and PNG bytes are real.\n";
+} catch (Throwable $e) {
+    fwrite(STDERR, $e->getMessage() . "\n");
+    exit(1);
+} finally {
+    foreach (glob($test_dir . '/*') as $file) { unlink($file); }
+    rmdir($test_dir);
+}

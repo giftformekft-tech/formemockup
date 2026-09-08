@@ -269,6 +269,10 @@ class MG_Custom_Fields_Page {
                     break;
                 }
                 $field = self::read_field_from_request();
+                if (!empty($field['ai_print_enabled']) && (trim($field['ai_print_prompt']) === '' || strpos($field['ai_print_prompt'], '{{ertek}}') === false)) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_ai_print_prompt', __('Az AI nyomat utasítása kötelező, és tartalmaznia kell a {{ertek}} helyőrzőt.', 'mgcf'), 'error');
+                    break;
+                }
                 if (empty($field['label'])) {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_missing_label', __('A mező neve nem lehet üres.', 'mgcf'), 'error');
                     break;
@@ -373,6 +377,8 @@ class MG_Custom_Fields_Page {
         $field['placement'] = isset($_POST['field_placement']) ? MG_Custom_Fields_Manager::normalize_placement($_POST['field_placement']) : 'variant_bottom';
         $field['position'] = isset($_POST['field_position']) ? intval($_POST['field_position']) : 0;
         $field['description'] = isset($_POST['field_description']) ? sanitize_textarea_field($_POST['field_description']) : '';
+        $field['ai_print_enabled'] = !empty($_POST['field_ai_print_enabled']);
+        $field['ai_print_prompt'] = isset($_POST['field_ai_print_prompt']) && is_string($_POST['field_ai_print_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['field_ai_print_prompt'])) : '';
         $options_raw = isset($_POST['field_options']) ? wp_kses_post($_POST['field_options']) : '';
         $field['options'] = $options_raw;
         $field['linked_product_variants'] = ($field['type'] === 'select' && !empty($_POST['field_linked_product_variants']));
@@ -843,6 +849,10 @@ class MG_Custom_Fields_Page {
         echo '</select></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Sorrend', 'mgcf') . '</label></th><td><input type="number" name="field_position" value="' . esc_attr($position) . '" class="small-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Leírás', 'mgcf') . '</label></th><td><textarea name="field_description" rows="2" class="large-text">' . esc_textarea($description) . '</textarea></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('AI egyedi nyomat', 'mgcf') . '</th><td><label><input type="checkbox" name="field_ai_print_enabled" value="1"' . checked(!empty($field['ai_print_enabled']), true, false) . ' /> ' . esc_html__('Nyomat módosítása AI-val a rendelés ZIP-exportjakor', 'mgcf') . '</label></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('Képmódosítási utasítás', 'mgcf') . '</th><td><textarea name="field_ai_print_prompt" rows="6" class="large-text" placeholder="' . esc_attr__('A képen látható hónapot cseréld erre: {{ertek}}. Kövesd az eredeti ragozást, helyes magyar toldalékolással.', 'mgcf') . '">' . esc_textarea(isset($field['ai_print_prompt']) ? $field['ai_print_prompt'] : '') . '</textarea>';
+        echo '<p class="description">' . esc_html__('A {{ertek}} helyére a vevő rendelt értéke kerül. Nem kell megadni a képen szereplő példaértéket. Több mező módosítása egyetlen képszerkesztésben történik. A sablon aktuális utasítása a régebbi rendelések exportjára is érvényes.', 'mgcf') . '</p>';
+        echo '<p class="description">' . esc_html__('GPT Image 2 · low · PNG · kis, képarányhoz igazított felbontás. Egy exporton belül egy tételhez csak egy kép készül; új export új generálást indít.', 'mgcf') . ' <a href="' . esc_url(admin_url('admin.php?page=mg-ai-seo')) . '">' . esc_html__('OpenAI API-kulcs beállítása', 'mgcf') . '</a></p></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Választólista értékek', 'mgcf') . '</label></th><td><textarea name="field_options" rows="3" class="large-text" placeholder="Érték1&#10;Érték2">' . esc_textarea($options_text) . '</textarea><p class="description">' . esc_html__('Választólista típusnál soronként egy opció.', 'mgcf') . '</p></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('Kapcsolt termékek', 'mgcf') . '</th><td><label><input type="checkbox" name="field_linked_product_variants" value="1"' . checked($linked_product_variants, true, false) . ' /> ' . esc_html__('Külön termék létrehozása minden választóértékhez, ha a terméknél minden PNG meg van adva', 'mgcf') . '</label><p class="description">' . esc_html__('PNG nélkül a mező továbbra is hagyományos választóként működik. Csak választólista típusnál érvényes.', 'mgcf') . '</p></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Árpótdíj típusa', 'mgcf') . '</label></th><td><select name="field_surcharge_type">';
