@@ -226,6 +226,13 @@ class MG_Admin_Page {
                 'group'      => 'marketing',
                 'capability' => 'manage_options',
             ),
+            'gads_performance' => array(
+                'label'      => __('PMax besorolás', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-gads-product-performance',
+                'group'      => 'marketing',
+                'capability' => 'manage_options',
+            ),
             'meta_pixel' => array(
                 'label'      => __('Meta mérés', 'mockup-generator'),
                 'type'       => 'legacy',
@@ -405,6 +412,7 @@ class MG_Admin_Page {
             'mockup-generator-gift-finder'      => 'gift_finder',
             'mg-ai-seo'                         => 'ai_seo',
             'mg-gads-settings'                  => 'gads',
+            'mg-gads-product-performance'       => 'gads_performance',
             'mg-fb-pixel-settings'              => 'meta_pixel',
             'mg-custom-feeds'                   => 'custom_feeds',
             'mg-maintenance'                    => 'maintenance',
@@ -456,6 +464,9 @@ class MG_Admin_Page {
         }
         if (class_exists('MG_Google_Ads_Settings')) {
             $callbacks['mg-gads-settings'] = array('MG_Google_Ads_Settings', 'render_settings_page');
+        }
+        if (class_exists('MG_Google_Ads_Product_Performance_Page')) {
+            $callbacks['mg-gads-product-performance'] = array('MG_Google_Ads_Product_Performance_Page', 'render_page');
         }
         if (class_exists('MG_Facebook_Pixel_Settings')) {
             $callbacks['mg-fb-pixel-settings'] = array('MG_Facebook_Pixel_Settings', 'render_settings_page');

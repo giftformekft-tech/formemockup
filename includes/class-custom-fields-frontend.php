@@ -7,7 +7,6 @@ class MG_Custom_Fields_Frontend {
     protected static $current_product_id = 0;
     protected static $cached_fields = array();
     protected static $heading_rendered = false;
-    protected static $nonce_rendered = false;
 
     /**
      * Maximum allowed download attempts per short and long window.
@@ -136,7 +135,6 @@ class MG_Custom_Fields_Frontend {
             self::$current_product_id = $product_id;
             self::$cached_fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
             self::$heading_rendered = false;
-            self::$nonce_rendered = false;
         }
         return !empty(self::$cached_fields);
     }
@@ -174,10 +172,6 @@ class MG_Custom_Fields_Frontend {
     protected static function render_field_group($placement, $fields) {
         if (empty($fields)) {
             return;
-        }
-        if (!self::$nonce_rendered) {
-            wp_nonce_field('mg_custom_fields', 'mg_custom_fields_nonce');
-            self::$nonce_rendered = true;
         }
         $classes = array('mg-custom-fields', 'mg-custom-fields--placement-' . sanitize_html_class($placement));
         $order = self::determine_group_order($fields);
@@ -401,10 +395,11 @@ class MG_Custom_Fields_Frontend {
         if (empty($fields)) {
             return $passed;
         }
-        if (empty($_POST['mg_custom_fields_nonce']) || !wp_verify_nonce(wp_unslash($_POST['mg_custom_fields_nonce']), 'mg_custom_fields')) {
-            wc_add_notice(__('Érvénytelen kérés. Kérjük, frissítsd az oldalt.', 'mgcf'), 'error');
-            return false;
-        }
+        // WooCommerce add-to-cart requests are intentionally public and do not
+        // carry a nonce. Requiring a separate WordPress nonce here makes cached
+        // product pages stop working as soon as their embedded nonce expires.
+        // The submitted values are still accepted only for configured fields
+        // and are fully validated and sanitized below.
         $submitted = isset($_POST['mg_custom_fields']) ? (array) $_POST['mg_custom_fields'] : array();
         foreach ($fields as $field) {
             $field_id = $field['id'];
@@ -499,9 +494,6 @@ class MG_Custom_Fields_Frontend {
         }
         $fields = MG_Custom_Fields_Manager::get_fields_for_product($product_id);
         if (empty($fields)) {
-            return $cart_item_data;
-        }
-        if (empty($_POST['mg_custom_fields_nonce']) || !wp_verify_nonce(wp_unslash($_POST['mg_custom_fields_nonce']), 'mg_custom_fields')) {
             return $cart_item_data;
         }
         $submitted = isset($_POST['mg_custom_fields']) ? (array) $_POST['mg_custom_fields'] : array();
