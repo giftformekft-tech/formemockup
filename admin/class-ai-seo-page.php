@@ -14,6 +14,39 @@ class MG_AI_SEO_Page {
     public static function init() {
         add_action('admin_post_mg_ai_seo_save', array(__CLASS__, 'handle_save'));
         add_action('admin_post_mg_ai_tag_save', array(__CLASS__, 'handle_tag_save'));
+        add_action('admin_post_mg_ai_print_save', array(__CLASS__, 'handle_print_save'));
+    }
+
+    public static function handle_print_save() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_ai_print_save_action');
+        $input = isset($_POST['mg_ai_print_settings']) ? wp_unslash($_POST['mg_ai_print_settings']) : array();
+        try {
+            MG_AI_Print_Generator::save_settings(is_array($input) ? $input : array());
+            $result = 'print_updated=1';
+        } catch (RuntimeException $e) {
+            $result = 'print_error=1';
+        }
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo&' . $result . '#mg-ai-print-settings'));
+        exit;
+    }
+
+    public static function render_print_settings() {
+        $model = MG_AI_Print_Generator::get_model();
+        echo '<h2 id="mg-ai-print-settings">' . esc_html__('AI egyedi nyomat – ZIP-export', 'mockup-generator') . '</h2>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<input type="hidden" name="action" value="mg_ai_print_save" />';
+        wp_nonce_field('mg_ai_print_save_action', '_wpnonce');
+        echo '<table class="form-table"><tr><th scope="row"><label for="mg_ai_print_model">' . esc_html__('Képszerkesztő modell', 'mockup-generator') . '</label></th><td>';
+        echo '<select id="mg_ai_print_model" name="mg_ai_print_settings[model]">';
+        foreach (MG_AI_Print_Generator::get_models() as $value => $label) {
+            echo '<option value="' . esc_attr($value) . '"' . selected($model, $value, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select><p class="description">' . esc_html__('Az egyedi mezős nyomatok ZIP-exportjára vonatkozik. A kiválasztott modell a következő export indításától érvényes; a már futó export az eredeti modellel fejeződik be.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('A minőség low, a kimenet PNG, a felbontás a forrás képarányához igazodik. A modellek költsége és futási ideje eltérhet. API-hiba esetén az export leáll; nincs automatikus modellváltás vagy újrapróbálás.', 'mockup-generator') . '</p></td></tr></table>';
+        echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Nyomatmodell mentése', 'mockup-generator') . '</button></p></form>';
     }
 
     public static function add_submenu_page() {
@@ -88,6 +121,12 @@ class MG_AI_SEO_Page {
             <?php if (isset($_GET['tag_updated'])): ?>
             <div class="notice notice-success is-dismissible"><p><strong><?php esc_html_e('AI minta-tagelési beállítások elmentve.', 'mockup-generator'); ?></strong></p></div>
             <?php endif; ?>
+            <?php if (isset($_GET['print_updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e('Az AI nyomat modellje elmentve.', 'mockup-generator'); ?></p></div>
+            <?php endif; ?>
+            <?php if (isset($_GET['print_error'])): ?>
+            <div class="notice notice-error"><p><?php esc_html_e('A nyomatmodell mentése nem sikerült. Válassz a támogatott modellek közül.', 'mockup-generator'); ?></p></div>
+            <?php endif; ?>
             <?php if (isset($_GET['tag_dictionary_updated'])): ?>
             <div class="notice notice-success is-dismissible"><p><strong><?php esc_html_e('Az egyedi tagkönyvtár elmentve.', 'mockup-generator'); ?></strong></p></div>
             <?php endif; ?>
@@ -151,6 +190,8 @@ class MG_AI_SEO_Page {
             <button type="button" class="button" id="mg-ai-seo-test">Kapcsolat tesztelése</button>
             <span id="mg-ai-seo-test-result"></span>
 
+            <hr />
+            <?php self::render_print_settings(); ?>
             <hr />
 
             <h2 class="title"><?php esc_html_e('Meglévő minták elemzése', 'mockup-generator'); ?></h2>

@@ -125,6 +125,7 @@ require_once dirname(__DIR__) . '/includes/class-ai-seo-generator.php';
 require_once dirname(__DIR__) . '/includes/class-ai-print-generator.php';
 require_once dirname(__DIR__) . '/admin/class-order-design-download.php';
 require_once dirname(__DIR__) . '/admin/class-custom-fields-page.php';
+require_once dirname(__DIR__) . '/admin/class-ai-seo-page.php';
 function call_hidden($class, $method, ...$args) { return (new ReflectionMethod($class, $method))->invoke(null, ...$args); }
 $assertions = 0;
 function check($condition, $message) {
@@ -154,6 +155,25 @@ try {
     );
     set_fields($fields);
     update_option('mg_ai_seo_settings', array('api_key' => 'test-key', 'enabled' => false));
+    $seo_settings_before = get_option('mg_ai_seo_settings');
+    check(MG_AI_Print_Generator::get_model() === 'gpt-image-2', 'existing installs keep Image 2 by default');
+    check(array_keys(MG_AI_Print_Generator::get_models()) === array('gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare'), 'picker contains exact documented image model IDs');
+    foreach (MG_AI_Print_Generator::get_models() as $model => $label) {
+        MG_AI_Print_Generator::save_settings(array('model' => $model));
+        check(MG_AI_Print_Generator::get_model() === $model, 'model setting round trip: ' . $model);
+        ob_start();
+        MG_AI_SEO_Page::render_print_settings();
+        $model_html = ob_get_clean();
+        check(str_contains($model_html, 'value="' . $model . '" selected="selected"'), 'admin picker renders selected model: ' . $model);
+        check(str_contains($model_html, 'name="mg_ai_print_settings[model]"') && str_contains($model_html, 'value="mg_ai_print_save"'), 'model picker saves through its own form');
+    }
+    $before_invalid = get_option(MG_AI_Print_Generator::OPTION_KEY);
+    foreach (array('gpt-image-2.5', 'gpt-5-mini', '', array('gpt-image-2')) as $invalid) {
+        expect_error(fn() => MG_AI_Print_Generator::save_settings(array('model' => $invalid)), 'támogatott AI nyomat');
+        check(get_option(MG_AI_Print_Generator::OPTION_KEY) === $before_invalid, 'invalid model does not overwrite saved settings');
+    }
+    check(get_option('mg_ai_seo_settings') === $seo_settings_before, 'image model settings do not change SEO model, key or enabled flag');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2'));
     $item = new WC_Order_Item_Product(11, 42, 2, array(array('id' => 'month', 'value' => 'szeptember'), array('id' => 'year', 'value' => '1995')));
     $prompt = MG_AI_Print_Generator::prompt_for_item($item);
     check(str_contains($prompt, '"szeptember"') && str_contains($prompt, '"1995"'), 'legacy order values combine into one prompt');
@@ -214,6 +234,7 @@ try {
     $tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
     check(count($tasks) === 4 && $tasks[0]['item_id'] === $tasks[1]['item_id'], 'one export file per quantity, same item shares edit');
     check($tasks[0]['ai_prompt'] !== $tasks[2]['ai_prompt'] && $tasks[3]['ai_prompt'] === '', 'different customer values stay isolated; normal product bypasses AI');
+    check($tasks[0]['ai_model'] === 'gpt-image-2' && $tasks[1]['ai_model'] === 'gpt-image-2' && $tasks[3]['ai_model'] === '', 'task list pins the model for AI quantity copies only');
     check(!$actions && !$http_calls, 'building export plan does not generate');
     $job = make_job('job1', $tasks);
     $progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
@@ -243,6 +264,43 @@ try {
     $zip->close();
     check(MG_Image_Utils::$stripped === 2, 'existing black garment export processing runs on the edited design only');
     check(!file_exists($test_dir . '/mg-ai-print-' . $actions[0][1][0] . '.png'), 'completed export removes generated temporary PNG');
+    foreach (array('gpt-image-2.5-sunburst', 'gpt-image-2.5-flare') as $model) {
+        MG_AI_Print_Generator::save_settings(array('model' => $model));
+        $model_tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
+        check($model_tasks[0]['ai_model'] === $model, 'new export picks selected model: ' . $model);
+        MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2'));
+        make_job($model, array($model_tasks[0], $model_tasks[1]));
+        call_hidden('MG_Order_Design_Download', 'process_export_step', $model);
+        $model_action = end($actions);
+        $model_calls_before = count($http_calls);
+        MG_AI_Print_Generator::run($model_action[1][0]);
+        MG_AI_Print_Generator::run($model_action[1][0]);
+        check(count($http_calls) === $model_calls_before + 1, 'selected model generates only once: ' . $model);
+        $model_request = end($http_calls)[1];
+        foreach (array('model' => $model, 'quality' => 'low', 'n' => '1', 'output_format' => 'png', 'background' => 'transparent') as $name => $value) {
+            check(str_contains($model_request['body'], 'name="' . $name . "\"\r\n\r\n" . $value . "\r\n"), 'pinned API parameter ' . $name . '=' . $value);
+        }
+        check(call_hidden('MG_Order_Design_Download', 'process_export_step', $model)['done'], 'selected model completes quantity export: ' . $model);
+    }
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2.5-sunburst'));
+    $legacy_task = $tasks[0];
+    unset($legacy_task['ai_model']);
+    make_job('legacy-model', array($legacy_task));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'legacy-model');
+    $legacy_action = end($actions);
+    MG_AI_Print_Generator::run($legacy_action[1][0]);
+    check(str_contains(end($http_calls)[1]['body'], "name=\"model\"\r\n\r\ngpt-image-2\r\n"), 'pre-upgrade queued exports retain Image 2');
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'legacy-model')['done'], 'pre-upgrade export completes');
+    $invalid_task = $tasks[0];
+    $invalid_task['ai_model'] = 'not-supported';
+    make_job('invalid-model', array($invalid_task));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'invalid-model');
+    $invalid_action = end($actions);
+    $before_invalid_http = count($http_calls);
+    MG_AI_Print_Generator::run($invalid_action[1][0]);
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'invalid-model'), 'támogatott AI nyomat');
+    check(count($http_calls) === $before_invalid_http, 'unsupported queued model stops before API billing');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2'));
     make_job('job2', array($tasks[0]));
     $current_user = 8;
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'job2'), 'más felhasználóhoz');

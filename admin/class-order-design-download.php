@@ -212,8 +212,10 @@ class MG_Order_Design_Download {
                     throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: %s', 'mg'), $order_id, $item->get_id(), $e->getMessage()));
                 }
                 $design_path = self::resolve_design_path($product_id);
+                $ai_model = '';
                 if ($ai_prompt !== '') {
                     MG_AI_Print_Generator::assert_available();
+                    $ai_model = MG_AI_Print_Generator::get_model();
                     $reference = $item->get_meta('_mg_print_design_reference', true);
                     if (is_array($reference) && !empty($reference['design_path'])) {
                         $design_path = $reference['design_path'];
@@ -243,6 +245,7 @@ class MG_Order_Design_Download {
                         'order_id'         => $order_id,
                         'item_id'          => $item->get_id(),
                         'ai_prompt'        => $ai_prompt,
+                        'ai_model'         => $ai_model,
                         'type'             => $context['type'],
                         'size'             => $context['size'],
                         'large_size'       => $large_size,

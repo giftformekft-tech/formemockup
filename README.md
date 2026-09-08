@@ -1,7 +1,7 @@
 # formemockup
 mymockup
 
-## AI egyedi nyomat a rendelés ZIP-exportjában (2.36.0)
+## AI egyedi nyomat a rendelés ZIP-exportjában (2.37.0)
 
 Az **Egyedi mezők → megfelelő sablon → mező szerkesztése** alatt kapcsold be
 a **Nyomat módosítása AI-val a rendelés ZIP-exportjakor** opciót, és töltsd ki
@@ -27,11 +27,23 @@ Más évszámot vagy feliratot ne módosíts.
 ```
 
 Az **AI Minta SEO és tagelés** oldalon megadott OpenAI API-kulcsot használja;
-a SEO-generálást ehhez nem kell bekapcsolni. Rögzített modell: `gpt-image-2`,
-minőség: `low`, egy PNG. A kimenet a forrás képarányát legfeljebb 1% eltéréssel
+a SEO-generálást ehhez nem kell bekapcsolni. Ugyanezen az oldalon az
+**AI egyedi nyomat – ZIP-export → Képszerkesztő modell** választóban állítható:
+
+- **GPT Image 2** (`gpt-image-2`) – a meglévő működés alapértelmezése.
+- **GPT Image 2.5 Sunburst** (`gpt-image-2.5-sunburst`).
+- **GPT Image 2.5 Flare** (`gpt-image-2.5-flare`).
+
+A **Nyomatmodell mentése** csak az export képszerkesztőjét állítja; a SEO és
+tagelés modelljét nem módosítja. A választás minden AI-mezős nyomatra érvényes.
+Az export indításkor rögzíti a modellt, ezért egy menet közbeni beállításváltás
+csak az új exportokra hat. A frissítés előtti várakozó exportok továbbra is
+GPT Image 2-t használnak. Nincs automatikus modellváltás API-hiba esetén.
+
+Mindhárom modellnél a minőség `low`, a kimenet egy PNG. A kimenet a forrás képarányát legfeljebb 1% eltéréssel
 követő legkisebb támogatott képméret (655 360–750 000 képpont). Nincs automatikus
 váltás drágább minőségre vagy felbontásra. Az átlátszó háttér megőrzését külön
-kéri és ellenőrzi; az API ezt jelenleg preview funkcióként támogatja.
+kéri és ellenőrzi. A különböző modellek költsége és futási ideje eltérhet.
 
 A **Minták letöltése (ZIP)** export indítja a szerkesztést. Egy tétel több
 AI-mezője egy hívásban módosul, a darabszám szerinti másolatok ugyanazt a

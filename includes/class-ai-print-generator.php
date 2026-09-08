@@ -9,6 +9,33 @@ class MG_AI_Print_Generator {
     const CLEANUP_HOOK = 'mg_ai_print_cleanup';
     const PREFIX = 'mg_ai_print_';
     const TTL = HOUR_IN_SECONDS;
+    const OPTION_KEY = 'mg_ai_print_settings';
+    const DEFAULT_MODEL = 'gpt-image-2';
+
+    public static function get_models() {
+        return array(
+            'gpt-image-2' => 'GPT Image 2',
+            'gpt-image-2.5-sunburst' => 'GPT Image 2.5 Sunburst',
+            'gpt-image-2.5-flare' => 'GPT Image 2.5 Flare',
+        );
+    }
+
+    protected static function validate_model($model) {
+        if (!is_string($model) || !array_key_exists($model, self::get_models())) {
+            throw new RuntimeException(__('Válassz támogatott AI nyomat modellt.', 'mg'));
+        }
+        return $model;
+    }
+
+    public static function get_model() {
+        $settings = get_option(self::OPTION_KEY, array());
+        return self::validate_model($settings['model'] ?? self::DEFAULT_MODEL);
+    }
+
+    public static function save_settings(array $input) {
+        $model = self::validate_model($input['model'] ?? '');
+        update_option(self::OPTION_KEY, array('model' => $model), false);
+    }
 
     public static function init() {
         add_action(self::HOOK, array(__CLASS__, 'run'), 10, 1);
@@ -184,7 +211,9 @@ class MG_AI_Print_Generator {
             set_transient(self::PREFIX . $key, $state, self::TTL);
             @set_time_limit(240);
             @ini_set('memory_limit', '512M');
-            $state['path'] = self::edit_image($state['task']['design_path'], $state['task']['ai_prompt'], $key);
+            // Older queued exports used Image 2. New exports pin their model
+            // when the task list is built, even if settings change mid-export.
+            $state['path'] = self::edit_image($state['task']['design_path'], $state['task']['ai_prompt'], $key, $state['task']['ai_model'] ?? self::DEFAULT_MODEL);
             $state['status'] = 'ready';
             unset($state['task']);
             set_transient(self::PREFIX . $key, $state, self::TTL);
@@ -225,7 +254,8 @@ class MG_AI_Print_Generator {
         return $range['minima'] < $quantum['quantumRangeLong'];
     }
 
-    protected static function edit_image($source_path, $prompt, $key) {
+    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL) {
+        $model = self::validate_model($model);
         self::assert_available();
         $uploads = wp_upload_dir();
         $source = realpath($source_path);
@@ -252,7 +282,7 @@ class MG_AI_Print_Generator {
             throw new RuntimeException(__('Nem olvasható az AI forrásminta.', 'mg'));
         }
         $boundary = 'mgimage' . str_replace('-', '', wp_generate_uuid4());
-        $params = array('model' => 'gpt-image-2', 'quality' => 'low', 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
+        $params = array('model' => $model, 'quality' => 'low', 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
         $body = '';
         foreach ($params as $name => $value) {
             $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"" . $name . "\"\r\n\r\n" . $value . "\r\n";
@@ -272,7 +302,7 @@ class MG_AI_Print_Generator {
         $status = wp_remote_retrieve_response_code($response);
         if ($status !== 200) {
             // Do not echo provider bodies (may contain credentials, prompts or customer data).
-            throw new RuntimeException(sprintf(__('Az OpenAI képszerkesztés hibát jelzett (HTTP %d). Ellenőrizd az API-kulcsot, a keretet és a modellhozzáférést.', 'mg'), $status));
+            throw new RuntimeException(sprintf(__('Az OpenAI képszerkesztés hibát jelzett (HTTP %1$d, modell: %2$s). Ellenőrizd az API-kulcsot, a keretet és a modellhozzáférést.', 'mg'), $status, $model));
         }
         $data = json_decode(wp_remote_retrieve_body($response), true);
         $encoded = $data['data'][0]['b64_json'] ?? null;
