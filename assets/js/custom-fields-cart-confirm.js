@@ -44,12 +44,13 @@
         var rows = [];
         var fieldBlocks = form.querySelectorAll('.mg-custom-field');
         Array.prototype.forEach.call(fieldBlocks, function (block) {
-            var labelEl = block.querySelector('label');
+            var labelEl = block.querySelector('label, .mg-custom-field__label');
             if (!labelEl) { return; }
             var label = labelEl.textContent.replace(/\s*\*\s*$/, '').trim();
 
             var input = block.querySelector('input, select, textarea');
             if (!input) { return; }
+            if (input.value === '' || input.value === null) { return; }
 
             var value = '';
             if (input.tagName === 'SELECT') {
@@ -243,23 +244,44 @@
             return;
         }
 
-        e.preventDefault();
-        e.stopImmediatePropagation();
-
         var rows = collectFieldData(form);
         if (!rows.length) {
-            // No values entered yet – let WooCommerce validation handle it
-            setConfirmed(form);
-            form.submit();
+            // Keep the original submission and its add-to-cart button value.
             return;
         }
 
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        var submitter = e.submitter || form.querySelector('.single_add_to_cart_button') || form.querySelector('[type="submit"]');
         showConfirm(form, rows, function () {
+            if (submitter && (submitter.form !== form || submitter.disabled)) { return; }
             setConfirmed(form);
-            if (form.querySelector('[type="submit"]')) {
-                form.querySelector('[type="submit"]').click();
-            } else {
-                form.submit();
+            var temporaryButton;
+            try {
+                // Preserve the original submitter and rerun native validation
+                // and other submit handlers (including the variant size guard).
+                if (typeof form.requestSubmit === 'function') {
+                    if (submitter) {
+                        form.requestSubmit(submitter);
+                    } else {
+                        form.requestSubmit();
+                    }
+                } else if (submitter) {
+                    submitter.click();
+                } else {
+                    temporaryButton = document.createElement('button');
+                    temporaryButton.type = 'submit';
+                    temporaryButton.hidden = true;
+                    form.appendChild(temporaryButton);
+                    temporaryButton.click();
+                }
+            } finally {
+                if (temporaryButton && temporaryButton.parentNode) {
+                    temporaryButton.parentNode.removeChild(temporaryButton);
+                }
+                // A validation failure may prevent the submit event entirely.
+                removeConfirmed(form);
             }
         });
     }
