@@ -5,6 +5,7 @@ if (!defined('ABSPATH')) {
 
 class MG_Virtual_Variant_Manager {
     const NONCE_ACTION = 'mg_virtual_variant_preview';
+    const CONTENT_NONCE_ACTION = 'mg_virtual_variant_content';
 
     protected static $config_cache = array();
     protected static $generated_preview_cache = array();
@@ -69,6 +70,8 @@ class MG_Virtual_Variant_Manager {
         add_action('wp_footer', array(__CLASS__, 'inject_cart_thumbnail_fix_script'), 999);
         add_action('wp_ajax_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
         add_action('wp_ajax_nopriv_mg_virtual_preview', array(__CLASS__, 'ajax_preview'));
+        add_action('wp_ajax_mg_virtual_content', array(__CLASS__, 'ajax_content'));
+        add_action('wp_ajax_nopriv_mg_virtual_content', array(__CLASS__, 'ajax_content'));
         
         // Sync frontend title and price for Virtual Permalinks
         add_filter('the_title', array(__CLASS__, 'sync_frontend_title'), 10, 2);
@@ -148,7 +151,72 @@ class MG_Virtual_Variant_Manager {
             $config['default']['size'] = '';
         }
 
-        wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', $config);
+        wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', self::prepare_browser_config($config));
+    }
+
+    /** Keep feed/schema descriptions on the server; send only the initial one. */
+    public static function prepare_browser_config($config) {
+        $initial_type = self::get_type_from_request();
+        if (!$initial_type || !isset($config['types'][$initial_type])) {
+            $initial_type = $config['default']['type'] ?? '';
+        }
+        foreach ($config['types'] as $slug => &$type) {
+            $type['has_description'] = !empty($type['description']);
+            if ($slug !== $initial_type) {
+                unset($type['description']);
+            }
+        }
+        unset($type);
+        // The virtual selector's canvas preview is disabled.
+        unset($config['visuals']['defaults']);
+        $config['contentAjax'] = array(
+            'url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce(self::CONTENT_NONCE_ACTION),
+        );
+        return $config;
+    }
+
+    /** Render one requested public content section, never the entire catalog. */
+    public static function ajax_content() {
+        check_ajax_referer(self::CONTENT_NONCE_ACTION, 'nonce');
+        $product_id = absint($_POST['product_id'] ?? 0);
+        $type_slug = sanitize_title(wp_unslash($_POST['product_type'] ?? ''));
+        $section = sanitize_key(wp_unslash($_POST['section'] ?? ''));
+        if (!in_array($section, array('description', 'size_chart', 'size_chart_models'), true)) {
+            wp_send_json_error(array('message' => __('Érvénytelen tartalom.', 'mgvd')), 400);
+        }
+        $product = wc_get_product($product_id);
+        if (!self::is_supported_product($product) || $product->get_status() !== 'publish' || post_password_required($product_id)) {
+            wp_send_json_error(array('message' => __('A termék nem érhető el.', 'mgvd')), 404);
+        }
+        $catalog = MG_Variant_Display_Manager::get_catalog_index();
+        if (!isset($catalog[$type_slug])) {
+            wp_send_json_error(array('message' => __('A terméktípus nem érhető el.', 'mgvd')), 404);
+        }
+        // Shortcodes and description filters may rely on the current product.
+        $previous_post = $GLOBALS['post'] ?? null;
+        $previous_product = $GLOBALS['product'] ?? null;
+        $GLOBALS['post'] = get_post($product_id);
+        $GLOBALS['product'] = $product;
+        try {
+            if ($section === 'description') {
+                $html = $catalog[$type_slug]['description'] ?? '';
+                if ($html !== '') {
+                    $html = apply_filters('mg_variant_display_type_description', $html, $type_slug, $product);
+                }
+            } else {
+                $settings = self::get_settings($catalog);
+                $key = $section === 'size_chart' ? 'size_charts' : 'size_chart_models';
+                $html = $settings[$key][$type_slug] ?? '';
+                if ($html !== '') {
+                    $html = do_shortcode($html);
+                }
+            }
+        } finally {
+            $GLOBALS['post'] = $previous_post;
+            $GLOBALS['product'] = $previous_product;
+        }
+        wp_send_json_success(array('html' => (string) $html));
     }
 
     public static function render_selection_ui() {
@@ -339,13 +407,7 @@ class MG_Virtual_Variant_Manager {
             $colors_payload = array();
             $color_order = array();
             $size_chart = isset($settings['size_charts'][$type_slug]) ? $settings['size_charts'][$type_slug] : '';
-            if ($size_chart !== '') {
-                $size_chart = do_shortcode($size_chart);
-            }
             $size_chart_models = isset($settings['size_chart_models'][$type_slug]) ? $settings['size_chart_models'][$type_slug] : '';
-            if ($size_chart_models !== '') {
-                $size_chart_models = do_shortcode($size_chart_models);
-            }
             $type_description = isset($type_meta['description']) ? $type_meta['description'] : '';
             if ($type_description !== '') {
                 $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
@@ -414,8 +476,8 @@ class MG_Virtual_Variant_Manager {
                 'color_order' => $color_order,
                 'colors' => $colors_payload,
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
-                'size_chart' => $size_chart,
-                'size_chart_models' => $size_chart_models,
+                'has_size_chart' => $size_chart !== '',
+                'has_size_chart_models' => $size_chart_models !== '',
                 'description' => $type_description,
                 'price' => $type_price,
                 'size_surcharges' => $size_surcharges,
@@ -536,6 +598,10 @@ class MG_Virtual_Variant_Manager {
                 'sizeChartModelsLink' => __('Nézd meg modelleken', 'mgvd'),
                 'sizeChartBack' => __('Vissza a mérettáblázatra', 'mgvd'),
                 'sizeChartClose' => __('Bezárás', 'mgvd'),
+                'contentLoading' => __('Betöltés…', 'mgvd'),
+                'contentError' => __('A tartalom nem tölthető be. Próbáld újra.', 'mgvd'),
+                'contentRetry' => __('Újrapróbálás', 'mgvd'),
+                'contentEmpty' => __('Nincs megjeleníthető tartalom.', 'mgvd'),
                 'previewButton' => __('Minta nagyban', 'mgvd'),
                 'previewClose' => __('Bezárás', 'mgvd'),
                 'previewUnavailable' => __('Ehhez a variációhoz nem érhető el minta.', 'mgvd'),
