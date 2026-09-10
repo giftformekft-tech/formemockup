@@ -22,6 +22,7 @@ class MG_Custom_Fields_Manager {
      * Return whether the given product is marked as custom.
      */
     public static function is_custom_product($product_id) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return false;
         $product_id = intval($product_id);
         if ($product_id <= 0) {
             return false;

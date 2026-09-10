@@ -22,7 +22,7 @@ class MG_Virtual_Variant_Manager {
     /**
      * A vevőnek/gyártásnak szóló levélben megjelenő tétel meták.
      */
-    protected static $email_meta_whitelist = array('hónap', 'terméktípus', 'szín', 'méret');
+    protected static $email_meta_whitelist = array('hónap', 'terméktípus', 'szín', 'méret', 'outlet – készáru');
 
     /**
      * Return wp_upload_dir() result, cached for the lifetime of this request.
@@ -79,6 +79,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     protected static function is_supported_product($product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return false;
         if (!$product || !is_a($product, 'WC_Product')) {
             return false;
         }
@@ -338,6 +339,7 @@ class MG_Virtual_Variant_Manager {
     }
 
     public static function get_frontend_config($product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return array();
         $product_id = $product ? $product->get_id() : 0;
         if (!$product_id) {
             return array();

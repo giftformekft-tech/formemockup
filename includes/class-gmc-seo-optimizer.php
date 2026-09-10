@@ -90,6 +90,7 @@ class MG_GMC_SEO_Optimizer {
     }
 
     public static function get_virtual_permalink($product, $type_slug) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return $product->get_permalink();
         if (!$product) {
             return '';
         }
@@ -119,6 +120,7 @@ class MG_GMC_SEO_Optimizer {
     }
 
     public static function override_title($title) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet(get_queried_object_id())) return $title;
         if (is_admin()) return $title;
 
         if (is_product() && isset($_GET['mg_type'])) {

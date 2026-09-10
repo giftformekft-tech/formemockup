@@ -42,6 +42,7 @@ class MG_Size_Selection {
     }
 
     public static function add_cart_item_data($cart_item_data, $product_id, $variation_id) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return $cart_item_data;
         $selected = isset($_POST[self::FIELD_NAME]) ? sanitize_text_field(wp_unslash($_POST[self::FIELD_NAME])) : '';
         if ($selected === '') {
             return $cart_item_data;

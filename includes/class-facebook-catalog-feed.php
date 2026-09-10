@@ -160,6 +160,7 @@ class MG_Facebook_Catalog_Feed {
     }
 
     private static function get_product_xml($product_id) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return '';
         $product = wc_get_product($product_id);
         if (!$product) {
             return '';

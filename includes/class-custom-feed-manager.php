@@ -511,6 +511,7 @@ class MG_Custom_Feed_Manager {
     }
 
     private static function get_product_xml($product_id, $feed_config) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return '';
         $product = wc_get_product($product_id);
         if (!$product) return '';
 

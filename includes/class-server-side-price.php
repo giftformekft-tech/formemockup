@@ -30,6 +30,7 @@ class MG_Server_Side_Price {
      * @return string
      */
     public static function modify_price_html($price_html, $product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return $price_html;
         if (is_admin() && !defined('DOING_AJAX')) {
             return $price_html;
         }
@@ -63,6 +64,7 @@ class MG_Server_Side_Price {
     }
 
     public static function output_price_hiding_css() {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet(get_queried_object_id())) return;
 
         if (!function_exists('is_product') || !is_product()) {
             return;
@@ -90,6 +92,7 @@ class MG_Server_Side_Price {
     }
 
     public static function output_price_reveal_js() {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet(get_queried_object_id())) return;
         if (!is_product()) {
             return;
         }

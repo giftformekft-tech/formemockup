@@ -311,6 +311,7 @@ class MG_Surcharge_Frontend {
     }
 
     private static function get_applicable_surcharges($product, $variation = null, $location = 'product', $context = array()) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return array();
         if (!$product instanceof WC_Product) {
             return [];
         }

@@ -25,6 +25,7 @@ class MG_Catalog_Integration {
      * @return string Modified link with mg_type parameter.
      */
     public static function append_default_variant_param($link, $product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return $link;
         if (!$product || !is_a($product, 'WC_Product')) {
             return $link;
         }

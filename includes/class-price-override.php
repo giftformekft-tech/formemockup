@@ -43,6 +43,7 @@ class MG_Price_Override {
      * Override the price based on URL parameters (product page only)
      */
     public static function override_price($price, $product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return $price;
         if (is_admin() || !isset($_GET['mg_type'])) {
             return $price;
         }
@@ -209,6 +210,7 @@ class MG_Price_Override {
      * Override the product name based on URL parameters
      */
     public static function override_name($name, $product) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product)) return $name;
         if (is_admin() || !isset($_GET['mg_type'])) {
             return $name;
         }

@@ -12,6 +12,7 @@ $http_mode = 'ok';
 $test_dir = sys_get_temp_dir() . '/mg-ai-test-' . bin2hex(random_bytes(6));
 mkdir($test_dir);
 function __($s) { return $s; }
+function absint($value) { return abs((int) $value); }
 function sanitize_key($s) { return preg_replace('/[^a-z0-9_-]/', '', strtolower($s)); }
 function sanitize_text_field($s) { return trim(strip_tags((string) $s)); }
 function sanitize_textarea_field($s) { return trim(strip_tags((string) $s)); }
@@ -124,6 +125,7 @@ require_once dirname(__DIR__) . '/includes/class-custom-fields-frontend.php';
 require_once dirname(__DIR__) . '/includes/class-ai-seo-generator.php';
 require_once dirname(__DIR__) . '/includes/class-ai-print-generator.php';
 require_once dirname(__DIR__) . '/admin/class-order-design-download.php';
+require_once dirname(__DIR__) . '/includes/class-outlet.php';
 require_once dirname(__DIR__) . '/admin/class-custom-fields-page.php';
 require_once dirname(__DIR__) . '/admin/class-ai-seo-page.php';
 function call_hidden($class, $method, ...$args) { return (new ReflectionMethod($class, $method))->invoke(null, ...$args); }
@@ -230,7 +232,9 @@ try {
     $other = new WC_Order_Item_Product(12, 42, 1, array(array('id' => 'month', 'value' => 'május'), array('id' => 'year', 'value' => '2001')));
     $normal = new WC_Order_Item_Product(13, 99, 1, array());
     $normal->meta['mg_color'] = 'feher';
-    $orders[90] = new Test_Order(array($item, $other, $normal));
+    $outlet = new WC_Order_Item_Product(15, 42, 1, array());
+    $outlet->meta['_mg_outlet'] = 'yes';
+    $orders[90] = new Test_Order(array($item, $other, $normal, $outlet));
     $tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
     check(count($tasks) === 4 && $tasks[0]['item_id'] === $tasks[1]['item_id'], 'one export file per quantity, same item shares edit');
     check($tasks[0]['ai_prompt'] !== $tasks[2]['ai_prompt'] && $tasks[3]['ai_prompt'] === '', 'different customer values stay isolated; normal product bypasses AI');

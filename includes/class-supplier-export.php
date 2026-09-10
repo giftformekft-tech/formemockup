@@ -179,6 +179,7 @@ class MG_Supplier_Export {
             $debug[] = "Order #{$order_id}: " . count($order->get_items()) . " items";
 
             foreach ($order->get_items() as $item_id => $item) {
+                if (class_exists('MG_Outlet') && MG_Outlet::is_outlet_item($item)) continue;
                 if (!$item instanceof WC_Order_Item_Product) {
                     continue;
                 }
@@ -394,6 +395,13 @@ class MG_Supplier_Export {
         foreach ($order_ids as $order_id) {
             $order = wc_get_order($order_id);
             if ($order) {
+                if (class_exists('MG_Outlet')) {
+                    $needs_manufacturing = false;
+                    foreach ($order->get_items() as $item) {
+                        if (!MG_Outlet::is_outlet_item($item)) { $needs_manufacturing = true; break; }
+                    }
+                    if (!$needs_manufacturing) continue;
+                }
                 // By using third param true we prevent certain aggressive webhooks
                 $order->update_status('manufacturing', 'Rendelés exportálva a Nagyker CSV-be.', true);
             }

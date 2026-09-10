@@ -199,6 +199,7 @@ class MG_Order_Design_Download {
             $order_id = $order->get_id();
 
             foreach ($order->get_items() as $item) {
+                if (class_exists('MG_Outlet') && MG_Outlet::is_outlet_item($item)) continue;
                 /** @var WC_Order_Item_Product $item */
                 $quantity   = max(1, (int) $item->get_quantity());
                 $product_id = (int) $item->get_product_id(); // parent product
