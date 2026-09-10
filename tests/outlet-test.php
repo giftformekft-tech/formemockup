@@ -73,6 +73,7 @@ require __DIR__ . '/../includes/class-catalog-integration.php';
 require __DIR__ . '/../includes/class-supplier-export.php';
 require __DIR__ . '/../admin/class-temu-export-page.php';
 require __DIR__ . '/../includes/class-temu-api-exporter.php';
+require __DIR__ . '/../admin/class-express-order-flag.php';
 
 $source = new WC_Product_Simple(); $source->id=1;
 $source->props = array('status'=>'publish', 'name'=>'Minta', 'price'=>'6990', 'regular_price'=>'6990', 'tax_status'=>'taxable', 'tax_class'=>'', 'weight'=>'0.2');
@@ -177,7 +178,46 @@ $orders[10]=new class($item) {
 };
 $plan=MG_Supplier_Export::build_plan(array(10));
 check(!$plan['lines'] && !$plan['local'] && !$plan['missing_sku'], 'outlet-only order needs no supplier or blank garment stock');
-if (in_array('--fixture', $argv, true)) {
+class WC_Abstract_Order {
+    public $items; public $meta=array();
+    public function __construct($items) { $this->items=$items; }
+    public function get_items() { return $this->items; }
+    public function get_meta($key,$single=true) { return $this->meta[$key] ?? ''; }
+    public function update_meta_data($key,$value) { $this->meta[$key]=$value; }
+    public function save_meta_data() {}
+}
+$orders[21]=new WC_Abstract_Order(array($normal_item,$item));
+$orders[22]=new WC_Abstract_Order(array($normal_item));
+MG_Express_Order_Flag::flag_on_create($orders[21]);
+MG_Express_Order_Flag::flag_on_create($orders[22]);
+check($orders[21]->get_meta('_mg_has_outlet')==='1', 'mixed order receives outlet badge at checkout');
+check($orders[22]->get_meta('_mg_has_outlet')==='0', 'normal order has no outlet badge');
+function badge_result() {
+    $_POST=array('nonce'=>MG_Express_Order_Flag::AJAX_ACTION, 'order_ids'=>'[21,22]');
+    try { MG_Express_Order_Flag::ajax_check(); } catch (OutletResponse $response) { return $response->data['has_outlet']; }
+}
+check(badge_result()===array(21), 'visible order list identifies mixed outlet order');
+$orders[21]->items=array($normal_item);
+$orders[22]->items=array($item);
+check(badge_result()===array(22), 'item edits invalidate both stale positive and negative outlet flags');
+unset($meta[$id]);
+check(badge_result()===array(22), 'outlet badge survives product deletion via order item snapshot');
+$meta[$id]=$outlet->meta;
+$legacy_item=new WC_Order_Item_Product(); $legacy_item->props['product_id']=$id;
+$orders[22]->items=array($legacy_item); $orders[22]->meta=array();
+check(badge_result()===array(22), 'older order detected from outlet product without cached badge');
+if (in_array('--badge-script', $argv, true)) {
+    function get_current_screen() { return (object)array('id'=>'woocommerce_page_wc-orders'); }
+    function esc_attr($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+    function esc_html($v) { return esc_attr($v); }
+    function wp_json_encode($v) { return json_encode($v); }
+    function admin_url($v) { return 'https://outlet.test/'.$v; }
+    function wp_create_nonce($v) { return $v; }
+    function wp_register_script(...$args) {}
+    function wp_enqueue_script(...$args) {}
+    function wp_add_inline_script($handle,$script) { echo $script; }
+    MG_Express_Order_Flag::enqueue('');
+} elseif (in_array('--fixture', $argv, true)) {
     function esc_attr($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
     function esc_html($v) { return esc_attr($v); }
     function esc_url($v) { return esc_attr($v); }

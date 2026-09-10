@@ -21,6 +21,12 @@ class MG_Express_Order_Flag {
     const AJAX_ACTION = 'mg_check_order_badges';
 
     const BADGE_TYPES = [
+        'has_outlet' => [
+            'meta_key'   => '_mg_has_outlet',
+            'label'      => 'OUTLET',
+            'color_from' => '#b45309',
+            'color_to'   => '#92400e',
+        ],
         'is_express' => [
             'meta_key'   => '_mg_has_express',
             'label'      => '⚡ Express',
@@ -101,6 +107,14 @@ class MG_Express_Order_Flag {
             $needs_save = false;
 
             foreach ( self::BADGE_TYPES as $type_key => $def ) {
+                // Item edits and older orders must be reflected immediately.
+                // Only scan the currently displayed orders; no permanent negative cache.
+                if ( $type_key === 'has_outlet' ) {
+                    if ( self::order_matches_type( $order, $type_key ) ) {
+                        $result[ $type_key ][] = $order_id;
+                    }
+                    continue;
+                }
                 // Check cached meta first (instant, no DB scan)
                 $cached = $order->get_meta( $def['meta_key'], true );
 
@@ -163,8 +177,8 @@ class MG_Express_Order_Flag {
             document.addEventListener("DOMContentLoaded", function(){
                 // Collect visible order IDs from the DOM (~20 per page)
                 var ids = [];
-                document.querySelectorAll("tr[id^=\'order-\']").forEach(function(row){
-                    var m = row.id.match(/^order-(\d+)$/);
+                document.querySelectorAll("tr[id^=\'order-\'],tr[id^=\'post-\']").forEach(function(row){
+                    var m = row.id.match(/^(?:order|post)-(\d+)$/);
                     if(m) ids.push(parseInt(m[1],10));
                 });
                 if(!ids.length) return;
@@ -187,7 +201,7 @@ class MG_Express_Order_Flag {
                         var html = cfg.badges[typeKey];
                         if(!html) return;
                         resp.data[typeKey].forEach(function(id){
-                            var row = document.getElementById("order-"+id);
+                            var row = document.getElementById("order-"+id)||document.getElementById("post-"+id);
                             if(!row) return;
                             var cell = row.querySelector(".column-order_total")||row.querySelector("td.order_total");
                             if(cell && !cell.querySelector("[data-mg-badge=\'"+typeKey+"\']")){
@@ -211,6 +225,14 @@ class MG_Express_Order_Flag {
     /* ── Detection helpers ──────────────────────────────────────────── */
 
     private static function order_matches_type( WC_Abstract_Order $order, $type_key ) {
+        if ( $type_key === 'has_outlet' ) {
+            foreach ( $order->get_items() as $item ) {
+                if ( class_exists( 'MG_Outlet' ) && MG_Outlet::is_outlet_item( $item ) ) {
+                    return true;
+                }
+            }
+            return false;
+        }
         if ( $type_key === 'has_custom_fields' ) {
             $order_fields = $order->get_meta( '_mg_custom_fields', true );
             if ( is_array( $order_fields ) && ! empty( $order_fields ) ) {

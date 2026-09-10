@@ -14,6 +14,8 @@ Az oldal az első jogosult adminmegnyitáskor automatikusan létrejön `[mg_outl
 
 ## Működés
 
+- A 2.38.3 verziótól a rendeléslistában az összeg alatt **OUTLET** badge jelöli az outlet tételt tartalmazó rendeléseket, vegyes rendelés esetén is. A régi és a HPOS rendeléslistában is megjelenik; a korábbi rendelések felismerése a lista megnyitásakor történik.
+
 - Fix típus/szín/méret, saját ár és készlet; nincs változatválasztó, személyre szabás vagy termékfelár. A bolt normál kupon- és kosárkedvezmény-szabályai megmaradnak.
 - WooCommerce kezeli a készletellenőrzést, rendelési foglalást, levonást és visszaállítást. A modul kötelezően engedélyezi a termék saját készletkezelését és tiltja az utánrendelést.
 - A termék katalógusláthatósága rejtett. A saját oldalán vásárolható, az outlet shortcode listázza. Nulla készletnél a listából eltűnik, újrakészletezéskor visszakerül. Az outlet oldal nem kér teljesoldalas gyorsítótárazást, hogy a darabszám friss maradjon.
