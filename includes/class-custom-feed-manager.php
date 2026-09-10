@@ -242,7 +242,7 @@ class MG_Custom_Feed_Manager {
         update_option('mg_custom_feeds', $feeds);
         self::generate_feed_to_file($slug);
         
-        wp_redirect(admin_url('admin.php?page=mg-custom-feeds&created=1'));
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&created=1'));
         exit;
     }
 
@@ -278,7 +278,7 @@ class MG_Custom_Feed_Manager {
             fclose($lock);
         }
 
-        wp_redirect(admin_url('admin.php?page=mg-custom-feeds&deleted=1'));
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&deleted=1'));
         exit;
     }
 
@@ -293,7 +293,7 @@ class MG_Custom_Feed_Manager {
             wp_die('A generálás nem indítható. Ellenőrizd a feedet, az uploads/mg_feeds mappa írási jogosultságát és a feladatütemezőt.');
         }
 
-        wp_redirect(admin_url('admin.php?page=mg-custom-feeds&queued=1'));
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&queued=1'));
         exit;
     }
 

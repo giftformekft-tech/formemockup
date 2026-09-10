@@ -16,6 +16,14 @@ function check($ok, $message) {
     if (!$ok) throw new RuntimeException($message);
 }
 function sanitize_key($s) { return preg_replace('/[^a-z0-9_-]/', '', strtolower($s)); }
+function sanitize_text_field($s) { return trim(strip_tags($s)); }
+function sanitize_title($s) { return sanitize_key($s); }
+function admin_url($path) { return 'https://example.test/wp-admin/' . $path; }
+class FeedRedirect extends RuntimeException {}
+function wp_safe_redirect($url) { throw new FeedRedirect($url); }
+function check_admin_referer($action) {
+    check(in_array($action, array('mg_save_custom_feed', 'mg_delete_custom_feed', 'mg_regenerate_custom_feed'), true), 'admin action checks nonce');
+}
 function wp_unslash($s) { return $s; }
 function trailingslashit($s) { return rtrim($s, '/') . '/'; }
 function wp_upload_dir() { return array('basedir' => $GLOBALS['test_dir']); }
@@ -197,6 +205,33 @@ try {
     $_GET['mg_custom_feed'] = 'unknown';
     try { MG_Custom_Feed_Manager::check_feed_request(); throw new RuntimeException('404 missing'); }
     catch (RuntimeException $e) { check($e->getMessage() === 'HTTP 404', 'unknown feed returns 404'); }
+
+    // Exercise the actual admin handlers through their redirect, not just URL helpers.
+    setup_feed('admin-redirect');
+    $_GET['slug'] = 'admin-redirect';
+    try { MG_Custom_Feed_Manager::handle_regeneration(); }
+    catch (FeedRedirect $e) {
+        check($e->getMessage() === admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&queued=1'), 'generation returns directly to registered shell tab');
+    }
+    check(MG_Custom_Feed_Manager::get_state('admin-redirect')['status'] === 'running', 'generation is queued before redirect');
+    try { MG_Custom_Feed_Manager::handle_delete(); }
+    catch (FeedRedirect $e) {
+        check($e->getMessage() === admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&deleted=1'), 'deletion returns directly to registered shell tab');
+    }
+    check(!MG_Custom_Feed_Manager::get_state('admin-redirect') && !isset($options['mg_custom_feeds']['admin-redirect']), 'deletion removes job and feed');
+    $_POST = array('feed_name' => 'Created Feed', 'feed_format' => 'google', 'product_type' => 'shirt',
+        'category_id' => 42, 'force_gender' => 'female', 'force_age_group' => 'kids');
+    try { MG_Custom_Feed_Manager::handle_save(); }
+    catch (FeedRedirect $e) {
+        check($e->getMessage() === admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&created=1'), 'creation returns directly to registered shell tab');
+    }
+    $saved_slug = array_key_last($options['mg_custom_feeds']);
+    check(MG_Custom_Feed_Manager::get_state($saved_slug)['status'] === 'running', 'new feed queued before returning to shell');
+    $authorized = false;
+    foreach (array('handle_regeneration', 'handle_delete', 'handle_save') as $method) {
+        try { MG_Custom_Feed_Manager::$method(); throw new RuntimeException('permission check missing'); }
+        catch (RuntimeException $e) { check($e->getMessage() === 'HTTP 500', 'admin handler still rejects unauthorized users'); }
+    }
     echo 'PASS: ' . $assertions . " assertions\n";
 } finally {
     foreach (glob($test_dir . '/mg_feeds/*') as $file) unlink($file);
