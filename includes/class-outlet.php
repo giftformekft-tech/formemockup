@@ -34,6 +34,19 @@ class MG_Outlet {
         return $item->get_meta(self::META, true) === 'yes' || self::is_outlet($item->get_product_id());
     }
 
+    /** Exclude before pagination, preserving the export screen's other filters. */
+    public static function exclude_from_product_query($args) {
+        $ids = get_posts(array('post_type' => 'product', 'post_status' => 'publish',
+            'posts_per_page' => -1, 'fields' => 'ids', 'no_found_rows' => true,
+            'meta_key' => self::META, 'meta_value' => 'yes'));
+        $args['exclude'] = array_values(array_unique(array_merge((array) ($args['exclude'] ?? array()), $ids)));
+        // WP_Query gives post__in precedence over post__not_in.
+        if (!empty($args['include'])) {
+            $args['include'] = array_values(array_diff((array) $args['include'], $args['exclude'])) ?: array(0);
+        }
+        return $args;
+    }
+
     public static function enforce_stock($product) {
         if ($product->get_meta(self::META, true) !== 'yes') return;
         $product->set_manage_stock(true);

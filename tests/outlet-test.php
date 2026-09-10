@@ -71,6 +71,8 @@ require __DIR__ . '/../includes/class-server-side-price.php';
 require __DIR__ . '/../includes/class-size-selection.php';
 require __DIR__ . '/../includes/class-catalog-integration.php';
 require __DIR__ . '/../includes/class-supplier-export.php';
+require __DIR__ . '/../admin/class-temu-export-page.php';
+require __DIR__ . '/../includes/class-temu-api-exporter.php';
 
 $source = new WC_Product_Simple(); $source->id=1;
 $source->props = array('status'=>'publish', 'name'=>'Minta', 'price'=>'6990', 'regular_price'=>'6990', 'tax_status'=>'taxable', 'tax_class'=>'', 'weight'=>'0.2');
@@ -141,6 +143,22 @@ check(MG_Price_Override::override_price('3990',$outlet)==='3990', 'URL cannot ch
 check(MG_Server_Side_Price::modify_price_html('3990 Ft',$outlet)==='3990 Ft', 'URL cannot change rendered price');
 check(MG_Catalog_Integration::append_default_variant_param('/outlet-product',$outlet)==='/outlet-product', 'no virtual URL injected');
 check(MG_Size_Selection::add_cart_item_data(array(),$id,0)===array(), 'no size surcharge payload');
+function get_posts($args) {
+    check($args['meta_key'] === MG_Outlet::META && $args['meta_value'] === 'yes' && $args['fields'] === 'ids', 'query only outlet IDs');
+    return array($GLOBALS['id']);
+}
+$query_args = MG_Outlet::exclude_from_product_query(array('exclude'=>array(77), 'category'=>array('shirts'), 'page'=>2));
+check($query_args['exclude']===array(77,$id) && $query_args['category']===array('shirts') && $query_args['page']===2, 'Temu exclusion preserves category, page and prior exclusions');
+$query_args = MG_Outlet::exclude_from_product_query(array('include'=>array(1,$id)));
+check($query_args['include']===array(1), 'exported-type include list cannot reintroduce outlet');
+$query_args = MG_Outlet::exclude_from_product_query(array('include'=>array($id)));
+check($query_args['include']===array(0), 'outlet-only include list never turns into unfiltered query');
+$selection = array(array('pid'=>$id, 'type'=>'shirt','color'=>'black','size'=>'XL'));
+$method = new ReflectionMethod('MG_Temu_Export_Page', 'build_export_rows');
+$method->setAccessible(true);
+check($method->invoke(null,$selection)===array(), 'legacy Temu export rejects directly submitted outlet');
+$api_result = MG_Temu_API_Exporter::build_rows(array(),$selection);
+check(!$api_result['rows'] && !$api_result['product_types'], 'Temu API export rejects directly submitted outlet');
 function wc_get_order($id) { return $GLOBALS['orders'][$id] ?? false; }
 $normal_item = new WC_Order_Item_Product();
 $normal_item->props = array('product_id'=>1, 'quantity'=>2, 'name'=>'Normal');

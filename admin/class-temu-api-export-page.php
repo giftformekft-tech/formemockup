@@ -97,6 +97,7 @@ class MG_Temu_API_Export_Page {
                 $args['category'] = array($term->slug);
             }
         }
+        if (class_exists('MG_Outlet')) $args = MG_Outlet::exclude_from_product_query($args);
         $results = wc_get_products($args);
         $products = array();
         foreach ((array) $results->products as $product) {
@@ -128,6 +129,7 @@ class MG_Temu_API_Export_Page {
         $ids = isset($_POST['product_ids']) ? array_values(array_unique(array_map('absint', (array) wp_unslash($_POST['product_ids'])))) : array();
         $data = array();
         foreach ($ids as $product_id) {
+            if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) continue;
             $product = wc_get_product($product_id);
             if (!$product || !$product->is_in_stock()) {
                 continue;

@@ -1026,6 +1026,7 @@ class MG_Temu_Export_Page {
             $args['category'] = [get_term($category_id, 'product_cat')->slug ?? ''];
         }
         
+        if (class_exists('MG_Outlet')) $args = MG_Outlet::exclude_from_product_query($args);
         $results = wc_get_products($args);
         $products = [];
         
@@ -1083,6 +1084,7 @@ class MG_Temu_Export_Page {
         $data = [];
 
         foreach ($product_ids as $pid) {
+            if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($pid)) continue;
             $product = wc_get_product($pid);
             if (!$product) continue;
 
@@ -1204,6 +1206,7 @@ class MG_Temu_Export_Page {
 
         foreach ($selection as $item) {
             $pid = $item['pid'];
+            if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($pid)) continue;
             if (!isset($product_cache[$pid])) {
                 $product_cache[$pid] = wc_get_product($pid);
                 $config_cache[$pid] = MG_Virtual_Variant_Manager::get_frontend_config($product_cache[$pid]);
@@ -1993,6 +1996,7 @@ class MG_Temu_Export_Page {
      * @param string   $timestamp
      */
     private static function mark_types_exported($product_id, array $type_slugs, $timestamp) {
+        if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return;
         $product_id = (int) $product_id;
         if ($product_id <= 0) {
             return;

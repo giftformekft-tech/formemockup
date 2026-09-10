@@ -18,6 +18,7 @@ Az oldal az első jogosult adminmegnyitáskor automatikusan létrejön `[mg_outl
 - WooCommerce kezeli a készletellenőrzést, rendelési foglalást, levonást és visszaállítást. A modul kötelezően engedélyezi a termék saját készletkezelését és tiltja az utánrendelést.
 - A termék katalógusláthatósága rejtett. A saját oldalán vásárolható, az outlet shortcode listázza. Nulla készletnél a listából eltűnik, újrakészletezéskor visszakerül. Az outlet oldal nem kér teljesoldalas gyorsítótárazást, hogy a darabszám friss maradjon.
 - A Google Merchant, Facebook Catalog és a plugin egyedi feedjei kizárják az outlet-jelölt termékeket. Más szolgáltató feedjeihez külön integráció szükséges, ha ilyet is használtok.
+- A 2.38.2 verziótól az outlet darabok a hagyományos Temu és a Temu API export terméklistájából és variánslistájából is kimaradnak. Korábban kijelölt vagy közvetlenül beküldött outlet termékből sem készül exportsor.
 - Az outlet rendeléstétel tartós jelölést és kombinációpillanatképet kap. Kimarad az UTT nagykerexportból, a helyi alapanyagkészlet levonásából és a rendelési nyomat-ZIP-ből. Vegyes rendelés normál tételei továbbra is feldolgozódnak; csak outletet tartalmazó rendelést a nagykerexport nem tesz gyártásba.
 - Az újraküldött azonos létrehozási kérés nem hoz létre duplikált terméket. Részleges szerverhiba után a már létrejött darabot kell ellenőrizni a szerkesztőben.
 

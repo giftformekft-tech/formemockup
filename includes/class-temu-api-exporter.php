@@ -95,6 +95,7 @@ class MG_Temu_API_Exporter {
         }
 
         foreach (array_keys($selection_lookup) as $pid) {
+            if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($pid)) continue;
             $product = wc_get_product($pid);
             if (!$product || !$product->is_in_stock()) {
                 continue;
@@ -204,6 +205,7 @@ class MG_Temu_API_Exporter {
             }
         }
         foreach ($by_product as $pid => $types) {
+            if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($pid)) continue;
             update_post_meta($pid, self::META_EXPORTED_TYPES, array_merge(self::get_exported_types($pid), $types));
         }
     }
