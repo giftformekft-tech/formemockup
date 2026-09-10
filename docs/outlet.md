@@ -5,7 +5,7 @@ A 2.38.0 verzió önálló, egyszerű WooCommerce-terméket hoz létre minden fe
 ## Használat
 
 1. WooCommerce → Beállítások → Termékek → Készlet: legyen engedélyezve a készletkezelés.
-2. Nyisd meg az eredeti egyszerű terméket szerkesztésre. Az **Outlet darab létrehozása** dobozban válassz típust, színt és méretet; add meg az árat és a darabszámot (alapérték: 1).
+2. Nyisd meg az eredeti egyszerű terméket szerkesztésre. Az **Outlet darab létrehozása** dobozban válassz típust, színt és méretet; az alapár 3990, a darabszám alapértéke 1. Mindkettő módosítható.
 3. Az állapot és a már meglévő felirat a megjegyzésben rögzíthető, a vásárló is látja. A saját fotó opcionális, ha a pontos típus/szín első nézeti mockupja már létezik a `mg_mockups` könyvtárban. Ha nincs ilyen mockup, saját fotót kell választani vagy előbb legenerálni a képet.
 4. Kattints a **Létrehozás és megjelenítés az Outletben** gombra. A sikeres létrehozás szerkesztési linket ad. További darabhoz frissítsd az eredeti termék szerkesztőoldalát. A létrehozás a legutóbb mentett eredeti termékadatokat használja.
 5. **Termékek → Outlet**: másold ki az oldal linkjét, és tedd a navigációs menübe Sale vagy Outlet néven. Az **Outlet darabok kezelése** a WooCommerce terméklistáját outletre szűrve nyitja meg. Itt normál módon szerkeszthető az ár, a készlet, a fotó és a rövid állapotleírás; vázlatba állítással levehető a termék.
@@ -22,6 +22,8 @@ Az oldal az első jogosult adminmegnyitáskor automatikusan létrejön `[mg_outl
 - Az újraküldött azonos létrehozási kérés nem hoz létre duplikált terméket. Részleges szerverhiba után a már létrejött darabot kell ellenőrizni a szerkesztőben.
 
 ## Ellenőrzés
+
+A 2.38.1 verzió javítja az új darab készletének mentését: a készletkezelés már a WooCommerce mentés előtti validációja előtt bekapcsolódik. A korábban hibásan nulla készlettel létrejött darabnál a termék szerkesztőjében kézzel állítsd be a tényleges darabszámot, és mentsd el. Automatikus visszatöltés nincs, mert az eladott darabok készletét nem szabad visszaállítani.
 
 - `php tests/outlet-test.php`: létrehozás, jogosultság, érvénytelen kombináció, duplikáció, készletbeállítások, ár, kosáradatok, feedek és nagykerexport; WordPress/WooCommerce tesztdublőrökkel.
 - `php -d extension=zip tests/ai-print-export-test.php`: outletet is tartalmazó vegyes rendelés nyomat-exportja; valódi ZIP/PNG fájlokkal, helyettesített HTTP/scheduler/Imagick környezettel.

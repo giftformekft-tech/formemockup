@@ -44,6 +44,9 @@ class WC_Product {
     public function get_meta($key, $single = true) { return $this->meta[$key] ?? ''; }
     public function update_meta_data($key, $value) { $this->meta[$key]=$value; }
     public function save() {
+        // WC_Product::save() validates props BEFORE the before-save hook.
+        // With stock management off, validate_props() clears the quantity.
+        if (!$this->get_manage_stock()) $this->set_stock_quantity(null);
         MG_Outlet::enforce_stock($this);
         if (!$this->id) $this->id = count($GLOBALS['products']) + 100;
         $this->props['price'] = $this->props['regular_price'] ?? '';

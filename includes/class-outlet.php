@@ -127,7 +127,7 @@ class MG_Outlet {
             echo '<p><label for="mg-outlet-' . esc_attr($key) . '">' . esc_html($label) . '</label><br><select id="mg-outlet-' . esc_attr($key) . '" style="min-width:220px;max-width:100%"></select></p>';
         }
         echo '<p><label for="mg-outlet-qty">Darabszám</label><br><input id="mg-outlet-qty" type="number" min="1" step="1" value="1"></p>';
-        echo '<p><label for="mg-outlet-price">Outlet ár (' . esc_html(get_woocommerce_currency()) . ', a bolt adóbeállítása szerint)</label><br><input id="mg-outlet-price" type="text" inputmode="decimal" placeholder="3990"></p>';
+        echo '<p><label for="mg-outlet-price">Outlet ár (' . esc_html(get_woocommerce_currency()) . ', a bolt adóbeállítása szerint)</label><br><input id="mg-outlet-price" type="text" inputmode="decimal" value="3990"></p>';
         echo '<p><label for="mg-outlet-note">Állapot / meglévő felirat (a vásárló is látja)</label><br><textarea id="mg-outlet-note" rows="3" class="widefat" placeholder="Pl. hibátlan, visszaküldött darab. Meglévő felirat: Anna."></textarea></p>';
         echo '<p><button class="button" type="button" id="mg-outlet-photo">Saját fotó választása</button> <button class="button" type="button" id="mg-outlet-photo-clear">Fotó törlése</button><input id="mg-outlet-image" type="hidden" value="0"><span id="mg-outlet-photo-label"> A kombináció mockupját használjuk.</span></p>';
         echo '<p><button class="button button-primary" type="button" id="mg-outlet-submit">Létrehozás és megjelenítés az Outletben</button></p><div id="mg-outlet-result" role="status" aria-live="polite"></div></div>';
@@ -185,6 +185,10 @@ class MG_Outlet {
             $product->set_name($source->get_name('edit') . ' – ' . implode(' / ', $selection) . ' – Outlet');
             $product->set_status('draft');
             $product->set_regular_price($price);
+            // WC_Product::save() validates stock before the before-save hook.
+            // Enable management now, otherwise that validation clears the quantity.
+            $product->set_manage_stock(true);
+            $product->set_backorders('no');
             $product->set_stock_quantity((int) $input['qty']);
             $product->set_image_id($image_id);
             $product->set_short_description($input['note']);
