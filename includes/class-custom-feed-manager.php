@@ -12,11 +12,13 @@ class MG_Custom_Feed_Manager {
         add_action('admin_post_mg_regenerate_custom_feed', array(__CLASS__, 'handle_regeneration'));
         add_action('init', array(__CLASS__, 'check_feed_request'));
         add_action('mg_cron_regenerate_custom_feed_slug', array(__CLASS__, 'handle_cron_regeneration'));
+        add_action('mg_custom_feed_batch', array(__CLASS__, 'process_batch'));
+        add_action('wp_ajax_mg_custom_feed_progress', array(__CLASS__, 'ajax_progress'));
     }
 
     public static function handle_cron_regeneration($slug) {
         self::generate_feed_to_file($slug);
-        delete_transient('mg_custom_feed_regenerating_' . $slug);
+        self::process_batch($slug);
     }
 
     public static function register_admin_page() {
@@ -33,11 +35,11 @@ class MG_Custom_Feed_Manager {
     public static function render_admin_page() {
         $feeds = get_option('mg_custom_feeds', array());
         $catalog = self::get_catalog_index();
-        $categories = get_terms(array('taxonomy' => 'product_type', 'hide_empty' => false)); // product_cat actually
         $product_cats = get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => false));
         ?>
         <div class="wrap">
             <h1>Egyedi Termék Feeder (Google / Facebook)</h1>
+            <p>A generálás kis adagokban, a háttérben fut. Frissítés közben a korábbi kész feed elérhető marad.</p>
             
             <div style="display: flex; gap: 20px; align-items: flex-start;">
                 
@@ -86,6 +88,8 @@ class MG_Custom_Feed_Manager {
                                             <input type="text" readonly value="<?php echo esc_url(home_url('/?mg_custom_feed=' . $slug)); ?>" class="regular-text" style="width: 100%;" onclick="this.select();">
                                         </td>
                                         <td>
+                                            <?php $state = self::get_state($slug); ?>
+                                            <p class="mg-feed-progress" data-slug="<?php echo esc_attr($slug); ?>" data-running="<?php echo !empty($state) && $state['status'] === 'running' ? '1' : '0'; ?>" role="status"><?php echo esc_html(!$state && file_exists(self::get_feed_file_path($slug)) ? 'A kész feed elérhető.' : self::status_text($state)); ?></p>
                                             <a href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=mg_regenerate_custom_feed&slug=' . $slug), 'mg_regenerate_custom_feed'); ?>" class="button button-small">Generálás</a>
                                             <a href="<?php echo wp_nonce_url(admin_url('admin-post.php?action=mg_delete_custom_feed&slug=' . $slug), 'mg_delete_custom_feed'); ?>" class="button button-small button-link-delete" onclick="return confirm('Biztosan törlöd?');">Törlés</a>
                                         </td>
@@ -164,6 +168,32 @@ class MG_Custom_Feed_Manager {
                 </div>
             </div>
         </div>
+        <script>
+        (function () {
+            const rows = Array.from(document.querySelectorAll('.mg-feed-progress[data-running="1"]'));
+            async function poll() {
+                const row = rows.shift();
+                if (!row) return;
+                try {
+                    const body = new URLSearchParams({
+                        action: 'mg_custom_feed_progress',
+                        nonce: <?php echo wp_json_encode(wp_create_nonce('mg_custom_feed_progress')); ?>,
+                        slug: row.dataset.slug
+                    });
+                    const response = await fetch(<?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>, {method: 'POST', body, credentials: 'same-origin'});
+                    const result = await response.json();
+                    if (!response.ok || !result.success) throw new Error('progress');
+                    row.textContent = result.data.message;
+                    if (result.data.status === 'running') rows.push(row);
+                } catch (error) {
+                    row.textContent = 'Az állapot lekérése sikertelen. Újrapróbálkozás…';
+                    rows.push(row);
+                }
+                if (rows.length) window.setTimeout(poll, 3000);
+            }
+            if (rows.length) window.setTimeout(poll, 1000);
+        }());
+        </script>
         <?php
     }
 
@@ -210,6 +240,7 @@ class MG_Custom_Feed_Manager {
         );
 
         update_option('mg_custom_feeds', $feeds);
+        self::generate_feed_to_file($slug);
         
         wp_redirect(admin_url('admin.php?page=mg-custom-feeds&created=1'));
         exit;
@@ -225,14 +256,26 @@ class MG_Custom_Feed_Manager {
         $feeds = get_option('mg_custom_feeds', array());
 
         if (isset($feeds[$slug])) {
+            $lock = self::lock($slug);
+            if (!$lock) {
+                wp_die('A feed éppen egy adagot dolgoz fel. Néhány másodperc múlva próbáld újra a törlést.');
+            }
             unset($feeds[$slug]);
             update_option('mg_custom_feeds', $feeds);
+            wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
+            wp_clear_scheduled_hook('mg_cron_regenerate_custom_feed_slug', array($slug));
+            delete_option('mg_custom_feed_job_' . $slug);
             
             // Allow file deletion if exists
             $path = self::get_feed_file_path($slug);
             if (file_exists($path)) {
                 @unlink($path);
             }
+            if (file_exists($path . '.tmp')) {
+                @unlink($path . '.tmp');
+            }
+            flock($lock, LOCK_UN);
+            fclose($lock);
         }
 
         wp_redirect(admin_url('admin.php?page=mg-custom-feeds&deleted=1'));
@@ -246,9 +289,11 @@ class MG_Custom_Feed_Manager {
         check_admin_referer('mg_regenerate_custom_feed');
 
         $slug = sanitize_key($_GET['slug']);
-        self::generate_feed_to_file($slug);
+        if (!self::generate_feed_to_file($slug)) {
+            wp_die('A generálás nem indítható. Ellenőrizd a feedet, az uploads/mg_feeds mappa írási jogosultságát és a feladatütemezőt.');
+        }
 
-        wp_redirect(admin_url('admin.php?page=mg-custom-feeds&regenerated=1'));
+        wp_redirect(admin_url('admin.php?page=mg-custom-feeds&queued=1'));
         exit;
     }
 
@@ -258,7 +303,7 @@ class MG_Custom_Feed_Manager {
             $feeds = get_option('mg_custom_feeds', array());
 
             if (!isset($feeds[$slug])) {
-                wp_die('Custom feed not found.', 404);
+                wp_die('Custom feed not found.', '', array('response' => 404));
             }
 
             $path = self::get_feed_file_path($slug);
@@ -266,11 +311,7 @@ class MG_Custom_Feed_Manager {
             if (file_exists($path)) {
                 // If STALE (older than 24h), schedule async background regeneration
                 if (time() - filemtime($path) > DAY_IN_SECONDS) {
-                    $lock_key = 'mg_custom_feed_regenerating_' . $slug;
-                    if (!get_transient($lock_key)) {
-                        wp_schedule_single_event(time(), 'mg_cron_regenerate_custom_feed_slug', array($slug));
-                        set_transient($lock_key, 'true', 10 * MINUTE_IN_SECONDS);
-                    }
+                    self::generate_feed_to_file($slug, false);
                 }
                 // Always serve immediately (fresh or stale) – don't make Google wait
                 header('Content-Type: application/xml; charset=UTF-8');
@@ -278,17 +319,10 @@ class MG_Custom_Feed_Manager {
                 readfile($path);
                 exit;
             } else {
-                // First run: generate synchronously
-                self::generate_feed_to_file($slug);
-                $path = self::get_feed_file_path($slug);
-                if (file_exists($path)) {
-                    header('Content-Type: application/xml; charset=UTF-8');
-                    header('Content-Length: ' . filesize($path));
-                    readfile($path);
-                    exit;
-                } else {
-                    wp_die('Error generating feed.');
-                }
+                self::generate_feed_to_file($slug, false);
+                nocache_headers();
+                header('Retry-After: 60');
+                wp_die('A feed még nem készült el. Kérjük, próbáld újra később.', '', array('response' => 503));
             }
         }
     }
@@ -302,65 +336,178 @@ class MG_Custom_Feed_Manager {
         return $path . '/custom_' . $slug . '.xml';
     }
 
-    public static function generate_feed_to_file($slug) {
-        $feeds = get_option('mg_custom_feeds', array());
-        if (!isset($feeds[$slug])) {
+    public static function get_state($slug) {
+        return get_option('mg_custom_feed_job_' . sanitize_key($slug), array());
+    }
+
+    private static function status_text($state) {
+        if (!$state) return 'Még nincs generálva.';
+        if ($state['status'] === 'failed') return 'Hiba: ' . $state['error'] . ' A Generálás gombbal újraindítható.';
+        $count = intval($state['processed']);
+        return $state['status'] === 'complete' ? 'Elkészült: ' . $count . ' termék feldolgozva.' : 'Generálás folyamatban: ' . $count . ' termék feldolgozva.';
+    }
+
+    // The OS releases this lock even after a PHP timeout. Do not unlink the lock file:
+    // concurrent requests must always lock the same inode.
+    private static function lock($slug) {
+        $handle = @fopen(self::get_feed_file_path($slug) . '.lock', 'c');
+        if (!$handle) return false;
+        if (!flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
             return false;
         }
+        return $handle;
+    }
 
-        $config = $feeds[$slug];
-        $path = self::get_feed_file_path($slug);
-        
-        // Setup Query
-        $args = array(
-            'post_type' => 'product',
-            'post_status' => 'publish',
-            'posts_per_page' => -1,
-            'fields' => 'ids',
-        );
-
-        // Category Filter
-        if (!empty($config['category_id'])) {
-            $args['tax_query'] = array(
-                array(
-                    'taxonomy' => 'product_cat',
-                    'field' => 'term_id',
-                    'terms' => $config['category_id'],
-                    'include_children' => true
-                )
-            );
+    private static function schedule_batch($slug, $delay = 10) {
+        if (!wp_next_scheduled('mg_custom_feed_batch', array($slug))) {
+            return (bool) wp_schedule_single_event(time() + $delay, 'mg_custom_feed_batch', array($slug));
         }
-
-        $product_ids = get_posts($args);
-        
-        // Write to a temp file first, then rename atomically.
-        // This ensures the old file stays intact if generation fails mid-way.
-        $tmp_path = $path . '.tmp';
-        $handle = fopen($tmp_path, 'w');
-        if (!$handle) return false;
-
-        fwrite($handle, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL);
-        fwrite($handle, '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">' . PHP_EOL);
-        fwrite($handle, '<channel>' . PHP_EOL);
-        fwrite($handle, '<title>' . esc_html($config['name']) . '</title>' . PHP_EOL);
-        fwrite($handle, '<link>' . home_url() . '</link>' . PHP_EOL);
-        fwrite($handle, '<description>Custom Feed: ' . esc_html($config['name']) . '</description>' . PHP_EOL);
-
-        foreach ($product_ids as $product_id) {
-            $xml_chunk = self::get_product_xml($product_id, $config);
-            if ($xml_chunk) {
-                fwrite($handle, $xml_chunk);
-            }
-        }
-
-        fwrite($handle, '</channel>' . PHP_EOL);
-        fwrite($handle, '</rss>');
-        fclose($handle);
-
-        // Atomic rename: only replaces the real file on full success
-        rename($tmp_path, $path);
-
         return true;
+    }
+
+    // Kept as the public entry point for existing callers; generation is now queued.
+    public static function generate_feed_to_file($slug, $manual = true) {
+        $slug = sanitize_key($slug);
+        $lock = self::lock($slug);
+        if (!$lock) {
+            $state = self::get_state($slug);
+            return !empty($state) && $state['status'] === 'running';
+        }
+        try {
+            $feeds = get_option('mg_custom_feeds', array());
+            if (!isset($feeds[$slug])) return false;
+            $state = self::get_state($slug);
+            if ($state && $state['status'] === 'running') return self::schedule_batch($slug);
+            // A broken product or filesystem must not trigger a retry on every crawler hit.
+            if (!$manual && $state && $state['status'] === 'failed' && time() - $state['updated_at'] < 5 * MINUTE_IN_SECONDS) return false;
+            $state = array('status' => 'running', 'config' => $feeds[$slug], 'cursor' => 0,
+                'processed' => 0, 'bytes' => 0, 'attempts' => 0, 'updated_at' => time(), 'error' => '');
+            update_option('mg_custom_feed_job_' . $slug, $state, false);
+            if (!self::schedule_batch($slug)) {
+                $state['status'] = 'failed';
+                $state['error'] = 'A háttérfeladat ütemezése nem sikerült.';
+                update_option('mg_custom_feed_job_' . $slug, $state, false);
+                return false;
+            }
+            return true;
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    public static function ajax_progress() {
+        if (!current_user_can('manage_options')) wp_send_json_error(null, 403);
+        check_ajax_referer('mg_custom_feed_progress', 'nonce');
+        $slug = sanitize_key(wp_unslash($_POST['slug'] ?? ''));
+        // Also advances one bounded batch while the admin is open, even with WP-Cron disabled.
+        self::process_batch($slug);
+        $state = self::get_state($slug);
+        wp_send_json_success(array('status' => $state['status'] ?? 'missing', 'message' => self::status_text($state)));
+    }
+
+    private static function write_chunk($handle, $text) {
+        if ($text !== '' && fwrite($handle, $text) !== strlen($text)) {
+            throw new RuntimeException('A feed fájl írása nem sikerült. Ellenőrizd a szabad tárhelyet és az írási jogosultságot.');
+        }
+    }
+
+    private static function get_batch_ids($state) {
+        global $wpdb;
+        $args = array('post_type' => 'product', 'post_status' => 'publish',
+            'posts_per_page' => 10, 'fields' => 'ids', 'orderby' => 'ID', 'order' => 'ASC',
+            'no_found_rows' => true, 'suppress_filters' => false, 'mg_custom_feed_cursor' => $state['cursor']);
+        if (!empty($state['config']['category_id'])) {
+            $args['tax_query'] = array(array('taxonomy' => 'product_cat', 'field' => 'term_id',
+                'terms' => $state['config']['category_id'], 'include_children' => true));
+        }
+        // ID cursor avoids skipping products when earlier products are deleted between batches.
+        $filter = static function ($where, $query) use ($wpdb) {
+            if (isset($query->query_vars['mg_custom_feed_cursor'])) {
+                $where .= $wpdb->prepare(" AND {$wpdb->posts}.ID > %d", $query->query_vars['mg_custom_feed_cursor']);
+            }
+            return $where;
+        };
+        add_filter('posts_where', $filter, 10, 2);
+        try {
+            return get_posts($args);
+        } finally {
+            remove_filter('posts_where', $filter, 10);
+        }
+    }
+
+    public static function process_batch($slug) {
+        $slug = sanitize_key($slug);
+        $lock = self::lock($slug);
+        if (!$lock) {
+            $state = self::get_state($slug);
+            if (!empty($state) && $state['status'] === 'running') self::schedule_batch($slug, 60);
+            return;
+        }
+        $handle = null;
+        try {
+            $state = self::get_state($slug);
+            $feeds = get_option('mg_custom_feeds', array());
+            if (!$state || $state['status'] !== 'running' || !isset($feeds[$slug])) return;
+            // Schedule recovery BEFORE work: a killed PHP request cannot schedule its successor.
+            wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
+            if (!self::schedule_batch($slug, 60)) throw new RuntimeException('A következő adag ütemezése nem sikerült.');
+            if ($state['attempts'] >= 3) throw new RuntimeException('A feldolgozás ugyanannál az adagnál többször megszakadt.');
+            $state['attempts']++;
+            update_option('mg_custom_feed_job_' . $slug, $state, false);
+            $path = self::get_feed_file_path($slug);
+            $handle = @fopen($path . '.tmp', 'c+b');
+            if (!$handle) throw new RuntimeException('A feed ideiglenes fájlja nem nyitható meg.');
+            $stat = fstat($handle);
+            if ($stat['size'] < $state['bytes']) throw new RuntimeException('A részleges feed fájl hiányos. Indítsd újra a generálást.');
+            // Roll back any uncommitted bytes left by a timeout; never duplicate partial items.
+            if (!ftruncate($handle, $state['bytes']) || fseek($handle, $state['bytes']) !== 0) {
+                throw new RuntimeException('A feed fájl feldolgozása nem folytatható.');
+            }
+            if ($state['bytes'] === 0) {
+                self::write_chunk($handle, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL .
+                    '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>' . PHP_EOL .
+                    '<title>' . self::xml_sanitize($state['config']['name']) . '</title>' . PHP_EOL .
+                    '<link>' . self::xml_sanitize(home_url()) . '</link>' . PHP_EOL .
+                    '<description>Custom Feed: ' . self::xml_sanitize($state['config']['name']) . '</description>' . PHP_EOL);
+            }
+            $started = microtime(true);
+            $ids = self::get_batch_ids($state);
+            foreach ($ids as $product_id) {
+                self::write_chunk($handle, self::get_product_xml($product_id, $state['config']));
+                $state['cursor'] = (int) $product_id;
+                $state['processed']++;
+                if (microtime(true) - $started >= 5) break;
+            }
+            // An empty bounded query proves that every matching product has been visited.
+            if (!$ids) self::write_chunk($handle, '</channel></rss>');
+            if (!fflush($handle)) throw new RuntimeException('A feed fájl mentése nem sikerült.');
+            $state['bytes'] = ftell($handle);
+            fclose($handle);
+            $handle = null;
+            if (!$ids) {
+                if (!@rename($path . '.tmp', $path)) throw new RuntimeException('A kész feed fájl cseréje nem sikerült.');
+                $state['status'] = 'complete';
+            }
+            $state['attempts'] = 0;
+            $state['updated_at'] = time();
+            update_option('mg_custom_feed_job_' . $slug, $state, false);
+            wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
+            if ($state['status'] === 'running' && !self::schedule_batch($slug)) {
+                throw new RuntimeException('A következő adag ütemezése nem sikerült.');
+            }
+        } catch (Throwable $error) {
+            $state['status'] = 'failed';
+            $state['error'] = $error->getMessage();
+            $state['updated_at'] = time();
+            update_option('mg_custom_feed_job_' . $slug, $state, false);
+            wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
+        } finally {
+            if (is_resource($handle)) fclose($handle);
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
     }
 
     private static function get_product_xml($product_id, $feed_config) {
