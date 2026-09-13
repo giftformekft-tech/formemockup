@@ -167,9 +167,8 @@ class MG_Purchase_Recovery {
         if (function_exists('is_order_received_page') && is_order_received_page()) {
             return;
         }
-        if (!self::read_entries()) {
-            return;
-        }
+        // A közös, cache-elhető HTML ne függjön a látogató cookie-jától.
+        // A HttpOnly rendeléscookie-t az AJAX végpont olvassa az aktuális kérésből.
         ?>
         <script>
         (function() {
@@ -212,7 +211,13 @@ class MG_Purchase_Recovery {
                 }, 500);
             }
 
-            fetch(ajaxUrl + '?action=mg_pending_conversions', {credentials: 'same-origin'})
+            fetch(ajaxUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                cache: 'no-store',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'action=mg_pending_conversions'
+            })
                 .then(function(response) { return response.json(); })
                 .then(function(result) {
                     if (!result || !result.success || !result.data || !result.data.pending) return;
@@ -246,6 +251,7 @@ class MG_Purchase_Recovery {
     }
 
     public static function ajax_pending_conversions() {
+        nocache_headers();
         $entries = self::read_entries();
         if (!$entries) {
             wp_send_json_success(array('pending' => array()));
