@@ -332,7 +332,7 @@ class MG_AI_Print_Generator {
                 throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
             }
             if ($defringe) {
-                MG_Image_Utils::reduce_white_fringe($result);
+                MG_Image_Utils::clean_transparent_edges($result);
             }
             // Upscale only the generated PNG, once per item, before print-size processing.
             $width = $result_info[0] * self::UPSCALE_FACTOR;

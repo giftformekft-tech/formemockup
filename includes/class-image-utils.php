@@ -115,90 +115,85 @@ class MG_Image_Utils {
     }
 
     /**
-     * Pull dark contour color into pale, semi-transparent fringe pixels.
-     * Only a two-pixel boundary band is considered, at the native AI size.
-     * Opaque whites, colored edges and alpha/geometry are never removed.
-     * Rolling ORIGINAL rows prevent corrections from spreading into the artwork.
-     * Returns the number of corrected pixels. No erosion or global white removal.
+     * Design Flow AI edge cleanup: propagate interior RGB through at most three
+     * connected alpha-positive pixels, using 8-neighbor layers. Never cross a
+     * transparent gap. Alpha and interior seeds (alpha >= 250/255) stay intact.
+     * Direction priority matches Design Flow's NumPy implementation.
+     * Packed masks and rolling rows avoid full-image PHP pixel arrays.
+     * Returns the number of visibly recolored pixels (hidden RGB also clears).
      */
-    public static function reduce_white_fringe($image) {
+    public static function clean_transparent_edges($image) {
         if (!($image instanceof Imagick)) {
-            throw new RuntimeException('A fehér perem korrekciója Imagick képet igényel.');
+            throw new RuntimeException('A peremkorrekció Imagick képet igényel.');
         }
         if (!$image->getImageAlphaChannel()) return 0;
-        if (!method_exists($image, 'exportImagePixels') || !method_exists($image, 'importImagePixels') || !defined('Imagick::PIXEL_FLOAT')) {
-            throw new RuntimeException('Az Imagick nem támogatja a fehér perem korrekcióját. Kapcsold ki a nyomatmodell beállításainál.');
-        }
         $width = $image->getImageWidth();
         $height = $image->getImageHeight();
-        $rows = array();
-        $corrected = 0;
+        $size = $width * $height;
+        $frontier = str_repeat("0", $size);
         for ($y = 0; $y < $height; $y++) {
-            unset($rows[$y - 3]);
-            for ($ny = max(0, $y - 2); $ny <= min($height - 1, $y + 2); $ny++) {
-                if (!isset($rows[$ny])) {
-                    $rows[$ny] = $image->exportImagePixels(0, $ny, $width, 1, 'RGBA', Imagick::PIXEL_FLOAT);
-                    if (!is_array($rows[$ny]) || count($rows[$ny]) !== $width * 4) {
-                        throw new RuntimeException('Nem olvashatók a nyomat szélpixelei.');
+            $alpha = $image->exportImagePixels(0, $y, $width, 1, 'A', Imagick::PIXEL_FLOAT);
+            if (!is_array($alpha) || count($alpha) !== $width) {
+                throw new RuntimeException('Nem olvasható a nyomat átlátszósága.');
+            }
+            foreach ($alpha as $x => $value) {
+                if ($value >= 250 / 255) $frontier[$y * $width + $x] = "1";
+            }
+        }
+        $visited = $frontier;
+        $directions = array(array(-1,-1), array(-1,0), array(-1,1), array(0,-1), array(0,1), array(1,-1), array(1,0), array(1,1));
+        $corrected = 0;
+        for ($step = 0; $step < 3; $step++) {
+            $next = str_repeat("0", $size);
+            $reached = false;
+            $rows = array();
+            for ($y = 0; $y < $height; $y++) {
+                unset($rows[$y - 2]);
+                for ($ny = max(0, $y - 1); $ny <= min($height - 1, $y + 1); $ny++) {
+                    if (!isset($rows[$ny])) {
+                        $rows[$ny] = $image->exportImagePixels(0, $ny, $width, 1, 'RGBA', Imagick::PIXEL_FLOAT);
+                        if (!is_array($rows[$ny]) || count($rows[$ny]) !== $width * 4) {
+                            throw new RuntimeException('Nem olvashatók a nyomat szélpixelei.');
+                        }
                     }
                 }
-            }
-            $rgb = array();
-            $changed = false;
-            for ($x = 0; $x < $width; $x++) {
-                $offset = $x * 4;
-                $color = array($rows[$y][$offset], $rows[$y][$offset + 1], $rows[$y][$offset + 2]);
-                $alpha = $rows[$y][$offset + 3];
-                $minimum = min($color);
-                // Near-neutral, partially transparent pixels only. A fully opaque
-                // white outline cannot safely be distinguished from intended ink.
-                if ($alpha > 0.02 && $alpha < 0.995 && $minimum >= 0.15 && max($color) - $minimum <= 0.12) {
-                    $near_clear = false;
-                    $nearest = 9;
-                    $sum = array(0.0, 0.0, 0.0);
-                    $samples = 0;
-                    for ($dy = -2; $dy <= 2; $dy++) {
-                        for ($dx = -2; $dx <= 2; $dx++) {
-                            if ($dx === 0 && $dy === 0) continue;
+                $rgb = array();
+                $changed = false;
+                for ($x = 0; $x < $width; $x++) {
+                    $offset = $x * 4;
+                    $index = $y * $width + $x;
+                    $color = array($rows[$y][$offset], $rows[$y][$offset + 1], $rows[$y][$offset + 2]);
+                    $alpha = $rows[$y][$offset + 3];
+                    if ($alpha <= 0) {
+                        if ($color !== array(0.0, 0.0, 0.0)) $changed = true;
+                        $color = array(0.0, 0.0, 0.0);
+                    } elseif ($visited[$index] === "0") {
+                        foreach ($directions as [$dy, $dx]) {
                             $nx = $x + $dx;
                             $ny = $y + $dy;
-                            if ($nx < 0 || $nx >= $width || $ny < 0 || $ny >= $height) {
-                                $near_clear = true;
-                                continue;
-                            }
+                            if ($nx < 0 || $nx >= $width || $ny < 0 || $ny >= $height || $frontier[$ny * $width + $nx] !== "1") continue;
                             $no = $nx * 4;
-                            $neighbor_alpha = $rows[$ny][$no + 3];
-                            if ($neighbor_alpha <= 0.02) $near_clear = true;
-                            $distance = $dx * $dx + $dy * $dy;
-                            if ($neighbor_alpha < 0.995 || $distance > $nearest) continue;
-                            if ($distance < $nearest) {
-                                $sum = array(0.0, 0.0, 0.0);
-                                $samples = 0;
-                                $nearest = $distance;
+                            $inner = array($rows[$ny][$no], $rows[$ny][$no + 1], $rows[$ny][$no + 2]);
+                            if ($color !== $inner) {
+                                $color = $inner;
+                                $changed = true;
+                                $corrected++;
                             }
-                            for ($c = 0; $c < 3; $c++) $sum[$c] += $rows[$ny][$no + $c];
-                            $samples++;
+                            $visited[$index] = "1";
+                            $next[$index] = "1";
+                            $reached = true;
+                            break;
                         }
                     }
-                    if ($near_clear && $samples > 0) {
-                        $inner = array($sum[0] / $samples, $sum[1] / $samples, $sum[2] / $samples);
-                        // Choose the nearest opaque color, even if it is white:
-                        // do not jump over a genuine light feature to find black.
-                        if (max($inner) <= 0.25 && max($inner) - min($inner) <= 0.12 && $minimum - max($inner) >= 0.15) {
-                            $color = $inner;
-                            $changed = true;
-                            $corrected++;
-                        }
-                    }
+                    foreach ($color as $channel) $rgb[] = $channel;
                 }
-                $rgb[] = $color[0];
-                $rgb[] = $color[1];
-                $rgb[] = $color[2];
+                // RGB-only imports preserve all alpha values exactly.
+                if ($changed && !$image->importImagePixels(0, $y, $width, 1, 'RGB', Imagick::PIXEL_FLOAT, $rgb)) {
+                    throw new RuntimeException('Nem sikerült a nyomat peremét korrigálni.');
+                }
             }
-            // RGB-only import leaves the original alpha samples untouched.
-            if ($changed && !$image->importImagePixels(0, $y, $width, 1, 'RGB', Imagick::PIXEL_FLOAT, $rgb)) {
-                throw new RuntimeException('Nem sikerült a nyomat fehér peremét korrigálni.');
-            }
+            if (!$reached) break;
+            $frontier = $next;
         }
         return $corrected;
     }

@@ -111,7 +111,7 @@ class MG_Image_Utils {
     public static $defringed = 0;
     public static $defringe_resize_positions = array();
     public static $defringe_failure = false;
-    public static function reduce_white_fringe($image) {
+    public static function clean_transparent_edges($image) {
         if (self::$defringe_failure) throw new RuntimeException('Fehér perem korrekciós hiba');
         self::$defringed++;
         self::$defringe_resize_positions[] = Imagick::$resize_calls;

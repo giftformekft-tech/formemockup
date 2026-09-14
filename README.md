@@ -102,14 +102,14 @@ Ez helyi Imagick Lanczos átméretezés, nem újabb AI-hívás vagy AI-részletj
 Tételenként egyszer fut; a darabszám szerinti másolatok ezt a képet használják.
 A hagyományos mintákat nem nagyítja fel. Sikertelen felnagyítás leállítja az exportot.
 
-Az **AI egyedi nyomat – ZIP-export → Fehér haló csökkentése** kapcsoló
-alapértelmezetten bekapcsolt. A generált kép eredeti felbontásán, a nagyítás
-és feketeeltávolítás előtt a sötét kontúrhoz közeli, áttetsző világos perem
-színét a legközelebbi fedő kontúrhoz igazítja. Legfeljebb kétpixelnyi környezetet
-vizsgál; nem zsugorítja a képet és nem változtatja az alpha-csatornát.
-A teljesen fedő fehér részeket és a színes peremeket meghagyja. A fedő fehér
-körvonalat nem tudja biztosan megkülönböztetni a szándékos díszítéstől, ezért
-azt nem távolítja el. Vékony, szándékos áttetsző fehér díszszegélynél kapcsold ki.
+Az **AI egyedi nyomat – ZIP-export → Kontúrhaló csökkentése** kapcsoló
+alapértelmezetten bekapcsolt. A design-flow-ai színfüggetlen peremjavítását
+használja a generált kép eredeti felbontásán, a nagyítás és feketeeltávolítás
+előtt. A legalább 250/255 alfájú belső kontúr színét legfeljebb három pixeles,
+összefüggő áttetsző sávba viszi tovább, bármilyen kontúrszínnél. Átlátszó
+résen nem ugrik át. Nem zsugorítja a képet és nem változtatja az alfa-csatornát;
+a teljesen átlátszó pixelek rejtett RGB-értékeit nullázza. A teljesen fedő
+részleteket megőrzi. Szándékos áttetsző díszszegélynél kapcsold ki.
 A beállítás exportonként rögzül, és csak az AI-ra kijelölt tételekre vonatkozik;
 az „Alapminta jó” képeit nem módosítja. Nem indít további AI-hívást.
 
@@ -132,7 +132,8 @@ Valódi böngészős varázslóteszt (Playwright + Chromium szükséges):
 ellenőrzi a döntéseket, visszalépést, mobilnézetet és a végső exportindítást.
 Valódi Imagick-képfeldolgozási teszt a peremkorrekcióhoz:
 `php -d extension=imagick tests/ai-print-fringe-test.php`. Áttetsző halót,
-fehér és színes részletek megőrzését, valamint a nagyítás és DTF-alpha utáni
+színes kontúrok javítását, az alfa és fedő részletek megőrzését, a hárompixeles
+határt, az átlátszó rések védelmét, valamint a nagyítás és DTF-alpha utáni
 PNG-kimenetet ellenőrzi szintetikus mintákon.
 Fekete kontúr maradványának regressziós tesztje valódi Imagick-kel:
 `php -d extension=imagick tests/black-export-edge-test.php`.
