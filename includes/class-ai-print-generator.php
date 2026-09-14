@@ -11,6 +11,7 @@ class MG_AI_Print_Generator {
     const TTL = HOUR_IN_SECONDS;
     const OPTION_KEY = 'mg_ai_print_settings';
     const DEFAULT_MODEL = 'gpt-image-2';
+    const UPSCALE_FACTOR = 3;
 
     public static function get_models() {
         return array(
@@ -314,6 +315,22 @@ class MG_AI_Print_Generator {
         $result = new Imagick();
         try {
             $result->readImageBlob($png);
+            if ($transparent && !self::has_transparency($result)) {
+                throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
+            }
+            // Upscale only the generated PNG, once per item, before print-size processing.
+            $width = $result_info[0] * self::UPSCALE_FACTOR;
+            $height = $result_info[1] * self::UPSCALE_FACTOR;
+            if (!$result->resizeImage($width, $height, Imagick::FILTER_LANCZOS, 1.0)) {
+                throw new RuntimeException(__('Nem sikerült az AI nyomat 3×-os felnagyítása.', 'mg'));
+            }
+            $result->setImagePage(0, 0, 0, 0);
+            $result->setImageFormat('png');
+            $png = $result->getImageBlob();
+            $upscaled_info = @getimagesizefromstring($png);
+            if (!$upscaled_info || $upscaled_info[2] !== IMAGETYPE_PNG || $upscaled_info[0] !== $width || $upscaled_info[1] !== $height) {
+                throw new RuntimeException(__('Az AI nyomat 3×-os felnagyítása hibás PNG-t eredményezett.', 'mg'));
+            }
             if ($transparent && !self::has_transparency($result)) {
                 throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
             }

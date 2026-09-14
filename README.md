@@ -9,6 +9,23 @@ a **Képmódosítási utasítás** mezőt. A kötelező `{{ertek}}` helyőrzőbe
 rendelt mezőértéke kerül. A képen látható példaévszámot vagy hónapot nem kell
 előre megadni. A sablon aktuális promptja a régebbi rendelésekre is érvényes.
 
+Az **Előre megírt AI-utasítás** listából preset- és mezőnév szerint választhatsz:
+
+| Preset | Mezőhöz betöltendő utasítás |
+| --- | --- |
+| Hónap választó | Hónap választó — Hónap mező |
+| Név | Név — Név mező |
+| Név + évszám | Név + évszám — Név mező; Név + évszám — Évszám mező |
+| Év + évszám | Év + évszám — Év mező (életkor / eltelt évek); Év + évszám — Évszám mező |
+| Évszám | Évszám — Évszám mező |
+| évszám hónap | évszám hónap — Évszám mező; évszám hónap — Hónap mező |
+
+Az **Utasítás betöltése és AI bekapcsolása** gomb az adott mező promptját
+cseréli le és bekapcsolja annak AI-nyomat opcióját. A szöveg továbbra is
+szerkeszthető; a változtatást a mező mentése rögzíti. Kétmezős presetnél
+mindkét mezőben külön töltsd be és mentsd a megfelelő utasítást.
+A lista nem rendel automatikusan utasítást a meglévő presetekhez.
+
 Hónap példa:
 
 ```text
@@ -57,9 +74,17 @@ API-hiba, hibás PNG vagy elveszett átlátszóság esetén a ZIP-export leáll,
 nem helyettesíti az egyedi nyomatot a régi alapképpel. Nincs automatikus fizetős
 újrapróbálás. A mezőértéket és a nyomatot küldi el, nem a teljes rendelést.
 
-Az elkészült PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
+Kizárólag az AI-val generált egyedi PNG-k automatikus **3×-os felnagyítást**
+kapnak: a szélesség és a magasság is háromszoros lesz, az átlátszóság megőrzésével.
+Ez helyi Imagick Lanczos átméretezés, nem újabb AI-hívás vagy AI-részletjavítás.
+Tételenként egyszer fut; a darabszám szerinti másolatok ezt a képet használják.
+A hagyományos mintákat nem nagyítja fel. Sikertelen felnagyítás leállítja az exportot.
+
+A felnagyított PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
 megy keresztül. A `low` eredmény szöveghűségét és nyomtatási minőségét valódi
 mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot.
+A beállított centiméteres nyomatméret továbbra is meghatározza a végső ZIP-ben
+lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
 
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.

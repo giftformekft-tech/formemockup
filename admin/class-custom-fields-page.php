@@ -770,6 +770,25 @@ class MG_Custom_Fields_Page {
         echo '</div>';
     }
 
+    /** Copyable starter prompts, deliberately independent of live preset IDs. */
+    public static function get_ai_print_prompt_templates() {
+        $name = 'A mintán szereplő, személyre szabásra szolgáló személynevet cseréld erre: {{ertek}}. Pontosan őrizd meg a megadott név betűit, ékezeteit, szóközeit és kötőjeleit; ne fordítsd, ne rövidítsd és ne egészítsd ki más névvel. Ha a mintán a név toldalékolva szerepel, a megadott alapnévhez illeszd a nyelvtanilag helyes magyar toldalékot. Az ugyanahhoz a személyhez tartozó ismétlődő névhelyeket következetesen módosítsd. Más személy nevét ne változtasd meg.';
+        $year = 'A mintán szereplő, személyre szabásra szolgáló naptári évszámot cseréld erre: {{ertek}}. A megadott évszám számjegyeit pontosan használd. Tartsd meg az eredeti szöveg jelentését (például születési év, alapítás éve vagy évforduló éve), valamint a hozzá kapcsolódó írásjeleket és nyelvtanilag helyes toldalékot. Az ugyanazt az egyedi évet jelölő ismétlődő helyeket következetesen módosítsd. Más évszámot, életkort, napot vagy sorszámot ebből az értékből ne számolj ki és ne módosíts.';
+        $month = 'A mintán szereplő, személyre szabásra szolgáló hónapot cseréld erre: {{ertek}}. A kép alapján azonosítsd a lecserélendő példahónapot. Őrizd meg a hónap eredeti megjelenítési módját (kiírt név, rövidítés vagy szám), kis- és nagybetűzését és nyelvtani szerepét. Kiírt magyar hónapnál az új hónapnak megfelelő helyes toldalékot használd: például MÁJUSBAN helyett SZEPTEMBERBEN, ha az új érték szeptember. Az ugyanahhoz az egyedi hónaphoz tartozó ismétlődő helyeket következetesen módosítsd. Ebből az értékből ne módosíts évszámot vagy napot.';
+        $age = 'A mintán szereplő, személyre szabásra szolgáló életkort vagy eltelt évek számát cseréld erre: {{ertek}}. A kép szövegkörnyezetéből állapítsd meg, hogy életkorról vagy évfordulóról van szó; ezt a jelentést őrizd meg. A megadott számot pontosan használd, és tartsd meg az eredeti megfogalmazást, például „éves”, „éve” vagy a sorszám jelölését, helyes magyar toldalékolással. Az ugyanazt a személyre szabott értéket jelölő ismétlődéseket következetesen módosítsd. Ne kezeld naptári évszámként, és ne számolj belőle születési vagy aktuális évet.';
+        return array(
+            'month' => array('label' => 'Hónap választó — Hónap mező', 'prompt' => $month),
+            'name' => array('label' => 'Név — Név mező', 'prompt' => $name),
+            'name_year_name' => array('label' => 'Név + évszám — Név mező', 'prompt' => $name),
+            'name_year_year' => array('label' => 'Név + évszám — Évszám mező', 'prompt' => $year),
+            'age_year_age' => array('label' => 'Év + évszám — Év mező (életkor / eltelt évek)', 'prompt' => $age),
+            'age_year_year' => array('label' => 'Év + évszám — Évszám mező', 'prompt' => $year),
+            'year' => array('label' => 'Évszám — Évszám mező', 'prompt' => $year),
+            'year_month_year' => array('label' => 'évszám hónap — Évszám mező', 'prompt' => $year),
+            'year_month_month' => array('label' => 'évszám hónap — Hónap mező', 'prompt' => $month),
+        );
+    }
+
     protected static function render_field_editor_form($preset_id, $field = null, $is_new = false) {
         $field = is_array($field) ? $field : array();
         $field_id = isset($field['id']) ? $field['id'] : '';
@@ -850,9 +869,15 @@ class MG_Custom_Fields_Page {
         echo '<tr><th scope="row"><label>' . esc_html__('Sorrend', 'mgcf') . '</label></th><td><input type="number" name="field_position" value="' . esc_attr($position) . '" class="small-text" /></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Leírás', 'mgcf') . '</label></th><td><textarea name="field_description" rows="2" class="large-text">' . esc_textarea($description) . '</textarea></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('AI egyedi nyomat', 'mgcf') . '</th><td><label><input type="checkbox" name="field_ai_print_enabled" value="1"' . checked(!empty($field['ai_print_enabled']), true, false) . ' /> ' . esc_html__('Nyomat módosítása AI-val a rendelés ZIP-exportjakor', 'mgcf') . '</label></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('Előre megírt AI-utasítás', 'mgcf') . '</th><td><select class="mgcf-ai-prompt-template" aria-label="' . esc_attr__('Preset és mező szerinti AI-utasítás', 'mgcf') . '"><option value="">' . esc_html__('Válassz a preset és a mező neve alapján…', 'mgcf') . '</option>';
+        foreach (self::get_ai_print_prompt_templates() as $template_id => $template) {
+            echo '<option value="' . esc_attr($template_id) . '" data-prompt="' . esc_attr($template['prompt']) . '">' . esc_html($template['label']) . '</option>';
+        }
+        echo '</select> <button type="button" class="button mgcf-apply-ai-prompt">' . esc_html__('Utasítás betöltése és AI bekapcsolása', 'mgcf') . '</button>';
+        echo '<p class="description">' . esc_html__('A betöltés lecseréli ennek a mezőnek az alábbi utasítását, amelyet utána szabadon szerkeszthetsz. Véglegesítéshez mentsd a mezőt. Kétmezős presetnél mindkét mezőhöz külön válaszd ki a megfelelő utasítást.', 'mgcf') . '</p><p class="mgcf-ai-prompt-status" role="status" aria-live="polite"></p></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('Képmódosítási utasítás', 'mgcf') . '</th><td><textarea name="field_ai_print_prompt" rows="6" class="large-text" placeholder="' . esc_attr__('A képen látható hónapot cseréld erre: {{ertek}}. Kövesd az eredeti ragozást, helyes magyar toldalékolással.', 'mgcf') . '">' . esc_textarea(isset($field['ai_print_prompt']) ? $field['ai_print_prompt'] : '') . '</textarea>';
         echo '<p class="description">' . esc_html__('A {{ertek}} helyére a vevő rendelt értéke kerül. Nem kell megadni a képen szereplő példaértéket. Több mező módosítása egyetlen képszerkesztésben történik. A sablon aktuális utasítása a régebbi rendelések exportjára is érvényes.', 'mgcf') . '</p>';
-        echo '<p class="description">' . esc_html__('Választható GPT Image modell · low · PNG · kis, képarányhoz igazított felbontás. Egy exporton belül egy tételhez csak egy kép készül; új export új generálást indít.', 'mgcf') . ' <a href="' . esc_url(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo#mg-ai-print-settings')) . '">' . esc_html__('Nyomatmodell és OpenAI API-kulcs beállítása', 'mgcf') . '</a></p></td></tr>';
+        echo '<p class="description">' . esc_html__('Választható GPT Image modell · low · PNG · képarányhoz igazított felbontás, majd automatikus 3×-os felnagyítás. Egy exporton belül egy tételhez csak egy kép készül; új export új generálást indít.', 'mgcf') . ' <a href="' . esc_url(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo#mg-ai-print-settings')) . '">' . esc_html__('Nyomatmodell és OpenAI API-kulcs beállítása', 'mgcf') . '</a></p></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Választólista értékek', 'mgcf') . '</label></th><td><textarea name="field_options" rows="3" class="large-text" placeholder="Érték1&#10;Érték2">' . esc_textarea($options_text) . '</textarea><p class="description">' . esc_html__('Választólista típusnál soronként egy opció.', 'mgcf') . '</p></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('Kapcsolt termékek', 'mgcf') . '</th><td><label><input type="checkbox" name="field_linked_product_variants" value="1"' . checked($linked_product_variants, true, false) . ' /> ' . esc_html__('Külön termék létrehozása minden választóértékhez, ha a terméknél minden PNG meg van adva', 'mgcf') . '</label><p class="description">' . esc_html__('PNG nélkül a mező továbbra is hagyományos választóként működik. Csak választólista típusnál érvényes.', 'mgcf') . '</p></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Árpótdíj típusa', 'mgcf') . '</label></th><td><select name="field_surcharge_type">';

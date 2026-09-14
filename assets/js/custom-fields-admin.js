@@ -11,6 +11,20 @@
         },
 
         bindEvents: function() {
+            // Templates only change the current field when explicitly applied.
+            $(document).on('click', '.mgcf-apply-ai-prompt', function() {
+                var form = $(this).closest('form');
+                var option = form.find('.mgcf-ai-prompt-template option:selected');
+                var prompt = option.attr('data-prompt');
+                if (!prompt) {
+                    form.find('.mgcf-ai-prompt-status').text('Előbb válassz egy utasítást a listából.');
+                    return;
+                }
+                form.find('[name="field_ai_print_prompt"]').val(prompt).trigger('input');
+                form.find('[name="field_ai_print_enabled"]').prop('checked', true).trigger('change');
+                form.find('.mgcf-ai-prompt-status').text('Betöltve: ' + option.text() + '. A véglegesítéshez mentsd a mezőt.');
+            });
+
             // New preset modal
             $('#mgcf-new-preset-btn').on('click', function(e) {
                 e.preventDefault();
