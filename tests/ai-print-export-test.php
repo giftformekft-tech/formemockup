@@ -89,7 +89,8 @@ class Imagick {
     private $bytes = '';
     public function __construct($path = null) { if ($path) { $this->bytes = file_get_contents($path); } }
     public function getImageAlphaChannel() { return ord($this->bytes[25]) === 6; }
-    public function getImageChannelExtrema($channel) { return array('minima' => 0, 'maxima' => 65535); }
+    // Deliberately omit the removed getImageChannelExtrema method.
+    public function getImageChannelRange($channel) { return array('minima' => 0.0, 'maxima' => 65535.0); }
     public static function getQuantumRange() { return array('quantumRangeLong' => 65535); }
     public function readImageBlob($bytes) { $this->bytes = $bytes; }
     public function resizeImage($width, $height, $filter, $blur) {
@@ -162,6 +163,25 @@ function make_job($id, $tasks) {
 }
 try {
     check(class_exists('ZipArchive'), 'real ZIP extension available');
+    check(!method_exists('Imagick', 'getImageChannelExtrema'), 'test runtime reproduces missing deprecated Imagick method');
+    foreach (array(
+        array(false, 65535.0, false, 'RGB without alpha'),
+        array(true, 65535.0, false, 'fully opaque RGBA'),
+        array(true, 32767.5, true, 'partially transparent RGBA'),
+        array(true, 0.0, true, 'fully transparent pixels'),
+    ) as [$alpha, $minimum, $expected, $case]) {
+        $probe = new class($alpha, $minimum) extends Imagick {
+            public function __construct(private $alpha, private $minimum) {}
+            public function getImageAlphaChannel() { return $this->alpha; }
+            public function getImageChannelRange($channel) {
+                if (!$this->alpha || $channel !== Imagick::CHANNEL_ALPHA) {
+                    throw new RuntimeException('Unexpected alpha channel inspection');
+                }
+                return array('minima' => $this->minimum, 'maxima' => 65535.0);
+            }
+        };
+        check(call_hidden('MG_AI_Print_Generator', 'has_transparency', $probe) === $expected, 'channel range transparency detection: ' . $case);
+    }
     $fields = array(
         array('id' => 'month', 'label' => 'Hónap', 'type' => 'select', 'required' => true, 'ai_print_enabled' => true, 'ai_print_prompt' => 'A képen látható hónapot cseréld erre: {{ertek}}. Kövesd a ragozást.'),
         array('id' => 'year', 'label' => 'Év', 'type' => 'number', 'required' => true, 'ai_print_enabled' => true, 'ai_print_prompt' => 'A születési évet cseréld erre: {{ertek}}.'),

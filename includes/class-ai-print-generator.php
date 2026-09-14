@@ -250,7 +250,8 @@ class MG_AI_Print_Generator {
         if (!$image->getImageAlphaChannel()) {
             return false;
         }
-        $range = $image->getImageChannelExtrema(Imagick::CHANNEL_ALPHA);
+        // Extrema is deprecated and absent from some builds (including IM7).
+        $range = $image->getImageChannelRange(Imagick::CHANNEL_ALPHA);
         $quantum = Imagick::getQuantumRange();
         return $range['minima'] < $quantum['quantumRangeLong'];
     }
