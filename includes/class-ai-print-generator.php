@@ -35,13 +35,13 @@ class MG_AI_Print_Generator {
 
     public static function save_settings(array $input) {
         $model = self::validate_model($input['model'] ?? '');
-        $defringe = array_key_exists('defringe_enabled', $input) ? !empty($input['defringe_enabled']) : self::get_defringe_enabled();
+        $defringe = false;
         update_option(self::OPTION_KEY, array('model' => $model, 'defringe_enabled' => $defringe), false);
     }
 
     public static function get_defringe_enabled() {
-        $settings = get_option(self::OPTION_KEY, array());
-        return !array_key_exists('defringe_enabled', $settings) || !empty($settings['defringe_enabled']);
+        // Disabled for all exports, including installations with an old enabled setting.
+        return false;
     }
 
     public static function init() {
@@ -331,7 +331,7 @@ class MG_AI_Print_Generator {
             if ($transparent && !self::has_transparency($result)) {
                 throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
             }
-            if ($defringe) {
+            if ($defringe && self::get_defringe_enabled()) {
                 MG_Image_Utils::clean_transparent_edges($result);
             }
             // Upscale only the generated PNG, once per item, before print-size processing.

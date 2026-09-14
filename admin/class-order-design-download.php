@@ -884,6 +884,12 @@ class MG_Order_Design_Download {
             // immediately before writing the final PNG.
             MG_Image_Utils::threshold_alpha_binary($image, 128);
 
+            if ($strip_black) {
+                // Clear dark remnants revealed by resizing and binary alpha.
+                MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
+                MG_Image_Utils::threshold_alpha_binary($image, 128);
+            }
+
             // Simple monochrome designs otherwise become 1-bit grayscale PNGs
             // with tRNS transparency, which some production RIPs cannot read.
             // Use the same explicit 8-bit RGBA encoding for every design.

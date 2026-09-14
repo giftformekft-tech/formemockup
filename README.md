@@ -102,16 +102,9 @@ Ez helyi Imagick Lanczos átméretezés, nem újabb AI-hívás vagy AI-részletj
 Tételenként egyszer fut; a darabszám szerinti másolatok ezt a képet használják.
 A hagyományos mintákat nem nagyítja fel. Sikertelen felnagyítás leállítja az exportot.
 
-Az **AI egyedi nyomat – ZIP-export → Kontúrhaló csökkentése** kapcsoló
-alapértelmezetten bekapcsolt. A design-flow-ai színfüggetlen peremjavítását
-használja a generált kép eredeti felbontásán, a nagyítás és feketeeltávolítás
-előtt. A legalább 250/255 alfájú belső kontúr színét legfeljebb három pixeles,
-összefüggő áttetsző sávba viszi tovább, bármilyen kontúrszínnél. Átlátszó
-résen nem ugrik át. Nem zsugorítja a képet és nem változtatja az alfa-csatornát;
-a teljesen átlátszó pixelek rejtett RGB-értékeit nullázza. A teljesen fedő
-részleteket megőrzi. Szándékos áttetsző díszszegélynél kapcsold ki.
-A beállítás exportonként rögzül, és csak az AI-ra kijelölt tételekre vonatkozik;
-az „Alapminta jó” képeit nem módosítja. Nem indít további AI-hívást.
+A **Design-flow peremjavítás ki van kapcsolva** az AI-nyomatok exportjánál.
+A korábban mentett bekapcsolt beállítást és a sorban álló feladatok ilyen
+jelölését is figyelmen kívül hagyja. A 3×-os nagyítás továbbra is fut.
 
 A felnagyított PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
 megy keresztül. A `low` eredmény szöveghűségét és nyomtatási minőségét valódi
@@ -119,11 +112,10 @@ mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot
 A beállított centiméteres nyomatméret továbbra is meghatározza a végső ZIP-ben
 lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
 
-A **Fekete nélkül** export a fekete ruhák nyomatain egyszer távolítja el
-a feketét, a kezdeti feldolgozáskor, a crop és a végső méretezés előtt.
-A méretezés utáni bináris alfa-véglegesítés megmarad, de utána nincs újabb
-feketeeltávolítás vagy ismételt alfa-véglegesítés. Normál exportnál
-feketeeltávolítás nem fut.
+A **Fekete nélkül** export a fekete ruhák nyomatain kétszer távolítja el
+a feketét: először a crop és a végső méretezés előtt, majd a méretezés utáni
+bináris alfa-véglegesítést követően. A második feketeeltávolítás után ismét
+véglegesíti az alfát. Normál exportnál feketeeltávolítás nem fut.
 
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
