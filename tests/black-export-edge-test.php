@@ -61,7 +61,9 @@ try {
         verify($white['r'] > 0.99 && $white['g'] > 0.99 && $white['b'] > 0.99 && $white['a'] > 0.99, 'white letter interior stays opaque white');
         $alpha = $clean->exportImagePixels(0, 0, $clean->getImageWidth(), $clean->getImageHeight(), 'A', Imagick::PIXEL_FLOAT);
         verify(count(array_filter($alpha, fn($v) => $v > 0.00002 && $v < 0.99998)) === 0, 'final mask remains binary');
-        if ($target_cm > 0) verify($clean->getImageHeight() < 120, 'final crop removes margins from sized canvas without enlarging artwork again');
+        if ($target_cm > 0) verify($clean->getImageHeight() === 120 && $plain->getImageHeight() === 120, 'both export modes use the configured physical height after cropping');
+        $resolution = $clean->getImageResolution();
+        verify(abs($resolution['y'] * 2.54 - 300) < 0.01, 'serialized PNG retains 300 DPI for the exact physical print size');
         $w = $clean->getImageWidth(); $h = $clean->getImageHeight();
         foreach (array(array(0,0,$w,1), array(0,$h-1,$w,1), array(0,0,1,$h), array($w-1,0,1,$h)) as $edge) {
             verify(max($clean->exportImagePixels($edge[0],$edge[1],$edge[2],$edge[3],'A',Imagick::PIXEL_FLOAT)) > 0,
@@ -71,6 +73,12 @@ try {
         $plain->clear(); $clean->clear();
     }
     verify(hash_file('sha256', $path) === $original_hash, 'source file is unchanged');
+    $large_path = $prepare->invokeArgs(null, array($path, 'polo', 'M', &$cache, &$temps, true, true));
+    $large = new Imagick($large_path);
+    verify($large->getImageWidth() > $large->getImageHeight() &&
+        $large->getImageHeight() === (int) round(MG_Order_Design_Download::LARGE_PRINT_SHORT_SIDE_CM * MG_Order_Design_Download::EXPORT_DPI / 2.54),
+        'large print rotates cropped artwork and sets its exact configured short side');
+    $large->clear();
     // Reproduce the failing RIP format: 1-bit gray + tRNS. No resizing is
     // requested here, so decoded pixels must survive the format conversion.
     $mono = new Imagick();

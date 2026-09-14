@@ -844,6 +844,32 @@ class MG_Order_Design_Download {
             if ($strip_black) {
                 MG_Image_Utils::strip_color_to_transparent($image, 'black');
             }
+            // stripImage() above removes the original upload's resolution tag
+            // (often 96 DPI), which RIP software like CADlink can rely on to
+            // compute physical print size instead of just the pixel count.
+            // Always stamp 300 DPI explicitly so pixel dimensions and embedded
+            // metadata agree, regardless of whether a cm-based resize ran.
+            if (method_exists($image, 'setImageResolution')) {
+                $image->setImageResolution(self::EXPORT_DPI, self::EXPORT_DPI);
+            }
+            if (method_exists($image, 'setImageUnits')) {
+                $image->setImageUnits(Imagick::RESOLUTION_PIXELSPERINCH);
+            }
+
+            // Expose partially transparent dark remnants before the second
+            // black-removal pass and the final bounds calculation.
+            MG_Image_Utils::threshold_alpha_binary($image, 128);
+
+            if ($strip_black) {
+                // Clear dark remnants revealed by binary alpha.
+                MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
+                MG_Image_Utils::threshold_alpha_binary($image, 128);
+            }
+
+            // Remove margins from the cleaned artwork before choosing its
+            // orientation and exact physical print size.
+            MG_Image_Utils::trim_transparent_bounds($image);
+
             if ($large_size_png) {
                 MG_Image_Utils::rotate_portrait_to_landscape($image);
                 $target_height_px = (int) round(self::LARGE_PRINT_SHORT_SIDE_CM * self::EXPORT_DPI / 2.54);
@@ -865,32 +891,9 @@ class MG_Order_Design_Download {
                 }
             }
 
-            // stripImage() above removes the original upload's resolution tag
-            // (often 96 DPI), which RIP software like CADlink can rely on to
-            // compute physical print size instead of just the pixel count.
-            // Always stamp 300 DPI explicitly so pixel dimensions and embedded
-            // metadata agree, regardless of whether a cm-based resize ran.
-            if (method_exists($image, 'setImageResolution')) {
-                $image->setImageResolution(self::EXPORT_DPI, self::EXPORT_DPI);
-            }
-            if (method_exists($image, 'setImageUnits')) {
-                $image->setImageUnits(Imagick::RESOLUTION_PIXELSPERINCH);
-            }
-
-            // Resizing can create new semi-transparent edge pixels. Apply the
-            // DTF-safe hard alpha mask only after every resize/rotation step,
-            // immediately before writing the final PNG.
+            // Final sizing may introduce partial alpha. Keep the exact canvas
+            // dimensions while restoring binary transparency; do not crop again.
             MG_Image_Utils::threshold_alpha_binary($image, 128);
-
-            if ($strip_black) {
-                // Clear dark remnants revealed by resizing and binary alpha.
-                MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
-                MG_Image_Utils::threshold_alpha_binary($image, 128);
-            }
-
-            // Crop only after all operations that can create transparent margins.
-            // Do not resize again: that would create new semi-transparent edges.
-            MG_Image_Utils::trim_transparent_bounds($image);
 
             // Simple monochrome designs otherwise become 1-bit grayscale PNGs
             // with tRNS transparency, which some production RIPs cannot read.
