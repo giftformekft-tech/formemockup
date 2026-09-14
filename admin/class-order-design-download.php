@@ -48,6 +48,7 @@ class MG_Order_Design_Download {
     const EXPORT_BATCH_SIZE = 3;
 
     const JOB_TRANSIENT_PREFIX = 'mg_design_export_job_';
+    const REVIEW_TRANSIENT_PREFIX = 'mg_design_export_review_';
     const JOB_TTL = HOUR_IN_SECONDS;
 
     /**
@@ -79,6 +80,8 @@ class MG_Order_Design_Download {
         // stream the finished ZIP) – this is what avoids the request-timeout
         // a single synchronous export hit on larger order batches.
         add_action('wp_ajax_mg_design_export_start', array(__CLASS__, 'ajax_export_start'));
+        add_action('wp_ajax_mg_design_export_review', array(__CLASS__, 'ajax_export_review'));
+        add_action('wp_ajax_mg_design_export_preview', array(__CLASS__, 'ajax_export_preview'));
         add_action('wp_ajax_mg_design_export_step', array(__CLASS__, 'ajax_export_step'));
         add_action('wp_ajax_mg_design_export_download', array(__CLASS__, 'ajax_export_download'));
 
@@ -157,8 +160,8 @@ class MG_Order_Design_Download {
 
         $base_file = dirname(__DIR__) . '/mockup-generator.php';
 
-        wp_enqueue_style('mg-order-export', plugins_url('assets/css/order-export.css', $base_file), array(), MG_VERSION);
-        wp_enqueue_script('mg-order-export', plugins_url('assets/js/order-export.js', $base_file), array(), MG_VERSION, true);
+        wp_enqueue_style('mg-order-export', plugins_url('assets/css/order-export.css', $base_file), array(), (string) filemtime(dirname(__DIR__) . '/assets/css/order-export.css'));
+        wp_enqueue_script('mg-order-export', plugins_url('assets/js/order-export.js', $base_file), array(), (string) filemtime(dirname(__DIR__) . '/assets/js/order-export.js'), true);
 
         wp_localize_script('mg-order-export', 'MG_ORDER_EXPORT', array(
             'ajax_url'  => admin_url('admin-ajax.php'),
@@ -190,7 +193,7 @@ class MG_Order_Design_Download {
      * @param int[] $order_ids
      * @return array<int, array{design_path:string,type:string,size:string,zip_name:string}>
      */
-    protected static function build_export_tasks(array $order_ids) {
+    protected static function build_export_tasks(array $order_ids, $check_ai_available = true) {
         $orders   = self::sort_orders_by_date($order_ids);
         $tasks    = array();
         $sequence = 0;
@@ -214,9 +217,18 @@ class MG_Order_Design_Download {
                 }
                 $design_path = self::resolve_design_path($product_id);
                 $ai_model = '';
+                $review_fields = array();
                 if ($ai_prompt !== '') {
-                    MG_AI_Print_Generator::assert_available();
+                    if ($check_ai_available) {
+                        MG_AI_Print_Generator::assert_available();
+                    }
                     $ai_model = MG_AI_Print_Generator::get_model();
+                    $values = MG_AI_Print_Generator::values_for_item($item);
+                    foreach (MG_AI_Print_Generator::fields_for_product($product_id) as $field) {
+                        if (!empty($field['ai_print_enabled'])) {
+                            $review_fields[] = array('label' => $field['label'], 'value' => $values[$field['id']] ?? '');
+                        }
+                    }
                     $reference = $item->get_meta('_mg_print_design_reference', true);
                     if (is_array($reference) && !empty($reference['design_path'])) {
                         $design_path = $reference['design_path'];
@@ -247,6 +259,9 @@ class MG_Order_Design_Download {
                         'item_id'          => $item->get_id(),
                         'ai_prompt'        => $ai_prompt,
                         'ai_model'         => $ai_model,
+                        'review_fields'    => $review_fields,
+                        'product_name'     => get_the_title($product_id),
+                        'quantity'         => $quantity,
                         'type'             => $context['type'],
                         'size'             => $context['size'],
                         'large_size'       => $large_size,
@@ -262,13 +277,99 @@ class MG_Order_Design_Download {
 
     /* ------------------------------------------------------------------ */
 
-    /**
-     * AJAX: starts an export job for the given orders. Builds the task list,
-     * creates an empty ZIP on disk, and stores both in a transient keyed by
-     * a generated job ID. Returns the job ID and total task count so the
-     * frontend can start polling ajax_export_step().
-     */
-    public static function ajax_export_start() {
+    /** An owner-bound review is metadata only: no ZIP, worker or paid AI request. */
+    protected static function create_export_review(array $order_ids, $strip_black) {
+        $order_ids = array_values(array_unique(array_filter(array_map('intval', $order_ids), function($id) { return $id > 0; })));
+        if (!$order_ids) {
+            throw new RuntimeException(__('Nincsenek kiválasztott rendelések.', 'mg'));
+        }
+        $tasks = self::build_export_tasks($order_ids, false);
+        if (!$tasks) {
+            throw new RuntimeException(__('Nem találhatók minta PNG fájlok a kijelölt rendelésekhez.', 'mg'));
+        }
+        $items = array();
+        $hashes = array();
+        foreach ($tasks as $task) {
+            if ($task['ai_prompt'] === '') continue;
+            $key = $task['order_id'] . '_' . $task['item_id'];
+            if (isset($items[$key])) continue;
+            $path = self::review_image_path($task['design_path']);
+            if (!isset($hashes[$path])) {
+                $hashes[$path] = hash_file('sha256', $path);
+                if ($hashes[$path] === false) throw new RuntimeException(__('Az alapminta nem olvasható.', 'mg'));
+            }
+            $items[$key] = array(
+                'key' => $key,
+                'order_id' => $task['order_id'],
+                'item_id' => $task['item_id'],
+                'product_name' => $task['product_name'],
+                'quantity' => $task['quantity'],
+                'fields' => $task['review_fields'],
+                'design_path' => $path,
+            );
+        }
+        $id = 'mgr_' . wp_generate_uuid4();
+        set_transient(self::REVIEW_TRANSIENT_PREFIX . $id, array(
+            'user_id' => get_current_user_id(), 'order_ids' => $order_ids,
+            'tasks' => $tasks, 'items' => $items, 'hashes' => $hashes,
+            'strip_black' => (bool) $strip_black,
+        ), self::JOB_TTL);
+        foreach ($items as &$item) unset($item['design_path']);
+        unset($item);
+        return array('review_id' => $id, 'items' => array_values($items), 'total' => count($tasks));
+    }
+
+    protected static function get_export_review($id) {
+        $review = is_string($id) && preg_match('/^mgr_[a-f0-9-]+$/', $id) ? get_transient(self::REVIEW_TRANSIENT_PREFIX . $id) : false;
+        if (!is_array($review) || (int) $review['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('Az ellenőrzés lejárt vagy más felhasználóhoz tartozik. Indíts új exportot.', 'mg'));
+        }
+        return $review;
+    }
+
+    /** Preview only a server-resolved PNG inside uploads, never a browser-supplied path. */
+    protected static function review_image_path($path) {
+        $uploads = wp_upload_dir();
+        $base = realpath($uploads['basedir']);
+        $source = realpath($path);
+        if (!$base || !$source || strpos(wp_normalize_path($source), trailingslashit(wp_normalize_path($base))) !== 0 || !is_readable($source)) {
+            throw new RuntimeException(__('Az ellenőrizendő alapminta nem érhető el a feltöltések könyvtárában.', 'mg'));
+        }
+        $info = @getimagesize($source);
+        if (!$info || $info[2] !== IMAGETYPE_PNG) {
+            throw new RuntimeException(__('Az ellenőrizendő alapminta nem érvényes PNG.', 'mg'));
+        }
+        return $source;
+    }
+
+    protected static function review_preview_path($id, $key) {
+        $review = self::get_export_review($id);
+        if (!isset($review['items'][$key])) throw new RuntimeException(__('A tétel nem része az ellenőrzésnek.', 'mg'));
+        $path = self::review_image_path($review['items'][$key]['design_path']);
+        if (!isset($review['hashes'][$path]) || hash_file('sha256', $path) !== $review['hashes'][$path]) {
+            throw new RuntimeException(__('Az alapminta megváltozott. Indíts új ellenőrzést.', 'mg'));
+        }
+        return $path;
+    }
+
+    public static function ajax_export_preview() {
+        if (!current_user_can('edit_shop_orders') || !isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'mg_design_export_nonce')) {
+            wp_die(__('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg'), '', array('response' => 403));
+        }
+        try {
+            $path = self::review_preview_path(sanitize_text_field($_GET['review_id'] ?? ''), sanitize_text_field($_GET['item_key'] ?? ''));
+        } catch (Throwable $e) {
+            wp_die(esc_html($e->getMessage()), '', array('response' => 404));
+        }
+        nocache_headers();
+        header('Content-Type: image/png');
+        header('Content-Disposition: inline; filename="alapminta.png"');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
+    }
+
+    public static function ajax_export_review() {
         try {
             if (!current_user_can('edit_shop_orders')) {
                 wp_send_json_error(array('message' => __('Jogosultság hiányzik.', 'mg')), 403);
@@ -276,22 +377,66 @@ class MG_Order_Design_Download {
             if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
                 wp_send_json_error(array('message' => __('Érvénytelen kérés (nonce).', 'mg')), 401);
             }
-            if (!class_exists('ZipArchive')) {
-                wp_send_json_error(array('message' => __('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg')), 500);
-            }
-
             $order_ids = isset($_POST['order_ids']) ? array_map('intval', (array) $_POST['order_ids']) : array();
-            $order_ids = array_values(array_unique(array_filter($order_ids, function($id) { return $id > 0; })));
-            if (empty($order_ids)) {
-                wp_send_json_error(array('message' => __('Nincsenek kiválasztott rendelések.', 'mg')), 400);
-            }
-
-            $tasks = self::build_export_tasks($order_ids);
-            if (empty($tasks)) {
-                wp_send_json_error(array('message' => __('Nem találhatók minta PNG fájlok a kijelölt rendelésekhez.', 'mg')), 404);
-            }
-
             $strip_black = !empty($_POST['strip_black']) && $_POST['strip_black'] === '1';
+            wp_send_json_success(self::create_export_review($order_ids, $strip_black));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /** Validate every item decision before any export work. Duplicate starts reuse the job. */
+    protected static function start_reviewed_export($id, array $decisions) {
+        $review = self::get_export_review($id);
+        if (count($decisions) !== count($review['items'])) {
+            throw new RuntimeException(__('Minden egyedi tételnél dönts az AI-generálásról az export előtt.', 'mg'));
+        }
+        foreach ($review['items'] as $key => $item) {
+            if (!isset($decisions[$key]) || !in_array($decisions[$key], array('generate', 'original'), true)) {
+                throw new RuntimeException(__('Minden egyedi tételnél válassz: AI-generálás vagy alapminta.', 'mg'));
+            }
+        }
+        ksort($decisions);
+        $lock = 'mg_review_start_' . hash('sha256', $id);
+        if (!add_option($lock, time(), '', false)) {
+            throw new RuntimeException(__('Az export indítása folyamatban van. Próbáld újra néhány másodperc múlva.', 'mg'));
+        }
+        $zip_path = null;
+        try {
+            $review = self::get_export_review($id);
+            if (isset($review['job_id'])) {
+                if ($review['decisions'] !== $decisions) throw new RuntimeException(__('Ez az export már más döntésekkel elindult.', 'mg'));
+                $job = get_transient(self::JOB_TRANSIENT_PREFIX . $review['job_id']);
+                if (!$job) throw new RuntimeException(__('Az export lejárt. Indíts új ellenőrzést.', 'mg'));
+                return array('job_id' => $review['job_id'], 'total' => $job['total']);
+            }
+            // Prevent applying decisions to changed order values, prompts or source images.
+            if (self::build_export_tasks($review['order_ids'], false) !== $review['tasks']) {
+                throw new RuntimeException(__('A rendelés vagy a nyomat beállításai megváltoztak. Indíts új ellenőrzést.', 'mg'));
+            }
+            foreach ($review['tasks'] as $task) {
+                if ($task['ai_prompt'] !== '' && self::review_image_path($task['design_path']) !== $review['items'][$task['order_id'] . '_' . $task['item_id']]['design_path']) {
+                    throw new RuntimeException(__('Az alapminta megváltozott. Indíts új ellenőrzést.', 'mg'));
+                }
+            }
+            foreach ($review['hashes'] as $path => $hash) {
+                if (hash_file('sha256', self::review_image_path($path)) !== $hash) {
+                    throw new RuntimeException(__('Az alapminta megváltozott. Indíts új ellenőrzést.', 'mg'));
+                }
+            }
+            $tasks = $review['tasks'];
+            if (in_array('generate', $decisions, true)) MG_AI_Print_Generator::assert_available();
+            foreach ($tasks as &$task) {
+                if ($task['ai_prompt'] === '') continue;
+                $decision = $decisions[$task['order_id'] . '_' . $task['item_id']];
+                $task['ai_decision'] = $decision;
+                if ($decision === 'original') {
+                    $task['ai_prompt'] = '';
+                    $task['ai_model'] = '';
+                }
+            }
+            unset($task);
+            if (!class_exists('ZipArchive')) throw new RuntimeException(__('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg'));
 
             $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_');
             if ($zip_path === false) {
@@ -299,7 +444,7 @@ class MG_Order_Design_Download {
             }
             $zip      = new ZipArchive();
             if ($zip->open($zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-                wp_send_json_error(array('message' => __('Nem sikerült létrehozni a ZIP fájlt.', 'mg')), 500);
+                throw new RuntimeException(__('Nem sikerült létrehozni a ZIP fájlt.', 'mg'));
             }
             $zip->close();
 
@@ -310,15 +455,37 @@ class MG_Order_Design_Download {
                 'total'       => count($tasks),
                 'completed'   => 0,
                 'zip_path'    => $zip_path,
-                'strip_black' => $strip_black,
+                'strip_black' => $review['strip_black'],
                 'cache'       => array(),
                 'temp_files'  => array(),
                 'status'      => 'processing',
                 'user_id'     => get_current_user_id(),
             );
             set_transient(self::JOB_TRANSIENT_PREFIX . $job_id, $job, self::JOB_TTL);
+            $review['job_id'] = $job_id;
+            $review['decisions'] = $decisions;
+            set_transient(self::REVIEW_TRANSIENT_PREFIX . $id, $review, self::JOB_TTL);
+            return array('job_id' => $job_id, 'total' => $job['total']);
+        } catch (Throwable $e) {
+            if ($zip_path && is_file($zip_path)) @unlink($zip_path);
+            throw $e;
+        } finally {
+            delete_option($lock);
+        }
+    }
 
-            wp_send_json_success(array('job_id' => $job_id, 'total' => $job['total']));
+    public static function ajax_export_start() {
+        try {
+            if (!current_user_can('edit_shop_orders')) {
+                wp_send_json_error(array('message' => __('Jogosultság hiányzik.', 'mg')), 403);
+            }
+            if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+                wp_send_json_error(array('message' => __('Érvénytelen kérés (nonce).', 'mg')), 401);
+            }
+            $raw = isset($_POST['decisions']) && is_string($_POST['decisions']) ? wp_unslash($_POST['decisions']) : '';
+            $decisions = json_decode($raw, true);
+            if (!is_array($decisions)) throw new RuntimeException(__('Hiányoznak az ellenőrzési döntések.', 'mg'));
+            wp_send_json_success(self::start_reviewed_export(sanitize_text_field($_POST['review_id'] ?? ''), $decisions));
         } catch (Throwable $e) {
             wp_send_json_error(array('message' => $e->getMessage()), 500);
         }

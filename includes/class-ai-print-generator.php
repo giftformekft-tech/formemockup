@@ -70,8 +70,8 @@ class MG_AI_Print_Generator {
         return false;
     }
 
-    /** Match stable field IDs; customer data is quoted and never used as a template. */
-    public static function prompt_for_item($item) {
+    /** Shared by the export review and prompt builder so both show the same values. */
+    public static function values_for_item($item) {
         $values = array();
         foreach ((array) $item->get_meta('_mg_custom_fields', true) as $stored) {
             if (!is_array($stored) || empty($stored['id'])) {
@@ -82,6 +82,12 @@ class MG_AI_Print_Generator {
                 $values[$stored['id']] = trim(html_entity_decode(wp_strip_all_tags((string) $raw), ENT_QUOTES, 'UTF-8'));
             }
         }
+        return $values;
+    }
+
+    /** Match stable field IDs; customer data is quoted and never used as a template. */
+    public static function prompt_for_item($item) {
+        $values = self::values_for_item($item);
         $instructions = array();
         foreach (self::fields_for_product($item->get_product_id()) as $field) {
             if (empty($field['ai_print_enabled'])) {

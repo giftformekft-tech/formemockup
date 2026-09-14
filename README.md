@@ -62,9 +62,31 @@ követő legkisebb támogatott képméret (655 360–750 000 képpont). Nincs au
 váltás drágább minőségre vagy felbontásra. Az átlátszó háttér megőrzését külön
 kéri és ellenőrzi. A különböző modellek költsége és futási ideje eltérhet.
 
-A **Minták letöltése (ZIP)** export indítja a szerkesztést. Egy tétel több
-AI-mezője egy hívásban módosul, a darabszám szerinti másolatok ugyanazt a
-képet használják. Minden új export új generálást indít. Az eredeti termékminta
+A **Minták letöltése (ZIP)** először a feketeeltávolítás módját kéri, majd
+az AI-s egyedi tételeknél **vizuális ellenőrzőt** nyit. Az alapminta mellett
+együtt láthatók a rendelésbe mentett AI-mezőértékek, a rendelés- és tételszám,
+valamint a darabszám. A kép teljes méretben is megnyitható, a háttér pedig
+világos és sötét között váltható.
+
+Minden egyedi tételnél külön kell dönteni:
+
+- **Alapminta jó – nem kell AI:** a meglévő mintát használja; nincs AI-hívás
+  és nincs AI-hoz tartozó 3×-os nagyítás. A szokásos nyomatméretezés és a
+  kiválasztott feketeeltávolítás továbbra is érvényes.
+- **AI-módosítás kell:** a vásárló értékeivel személyre szabott kép készül.
+
+Az ellenőrzőben vissza lehet lépni, és az összesítőből is módosítható a döntés.
+Az export csak az összes tétel ellenőrzése után, az **Export indítása** gombbal
+kezdődik. Az ellenőrzés alatt nincs AI-hívás vagy ZIP-feldolgozás. Ha nincs
+AI-s egyedi tétel, a normál export az exportmód kiválasztása után elindul.
+A döntések csak erre az exportra vonatkoznak; a preseteket nem módosítják.
+Az ellenőrzés egy óráig érvényes. Megváltozott rendelés, prompt vagy alapminta
+esetén új ellenőrzés szükséges. Minden döntést szerveroldalon is ellenőriz,
+az ismételt indítási kérés ugyanazt az exportfeladatot adja vissza.
+
+Egy tétel több AI-mezője egy hívásban módosul, a darabszám szerinti másolatok
+ugyanazt a képet és döntést használják. Minden új exportban az AI-ra kijelölt
+tételekhez új generálás indul. Az eredeti termékminta
 érintetlen marad; a hagyományos egyedi alapminta-letöltés nem generál.
 
 Az exportablak mutatja az AI-ra váró rendelést és tételt. A WooCommerce
@@ -88,6 +110,9 @@ lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
 
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
+Valódi böngészős varázslóteszt (Playwright + Chromium szükséges):
+`node tests/order-export-browser-test.js`. Ez helyettesített WordPress-válaszokkal
+ellenőrzi a döntéseket, visszalépést, mobilnézetet és a végső exportindítást.
 Az AI-export teszt valódi PNG-adatot és ZIP-fájlt használ, de a WordPress,
 az ütemező, az OpenAI HTTP-válasz és az Imagick helyettesített; nem éles AI-próba.
 API-forrás: [OpenAI képgenerálás](https://developers.openai.com/api/docs/guides/image-generation).
