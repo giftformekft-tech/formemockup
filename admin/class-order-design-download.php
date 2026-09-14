@@ -844,8 +844,6 @@ class MG_Order_Design_Download {
             if ($strip_black) {
                 MG_Image_Utils::strip_color_to_transparent($image, 'black');
             }
-            MG_Image_Utils::trim_transparent_bounds($image);
-
             if ($large_size_png) {
                 MG_Image_Utils::rotate_portrait_to_landscape($image);
                 $target_height_px = (int) round(self::LARGE_PRINT_SHORT_SIDE_CM * self::EXPORT_DPI / 2.54);
@@ -889,6 +887,10 @@ class MG_Order_Design_Download {
                 MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
                 MG_Image_Utils::threshold_alpha_binary($image, 128);
             }
+
+            // Crop only after all operations that can create transparent margins.
+            // Do not resize again: that would create new semi-transparent edges.
+            MG_Image_Utils::trim_transparent_bounds($image);
 
             // Simple monochrome designs otherwise become 1-bit grayscale PNGs
             // with tRNS transparency, which some production RIPs cannot read.

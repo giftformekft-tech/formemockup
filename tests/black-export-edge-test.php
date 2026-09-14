@@ -61,7 +61,13 @@ try {
         verify($white['r'] > 0.99 && $white['g'] > 0.99 && $white['b'] > 0.99 && $white['a'] > 0.99, 'white letter interior stays opaque white');
         $alpha = $clean->exportImagePixels(0, 0, $clean->getImageWidth(), $clean->getImageHeight(), 'A', Imagick::PIXEL_FLOAT);
         verify(count(array_filter($alpha, fn($v) => $v > 0.00002 && $v < 0.99998)) === 0, 'final mask remains binary');
-        if ($target_cm > 0) verify($clean->getImageHeight() === 120, 'configured print size survives alpha finalization');
+        if ($target_cm > 0) verify($clean->getImageHeight() < 120, 'final crop removes margins from sized canvas without enlarging artwork again');
+        $w = $clean->getImageWidth(); $h = $clean->getImageHeight();
+        foreach (array(array(0,0,$w,1), array(0,$h-1,$w,1), array(0,0,1,$h), array($w-1,0,1,$h)) as $edge) {
+            verify(max($clean->exportImagePixels($edge[0],$edge[1],$edge[2],$edge[3],'A',Imagick::PIXEL_FLOAT)) > 0,
+                'final export has no fully transparent outer row or column');
+        }
+        if ($target_cm === 0.0) verify($w === 12 && $h === 22, 'crop uses surviving white artwork after the second black removal');
         $plain->clear(); $clean->clear();
     }
     verify(hash_file('sha256', $path) === $original_hash, 'source file is unchanged');

@@ -109,13 +109,16 @@ jelölését is figyelmen kívül hagyja. A 3×-os nagyítás továbbra is fut.
 A felnagyított PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
 megy keresztül. A `low` eredmény szöveghűségét és nyomtatási minőségét valódi
 mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot.
-A beállított centiméteres nyomatméret továbbra is meghatározza a végső ZIP-ben
-lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
+A beállított centiméteres nyomatméret határozza meg a crop előtti vászonméretet;
+a 3×-os nagyítás ezt megelőző feldolgozási lépés. Az üres margók levágása miatt
+a végső PNG külső mérete kisebb lehet; a megmaradó grafikát nem nagyítja újra.
 
 A **Fekete nélkül** export a fekete ruhák nyomatain kétszer távolítja el
-a feketét: először a crop és a végső méretezés előtt, majd a méretezés utáni
+a feketét: először a végső méretezés előtt, majd a méretezés utáni
 bináris alfa-véglegesítést követően. A második feketeeltávolítás után ismét
 véglegesíti az alfát. Normál exportnál feketeeltávolítás nem fut.
+Az üres margók cropja mindkét exportmódban az utolsó képfeldolgozási lépés,
+az összes méretezés, feketeeltávolítás és alfa-véglegesítés után, a PNG mentése előtt.
 
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
