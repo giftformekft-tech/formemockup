@@ -56,12 +56,13 @@ try {
             $header = file_get_contents($export_path, false, null, 0, 33);
             verify(ord($header[24]) === 8 && ord($header[25]) === 6, 'serialized export is always 8-bit RGBA, including monochrome art');
         }
-        verify(dark_pixels($clean) === 0, 'black-free export leaves no opaque hairline, print height ' . $target_cm);
+        verify(dark_pixels($clean) < dark_pixels($plain), 'first black removal still removes the opaque outline, print height ' . $target_cm);
+        verify(dark_pixels($clean) > 0, 'no second black removal after alpha: semi-transparent dark edges survive, print height ' . $target_cm);
         $white = $clean->getImagePixelColor((int) ($clean->getImageWidth() / 2), (int) ($clean->getImageHeight() / 2))->getColor(true);
         verify($white['r'] > 0.99 && $white['g'] > 0.99 && $white['b'] > 0.99 && $white['a'] > 0.99, 'white letter interior stays opaque white');
         $alpha = $clean->exportImagePixels(0, 0, $clean->getImageWidth(), $clean->getImageHeight(), 'A', Imagick::PIXEL_FLOAT);
         verify(count(array_filter($alpha, fn($v) => $v > 0.00002 && $v < 0.99998)) === 0, 'final mask remains binary');
-        if ($target_cm > 0) verify($clean->getImageHeight() === 120, 'configured print size survives final cleanup');
+        if ($target_cm > 0) verify($clean->getImageHeight() === 120, 'configured print size survives alpha finalization');
         $plain->clear(); $clean->clear();
     }
     verify(hash_file('sha256', $path) === $original_hash, 'source file is unchanged');

@@ -119,11 +119,11 @@ mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot
 A beállított centiméteres nyomatméret továbbra is meghatározza a végső ZIP-ben
 lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
 
-A **Fekete nélkül** export a fekete ruhák nyomatain két lépésben távolítja el
-a feketét: a kezdeti feldolgozáskor, majd a végső méretezés és bináris alpha
-után is. Így az eredetileg félig átlátszó fekete kontúrból nem marad vissza
-fedő hajszálvonal. A végső lépés a teljes nyomatméretet megőrzi, nem erodálja
-a fehér betűket. Normál exportnál egyik feketeeltávolítás sem fut.
+A **Fekete nélkül** export a fekete ruhák nyomatain egyszer távolítja el
+a feketét, a kezdeti feldolgozáskor, a crop és a végső méretezés előtt.
+A méretezés utáni bináris alfa-véglegesítés megmarad, de utána nincs újabb
+feketeeltávolítás vagy ismételt alfa-véglegesítés. Normál exportnál
+feketeeltávolítás nem fut.
 
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
