@@ -259,6 +259,7 @@ class MG_Order_Design_Download {
                         'item_id'          => $item->get_id(),
                         'ai_prompt'        => $ai_prompt,
                         'ai_model'         => $ai_model,
+                        'ai_defringe'      => $ai_prompt !== '' && MG_AI_Print_Generator::get_defringe_enabled(),
                         'review_fields'    => $review_fields,
                         'product_name'     => get_the_title($product_id),
                         'quantity'         => $quantity,
@@ -433,6 +434,7 @@ class MG_Order_Design_Download {
                 if ($decision === 'original') {
                     $task['ai_prompt'] = '';
                     $task['ai_model'] = '';
+                    $task['ai_defringe'] = false;
                 }
             }
             unset($task);

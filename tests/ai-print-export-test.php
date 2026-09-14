@@ -108,6 +108,14 @@ class Imagick {
 }
 class MG_Image_Utils {
     public static $stripped = 0;
+    public static $defringed = 0;
+    public static $defringe_resize_positions = array();
+    public static $defringe_failure = false;
+    public static function reduce_white_fringe($image) {
+        if (self::$defringe_failure) throw new RuntimeException('Fehér perem korrekciós hiba');
+        self::$defringed++;
+        self::$defringe_resize_positions[] = Imagick::$resize_calls;
+    }
     public static function strip_color_to_transparent($image, $color) { self::$stripped++; }
     public static function trim_transparent_bounds($image) {}
     public static function rotate_portrait_to_landscape($image) {}
@@ -190,6 +198,12 @@ try {
     update_option('mg_ai_seo_settings', array('api_key' => 'test-key', 'enabled' => false));
     $seo_settings_before = get_option('mg_ai_seo_settings');
     check(MG_AI_Print_Generator::get_model() === 'gpt-image-2', 'existing installs keep Image 2 by default');
+    check(MG_AI_Print_Generator::get_defringe_enabled(), 'new exports default to conservative fringe correction');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '0'));
+    check(!MG_AI_Print_Generator::get_defringe_enabled(), 'fringe correction can be disabled');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2'));
+    check(!MG_AI_Print_Generator::get_defringe_enabled(), 'model-only updates preserve the fringe setting');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '1'));
     check(array_keys(MG_AI_Print_Generator::get_models()) === array('gpt-image-2', 'gpt-image-2.5-sunburst', 'gpt-image-2.5-flare'), 'picker contains exact documented image model IDs');
     foreach (MG_AI_Print_Generator::get_models() as $model => $label) {
         MG_AI_Print_Generator::save_settings(array('model' => $model));
@@ -283,14 +297,18 @@ try {
     check(count($tasks) === 4 && $tasks[0]['item_id'] === $tasks[1]['item_id'], 'one export file per quantity, same item shares edit');
     check($tasks[0]['ai_prompt'] !== $tasks[2]['ai_prompt'] && $tasks[3]['ai_prompt'] === '', 'different customer values stay isolated; normal product bypasses AI');
     check($tasks[0]['ai_model'] === 'gpt-image-2' && $tasks[1]['ai_model'] === 'gpt-image-2' && $tasks[3]['ai_model'] === '', 'task list pins the model for AI quantity copies only');
+    check($tasks[0]['ai_defringe'] && $tasks[1]['ai_defringe'] && !$tasks[3]['ai_defringe'], 'fringe setting pinned only for AI tasks');
     check(!$actions && !$http_calls, 'building export plan does not generate');
     $job = make_job('job1', $tasks);
     $progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
     check($progress['waiting'] && $progress['completed'] === 0 && count($actions) === 1, 'first step dispatches once and returns promptly');
     call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
     check(count($actions) === 1, 'repeated polling does not enqueue twice');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '0'));
     MG_AI_Print_Generator::run($actions[0][1][0]);
     MG_AI_Print_Generator::run($actions[0][1][0]);
+    check(MG_Image_Utils::$defringed === 1, 'queued task retains its enabled fringe setting after a settings change');
+    MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '1'));
     check(count($http_calls) === 1, 'duplicate worker delivery does not charge twice');
     [$url, $request] = $http_calls[0];
     check($url === 'https://api.openai.com/v1/images/edits' && $request['redirection'] === 0, 'fixed image edit endpoint without redirecting credentials');
@@ -316,6 +334,8 @@ try {
         check(ord($zip->getFromIndex($index)[25]) === 6, 'upscaled AI entry retains alpha channel: ' . $index);
     }
     check(Imagick::$resize_calls === 2, 'only AI images upscale, once per item despite quantity copies');
+    check(MG_Image_Utils::$defringed === 2, 'only generated images get fringe correction, once per item');
+    check(MG_Image_Utils::$defringe_resize_positions === array(0, 1), 'fringe correction runs before each 3x enlargement');
     $zip->close();
     check(MG_Image_Utils::$stripped === 2, 'existing black garment export processing runs on the edited design only');
     check(!file_exists($test_dir . '/mg-ai-print-' . $actions[0][1][0] . '.png'), 'completed export removes generated temporary PNG');
@@ -392,6 +412,7 @@ try {
     $calls_before_review = count($http_calls);
     $actions_before_review = count($actions);
     $resizes_before_review = Imagick::$resize_calls;
+    $defringed_before_review = MG_Image_Utils::$defringed;
     update_option('mg_ai_seo_settings', array('api_key' => ''));
     $review = call_hidden('MG_Order_Design_Download', 'create_export_review', array(90), false);
     $review_id = $review['review_id'];
@@ -439,7 +460,7 @@ try {
     check($review_zip->numFiles === 4 && $review_zip->getFromIndex(0) === $source_bytes && $review_zip->getFromIndex(2) === $source_bytes, 'all-original review exports the original designs with normal processing');
     $review_zip->close();
     unlink($saved_review_job['zip_path']);
-    check(count($http_calls) === $calls_before_review && count($actions) === $actions_before_review && Imagick::$resize_calls === $resizes_before_review, 'original choices skip AI billing, worker dispatch and 3x enlargement');
+    check(count($http_calls) === $calls_before_review && count($actions) === $actions_before_review && Imagick::$resize_calls === $resizes_before_review && MG_Image_Utils::$defringed === $defringed_before_review, 'original choices skip AI billing, worker dispatch, fringe correction and 3x enlargement');
     $mixed_review = call_hidden('MG_Order_Design_Download', 'create_export_review', array(90), true);
     $mixed_decisions = array('90_11' => 'original', '90_12' => 'generate');
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'start_reviewed_export', $mixed_review['review_id'], $mixed_decisions), 'OpenAI API-kulcsot');
@@ -456,6 +477,23 @@ try {
     $review_zip->close();
     unlink($saved_mixed_job['zip_path']);
     check(count($http_calls) === $calls_before_review + 1 && Imagick::$resize_calls === $resizes_before_review + 1, 'multiple field values still produce one generation and enlargement for the selected item');
+    $defringe_before = MG_Image_Utils::$defringed;
+    $disabled_task = $tasks[0];
+    $disabled_task['ai_defringe'] = false;
+    make_job('defringe-disabled', array($disabled_task));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'defringe-disabled');
+    $disabled_action = end($actions);
+    MG_AI_Print_Generator::run($disabled_action[1][0]);
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'defringe-disabled')['done'] && MG_Image_Utils::$defringed === $defringe_before, 'disabled correction keeps generation and export working');
+    MG_Image_Utils::$defringe_failure = true;
+    make_job('defringe-failure', array($tasks[0]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'defringe-failure');
+    $failed_action = end($actions);
+    MG_AI_Print_Generator::run($failed_action[1][0]);
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'defringe-failure'), 'Fehér perem korrekciós hiba');
+    $failed_fringe_job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'defringe-failure');
+    check($failed_fringe_job['status'] === 'error' && $failed_fringe_job['completed'] === 0 && !is_file($failed_fringe_job['zip_path']), 'failed correction never silently exports an uncorrected image');
+    MG_Image_Utils::$defringe_failure = false;
     $orders[91] = new Test_Order(array($normal));
     $normal_review = call_hidden('MG_Order_Design_Download', 'create_export_review', array(91), false);
     check($normal_review['items'] === array() && $normal_review['total'] === 1, 'ordinary-only exports have no decisions to review');

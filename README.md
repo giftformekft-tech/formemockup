@@ -102,6 +102,17 @@ Ez helyi Imagick Lanczos átméretezés, nem újabb AI-hívás vagy AI-részletj
 Tételenként egyszer fut; a darabszám szerinti másolatok ezt a képet használják.
 A hagyományos mintákat nem nagyítja fel. Sikertelen felnagyítás leállítja az exportot.
 
+Az **AI egyedi nyomat – ZIP-export → Fehér haló csökkentése** kapcsoló
+alapértelmezetten bekapcsolt. A generált kép eredeti felbontásán, a nagyítás
+és feketeeltávolítás előtt a sötét kontúrhoz közeli, áttetsző világos perem
+színét a legközelebbi fedő kontúrhoz igazítja. Legfeljebb kétpixelnyi környezetet
+vizsgál; nem zsugorítja a képet és nem változtatja az alpha-csatornát.
+A teljesen fedő fehér részeket és a színes peremeket meghagyja. A fedő fehér
+körvonalat nem tudja biztosan megkülönböztetni a szándékos díszítéstől, ezért
+azt nem távolítja el. Vékony, szándékos áttetsző fehér díszszegélynél kapcsold ki.
+A beállítás exportonként rögzül, és csak az AI-ra kijelölt tételekre vonatkozik;
+az „Alapminta jó” képeit nem módosítja. Nem indít további AI-hívást.
+
 A felnagyított PNG a meglévő export méretezésén és a kiválasztott feketeeltávolításon
 megy keresztül. A `low` eredmény szöveghűségét és nyomtatási minőségét valódi
 mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot.
@@ -113,6 +124,10 @@ Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 Valódi böngészős varázslóteszt (Playwright + Chromium szükséges):
 `node tests/order-export-browser-test.js`. Ez helyettesített WordPress-válaszokkal
 ellenőrzi a döntéseket, visszalépést, mobilnézetet és a végső exportindítást.
+Valódi Imagick-képfeldolgozási teszt a peremkorrekcióhoz:
+`php -d extension=imagick tests/ai-print-fringe-test.php`. Áttetsző halót,
+fehér és színes részletek megőrzését, valamint a nagyítás és DTF-alpha utáni
+PNG-kimenetet ellenőrzi szintetikus mintákon.
 Az AI-export teszt valódi PNG-adatot és ZIP-fájlt használ, de a WordPress,
 az ütemező, az OpenAI HTTP-válasz és az Imagick helyettesített; nem éles AI-próba.
 API-forrás: [OpenAI képgenerálás](https://developers.openai.com/api/docs/guides/image-generation).

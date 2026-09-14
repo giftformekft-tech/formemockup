@@ -45,7 +45,8 @@ class MG_AI_SEO_Page {
             echo '<option value="' . esc_attr($value) . '"' . selected($model, $value, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select><p class="description">' . esc_html__('Az egyedi mezős nyomatok ZIP-exportjára vonatkozik. A kiválasztott modell a következő export indításától érvényes; a már futó export az eredeti modellel fejeződik be.', 'mockup-generator') . '</p>';
-        echo '<p class="description">' . esc_html__('A minőség low, a kimenet PNG, a felbontás a forrás képarányához igazodik. A modellek költsége és futási ideje eltérhet. API-hiba esetén az export leáll; nincs automatikus modellváltás vagy újrapróbálás.', 'mockup-generator') . '</p></td></tr></table>';
+        echo '<p class="description">' . esc_html__('A minőség low, a kimenet PNG, a felbontás a forrás képarányához igazodik. A modellek költsége és futási ideje eltérhet. API-hiba esetén az export leáll; nincs automatikus modellváltás vagy újrapróbálás.', 'mockup-generator') . '</p></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('Fehér haló csökkentése', 'mockup-generator') . '</th><td><input type="hidden" name="mg_ai_print_settings[defringe_enabled]" value="0" /><label><input type="checkbox" name="mg_ai_print_settings[defringe_enabled]" value="1"' . checked(MG_AI_Print_Generator::get_defringe_enabled(), true, false) . ' /> ' . esc_html__('Az AI-nyomatok sötét kontúrja melletti áttetsző, fehéres perem korrigálása', 'mockup-generator') . '</label><p class="description">' . esc_html__('A 3×-os nagyítás előtt fut. A teljesen fedő fehér részeket és az átlátszóságot megőrzi. Szándékos, vékony fehér díszszegélynél kapcsold ki. Csak az új exportokra érvényes, az alapmintákra nem.', 'mockup-generator') . '</p></td></tr></table>';
         echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Nyomatmodell mentése', 'mockup-generator') . '</button></p></form>';
     }
 

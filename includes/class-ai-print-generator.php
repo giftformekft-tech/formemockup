@@ -35,7 +35,13 @@ class MG_AI_Print_Generator {
 
     public static function save_settings(array $input) {
         $model = self::validate_model($input['model'] ?? '');
-        update_option(self::OPTION_KEY, array('model' => $model), false);
+        $defringe = array_key_exists('defringe_enabled', $input) ? !empty($input['defringe_enabled']) : self::get_defringe_enabled();
+        update_option(self::OPTION_KEY, array('model' => $model, 'defringe_enabled' => $defringe), false);
+    }
+
+    public static function get_defringe_enabled() {
+        $settings = get_option(self::OPTION_KEY, array());
+        return !array_key_exists('defringe_enabled', $settings) || !empty($settings['defringe_enabled']);
     }
 
     public static function init() {
@@ -220,7 +226,7 @@ class MG_AI_Print_Generator {
             @ini_set('memory_limit', '512M');
             // Older queued exports used Image 2. New exports pin their model
             // when the task list is built, even if settings change mid-export.
-            $state['path'] = self::edit_image($state['task']['design_path'], $state['task']['ai_prompt'], $key, $state['task']['ai_model'] ?? self::DEFAULT_MODEL);
+            $state['path'] = self::edit_image($state['task']['design_path'], $state['task']['ai_prompt'], $key, $state['task']['ai_model'] ?? self::DEFAULT_MODEL, !empty($state['task']['ai_defringe']));
             $state['status'] = 'ready';
             unset($state['task']);
             set_transient(self::PREFIX . $key, $state, self::TTL);
@@ -262,7 +268,7 @@ class MG_AI_Print_Generator {
         return $range['minima'] < $quantum['quantumRangeLong'];
     }
 
-    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL) {
+    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false) {
         $model = self::validate_model($model);
         self::assert_available();
         $uploads = wp_upload_dir();
@@ -324,6 +330,9 @@ class MG_AI_Print_Generator {
             $result->readImageBlob($png);
             if ($transparent && !self::has_transparency($result)) {
                 throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
+            }
+            if ($defringe) {
+                MG_Image_Utils::reduce_white_fringe($result);
             }
             // Upscale only the generated PNG, once per item, before print-size processing.
             $width = $result_info[0] * self::UPSCALE_FACTOR;
