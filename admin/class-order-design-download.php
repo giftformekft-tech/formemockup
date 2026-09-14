@@ -892,7 +892,13 @@ class MG_Order_Design_Download {
                 MG_Image_Utils::threshold_alpha_binary($image, 128);
             }
 
-            $image->setImageFormat('png');
+            // Simple monochrome designs otherwise become 1-bit grayscale PNGs
+            // with tRNS transparency, which some production RIPs cannot read.
+            // Use the same explicit 8-bit RGBA encoding for every design.
+            $image->setImageFormat('png32');
+            $image->setImageDepth(8);
+            $image->setOption('png:color-type', '6');
+            $image->setOption('png:bit-depth', '8');
 
             $temp_path = tempnam(sys_get_temp_dir(), 'mg_design_export_');
             if ($temp_path === false) {

@@ -135,7 +135,11 @@ Valódi Imagick-képfeldolgozási teszt a peremkorrekcióhoz:
 színes kontúrok javítását, az alfa és fedő részletek megőrzését, a hárompixeles
 határt, az átlátszó rések védelmét, valamint a nagyítás és DTF-alpha utáni
 PNG-kimenetet ellenőrzi szintetikus mintákon.
-Fekete kontúr maradványának regressziós tesztje valódi Imagick-kel:
+A végleges nyomatok minden esetben 8 bites RGBA PNG-k (PNG color type 6).
+Az egyszínű mintákat sem menti 1 bites szürkeárnyalatos PNG-ként, mert ezt
+egyes RIP-ek hibásan kezelik. A kisebb fájlméret önmagában nem hibajel.
+
+Fekete kontúr maradványának és a PNG-kódolásnak regressziós tesztje valódi Imagick-kel:
 `php -d extension=imagick tests/black-export-edge-test.php`.
 Opcionálisan egy PNG útvonalát is elfogadja, amelyen memóriában ellenőrzi
 a végső feketeeltávolítást; az eredeti fájlt nem módosítja.

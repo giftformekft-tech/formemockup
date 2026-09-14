@@ -102,6 +102,8 @@ class Imagick {
     public function setImagePage($width, $height, $x, $y) {}
     public function getImageBlob() { return $this->bytes; }
     public function setImageFormat($format) {}
+    public function setImageDepth($depth) {}
+    public function setOption($key, $value) {}
     public function writeImage($path) { file_put_contents($path, $this->bytes); }
     public function clear() {}
     public function destroy() {}

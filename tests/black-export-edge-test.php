@@ -52,6 +52,10 @@ try {
         verify(dark_pixels($plain) > 0, 'normal export retains the black outline, print height ' . $target_cm);
         $clean_path = $prepare->invokeArgs(null, array($path, 'polo', 'M', &$cache, &$temps, false, true));
         $clean = new Imagick($clean_path);
+        foreach (array($plain_path, $clean_path) as $export_path) {
+            $header = file_get_contents($export_path, false, null, 0, 33);
+            verify(ord($header[24]) === 8 && ord($header[25]) === 6, 'serialized export is always 8-bit RGBA, including monochrome art');
+        }
         verify(dark_pixels($clean) === 0, 'black-free export leaves no opaque hairline, print height ' . $target_cm);
         $white = $clean->getImagePixelColor((int) ($clean->getImageWidth() / 2), (int) ($clean->getImageHeight() / 2))->getColor(true);
         verify($white['r'] > 0.99 && $white['g'] > 0.99 && $white['b'] > 0.99 && $white['a'] > 0.99, 'white letter interior stays opaque white');
@@ -61,6 +65,27 @@ try {
         $plain->clear(); $clean->clear();
     }
     verify(hash_file('sha256', $path) === $original_hash, 'source file is unchanged');
+    // Reproduce the failing RIP format: 1-bit gray + tRNS. No resizing is
+    // requested here, so decoded pixels must survive the format conversion.
+    $mono = new Imagick();
+    $mono->newImage(2, 2, new ImagickPixel('transparent'), 'png');
+    $mono->importImagePixels(0, 0, 2, 2, 'RGBA', Imagick::PIXEL_CHAR,
+        array(255,255,255,255, 0,0,0,0, 0,0,0,0, 255,255,255,255));
+    $mono->setOption('png:color-type', '0');
+    $mono->setOption('png:bit-depth', '1');
+    $mono_path = $dir . '/mono.png';
+    $mono->writeImage($mono_path);
+    $header = file_get_contents($mono_path, false, null, 0, 33);
+    verify(ord($header[24]) === 1 && ord($header[25]) === 0, 'fixture reproduces reported 1-bit grayscale source');
+    $target_cm = 0.0;
+    $mono_export = $prepare->invokeArgs(null, array($mono_path, 'polo', 'M', &$cache, &$temps, false, false));
+    $header = file_get_contents($mono_export, false, null, 0, 33);
+    verify(ord($header[24]) === 8 && ord($header[25]) === 6, '1-bit source is exported as explicit 8-bit RGBA');
+    $roundtrip = new Imagick($mono_export);
+    verify($roundtrip->getImageWidth() === 2 && $roundtrip->getImageHeight() === 2 &&
+        $roundtrip->exportImagePixels(0,0,2,2,'RGBA',Imagick::PIXEL_CHAR) ===
+        $mono->exportImagePixels(0,0,2,2,'RGBA',Imagick::PIXEL_CHAR), 'format conversion preserves every decoded pixel and transparency');
+    $roundtrip->clear(); $mono->clear();
     try {
         MG_Image_Utils::strip_color_to_transparent(new Imagick(), 'black', 25.0, true);
         throw new Exception('Empty image should fail the strict final color pass');
