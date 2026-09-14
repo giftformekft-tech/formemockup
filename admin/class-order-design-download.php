@@ -884,6 +884,14 @@ class MG_Order_Design_Download {
             // immediately before writing the final PNG.
             MG_Image_Utils::threshold_alpha_binary($image, 128);
 
+            if ($strip_black) {
+                // The first color pass may miss partially transparent black;
+                // resizing and binary alpha can turn those remnants opaque.
+                // Remove them at final size, then normalize newly hidden RGB.
+                MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
+                MG_Image_Utils::threshold_alpha_binary($image, 128);
+            }
+
             $image->setImageFormat('png');
 
             $temp_path = tempnam(sys_get_temp_dir(), 'mg_design_export_');

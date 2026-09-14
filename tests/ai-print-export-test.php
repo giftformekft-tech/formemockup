@@ -337,7 +337,7 @@ try {
     check(MG_Image_Utils::$defringed === 2, 'only generated images get fringe correction, once per item');
     check(MG_Image_Utils::$defringe_resize_positions === array(0, 1), 'fringe correction runs before each 3x enlargement');
     $zip->close();
-    check(MG_Image_Utils::$stripped === 2, 'existing black garment export processing runs on the edited design only');
+    check(MG_Image_Utils::$stripped === 4, 'black garment export cleans edited designs before sizing and after final alpha');
     check(!file_exists($test_dir . '/mg-ai-print-' . $actions[0][1][0] . '.png'), 'completed export removes generated temporary PNG');
     foreach (array('gpt-image-2.5-sunburst', 'gpt-image-2.5-flare') as $model) {
         MG_AI_Print_Generator::save_settings(array('model' => $model));

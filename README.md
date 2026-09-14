@@ -119,6 +119,12 @@ mintán ellenőrizni kell: a prompt nem garantál pixelpontos változatlanságot
 A beállított centiméteres nyomatméret továbbra is meghatározza a végső ZIP-ben
 lévő kép méretét; a 3×-os nagyítás ezt megelőző feldolgozási lépés.
 
+A **Fekete nélkül** export a fekete ruhák nyomatain két lépésben távolítja el
+a feketét: a kezdeti feldolgozáskor, majd a végső méretezés és bináris alpha
+után is. Így az eredetileg félig átlátszó fekete kontúrból nem marad vissza
+fedő hajszálvonal. A végső lépés a teljes nyomatméretet megőrzi, nem erodálja
+a fehér betűket. Normál exportnál egyik feketeeltávolítás sem fut.
+
 Ellenőrzések: `php -d extension=zip tests/ai-print-export-test.php`,
 `php tests/custom-fields-cart-test.php`, `node tests/order-export-script-test.js`.
 Valódi böngészős varázslóteszt (Playwright + Chromium szükséges):
@@ -128,6 +134,10 @@ Valódi Imagick-képfeldolgozási teszt a peremkorrekcióhoz:
 `php -d extension=imagick tests/ai-print-fringe-test.php`. Áttetsző halót,
 fehér és színes részletek megőrzését, valamint a nagyítás és DTF-alpha utáni
 PNG-kimenetet ellenőrzi szintetikus mintákon.
+Fekete kontúr maradványának regressziós tesztje valódi Imagick-kel:
+`php -d extension=imagick tests/black-export-edge-test.php`.
+Opcionálisan egy PNG útvonalát is elfogadja, amelyen memóriában ellenőrzi
+a végső feketeeltávolítást; az eredeti fájlt nem módosítja.
 Az AI-export teszt valódi PNG-adatot és ZIP-fájlt használ, de a WordPress,
 az ütemező, az OpenAI HTTP-válasz és az Imagick helyettesített; nem éles AI-próba.
 API-forrás: [OpenAI képgenerálás](https://developers.openai.com/api/docs/guides/image-generation).
