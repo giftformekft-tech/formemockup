@@ -409,7 +409,15 @@ class MG_Virtual_Variant_Manager {
             $colors_payload = array();
             $color_order = array();
             $size_chart = isset($settings['size_charts'][$type_slug]) ? $settings['size_charts'][$type_slug] : '';
+            // Keep chart HTML in the payload: older frontend scripts use it to
+            // enable the button, and opening a chart must not depend on AJAX.
+            if ($size_chart !== '') {
+                $size_chart = do_shortcode($size_chart);
+            }
             $size_chart_models = isset($settings['size_chart_models'][$type_slug]) ? $settings['size_chart_models'][$type_slug] : '';
+            if ($size_chart_models !== '') {
+                $size_chart_models = do_shortcode($size_chart_models);
+            }
             $type_description = isset($type_meta['description']) ? $type_meta['description'] : '';
             if ($type_description !== '') {
                 $type_description = apply_filters('mg_variant_display_type_description', $type_description, $type_slug, $product);
@@ -480,6 +488,8 @@ class MG_Virtual_Variant_Manager {
                 'size_order' => isset($type_meta['sizes']) ? $type_meta['sizes'] : array(),
                 'has_size_chart' => $size_chart !== '',
                 'has_size_chart_models' => $size_chart_models !== '',
+                'size_chart' => $size_chart,
+                'size_chart_models' => $size_chart_models,
                 'description' => $type_description,
                 'price' => $type_price,
                 'size_surcharges' => $size_surcharges,

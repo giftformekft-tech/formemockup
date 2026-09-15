@@ -71,15 +71,21 @@ function check($condition, $message) {
 }
 require dirname(__DIR__) . '/includes/class-virtual-variant-manager.php';
 
+$GLOBALS['post'] = (object) array('ID' => 42);
+$GLOBALS['product'] = $test_product;
 $full = MG_Virtual_Variant_Manager::get_frontend_config($test_product);
-check(count($shortcodes) === 0, 'initial configuration must not execute shortcodes');
+check(count($shortcodes) === 6, 'charts rendered for every selectable type');
 check($full['types']['shirt']['has_size_chart'], 'chart availability retained');
-check(!isset($full['types']['shirt']['size_chart']), 'chart HTML absent');
-check(!isset($full['types']['shirt']['size_chart_models']), 'models HTML absent');
+check($full['types']['shirt']['size_chart'] === '<div>[shirt-chart]</div>', 'chart HTML available to current and older scripts');
+check($full['types']['shirt']['size_chart_models'] === '<div>[shirt-models]</div>', 'models HTML available without AJAX');
 check($full['types']['hoodie']['description'] === '<p>' . $catalog['hoodie']['description'] . '</p>', 'feed/schema description preserved');
 
 $_GET['mg_type'] = 'hoodie';
 $browser = MG_Virtual_Variant_Manager::prepare_browser_config($full);
+foreach (array('shirt', 'hoodie', 'mug') as $slug) {
+    check($browser['types'][$slug]['size_chart'] === '<div>[' . $slug . '-chart]</div>', 'browser retains chart for ' . $slug);
+    check($browser['types'][$slug]['size_chart_models'] === '<div>[' . $slug . '-models]</div>', 'browser retains models for ' . $slug);
+}
 check(isset($browser['types']['hoodie']['description']), 'requested type description included');
 check(!isset($browser['types']['shirt']['description']), 'other description deferred');
 check($browser['types']['shirt']['has_description'], 'description availability retained');
@@ -96,6 +102,7 @@ function request_content($section, $extra = array()) {
 }
 $GLOBALS['post'] = (object) array('ID' => 99);
 $GLOBALS['product'] = 'previous product';
+$shortcodes = array();
 $response = request_content('size_chart');
 check($response->status === 200 && $response->data['html'] === '<div>[shirt-chart]</div>', 'requested chart rendered');
 check($shortcodes === array('[shirt-chart]'), 'only requested section rendered');
