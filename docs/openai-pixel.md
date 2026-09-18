@@ -50,6 +50,10 @@ add_filter('mg_openai_pixel_id', '__return_empty_string'); // Kikapcsolás.
 A szerveroldali Conversions API nincs bekötve; ahhoz külön hirdetési API-hitelesítés kell.
 Az SDK saját kattintásazonosító-kezelését használjuk; kézi ügyféladat-küldést nem adunk hozzá.
 
+A 2.38.6 verziótól a termékazonosítók a ChatGPT CSV-vel egyeznek:
+virtuális terméknél `SKU_típus`, SKU nélkül `ID_<termékazonosító>_típus`.
+A vásárlási esemény deduplikációs azonosítója változatlan.
+
 Források:
 - https://developers.openai.com/ads/measurement-pixel
 - https://developers.openai.com/ads/supported-events

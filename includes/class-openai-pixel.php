@@ -29,6 +29,12 @@ class MG_OpenAI_Pixel {
             if ($product) {
                 // No initial price: virtual variants can change the visible amount in the browser.
                 $config['product'] = self::content($product, 1);
+                if (class_exists('MG_Virtual_Variant_Manager')) {
+                    $variants = MG_Virtual_Variant_Manager::get_frontend_config($product);
+                    foreach (array_keys($variants['types'] ?? array()) as $type) {
+                        $config['productIds'][$type] = MG_Custom_Feed_Manager::get_openai_item_id($product, $type);
+                    }
+                }
             }
         }
         wp_enqueue_script('mg-openai-pixel', plugins_url('../assets/js/openai-pixel.js', __FILE__), array(), MG_VERSION, false);
@@ -44,8 +50,8 @@ class MG_OpenAI_Pixel {
         return (int) round((float) $value * pow(10, $decimals));
     }
 
-    private static function content($product, $quantity) {
-        return array('id' => (string) $product->get_id(), 'name' => $product->get_name(), 'content_type' => 'product', 'quantity' => (int) $quantity);
+    private static function content($product, $quantity, $type = '') {
+        return array('id' => MG_Custom_Feed_Manager::get_openai_item_id($product, $type), 'name' => $product->get_name(), 'content_type' => 'product', 'quantity' => (int) $quantity);
     }
 
     /** WooCommerce calls this only after an item was successfully added. */
@@ -75,13 +81,13 @@ class MG_OpenAI_Pixel {
                 $amount = wc_get_price_including_tax($item['data'], array('qty' => $addition['quantity']));
                 $events[] = array('name' => 'items_added', 'id' => $addition['id'], 'data' => array(
                     'type' => 'contents', 'amount' => self::amount($amount, $currency), 'currency' => $currency,
-                    'contents' => array(self::content($item['data'], $addition['quantity'])),
+                    'contents' => array(self::content($item['data'], $addition['quantity'], $item['mg_product_type'] ?? '')),
                 ));
             }
             WC()->session->set(self::CART_EVENTS, array());
             if (!empty($_POST['checkout']) && !WC()->cart->is_empty()) {
                 $contents = array();
-                foreach (WC()->cart->get_cart() as $item) $contents[] = self::content($item['data'], $item['quantity']);
+                foreach (WC()->cart->get_cart() as $item) $contents[] = self::content($item['data'], $item['quantity'], $item['mg_product_type'] ?? '');
                 $events[] = array('name' => 'checkout_started', 'id' => '', 'data' => array(
                     'type' => 'contents', 'amount' => self::amount(WC()->cart->get_total('edit'), $currency),
                     'currency' => $currency, 'contents' => $contents,
@@ -97,7 +103,10 @@ class MG_OpenAI_Pixel {
             if ($order->has_status(array('processing', 'completed'))) {
                 $contents = array();
                 foreach ($order->get_items() as $item) {
-                    $contents[] = array('id' => (string) ($item->get_variation_id() ?: $item->get_product_id()),
+                    $product = $item->get_product();
+                    $item_id = $product ? MG_Custom_Feed_Manager::get_openai_item_id($product, (string) $item->get_meta('mg_product_type'))
+                        : 'ID_' . ($item->get_variation_id() ?: $item->get_product_id());
+                    $contents[] = array('id' => $item_id,
                         'quantity' => (int) $item->get_quantity(), 'content_type' => 'product');
                 }
                 $currency = $order->get_currency();

@@ -5,6 +5,45 @@ if (!defined('ABSPATH')) {
 
 class MG_Custom_Feed_Manager {
 
+    public static function formats() {
+        return array('google' => 'Google Merchant (XML)', 'facebook' => 'Facebook Catalog (XML)',
+            'openai' => 'OpenAI / ChatGPT (CSV)');
+    }
+
+    private static function is_openai($config) {
+        return ($config['format'] ?? '') === 'openai';
+    }
+
+    private static function csv_columns() {
+        return array('item_id', 'title', 'description', 'url', 'brand', 'seller_name', 'image_url',
+            'availability', 'price', 'condition', 'gender', 'age_group',
+            'is_eligible_search', 'is_ads_eligible', 'is_eligible_checkout');
+    }
+
+    private static function csv_row($values) {
+        $stream = fopen('php://temp', 'w+');
+        if (!$stream) throw new RuntimeException('A CSV sor nem készíthető el.');
+        try {
+            // Empty escape character gives RFC 4180 quoting, including quotes and newlines.
+            if (fputcsv($stream, $values, ',', '"', '') === false) throw new RuntimeException('CSV írási hiba.');
+            rewind($stream);
+            return stream_get_contents($stream);
+        } finally { fclose($stream); }
+    }
+
+    /** One stable offer per design and product type, shared with the OpenAI Pixel. */
+    public static function get_openai_item_id($product, $type = '') {
+        if ($type !== '' && method_exists($product, 'get_parent_id') && $product->get_parent_id()) {
+            $product = wc_get_product($product->get_parent_id()) ?: $product;
+        }
+        $id = $product->get_sku() ?: 'ID_' . $product->get_id();
+        return $type !== '' ? $id . '_' . $type : (string) $id;
+    }
+
+    public static function feed_content_type($config) {
+        return self::is_openai($config) ? 'text/csv; charset=UTF-8' : 'application/xml; charset=UTF-8';
+    }
+
     public static function init() {
         add_action('admin_menu', array(__CLASS__, 'register_admin_page'));
         add_action('admin_post_mg_save_custom_feed', array(__CLASS__, 'handle_save'));
@@ -38,7 +77,7 @@ class MG_Custom_Feed_Manager {
         $product_cats = get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => false));
         ?>
         <div class="wrap">
-            <h1>Egyedi Termék Feeder (Google / Facebook)</h1>
+            <h1>Egyedi Termék Feeder (Google / Facebook / ChatGPT)</h1>
             <p>A generálás kis adagokban, a háttérben fut. Frissítés közben a korábbi kész feed elérhető marad.</p>
             
             <div style="display: flex; gap: 20px; align-items: flex-start;">
@@ -62,7 +101,7 @@ class MG_Custom_Feed_Manager {
                                 <?php foreach ($feeds as $slug => $feed): ?>
                                     <tr>
                                         <td><strong><?php echo esc_html($feed['name']); ?></strong></td>
-                                        <td><?php echo esc_html(ucfirst($feed['format'])); ?></td>
+                                        <td><?php echo esc_html(self::formats()[$feed['format']] ?? $feed['format']); ?></td>
                                         <td>
                                             <?php
                                             if (!empty($feed['product_type'])) {
@@ -86,6 +125,9 @@ class MG_Custom_Feed_Manager {
                                         </td>
                                         <td>
                                             <input type="text" readonly value="<?php echo esc_url(home_url('/?mg_custom_feed=' . $slug)); ?>" class="regular-text" style="width: 100%;" onclick="this.select();">
+                                            <?php if (self::is_openai($feed)): ?>
+                                                <a href="<?php echo esc_url(home_url('/?mg_custom_feed=' . $slug)); ?>" class="button button-small">CSV letöltése</a>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <?php $state = self::get_state($slug); ?>
@@ -115,9 +157,11 @@ class MG_Custom_Feed_Manager {
                         <p>
                             <label><strong>Formátum</strong></label><br>
                             <select name="feed_format" class="widefat">
-                                <option value="google">Google Merchant (XML)</option>
-                                <option value="facebook">Facebook Catalog (XML)</option>
+                                <?php foreach (self::formats() as $format => $label): ?>
+                                    <option value="<?php echo esc_attr($format); ?>"><?php echo esc_html($label); ?></option>
+                                <?php endforeach; ?>
                             </select>
+                            <span class="description">A ChatGPT CSV terméktípusonként egy ajánlatot tartalmaz. Az OpenAI-fiókba külön kell feltölteni; a feed létrehozása nem indít hirdetést.</span>
                         </p>
 
                         <p>
@@ -140,7 +184,7 @@ class MG_Custom_Feed_Manager {
                         </p>
 
                         <p>
-                            <label><strong>Gender (g:gender)</strong> (Opcionális)</label><br>
+                            <label><strong>Nem (gender)</strong> (Opcionális)</label><br>
                             <select name="force_gender" class="widefat">
                                 <option value="">-- Auto-detect (cím alapján) --</option>
                                 <option value="male">male – Férfi</option>
@@ -151,7 +195,7 @@ class MG_Custom_Feed_Manager {
                         </p>
 
                         <p>
-                            <label><strong>Age Group (g:age_group)</strong> (Opcionális)</label><br>
+                            <label><strong>Korcsoport (age_group)</strong> (Opcionális)</label><br>
                             <select name="force_age_group" class="widefat">
                                 <option value="">-- Auto-detect (cím alapján) --</option>
                                 <option value="adult">adult – Felnőtt</option>
@@ -214,6 +258,7 @@ class MG_Custom_Feed_Manager {
 
         $name = sanitize_text_field($_POST['feed_name']);
         $format = sanitize_text_field($_POST['feed_format']);
+        if (!isset(self::formats()[$format])) wp_die('Ismeretlen feed formátum.');
         $product_type = sanitize_text_field($_POST['product_type']);
         $category_id = intval($_POST['category_id']);
 
@@ -260,6 +305,8 @@ class MG_Custom_Feed_Manager {
             if (!$lock) {
                 wp_die('A feed éppen egy adagot dolgoz fel. Néhány másodperc múlva próbáld újra a törlést.');
             }
+            // Resolve the extension before removing the format from the saved configuration.
+            $path = self::get_feed_file_path($slug);
             unset($feeds[$slug]);
             update_option('mg_custom_feeds', $feeds);
             wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
@@ -267,7 +314,6 @@ class MG_Custom_Feed_Manager {
             delete_option('mg_custom_feed_job_' . $slug);
             
             // Allow file deletion if exists
-            $path = self::get_feed_file_path($slug);
             if (file_exists($path)) {
                 @unlink($path);
             }
@@ -314,7 +360,10 @@ class MG_Custom_Feed_Manager {
                     self::generate_feed_to_file($slug, false);
                 }
                 // Always serve immediately (fresh or stale) – don't make Google wait
-                header('Content-Type: application/xml; charset=UTF-8');
+                header('Content-Type: ' . self::feed_content_type($feeds[$slug]));
+                if (self::is_openai($feeds[$slug])) {
+                    header('Content-Disposition: attachment; filename="custom_' . $slug . '.csv"');
+                }
                 header('Content-Length: ' . filesize($path));
                 readfile($path);
                 exit;
@@ -333,7 +382,9 @@ class MG_Custom_Feed_Manager {
         if (!file_exists($path)) {
             wp_mkdir_p($path);
         }
-        return $path . '/custom_' . $slug . '.xml';
+        $feeds = get_option('mg_custom_feeds', array());
+        $extension = self::is_openai($feeds[$slug] ?? array()) ? '.csv' : '.xml';
+        return $path . '/custom_' . $slug . $extension;
     }
 
     public static function get_state($slug) {
@@ -466,7 +517,8 @@ class MG_Custom_Feed_Manager {
                 throw new RuntimeException('A feed fájl feldolgozása nem folytatható.');
             }
             if ($state['bytes'] === 0) {
-                self::write_chunk($handle, '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL .
+                self::write_chunk($handle, self::is_openai($state['config']) ? self::csv_row(self::csv_columns()) :
+                    '<?xml version="1.0" encoding="UTF-8"?>' . PHP_EOL .
                     '<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0"><channel>' . PHP_EOL .
                     '<title>' . self::xml_sanitize($state['config']['name']) . '</title>' . PHP_EOL .
                     '<link>' . self::xml_sanitize(home_url()) . '</link>' . PHP_EOL .
@@ -481,7 +533,7 @@ class MG_Custom_Feed_Manager {
                 if (microtime(true) - $started >= 5) break;
             }
             // An empty bounded query proves that every matching product has been visited.
-            if (!$ids) self::write_chunk($handle, '</channel></rss>');
+            if (!$ids && !self::is_openai($state['config'])) self::write_chunk($handle, '</channel></rss>');
             if (!fflush($handle)) throw new RuntimeException('A feed fájl mentése nem sikerült.');
             $state['bytes'] = ftell($handle);
             fclose($handle);
@@ -567,6 +619,28 @@ class MG_Custom_Feed_Manager {
             }
 
             $g_availability = $product->is_in_stock() ? 'in_stock' : 'out_of_stock';
+
+            if (self::is_openai($feed_config)) {
+                $plain = static function ($value) {
+                    return trim(html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                };
+                $description = $plain($g_description);
+                if ($description === '' || $plain($g_title) === '' || $plain($blog_name) === '' ||
+                    !filter_var($g_link, FILTER_VALIDATE_URL) || !filter_var($g_image_link, FILTER_VALIDATE_URL) ||
+                    strpos($g_link, 'https://') !== 0 || strpos($g_image_link, 'https://') !== 0 || $price_val <= 0) {
+                    throw new RuntimeException('ChatGPT feed: hiányzó leírás, név, pozitív ár vagy HTTPS termék-/képlink. Termék: ' . $product_id . ', típus: ' . $type_slug);
+                }
+                $gender = $feed_config['force_gender'] ?? '';
+                $age = $feed_config['force_age_group'] ?? '';
+                $label = $g_title . ' ' . $type_slug;
+                if ($gender === '') $gender = preg_match('/férfi|ferfi/iu', $label) ? 'male' : (preg_match('/női|noi/iu', $label) ? 'female' : 'unisex');
+                if ($age === '') $age = stripos($label, 'baba') !== false ? 'infant' : (stripos($label, 'gyerek') !== false ? 'kids' : 'adult');
+                $output .= self::csv_row(array(self::get_openai_item_id($product, $type_slug), $plain($g_title),
+                    $description, $g_link, $plain($blog_name), $plain($blog_name), $g_image_link,
+                    $g_availability, number_format($price_val, 2, '.', '') . ' ' . $currency, 'new', $gender, $age,
+                    'true', 'true', 'false'));
+                continue;
+            }
 
             $output .= '<item>' . PHP_EOL;
             $output .= '<g:id>' . self::xml_sanitize($g_id) . '</g:id>' . PHP_EOL;

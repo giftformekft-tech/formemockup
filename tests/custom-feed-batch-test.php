@@ -71,8 +71,9 @@ function wc_get_product($id) {
         private $id;
         public function __construct($id) { $this->id = $id; }
         public function get_sku() { return 'SKU' . $this->id; }
-        public function get_name() { return 'Product & ' . $this->id; }
-        public function get_short_description() { return 'Description'; }
+        public function get_name() { return $GLOBALS['csv_title'] ?? ('Product & ' . $this->id); }
+        public function get_short_description() { return $GLOBALS['csv_description'] ?? 'Description'; }
+        public function get_description() { return ''; }
         public function get_permalink() { return 'https://example.test/product/' . $this->id; }
         public function get_price() { return 4000; }
         public function is_in_stock() { return true; }
@@ -227,6 +228,63 @@ try {
     }
     $saved_slug = array_key_last($options['mg_custom_feeds']);
     check(MG_Custom_Feed_Manager::get_state($saved_slug)['status'] === 'running', 'new feed queued before returning to shell');
+
+    // Create through the real admin handler, then exercise multi-batch CSV publication.
+    $_POST['feed_name'] = 'ChatGPT Test';
+    $_POST['feed_format'] = 'openai';
+    try { MG_Custom_Feed_Manager::handle_save(); }
+    catch (FeedRedirect $e) {
+        check(strpos($e->getMessage(), 'mg_tab=custom_feeds&created=1') !== false, 'ChatGPT create returns to feed tab');
+    }
+    $csv_slug = array_key_last($options['mg_custom_feeds']);
+    $active_slug = $csv_slug;
+    $path = MG_Custom_Feed_Manager::get_feed_file_path($csv_slug);
+    check(substr($path, -4) === '.csv', 'ChatGPT uses CSV extension');
+    check(MG_Custom_Feed_Manager::feed_content_type($options['mg_custom_feeds'][$csv_slug]) === 'text/csv; charset=UTF-8', 'CSV response MIME type');
+    check(MG_Custom_Feed_Manager::feed_content_type(array('format' => 'facebook')) === 'application/xml; charset=UTF-8', 'Facebook response stays XML');
+    $products = range(1, 25);
+    $csv_title = 'Árvíztűrő, "ajándék" & bögre';
+    $csv_description = "Első sor, idézet: \"szöveg\"\nMásodik sor &amp; harmadik";
+    file_put_contents($path, 'OLD CSV');
+    MG_Custom_Feed_Manager::process_batch($csv_slug);
+    check(file_get_contents($path) === 'OLD CSV', 'CSV also preserves old feed until complete');
+    file_put_contents($path . '.tmp', 'BROKEN CSV ROW', FILE_APPEND);
+    finish_feed($csv_slug);
+    $csv = file_get_contents($path);
+    check(strpos($csv, 'BROKEN CSV ROW') === false && strpos($csv, '</rss>') === false, 'CSV rollback removes uncommitted tail and does not append XML');
+    $handle = fopen($path, 'r');
+    $columns = fgetcsv($handle, 0, ',', '"', '');
+    $rows = array();
+    while (($row = fgetcsv($handle, 0, ',', '"', '')) !== false) {
+        check(count($row) === count($columns), 'CSV columns align despite punctuation and multiline descriptions');
+        $rows[] = array_combine($columns, $row);
+    }
+    fclose($handle);
+    check(count($rows) === 25, 'CSV contains every filtered offer exactly once');
+    check(count(array_unique(array_column($rows, 'item_id'))) === 25, 'CSV IDs are unique');
+    check($rows[0]['item_id'] === 'SKU1_shirt' && $rows[24]['item_id'] === 'SKU25_shirt', 'CSV IDs and type filter');
+    check($rows[0]['title'] === $csv_title . ' - Póló', 'UTF-8, quotes and commas round-trip');
+    check($rows[0]['description'] === html_entity_decode($csv_description, ENT_QUOTES | ENT_HTML5, 'UTF-8'), 'Description newlines and decoded entities round-trip');
+    check($rows[0]['price'] === '4000.00 HUF', 'Feed uses major currency units, not pixel minor units');
+    check($rows[0]['seller_name'] === 'Test Shop' && $rows[0]['brand'] === 'Test Shop', 'Required seller and brand');
+    check($rows[0]['gender'] === 'female' && $rows[0]['age_group'] === 'kids', 'Demographic overrides preserved');
+    check($rows[0]['is_ads_eligible'] === 'true' && $rows[0]['is_eligible_search'] === 'true' && $rows[0]['is_eligible_checkout'] === 'false', 'Ads and search enabled; in-ChatGPT checkout disabled');
+    // Invalid required data produces a visible job error while retaining the published catalog.
+    $csv_description = '';
+    MG_Custom_Feed_Manager::generate_feed_to_file($csv_slug);
+    MG_Custom_Feed_Manager::process_batch($csv_slug);
+    check(MG_Custom_Feed_Manager::get_state($csv_slug)['status'] === 'failed', 'Invalid required CSV data fails visibly');
+    check(file_get_contents($path) === $csv, 'Invalid CSV cannot replace valid publication');
+    unset($csv_title, $csv_description);
+    $_GET['slug'] = $csv_slug;
+    try { MG_Custom_Feed_Manager::handle_delete(); } catch (FeedRedirect $e) {}
+    check(!file_exists($path) && !file_exists($path . '.tmp'), 'Deleting ChatGPT feed removes CSV and partial CSV, using saved format');
+    $_POST['feed_format'] = 'unsupported';
+    $before = count($options['mg_custom_feeds']);
+    try { MG_Custom_Feed_Manager::handle_save(); throw new RuntimeException('format validation missing'); }
+    catch (RuntimeException $e) { check($e->getMessage() === 'HTTP 500', 'Unknown format rejected'); }
+    check(count($options['mg_custom_feeds']) === $before, 'Unknown format never creates a feed');
+
     $authorized = false;
     foreach (array('handle_regeneration', 'handle_delete', 'handle_save') as $method) {
         try { MG_Custom_Feed_Manager::$method(); throw new RuntimeException('permission check missing'); }

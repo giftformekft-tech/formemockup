@@ -8,10 +8,11 @@ function fixture(cookie = '', storage = new Map()) {
     const listeners = {}, scripts = [], calls = [], requests = [], timers = new Map();
     let result = {success: true, data: {events: [], pending: false}};
     const document = {cookie, readyState: 'loading', body: {},
+        querySelector: () => ({value: 'shirt'}),
         addEventListener: (name, callback) => { listeners[name] = callback; },
         createElement: () => ({}), head: {appendChild: script => scripts.push(script)}};
     const window = {mgOpenAIConfig: {pixelId: 'test', endpoint: '/events', checkout: true, orderId: 9,
-        product: {id: '7'}, debug: false}, location: {search: '?key=secret'},
+        product: {id: '7'}, productIds: {shirt: 'SKU7_shirt'}, debug: false}, location: {search: '?key=secret'},
         localStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value)},
         setTimeout: callback => { timers.set(timers.size + 1, callback); return timers.size; },
         clearTimeout: id => timers.delete(id),
@@ -42,6 +43,7 @@ const commerce = {success: true, data: {events: [
     assert.equal(f.calls[1][0], 'init');
     assert.deepEqual(f.calls[2], ['consent', true]);
     assert.equal(f.calls.filter(c => c[0] === 'measure').length, 5);
+    assert.equal(f.calls.find(c => c[1] === 'contents_viewed')[2].contents[0].id, 'SKU7_shirt', 'Product view ID matches the selected feed offer');
     assert(f.requests[0].body.includes('order_key=secret'));
     f.consent(true); f.added(); await flush();
     assert.equal(f.calls.filter(c => c[0] === 'measure').length, 5, 'Repeated AJAX/consent must not duplicate events');

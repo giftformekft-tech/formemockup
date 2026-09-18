@@ -76,7 +76,13 @@
         if (!viewed) {
             viewed = true;
             measure('page_viewed', {type: 'contents'});
-            if (config.product) measure('contents_viewed', {type: 'contents', contents: [config.product]});
+            if (config.product) {
+                var typeInput = d.querySelector('[name="mg_product_type"]');
+                if (typeInput && config.productIds && config.productIds[typeInput.value]) {
+                    config.product.id = config.productIds[typeInput.value];
+                }
+                measure('contents_viewed', {type: 'contents', contents: [config.product]});
+            }
         }
         refresh();
     }

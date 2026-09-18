@@ -1,4 +1,35 @@
-# Egyedi feed generálás (2.37.2)
+# Egyedi feed generálás (2.38.6)
+
+## OpenAI / ChatGPT CSV
+
+A Mockup Generator → Egyedi feedek → Új Feed Létrehozása űrlapon a Formátum
+mezőben választható az **OpenAI / ChatGPT (CSV)**. Ugyanaz a terméktípus- és
+kategóriaszűrés, nem- és korcsoport-beállítás használható, mint az XML feedeknél.
+A kész sorban a **CSV letöltése** gomb adja a fájlt. A feed URL változatlan
+szerkezetű (`?mg_custom_feed=<slug>`), CSV tartalomtípussal és `.csv` fájlnévvel.
+
+Az export UTF-8, vesszővel elválasztott, szabványosan idézőjelezett CSV.
+Az OpenAI saját mezőneveit használja (`item_id`, `url`, `image_url`, `seller_name`),
+keresési és hirdetési jogosultsággal; a ChatGPT-n belüli checkout nincs engedélyezve.
+Az ár normál pénzegységben szerepel (`3990.00 HUF`), nem a pixel százados egységeiben.
+A kötelező leírás, név, pozitív ár vagy HTTPS termék-/képlink hiánya látható
+generálási hibát eredményez; a korábban elkészült feed megmarad.
+
+A meglévő katalógusmodell szerint mintánként és terméktípusonként egy ajánlat
+készül (`SKU_típus`, SKU nélkül `ID_<termékazonosító>_típus`). Az OpenAI Pixel
+ugyanezeket az azonosítókat használja a virtuális termékekhez. Szín-/méretváltozatonkénti
+bontást és variánscsoportokat ez az export nem állít elő; ilyen importhoz külön
+variánsexport szükséges. A meglévő előnézeti képeket használja, nem generál új képeket.
+
+A CSV létrehozása nem tölti fel automatikusan az OpenAI-fiókba, és nem indít
+hirdetést. A hozzáférés és az import/feltöltés külön beállítás.
+Az OpenAI szabványos feltöltési útja jelenleg amerikai piacra alapértelmezett;
+a magyar célpiac és a HUF elfogadását a fiókhoz engedélyezett integrációnál
+külön ellenőrizni kell. A CSV pénzneme önmagában nem állít célországot.
+
+Hivatalos séma: https://developers.openai.com/commerce/specs/file-upload/products
+
+## Háttérgenerálás
 
 A létrehozás és a Generálás gomb háttérfeladatot indít, majd azonnal visszatér az adminoldalra. A feldolgozás kérésenként legfeljebb 10 terméket vesz elő, és 5 másodperc elteltével, az aktuális termék befejezése után átadja a munkát a következő adagnak.
 
