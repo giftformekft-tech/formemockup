@@ -29,7 +29,8 @@ class MG_Consent_Bridge {
     private static function measurement_active() {
         $gads = get_option('mg_gads_settings', array());
         $meta = get_option('mg_fb_pixel_settings', array());
-        return !empty($gads['conversion_id']) || !empty($meta['pixel_id']);
+        return !empty($gads['conversion_id']) || !empty($meta['pixel_id'])
+            || (class_exists('MG_OpenAI_Pixel') && MG_OpenAI_Pixel::pixel_id() !== '');
     }
 
     /**
