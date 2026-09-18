@@ -72,8 +72,8 @@ function wc_get_product($id) {
         public function __construct($id) { $this->id = $id; }
         public function get_sku() { return 'SKU' . $this->id; }
         public function get_name() { return $GLOBALS['csv_title'] ?? ('Product & ' . $this->id); }
-        public function get_short_description() { return $GLOBALS['csv_description'] ?? 'Description'; }
-        public function get_description() { return ''; }
+        public function get_short_description() { return $GLOBALS['csv_descriptions'][$this->id] ?? $GLOBALS['csv_description'] ?? 'Description'; }
+        public function get_description() { return $GLOBALS['csv_full_description'] ?? ''; }
         public function get_permalink() { return 'https://example.test/product/' . $this->id; }
         public function get_price() { return 4000; }
         public function is_in_stock() { return true; }
@@ -269,11 +269,31 @@ try {
     check($rows[0]['seller_name'] === 'Test Shop' && $rows[0]['brand'] === 'Test Shop', 'Required seller and brand');
     check($rows[0]['gender'] === 'female' && $rows[0]['age_group'] === 'kids', 'Demographic overrides preserved');
     check($rows[0]['is_ads_eligible'] === 'true' && $rows[0]['is_eligible_search'] === 'true' && $rows[0]['is_eligible_checkout'] === 'false', 'Ads and search enabled; in-ChatGPT checkout disabled');
-    // Invalid required data produces a visible job error while retaining the published catalog.
+    // Bad rows are skipped; valid rows in the same batch still publish with exact diagnostics.
+    $csv_descriptions = array(1 => '');
+    MG_Custom_Feed_Manager::generate_feed_to_file($csv_slug);
+    finish_feed($csv_slug);
+    $state = MG_Custom_Feed_Manager::get_state($csv_slug);
+    check($state['exported'] === 249 && $state['skipped'] === 1, 'One bad offer does not stop 249 valid offers');
+    check(strpos($state['warnings'][0], 'description:') !== false && strpos($state['warnings'][0], 'Termék: 1,') !== false, 'Exact field and product reported');
+    check(strpos(file_get_contents($path), 'SKU1_shirt,') === false && strpos(file_get_contents($path), 'SKU2_shirt,') !== false, 'Only invalid offer excluded');
+    $status_method = new ReflectionMethod(MG_Custom_Feed_Manager::class, 'status_text');
+    check(strpos($status_method->invoke(null, $state), 'kihagyva: 1') !== false, 'Skipped count shown in admin status');
+    unset($csv_descriptions);
+    $csv_description = '<p>&nbsp;</p>';
+    $csv_full_description = 'Full description fallback';
+    MG_Custom_Feed_Manager::generate_feed_to_file($csv_slug);
+    finish_feed($csv_slug);
+    check(MG_Custom_Feed_Manager::get_state($csv_slug)['exported'] === 250, 'Full description fallback exports all offers');
+    check(strpos(file_get_contents($path), 'Full description fallback') !== false, 'Fallback description is actually used');
+    unset($csv_full_description);
+    $csv = file_get_contents($path);
+    // If every row is invalid, do not replace a valid catalog with a header-only file.
     $csv_description = '';
     MG_Custom_Feed_Manager::generate_feed_to_file($csv_slug);
-    MG_Custom_Feed_Manager::process_batch($csv_slug);
+    for ($i = 0; $i < 10 && MG_Custom_Feed_Manager::get_state($csv_slug)['status'] === 'running'; $i++) MG_Custom_Feed_Manager::process_batch($csv_slug);
     check(MG_Custom_Feed_Manager::get_state($csv_slug)['status'] === 'failed', 'Invalid required CSV data fails visibly');
+    check(count(MG_Custom_Feed_Manager::get_state($csv_slug)['warnings']) === 5, 'Warnings are bounded on large invalid catalogs');
     check(file_get_contents($path) === $csv, 'Invalid CSV cannot replace valid publication');
     unset($csv_title, $csv_description);
     $_GET['slug'] = $csv_slug;

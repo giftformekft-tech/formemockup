@@ -1,4 +1,4 @@
-# Egyedi feed generálás (2.38.7)
+# Egyedi feed generálás (2.38.8)
 
 ## OpenAI / ChatGPT CSV
 
@@ -12,8 +12,11 @@ Az export UTF-8, vesszővel elválasztott, szabványosan idézőjelezett CSV.
 Az OpenAI saját mezőneveit használja (`item_id`, `url`, `image_url`, `seller_name`),
 keresési és hirdetési jogosultsággal; a ChatGPT-n belüli checkout nincs engedélyezve.
 Az ár normál pénzegységben szerepel (`3990.00 HUF`), nem a pixel százados egységeiben.
-A kötelező leírás, név, pozitív ár vagy HTTPS termék-/képlink hiánya látható
-generálási hibát eredményez; a korábban elkészült feed megmarad.
+A kötelező leírás, név, pozitív ár vagy HTTPS termék-/képlink hiányakor csak az
+érintett ajánlat marad ki. Az állapot mutatja az exportált és kihagyott ajánlatok
+számát, valamint legfeljebb öt tételnél a termékazonosítót, típust és hibás mezőt.
+Üres vagy csak HTML-t tartalmazó rövid leírás helyett a teljes leírást használja.
+Ha minden ajánlat hibás, a generálás hibára áll és megőrzi a korábbi kész feedet.
 
 A meglévő katalógusmodell szerint mintánként és terméktípusonként egy ajánlat
 készül (`SKU_típus`, SKU nélkül `ID_<termékazonosító>_típus`). Az OpenAI Pixel

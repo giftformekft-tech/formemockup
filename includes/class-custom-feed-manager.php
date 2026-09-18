@@ -395,7 +395,12 @@ class MG_Custom_Feed_Manager {
         if (!$state) return 'Még nincs generálva.';
         if ($state['status'] === 'failed') return 'Hiba: ' . $state['error'] . ' A Generálás gombbal újraindítható.';
         $count = intval($state['processed']);
-        return $state['status'] === 'complete' ? 'Elkészült: ' . $count . ' termék feldolgozva.' : 'Generálás folyamatban: ' . $count . ' termék feldolgozva.';
+        $text = $state['status'] === 'complete' ? 'Elkészült: ' . $count . ' termék feldolgozva.' : 'Generálás folyamatban: ' . $count . ' termék feldolgozva.';
+        if (self::is_openai($state['config'] ?? array())) {
+            $text .= ' CSV ajánlatok: ' . intval($state['exported'] ?? 0) . ', kihagyva: ' . intval($state['skipped'] ?? 0) . '.';
+            if (!empty($state['warnings'])) $text .= ' Hiányos tételek (legfeljebb 5): ' . implode(' | ', $state['warnings']);
+        }
+        return $text;
     }
 
     // The OS releases this lock even after a PHP timeout. Do not unlink the lock file:
@@ -433,7 +438,8 @@ class MG_Custom_Feed_Manager {
             // A broken product or filesystem must not trigger a retry on every crawler hit.
             if (!$manual && $state && $state['status'] === 'failed' && time() - $state['updated_at'] < 5 * MINUTE_IN_SECONDS) return false;
             $state = array('status' => 'running', 'config' => $feeds[$slug], 'cursor' => 0,
-                'processed' => 0, 'bytes' => 0, 'attempts' => 0, 'updated_at' => time(), 'error' => '');
+                'processed' => 0, 'bytes' => 0, 'attempts' => 0, 'updated_at' => time(), 'error' => '',
+                'exported' => 0, 'skipped' => 0, 'warnings' => array());
             update_option('mg_custom_feed_job_' . $slug, $state, false);
             if (!self::schedule_batch($slug)) {
                 $state['status'] = 'failed';
@@ -527,7 +533,7 @@ class MG_Custom_Feed_Manager {
             $started = microtime(true);
             $ids = self::get_batch_ids($state);
             foreach ($ids as $product_id) {
-                self::write_chunk($handle, self::get_product_xml($product_id, $state['config']));
+                self::write_chunk($handle, self::get_product_xml($product_id, $state['config'], $state));
                 $state['cursor'] = (int) $product_id;
                 $state['processed']++;
                 if (microtime(true) - $started >= 5) break;
@@ -539,6 +545,9 @@ class MG_Custom_Feed_Manager {
             fclose($handle);
             $handle = null;
             if (!$ids) {
+                if (self::is_openai($state['config']) && empty($state['exported']) && !empty($state['skipped'])) {
+                    throw new RuntimeException('Egyetlen érvényes CSV ajánlat sem készült. ' . implode(' | ', $state['warnings'] ?? array()));
+                }
                 if (!@rename($path . '.tmp', $path)) throw new RuntimeException('A kész feed fájl cseréje nem sikerült.');
                 $state['status'] = 'complete';
             }
@@ -562,7 +571,7 @@ class MG_Custom_Feed_Manager {
         }
     }
 
-    private static function get_product_xml($product_id, $feed_config) {
+    private static function get_product_xml($product_id, $feed_config, &$report = null) {
         if (class_exists('MG_Outlet') && MG_Outlet::is_outlet($product_id)) return '';
         $product = wc_get_product($product_id);
         if (!$product) return '';
@@ -622,13 +631,27 @@ class MG_Custom_Feed_Manager {
 
             if (self::is_openai($feed_config)) {
                 $plain = static function ($value) {
-                    return trim(html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                    return trim(str_replace("\xC2\xA0", ' ', html_entity_decode(strip_tags($value), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
                 };
                 $description = $plain($g_description);
-                if ($description === '' || $plain($g_title) === '' || $plain($blog_name) === '' ||
-                    !filter_var($g_link, FILTER_VALIDATE_URL) || !filter_var($g_image_link, FILTER_VALIDATE_URL) ||
-                    strpos($g_link, 'https://') !== 0 || strpos($g_image_link, 'https://') !== 0 || $price_val <= 0) {
-                    throw new RuntimeException('ChatGPT feed: hiányzó leírás, név, pozitív ár vagy HTTPS termék-/képlink. Termék: ' . $product_id . ', típus: ' . $type_slug);
+                // HTML-only short descriptions must not hide a usable full description.
+                if ($description === '') $description = $plain($product->get_description());
+                $missing = array();
+                if ($description === '') $missing[] = 'description: üres leírás';
+                if ($plain($product->get_name()) === '') $missing[] = 'title: üres terméknév';
+                if ($plain($blog_name) === '') $missing[] = 'brand/seller_name: üres webshopnév';
+                if (!is_finite($price_val) || $price_val <= 0) $missing[] = 'price: nem pozitív ár';
+                foreach (array('url' => $g_link, 'image_url' => $g_image_link) as $field => $url) {
+                    if (!is_string($url) || !filter_var($url, FILTER_VALIDATE_URL) || stripos($url, 'https://') !== 0) {
+                        $missing[] = $field . ': hiányzó vagy érvénytelen HTTPS link';
+                    }
+                }
+                if ($missing) {
+                    $report['skipped'] = ($report['skipped'] ?? 0) + 1;
+                    if (count($report['warnings'] ?? array()) < 5) {
+                        $report['warnings'][] = 'Termék: ' . $product_id . ', típus: ' . $type_slug . ' — ' . implode('; ', $missing);
+                    }
+                    continue;
                 }
                 $gender = $feed_config['force_gender'] ?? '';
                 $age = $feed_config['force_age_group'] ?? '';
@@ -639,6 +662,7 @@ class MG_Custom_Feed_Manager {
                     $description, $g_link, $plain($blog_name), $plain($blog_name), $g_image_link,
                     $g_availability, number_format($price_val, 2, '.', '') . ' ' . $currency, 'new', $gender, $age,
                     'true', 'true', 'false'));
+                $report['exported'] = ($report['exported'] ?? 0) + 1;
                 continue;
             }
 
