@@ -1,4 +1,4 @@
-# Egyedi feed generálás (2.38.6)
+# Egyedi feed generálás (2.38.7)
 
 ## OpenAI / ChatGPT CSV
 
@@ -31,7 +31,7 @@ Hivatalos séma: https://developers.openai.com/commerce/specs/file-upload/produc
 
 ## Háttérgenerálás
 
-A létrehozás és a Generálás gomb háttérfeladatot indít, majd azonnal visszatér az adminoldalra. A feldolgozás kérésenként legfeljebb 10 terméket vesz elő, és 5 másodperc elteltével, az aktuális termék befejezése után átadja a munkát a következő adagnak.
+A létrehozás és a Generálás gomb háttérfeladatot indít, majd azonnal visszatér az adminoldalra. A feldolgozás kérésenként legfeljebb 100 terméket vesz elő, és 5 másodperc elteltével, az aktuális termék befejezése után átadja a munkát a következő adagnak. A 100-as adagméret minden formátumra és a már futó generálások következő adagjára is érvényes; lassú termékfeldolgozás esetén az időkorlát miatt kevesebb termék férhet egy adagba.
 
 - Az adminoldalon látszik a feldolgozott termékek száma és a kész/hiba állapot. Ez a szám a megvizsgált termékek száma, nem az XML tételeinek száma.
 - Nyitott adminoldalon a jogosultsággal és nonce-szal védett állapotlekérés is feldolgoz egy adagot. Bezárt adminoldal mellett WP-Cron folytatja a feladatot; letiltott WP-Cron esetén rendszeres külső cron szükséges.

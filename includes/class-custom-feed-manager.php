@@ -467,7 +467,7 @@ class MG_Custom_Feed_Manager {
     private static function get_batch_ids($state) {
         global $wpdb;
         $args = array('post_type' => 'product', 'post_status' => 'publish',
-            'posts_per_page' => 10, 'fields' => 'ids', 'orderby' => 'ID', 'order' => 'ASC',
+            'posts_per_page' => 100, 'fields' => 'ids', 'orderby' => 'ID', 'order' => 'ASC',
             'no_found_rows' => true, 'suppress_filters' => false, 'mg_custom_feed_cursor' => $state['cursor']);
         if (!empty($state['config']['category_id'])) {
             $args['tax_query'] = array(array('taxonomy' => 'product_cat', 'field' => 'term_id',

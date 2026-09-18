@@ -6,7 +6,7 @@ define('DAY_IN_SECONDS', 86400);
 $test_dir = sys_get_temp_dir() . '/mg-feed-test-' . bin2hex(random_bytes(6));
 mkdir($test_dir);
 $options = $events = $filters = $queries = array();
-$products = range(1, 25);
+$products = range(1, 250);
 $visited = array();
 $mode = '';
 $schedule_ok = true;
@@ -46,7 +46,7 @@ $wpdb = new class {
 };
 function get_posts($args) {
     $GLOBALS['queries'][] = $args;
-    check($args['posts_per_page'] === 10, 'query must be bounded');
+    check($args['posts_per_page'] === 100, 'query must be bounded to 100 products');
     check($args['orderby'] === 'ID' && $args['order'] === 'ASC', 'stable cursor order');
     check($args['suppress_filters'] === false, 'cursor filter enabled');
     $query = (object) array('query_vars' => $args);
@@ -112,7 +112,7 @@ try {
     check(!$visited && !$queries, 'queue never queries or renders products');
     MG_Custom_Feed_Manager::process_batch('normal');
     $state = MG_Custom_Feed_Manager::get_state('normal');
-    check($state['processed'] === 10 && $state['cursor'] === 10, 'first batch checkpoints');
+    check($state['processed'] === 100 && $state['cursor'] === 100, 'first 100-product batch checkpoints');
     check(file_get_contents($path) === 'OLD FEED', 'old feed remains during generation');
     check($queries[0]['tax_query'][0]['terms'] === 42 && $queries[0]['tax_query'][0]['include_children'], 'category filter preserved');
     check(!$filters, 'temporary SQL filter removed');
@@ -121,7 +121,7 @@ try {
 
     // Simulate an interrupted worker that wrote an item but never committed its checkpoint.
     file_put_contents($path . '.tmp', '<item>INTERRUPTED', FILE_APPEND);
-    $products = range(2, 25); // Deleting an earlier product must not skip ID 11.
+    $products = range(2, 250); // Deleting an earlier product must not skip ID 101.
     $busy = fopen($path . '.lock', 'c');
     flock($busy, LOCK_EX);
     wp_clear_scheduled_hook('mg_custom_feed_batch', array('normal'));
@@ -132,11 +132,11 @@ try {
     fclose($busy);
     finish_feed('normal');
     $xml = file_get_contents($path);
-    check(substr_count($xml, '<item>') === 25, 'every product appears exactly once despite interruption and deletion');
-    check(strpos($xml, 'INTERRUPTED') === false && strpos($xml, 'SKU11_shirt') !== false, 'partial tail removed and cursor preserved');
+    check(substr_count($xml, '<item>') === 250, 'every product appears exactly once despite interruption and deletion');
+    check(strpos($xml, 'INTERRUPTED') === false && strpos($xml, 'SKU101_shirt') !== false, 'partial tail removed and cursor preserved');
     check(strpos($xml, '_mug') === false, 'product type filter preserved');
-    check(substr_count($xml, '<g:gender>female</g:gender>') === 25, 'gender override preserved');
-    check(substr_count($xml, '<g:age_group>kids</g:age_group>') === 25, 'age override preserved');
+    check(substr_count($xml, '<g:gender>female</g:gender>') === 250, 'gender override preserved');
+    check(substr_count($xml, '<g:age_group>kids</g:age_group>') === 250, 'age override preserved');
     check(simplexml_load_string($xml) !== false, 'output is valid XML');
     check(!file_exists($path . '.tmp') && !wp_next_scheduled('mg_custom_feed_batch', array('normal')), 'completion cleans temp file and scheduled job');
     $before = count($visited);
@@ -159,7 +159,7 @@ try {
     MG_Custom_Feed_Manager::generate_feed_to_file('slow');
     $mode = 'slow';
     MG_Custom_Feed_Manager::process_batch('slow');
-    check(MG_Custom_Feed_Manager::get_state('slow')['processed'] === 1, 'time budget yields before ten products');
+    check(MG_Custom_Feed_Manager::get_state('slow')['processed'] === 1, 'time budget yields before 100 products');
 
     setup_feed('fatal');
     MG_Custom_Feed_Manager::generate_feed_to_file('fatal');
@@ -242,7 +242,7 @@ try {
     check(substr($path, -4) === '.csv', 'ChatGPT uses CSV extension');
     check(MG_Custom_Feed_Manager::feed_content_type($options['mg_custom_feeds'][$csv_slug]) === 'text/csv; charset=UTF-8', 'CSV response MIME type');
     check(MG_Custom_Feed_Manager::feed_content_type(array('format' => 'facebook')) === 'application/xml; charset=UTF-8', 'Facebook response stays XML');
-    $products = range(1, 25);
+    $products = range(1, 250);
     $csv_title = 'Árvíztűrő, "ajándék" & bögre';
     $csv_description = "Első sor, idézet: \"szöveg\"\nMásodik sor &amp; harmadik";
     file_put_contents($path, 'OLD CSV');
@@ -260,9 +260,9 @@ try {
         $rows[] = array_combine($columns, $row);
     }
     fclose($handle);
-    check(count($rows) === 25, 'CSV contains every filtered offer exactly once');
-    check(count(array_unique(array_column($rows, 'item_id'))) === 25, 'CSV IDs are unique');
-    check($rows[0]['item_id'] === 'SKU1_shirt' && $rows[24]['item_id'] === 'SKU25_shirt', 'CSV IDs and type filter');
+    check(count($rows) === 250, 'CSV contains every filtered offer exactly once');
+    check(count(array_unique(array_column($rows, 'item_id'))) === 250, 'CSV IDs are unique');
+    check($rows[0]['item_id'] === 'SKU1_shirt' && $rows[249]['item_id'] === 'SKU250_shirt', 'CSV IDs and type filter');
     check($rows[0]['title'] === $csv_title . ' - Póló', 'UTF-8, quotes and commas round-trip');
     check($rows[0]['description'] === html_entity_decode($csv_description, ENT_QUOTES | ENT_HTML5, 'UTF-8'), 'Description newlines and decoded entities round-trip');
     check($rows[0]['price'] === '4000.00 HUF', 'Feed uses major currency units, not pixel minor units');
