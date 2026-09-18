@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) {
 }
 
 class MG_Custom_Feed_Manager {
+    const OPENAI_DAILY_HOOK = 'mg_openai_feeds_daily_refresh';
 
     public static function formats() {
         return array('google' => 'Google Merchant (XML)', 'facebook' => 'Facebook Catalog (XML)',
@@ -50,6 +51,8 @@ class MG_Custom_Feed_Manager {
         add_action('admin_post_mg_delete_custom_feed', array(__CLASS__, 'handle_delete'));
         add_action('admin_post_mg_regenerate_custom_feed', array(__CLASS__, 'handle_regeneration'));
         add_action('init', array(__CLASS__, 'check_feed_request'));
+        add_action('init', array(__CLASS__, 'sync_openai_schedule'), 9);
+        add_action(self::OPENAI_DAILY_HOOK, array(__CLASS__, 'refresh_openai_feeds'));
         add_action('mg_cron_regenerate_custom_feed_slug', array(__CLASS__, 'handle_cron_regeneration'));
         add_action('mg_custom_feed_batch', array(__CLASS__, 'process_batch'));
         add_action('wp_ajax_mg_custom_feed_progress', array(__CLASS__, 'ajax_progress'));
@@ -58,6 +61,29 @@ class MG_Custom_Feed_Manager {
     public static function handle_cron_regeneration($slug) {
         self::generate_feed_to_file($slug);
         self::process_batch($slug);
+    }
+
+    /** Separate daily schedule for existing and newly created ChatGPT feeds. */
+    public static function sync_openai_schedule() {
+        foreach ((array) get_option('mg_custom_feeds', array()) as $feed) {
+            if (self::is_openai($feed)) {
+                if (!wp_next_scheduled(self::OPENAI_DAILY_HOOK, array())) {
+                    wp_schedule_event(time() + DAY_IN_SECONDS, 'daily', self::OPENAI_DAILY_HOOK, array());
+                }
+                return;
+            }
+        }
+        wp_clear_scheduled_hook(self::OPENAI_DAILY_HOOK, array());
+    }
+
+    public static function refresh_openai_feeds() {
+        foreach ((array) get_option('mg_custom_feeds', array()) as $slug => $feed) {
+            if (self::is_openai($feed)) {
+                // Queue only; existing bounded workers preserve the published CSV and any running cursor.
+                self::generate_feed_to_file($slug, false);
+            }
+        }
+        self::sync_openai_schedule();
     }
 
     public static function register_admin_page() {
@@ -285,6 +311,7 @@ class MG_Custom_Feed_Manager {
         );
 
         update_option('mg_custom_feeds', $feeds);
+        self::sync_openai_schedule();
         self::generate_feed_to_file($slug);
         
         wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=custom_feeds&created=1'));
@@ -309,6 +336,7 @@ class MG_Custom_Feed_Manager {
             $path = self::get_feed_file_path($slug);
             unset($feeds[$slug]);
             update_option('mg_custom_feeds', $feeds);
+            self::sync_openai_schedule();
             wp_clear_scheduled_hook('mg_custom_feed_batch', array($slug));
             wp_clear_scheduled_hook('mg_cron_regenerate_custom_feed_slug', array($slug));
             delete_option('mg_custom_feed_job_' . $slug);

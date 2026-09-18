@@ -38,6 +38,12 @@ function wp_schedule_single_event($time, $hook, $args) {
     return true;
 }
 function wp_clear_scheduled_hook($hook, $args) { unset($GLOBALS['events'][$hook . ':' . implode(',', $args)]); }
+function wp_schedule_event($time, $recurrence, $hook, $args) {
+    check($recurrence === 'daily', 'GPT refresh recurs every 24 hours');
+    check($time >= time() + DAY_IN_SECONDS - 1, 'First daily refresh is 24 hours ahead');
+    $GLOBALS['daily_schedules'] = ($GLOBALS['daily_schedules'] ?? 0) + 1;
+    return wp_schedule_single_event($time, $hook, $args);
+}
 function add_filter($hook, $fn, $priority, $count) { $GLOBALS['filters'][$hook] = $fn; }
 function remove_filter($hook, $fn, $priority) { unset($GLOBALS['filters'][$hook]); }
 $wpdb = new class {
@@ -103,7 +109,7 @@ function finish_feed($slug) {
     for ($i = 0; $i < 20 && MG_Custom_Feed_Manager::get_state($slug)['status'] === 'running'; $i++) {
         MG_Custom_Feed_Manager::process_batch($slug);
     }
-    check(MG_Custom_Feed_Manager::get_state($slug)['status'] === 'complete', 'feed completed');
+    check(MG_Custom_Feed_Manager::get_state($slug)['status'] === 'complete', 'feed completed: ' . (MG_Custom_Feed_Manager::get_state($slug)['error'] ?? ''));
 }
 try {
     $path = setup_feed('normal');
@@ -237,6 +243,10 @@ try {
         check(strpos($e->getMessage(), 'mg_tab=custom_feeds&created=1') !== false, 'ChatGPT create returns to feed tab');
     }
     $csv_slug = array_key_last($options['mg_custom_feeds']);
+    check((bool) wp_next_scheduled(MG_Custom_Feed_Manager::OPENAI_DAILY_HOOK, array()), 'Creating GPT feed schedules daily refresh');
+    $scheduled_count = $daily_schedules;
+    MG_Custom_Feed_Manager::sync_openai_schedule();
+    check($daily_schedules === $scheduled_count, 'Repeated init does not duplicate daily schedule');
     $active_slug = $csv_slug;
     $path = MG_Custom_Feed_Manager::get_feed_file_path($csv_slug);
     check(substr($path, -4) === '.csv', 'ChatGPT uses CSV extension');
@@ -269,6 +279,20 @@ try {
     check($rows[0]['seller_name'] === 'Test Shop' && $rows[0]['brand'] === 'Test Shop', 'Required seller and brand');
     check($rows[0]['gender'] === 'female' && $rows[0]['age_group'] === 'kids', 'Demographic overrides preserved');
     check($rows[0]['is_ads_eligible'] === 'true' && $rows[0]['is_eligible_search'] === 'true' && $rows[0]['is_eligible_checkout'] === 'false', 'Ads and search enabled; in-ChatGPT checkout disabled');
+    $before_queries = count($queries);
+    $google_state = MG_Custom_Feed_Manager::get_state('normal');
+    MG_Custom_Feed_Manager::refresh_openai_feeds();
+    check(count($queries) === $before_queries, 'Daily callback only queues work');
+    check(MG_Custom_Feed_Manager::get_state($csv_slug)['status'] === 'running', 'Daily callback queues GPT feed');
+    check(MG_Custom_Feed_Manager::get_state('normal') === $google_state, 'Google feed unaffected');
+    MG_Custom_Feed_Manager::process_batch($csv_slug);
+    $running_state = MG_Custom_Feed_Manager::get_state($csv_slug);
+    MG_Custom_Feed_Manager::refresh_openai_feeds();
+    check(MG_Custom_Feed_Manager::get_state($csv_slug) === $running_state, 'Daily callback preserves running cursor');
+    finish_feed($csv_slug);
+    wp_clear_scheduled_hook(MG_Custom_Feed_Manager::OPENAI_DAILY_HOOK, array());
+    MG_Custom_Feed_Manager::sync_openai_schedule();
+    check((bool) wp_next_scheduled(MG_Custom_Feed_Manager::OPENAI_DAILY_HOOK, array()), 'Existing GPT feeds acquire schedule after upgrade');
     // Bad rows are skipped; valid rows in the same batch still publish with exact diagnostics.
     $csv_descriptions = array(1 => '');
     MG_Custom_Feed_Manager::generate_feed_to_file($csv_slug);
@@ -299,6 +323,7 @@ try {
     $_GET['slug'] = $csv_slug;
     try { MG_Custom_Feed_Manager::handle_delete(); } catch (FeedRedirect $e) {}
     check(!file_exists($path) && !file_exists($path . '.tmp'), 'Deleting ChatGPT feed removes CSV and partial CSV, using saved format');
+    check(!wp_next_scheduled(MG_Custom_Feed_Manager::OPENAI_DAILY_HOOK, array()), 'Deleting last GPT feed clears daily schedule');
     $_POST['feed_format'] = 'unsupported';
     $before = count($options['mg_custom_feeds']);
     try { MG_Custom_Feed_Manager::handle_save(); throw new RuntimeException('format validation missing'); }

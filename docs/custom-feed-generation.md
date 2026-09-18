@@ -1,4 +1,14 @@
-# Egyedi feed generálás (2.38.8)
+# Egyedi feed generálás (2.38.9)
+
+A GPT-feedeket külön `mg_openai_feeds_daily_refresh` WP-Cron esemény frissíti
+24 óránként. A meglévő feedekhez is automatikusan létrejön a frissítés utáni
+első WordPress-kéréskor; az első napi futás ettől számítva 24 óra múlva esedékes.
+Új feed létrehozáskor továbbra is azonnal generálódik. A napi feladat csak a GPT
+feedeket ütemezi, és nem kezdi újra az éppen futó generálást. Az utolsó GPT-feed
+törlése vagy a bővítmény kikapcsolása megszünteti ezt a napi ütemezést.
+A közvetlen CSV-link változatlan, és a kész fájl sikeres cseréjével frissül.
+A futás WP-Cront igényel; letiltott WP-Cronhoz külső cron kell, látogatásalapú
+WP-Cron esetén az esedékesség utáni első kérés indíthatja a feladatot.
 
 ## OpenAI / ChatGPT CSV
 
