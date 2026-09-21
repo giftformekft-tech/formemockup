@@ -26,6 +26,7 @@ new vm.Script(script);
 function createHarness() {
   const properties = {};
   let uuid = 0;
+  let today = '2026-08-28';
   let remainingTimes = [1000];
   const scriptProperties = {
     getProperty(key) { return Object.prototype.hasOwnProperty.call(properties, key) ? properties[key] : null; },
@@ -44,7 +45,7 @@ function createHarness() {
     PropertiesService: { getScriptProperties() { return scriptProperties; } },
     Utilities: {
       getUuid() { uuid += 1; return `attempt-${uuid}`; },
-      formatDate() { return '2026-08-28'; },
+      formatDate(date, timeZone) { return timeZone === 'UTC' ? date.toISOString().slice(0, 10) : today; },
       computeHmacSha256Signature() { return [1, 2, 3]; },
       computeDigest(algorithm, value) {
         return Array.from(crypto.createHash('sha256').update(String(value), 'utf8').digest());
@@ -71,6 +72,10 @@ function createHarness() {
     sandbox,
     properties,
     setRemainingTimes(values) { remainingTimes = values.slice(); },
+    setToday(value) { today = value; },
+    markInitialComplete() {
+      properties.MG_INITIAL_IMPORT_CONFIG = ['2026-01-01', 3, 'Purchase', '111,222', JSON.stringify('test-scope'), '1234567890'].join('|');
+    },
   };
 }
 
@@ -182,6 +187,74 @@ function acknowledgmentFor(payload) {
   assert.strictEqual(harness.properties.MG_ACTIVE_RANGE_NEXT_BATCH, '0', 'A server restart request must reset the local batch cursor.');
   harness.setRemainingTimes([1000, 1000]);
   assert.strictEqual(harness.sandbox.sendRows(rows, '2026-05-01', '2026-05-07', 'initial'), true);
+}
+
+{
+  const harness = createHarness();
+  harness.markInitialComplete();
+  const sourceRows = Array.from({ length: 600 }, (_, index) => ({
+    segments: { date: '2026-07-27', productItemId: `SKU_${String(index).padStart(4, '0')}` },
+    metrics: { impressions: 10, clicks: 1, costMicros: 1000000 },
+  }));
+  sourceRows.push({ segments: { date: '2026-08-25', productItemId: 'RECENT' }, metrics: { clicks: 1 } });
+  harness.sandbox.AdsApp.search = (query) => {
+    const dates = query.match(/BETWEEN '([^']+)' AND '([^']+)'/);
+    const rows = query.includes('metrics.clicks')
+      ? sourceRows.filter((row) => row.segments.date >= dates[1] && row.segments.date <= dates[2])
+      : [];
+    let cursor = 0;
+    return { hasNext: () => cursor < rows.length, next: () => rows[cursor++] };
+  };
+  const storedRows = new Map(sourceRows.map((row) => [row.segments.date + '|' + row.segments.productItemId, row.segments.date]));
+  const sent = [];
+  harness.sandbox.sendPayload = (payload) => {
+    const batch = JSON.parse(payload);
+    sent.push(batch);
+    if (batch.batch_index === 0) {
+      for (const [key, date] of storedRows) {
+        if (date >= batch.range_start && date <= batch.range_end) storedRows.delete(key);
+      }
+    }
+    for (const row of batch.rows) storedRows.set(row.date + '|' + row.offer_id, row.date);
+    return acknowledgmentFor(payload);
+  };
+  harness.setRemainingTimes([1000, 1000, 0]);
+  harness.sandbox.main();
+  assert.strictEqual(storedRows.size, 500, 'The first run stops after replacing only its first batch.');
+  harness.setToday('2026-08-29');
+  harness.sandbox.main();
+  assert.deepStrictEqual(sent.map((batch) => [batch.range_start, batch.batch_index]), [
+    ['2026-07-27', 0], ['2026-07-27', 1], ['2026-07-28', 0],
+  ], 'Finish the pinned range before starting the next day\'s refresh.');
+  assert.strictEqual(sent[0].attempt_id, sent[1].attempt_id);
+  assert.strictEqual([...storedRows.values()].filter((date) => date === '2026-07-27').length, 600,
+    'Every product on the day leaving the rolling window must be restored.');
+}
+
+{
+  const harness = createHarness();
+  harness.markInitialComplete();
+  const ranges = [];
+  harness.sandbox.importRange = (start, end, mode) => {
+    ranges.push([start, end]);
+    return harness.sandbox.sendRows([], start, end, mode);
+  };
+  let calls = 0;
+  harness.sandbox.sendPayload = (payload) => ++calls === 1
+    ? { success: true, resume_range: { start: '2026-07-26', end: '2026-08-24', import_mode: 'rolling' } }
+    : acknowledgmentFor(payload);
+  harness.sandbox.main();
+  harness.sandbox.main();
+  assert.deepStrictEqual(ranges, [
+    ['2026-07-27', '2026-08-25'], ['2026-07-26', '2026-08-24'], ['2026-07-27', '2026-08-25'],
+  ], 'A server-side unfinished range must be recovered even if local progress was lost.');
+}
+
+{
+  const harness = createHarness();
+  harness.sandbox.sendPayload = () => ({ success: true, batch_index: 0, batch_count: 1, range_complete: false });
+  assert.throws(() => harness.sandbox.sendRows([], '2026-08-01', '2026-08-07', 'rolling'), /teljes importtartományt/);
+  assert.strictEqual(harness.properties.MG_ACTIVE_RANGE_NEXT_BATCH, '0', 'An incomplete final ACK must retain the unfinished range.');
 }
 
 console.log('Google Ads generated script tests passed.');

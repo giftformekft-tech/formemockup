@@ -82,6 +82,8 @@ class MG_Google_Ads_Product_Performance_Page {
         $settings = MG_Google_Ads_Product_Performance::get_settings();
         $sync = MG_Google_Ads_Product_Performance::get_sync_status();
         $import_state = MG_Google_Ads_Product_Performance::get_import_state();
+        $freshness = MG_Google_Ads_Product_Performance::validate_import_freshness($settings);
+        $loser_ready = MG_Google_Ads_Product_Performance::validate_loser_settings($settings);
         $classification = MG_Google_Ads_Product_Performance::get_classification_status();
         $rows = MG_Google_Ads_Product_Performance::get_classifications(200);
         $coverage = self::get_data_coverage();
@@ -95,12 +97,19 @@ class MG_Google_Ads_Product_Performance_Page {
             <?php if (!empty($_GET['classified'])): ?><div class="notice notice-success inline"><p>A besorolás lefutott.</p></div><?php endif; ?>
             <?php if (!empty($_GET['secret_rotated'])): ?><div class="notice notice-warning inline"><p>Új importtitok készült. A Google Ads-fiókban a teljes scriptet cserélni kell.</p></div><?php endif; ?>
             <?php if (!empty($_GET['error'])): ?><div class="notice notice-error inline"><p><?php echo esc_html(wp_unslash($_GET['error'])); ?></p></div><?php endif; ?>
+            <?php if (!empty($import_state['completed_at']) && is_wp_error($freshness)): ?>
+                <div class="notice notice-error inline"><p><strong>Új besorolás felfüggesztve.</strong> <?php echo esc_html($freshness->get_error_message()); ?></p></div>
+            <?php endif; ?>
+            <?php if (is_wp_error($loser_ready)): ?>
+                <div class="notice notice-warning inline"><p><?php echo esc_html($loser_ready->get_error_message()); ?></p></div>
+            <?php endif; ?>
 
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:20px 0">
                 <?php self::status_card('Importált időszak', $coverage['min_date'] ? $coverage['min_date'] . ' – ' . $coverage['max_date'] : 'Még nincs adat', number_format_i18n($coverage['rows']) . ' napi terméksor'); ?>
                 <?php self::status_card('Teljes történeti import', !empty($import_state['completed_at']) ? 'Kész' : 'Még nincs kész', !empty($import_state['start']) ? $import_state['start'] . ' – ' . $import_state['end'] : 'A script szükség esetén több futásban folytatja'); ?>
                 <?php self::status_card('Utolsó Ads-import', !empty($sync['timestamp']) ? wp_date('Y-m-d H:i', $sync['timestamp']) : 'Még nem történt', !empty($sync) ? absint($sync['accepted']) . ' elfogadva / ' . absint($sync['rejected']) . ' elutasítva' . (!empty($sync['currency_code']) ? ' · ' . $sync['currency_code'] : '') : ''); ?>
                 <?php self::status_card('Utolsó besorolás', !empty($classification['timestamp']) ? wp_date('Y-m-d H:i', $classification['timestamp']) : 'Még nem történt', !empty($classification['start']) ? $classification['start'] . ' – ' . $classification['end'] : ''); ?>
+                <?php self::status_card('Adatok frissessége', !is_wp_error($freshness) ? 'Friss' : (!empty($import_state['completed_at']) ? 'Besorolás szünetel' : 'Importra vár'), 'Legfeljebb 48 órás import; legfeljebb 2 nap lemaradás a konverziós késésen felül.'); ?>
                 <?php self::status_card('Feed címke', !empty($settings['enabled']) ? 'custom_label_' . absint($settings['label_slot']) : 'Kikapcsolva', !empty($settings['initial_completed_at']) ? 'Induló besorolás kész' : 'Induló besorolás szükséges'); ?>
             </div>
 
@@ -130,12 +139,14 @@ class MG_Google_Ads_Product_Performance_Page {
                         <th><label for="mg-gads-loser-basis">Loser feltétel</label></th>
                         <td>
                             <select id="mg-gads-loser-basis" name="mg_gads_performance[loser_basis]">
-                                <option value="spend" <?php selected($settings['loser_basis'], 'spend'); ?>>Költés alapján</option>
-                                <option value="clicks" <?php selected($settings['loser_basis'], 'clicks'); ?>>Kattintás alapján</option>
+                                <option value="cpa" <?php selected($settings['loser_basis'], 'cpa'); ?>>Megengedett vásárlási költség alapján (ajánlott)</option>
+                                <option value="spend" <?php selected($settings['loser_basis'], 'spend'); ?>>Rögzített tesztkeret, vásárlás nélkül</option>
                             </select>
-                            <p>0 eladás és legalább <input class="small-text" type="number" min="1" step="1" name="mg_gads_performance[loser_spend]" value="<?php echo esc_attr($settings['loser_spend']); ?>"> Ft költés</p>
-                            <p>vagy kattintásos módban legalább <input id="mg-gads-loser" class="small-text" type="number" min="1" name="mg_gads_performance[loser_clicks]" value="<?php echo esc_attr($settings['loser_clicks']); ?>"> kattintás.</p>
-                            <p class="description">A forintos küszöb a Google Ads-fiók pénznemét feltételezi. Az importkártyán ellenőrizd, hogy <code>HUF</code> érkezik.</p>
+                            <p><label>Egy vásárlásra megengedett hirdetési költség (CPA): <input class="small-text" type="number" min="1" step="1" name="mg_gads_performance[loser_target_cpa]" value="<?php echo !empty($settings['loser_target_cpa']) ? esc_attr($settings['loser_target_cpa']) : ''; ?>" placeholder="pl. 3000"> Ft.</label></p>
+                            <p class="description">A saját árrésed alapján add meg. A minimum tesztkeret ennek háromszorosa: például 3 000 Ft CPA esetén 9 000 Ft. Ha legalább egy attribútált vásárlás van, az egy vásárlásra jutó költésnek is el kell érnie a megengedett CPA háromszorosát. A Winner-küszöb elsőbbséget kap.</p>
+                            <p><label>Rögzített tesztkeret választásakor: 0 eladás és legalább <input class="small-text" type="number" min="1" step="1" name="mg_gads_performance[loser_spend]" value="<?php echo esc_attr($settings['loser_spend']); ?>"> Ft költés.</label></p>
+                            <p><label>Loser-döntés előtt legalább <input class="small-text" type="number" min="1" max="90" name="mg_gads_performance[loser_min_days]" value="<?php echo esc_attr($settings['loser_min_days']); ?>"> nap megfigyelés szükséges.</label></p>
+                            <p class="description">Az első kattintástól vagy költéstől a konverziós késéssel lezárt napig számolunk. A kattintásszám önmagában nem okoz Loser státuszt. Mindkét költségalapú szabályhoz HUF pénznemű Ads-fiók szükséges.</p>
                         </td>
                     </tr>
                     <tr><th><label for="mg-gads-lag">Konverziós késés</label></th><td>Az utolsó <input id="mg-gads-lag" class="small-text" type="number" min="0" max="14" name="mg_gads_performance[conversion_lag_days]" value="<?php echo esc_attr($settings['conversion_lag_days']); ?>"> nap kimarad a döntésből</td></tr>
@@ -160,7 +171,7 @@ class MG_Google_Ads_Product_Performance_Page {
                 <li>Google Ads → Eszközök → Tömeges műveletek → Szkriptek → új script.</li>
                 <li>Másold be az alábbi teljes kódot, engedélyezd, majd futtasd kézzel vagy ütemezve. A nagy előzményimport több futást is igényelhet; a script minden sikeres időszak után elmenti a folytatási pontot.</li>
                 <li>Csak akkor futtasd az „Induló besorolást”, ha a script a teljes történeti importot befejezte és ezt a szerver visszaigazolta.</li>
-                <li>A teljes import után állíts be napi ütemezést. A további futások mindig az utolsó 30 napot frissítik.</li>
+                <li>A teljes import után állíts be napi ütemezést. A félbeszakadt időszakot a következő futás előbb befejezi, majd frissíti az aktuális utolsó 30 napot.</li>
             </ol>
             <textarea readonly class="large-text code" rows="28" onclick="this.select();"><?php echo esc_textarea($script); ?></textarea>
             <p><a class="button" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=mg_gads_performance_rotate_secret'), 'mg_gads_performance_rotate_secret')); ?>" onclick="return confirm('Az eddigi script azonnal érvénytelenné válik. Folytatod?');">Importtitok cseréje</a></p>
@@ -270,6 +281,15 @@ function main() {
     accountId
   ].join('|');
 
+  const pending = pendingRollingRange(props);
+  if (pending) {
+    if (!hasExecutionTime() || !importRange(pending.start, pending.end, 'rolling')) {
+      return;
+    }
+    if (props.getProperty('MG_INITIAL_IMPORT_CONFIG') === importConfig && pending.end === end) {
+      return;
+    }
+  }
   if (props.getProperty('MG_INITIAL_IMPORT_CONFIG') === importConfig) {
     if (hasExecutionTime()) {
       importRange(addDays(end, -29), end, 'rolling');
@@ -311,6 +331,17 @@ function main() {
   props.setProperty('MG_INITIAL_IMPORT_CONFIG', importConfig);
   props.deleteProperty(INITIAL_PENDING_CONFIG_PROPERTY);
   props.deleteProperty(INITIAL_CURSOR_PROPERTY);
+}
+
+function pendingRollingRange(props) {
+  const parts = String(props.getProperty(ACTIVE_RANGE_KEY_PROPERTY) || '').split('|');
+  if (parts.length !== 4 || parts[0] !== IMPORT_SCOPE || parts[3] !== 'rolling') {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(parts[1]) || !/^\d{4}-\d{2}-\d{2}$/.test(parts[2]) || parts[1] > parts[2]) {
+    throw new Error('A folyamatban lévő import időszaka sérült.');
+  }
+  return {start: parts[1], end: parts[2]};
 }
 
 function importRange(start, end, importMode) {
@@ -422,6 +453,17 @@ function sendRows(rows, rangeStart, rangeEnd, importMode) {
       rows: batch
     });
     const acknowledgment = sendPayload(payload);
+    if (acknowledgment.resume_range) {
+      const pending = acknowledgment.resume_range;
+      if (pending.import_mode !== 'rolling' || !/^\d{4}-\d{2}-\d{2}$/.test(pending.start) || !/^\d{4}-\d{2}-\d{2}$/.test(pending.end) || pending.start > pending.end) {
+        throw new Error('A szerver érvénytelen folytatási időszakot küldött.');
+      }
+      props.setProperty(ACTIVE_RANGE_KEY_PROPERTY, [IMPORT_SCOPE, pending.start, pending.end, 'rolling'].join('|'));
+      props.setProperty(ACTIVE_RANGE_ATTEMPT_PROPERTY, Utilities.getUuid());
+      props.setProperty(ACTIVE_RANGE_NEXT_BATCH_PROPERTY, '0');
+      props.deleteProperty(ACTIVE_RANGE_SNAPSHOT_PROPERTY);
+      return false;
+    }
     if (acknowledgment.restart_initial === true) {
       props.deleteProperty('MG_INITIAL_IMPORT_CONFIG');
       props.deleteProperty(INITIAL_PENDING_CONFIG_PROPERTY);
@@ -438,6 +480,9 @@ function sendRows(rows, rangeStart, rangeEnd, importMode) {
     }
     if (Number(acknowledgment.batch_index) !== batchIndex || Number(acknowledgment.batch_count) !== batchCount) {
       throw new Error('WordPress import ACK batch-metaadata eltér a küldött batchtől.');
+    }
+    if (batchIndex + 1 === batchCount && acknowledgment.range_complete !== true) {
+      throw new Error('A szerver még nem igazolta vissza a teljes importtartományt.');
     }
     props.setProperty(ACTIVE_RANGE_NEXT_BATCH_PROPERTY, String(batchIndex + 1));
   }

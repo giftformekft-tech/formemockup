@@ -23,6 +23,8 @@ class MG_Google_Ads_Product_Performance {
     const CLASSIFICATION_STATE_OPTION = 'mg_gads_product_performance_last_classification';
     const RESET_GUARD_OPTION = 'mg_gads_product_performance_reset_in_progress';
     const IMPORT_LOCK_TTL_SECONDS = 7200;
+    const IMPORT_MAX_AGE_DAYS = 2;
+    const LOSER_CPA_MULTIPLIER = 3;
     const CLASSIFY_HOOK = 'mg_gads_product_performance_classify';
     const ACTION_GROUP = 'mg-google-ads-product-performance';
     const REST_NAMESPACE = 'mg-ads/v1';
@@ -171,9 +173,10 @@ class MG_Google_Ads_Product_Performance {
             'automation_enabled' => 1,
             'label_slot' => 1,
             'winner_conversions' => 2.0,
-            'loser_basis' => 'spend',
+            'loser_basis' => 'cpa',
             'loser_spend' => 10000,
-            'loser_clicks' => 30,
+            'loser_target_cpa' => 0,
+            'loser_min_days' => 7,
             'conversion_lag_days' => 3,
             'history_start_date' => wp_date('Y-m-d', strtotime('-9 months')),
             'ads_customer_id' => '',
@@ -188,7 +191,11 @@ class MG_Google_Ads_Product_Performance {
         if (!is_array($saved)) {
             $saved = array();
         }
-        return wp_parse_args($saved, self::defaults());
+        $settings = wp_parse_args($saved, self::defaults());
+        // Preserve explicitly configured spend limits, but never keep using a
+        // retired click threshold or invent a business-specific target CPA.
+        $settings['loser_basis'] = $settings['loser_basis'] === 'spend' ? 'spend' : 'cpa';
+        return $settings;
     }
 
     public static function save_settings($input) {
@@ -202,7 +209,12 @@ class MG_Google_Ads_Product_Performance {
         }
 
         $campaign_ids = array_filter(array_map('absint', preg_split('/[\s,;]+/', (string) ($input['campaign_ids'] ?? ''))));
-        $loser_basis = isset($input['loser_basis']) && $input['loser_basis'] === 'clicks' ? 'clicks' : 'spend';
+        $loser_basis = ($input['loser_basis'] ?? $old['loser_basis']) === 'spend' ? 'spend' : 'cpa';
+        $raw_target_cpa = $input['loser_target_cpa'] ?? $old['loser_target_cpa'];
+        $target_cpa = (float) $raw_target_cpa;
+        if (($raw_target_cpa !== '' && !is_numeric($raw_target_cpa)) || !is_finite($target_cpa) || $target_cpa < 0) {
+            return new WP_Error('mg_ads_target_cpa', 'A megengedett vásárlási költség nem lehet negatív vagy érvénytelen.');
+        }
         $clean = array(
             'enabled' => !empty($input['enabled']) ? 1 : 0,
             'automation_enabled' => !empty($input['automation_enabled']) ? 1 : 0,
@@ -210,7 +222,8 @@ class MG_Google_Ads_Product_Performance {
             'winner_conversions' => max(0.01, (float) ($input['winner_conversions'] ?? 2)),
             'loser_basis' => $loser_basis,
             'loser_spend' => max(1, (float) ($input['loser_spend'] ?? 10000)),
-            'loser_clicks' => max(1, absint($input['loser_clicks'] ?? 30)),
+            'loser_target_cpa' => $target_cpa,
+            'loser_min_days' => min(90, max(1, absint($input['loser_min_days'] ?? $old['loser_min_days']))),
             'conversion_lag_days' => min(14, max(0, absint($input['conversion_lag_days'] ?? 3))),
             'history_start_date' => $start,
             'ads_customer_id' => preg_replace('/[^0-9]/', '', (string) ($input['ads_customer_id'] ?? '')),
@@ -235,15 +248,15 @@ class MG_Google_Ads_Product_Performance {
         $classification_settings_changed = (float) $clean['winner_conversions'] !== (float) $old['winner_conversions']
             || (string) $clean['loser_basis'] !== (string) $old['loser_basis']
             || (float) $clean['loser_spend'] !== (float) $old['loser_spend']
-            || (int) $clean['loser_clicks'] !== (int) $old['loser_clicks'];
+            || (float) $clean['loser_target_cpa'] !== (float) $old['loser_target_cpa']
+            || (int) $clean['loser_min_days'] !== (int) $old['loser_min_days'];
         $reclassification_required = $classification_settings_changed && !$import_changed && !empty($old['initial_completed_at']);
-        if ($reclassification_required && $clean['loser_basis'] === 'spend') {
-            $import_state = self::get_import_state();
-            if (strtoupper((string) ($import_state['currency_code'] ?? '')) !== 'HUF') {
-                return new WP_Error('mg_ads_currency', 'A forintalapú Loser-besorolás csak HUF pénznemű Ads-importtal kapcsolható be.');
-            }
-        }
         if ($reclassification_required) {
+            $import_state = self::get_import_state();
+            $ready = self::validate_import_ready($clean['history_start_date'], (string) ($import_state['end'] ?? ''), $clean);
+            if (is_wp_error($ready)) {
+                return $ready;
+            }
             // Never publish classifications calculated with the previous
             // thresholds while the replacement classification is in flight.
             $clean['initial_completed_at'] = 0;
@@ -449,7 +462,7 @@ class MG_Google_Ads_Product_Performance {
         if ($known_currency_code !== '' && $currency_code !== $known_currency_code) {
             return new WP_Error('mg_ads_currency_changed', 'Ehhez az importbeállításhoz már más pénznemű Ads-adatok tartoznak.', array('status' => 409));
         }
-        if ($settings['loser_basis'] === 'spend' && $currency_code !== 'HUF') {
+        if ($currency_code !== 'HUF') {
             return new WP_Error('mg_ads_currency', 'A forintalapú Loser-besoroláshoz HUF pénznemű Google Ads-fiók szükséges.', array('status' => 400));
         }
 
@@ -513,6 +526,26 @@ class MG_Google_Ads_Product_Performance {
         }
 
         $progress = get_option(self::IMPORT_PROGRESS_OPTION, array());
+        // A lease may expire, but the range it partially replaced is still
+        // incomplete. Never abandon its oldest day when a daily window moves.
+        if (is_array($progress) && !empty($progress)
+            && ($progress['scope'] ?? '') === $scope
+            && ($progress['account_id'] ?? '') === $account_id
+            && ($progress['currency_code'] ?? '') === $currency_code
+            && ($progress['import_mode'] ?? '') === 'rolling'
+            && self::is_valid_date($progress['range_start'] ?? '')
+            && self::is_valid_date($progress['range_end'] ?? '')
+            && ($range_start !== $progress['range_start'] || $range_end !== $progress['range_end'])) {
+            $updated_at = absint($progress['updated_at'] ?? ($progress['started_at'] ?? 0));
+            if ($updated_at > 0 && time() - $updated_at < self::IMPORT_LOCK_TTL_SECONDS) {
+                return new WP_Error('mg_ads_import_busy', 'Egy másik importtartomány még folyamatban van.', array('status' => 409));
+            }
+            return array('resume_range' => array(
+                'start' => $progress['range_start'],
+                'end' => $progress['range_end'],
+                'import_mode' => 'rolling',
+            ));
+        }
         if ($import_mode === 'rolling') {
             $state = self::get_import_state();
             $state_end = (string) ($state['end'] ?? '');
@@ -917,15 +950,21 @@ class MG_Google_Ads_Product_Performance {
         return compact('accepted', 'rejected', 'min_date', 'max_date');
     }
 
-    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'spend', $loser_clicks = 30, $loser_spend = 10000) {
-        $conversions = (float) $conversions;
-        $clicks = (int) $clicks;
+    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'cpa', $target_cpa = 0, $loser_spend = 10000, $observation_days = 0, $min_days = 7) {
+        $conversions = max(0, (float) $conversions);
         $spend = max(0, (float) $cost_micros / 1000000);
         if ($conversions >= (float) $winner_threshold) {
             return array('status' => 'winner', 'reason' => 'Legalább ' . self::format_number($winner_threshold) . ' attribútált eladás.');
         }
-        if ($conversions <= 0.000001 && $loser_basis === 'clicks' && $clicks >= (int) $loser_clicks) {
-            return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . (int) $loser_clicks . ' kattintásból.');
+        if ((int) $observation_days < (int) $min_days) {
+            return array('status' => 'normal', 'reason' => 'Még nincs meg a Loser-döntéshez szükséges ' . (int) $min_days . ' nap megfigyelés az első kattintástól vagy költéstől.');
+        }
+        if ($loser_basis === 'cpa' && (float) $target_cpa > 0) {
+            $spend_limit = self::LOSER_CPA_MULTIPLIER * (float) $target_cpa * max(1, $conversions);
+            if ($spend >= $spend_limit) {
+                return array('status' => 'loser', 'reason' => 'Legalább ' . (int) $min_days . ' nap megfigyelés; a költés elérte a CPA-alapú ' . self::format_number($spend_limit) . ' Ft-os tesztkeretet.');
+            }
+            return array('status' => 'normal', 'reason' => 'Még nem érte el a CPA-alapú ' . self::format_number($spend_limit) . ' Ft-os tesztkeretet.');
         }
         if ($conversions <= 0.000001 && $loser_basis === 'spend' && $spend >= (float) $loser_spend) {
             return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . self::format_number($loser_spend) . ' Ft költésből.');
@@ -935,7 +974,7 @@ class MG_Google_Ads_Product_Performance {
         } elseif ($loser_basis === 'spend') {
             $reason = 'Még nem érte el a ' . self::format_number($loser_spend) . ' Ft-os Loser-költést.';
         } else {
-            $reason = 'Még nincs elegendő kattintás a Loser-döntéshez.';
+            $reason = 'A Loser-besoroláshoz meg kell adni a megengedett vásárlási költséget (CPA).';
         }
         return array('status' => 'normal', 'reason' => $reason);
     }
@@ -994,6 +1033,19 @@ class MG_Google_Ads_Product_Performance {
 
     public static function run_classification($start, $end, $source = 'maintenance') {
         global $wpdb;
+        $lock_name = 'mg_gads_' . substr(md5($wpdb->prefix . self::IMPORT_PROGRESS_OPTION), 0, 32);
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $lock_name, 5)) !== 1) {
+            return new WP_Error('mg_ads_import_busy', 'Az Ads-import vagy egy másik besorolás még folyamatban van.');
+        }
+        try {
+            return self::run_classification_locked($start, $end, $source);
+        } finally {
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+        }
+    }
+
+    private static function run_classification_locked($start, $end, $source) {
+        global $wpdb;
         self::maybe_install();
         if (!self::is_valid_date($start) || !self::is_valid_date($end) || $start > $end) {
             return new WP_Error('mg_ads_dates', 'Érvénytelen besorolási időszak.');
@@ -1009,7 +1061,8 @@ class MG_Google_Ads_Product_Performance {
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT offer_id, SUM(impressions) AS impressions, SUM(clicks) AS clicks,
                     SUM(cost_micros) AS cost_micros, SUM(conversions) AS conversions,
-                    SUM(conversion_value) AS conversion_value
+                    SUM(conversion_value) AS conversion_value,
+                    MIN(CASE WHEN clicks > 0 OR cost_micros > 0 THEN metric_date ELSE NULL END) AS first_activity_date
              FROM {$daily}
              WHERE metric_date BETWEEN %s AND %s
              GROUP BY offer_id",
@@ -1022,7 +1075,7 @@ class MG_Google_Ads_Product_Performance {
         $map = self::build_offer_product_map();
         $metrics = array();
         foreach ($map['product_ids'] as $product_id) {
-            $metrics[$product_id] = array('impressions' => 0, 'clicks' => 0, 'cost_micros' => 0, 'conversions' => 0.0, 'conversion_value' => 0.0);
+            $metrics[$product_id] = array('impressions' => 0, 'clicks' => 0, 'cost_micros' => 0, 'conversions' => 0.0, 'conversion_value' => 0.0, 'first_activity_date' => '');
         }
         $unmatched = array();
         foreach ($rows as $row) {
@@ -1037,12 +1090,17 @@ class MG_Google_Ads_Product_Performance {
             }
             $metrics[$product_id]['conversions'] += (float) $row['conversions'];
             $metrics[$product_id]['conversion_value'] += (float) $row['conversion_value'];
+            $first_activity = (string) ($row['first_activity_date'] ?? '');
+            if (self::is_valid_date($first_activity) && ($metrics[$product_id]['first_activity_date'] === '' || $first_activity < $metrics[$product_id]['first_activity_date'])) {
+                $metrics[$product_id]['first_activity_date'] = $first_activity;
+            }
         }
 
         $changed = 0;
         $counts = array('winner' => 0, 'normal' => 0, 'loser' => 0);
         $now = current_time('mysql', true);
         $table = self::classification_table();
+        $window_end = DateTime::createFromFormat('!Y-m-d', $end);
 
         if ($wpdb->query('START TRANSACTION') === false) {
             return new WP_Error('mg_ads_classification_transaction', 'A besorolási tranzakció nem indítható el.');
@@ -1055,14 +1113,18 @@ class MG_Google_Ads_Product_Performance {
                 $wpdb->query('ROLLBACK');
                 return new WP_Error('mg_ads_classification_read', 'A korábbi termékbesorolások nem olvashatók biztonságosan.');
             }
+            $first_activity = $values['first_activity_date'] !== '' ? DateTime::createFromFormat('!Y-m-d', $values['first_activity_date']) : false;
+            $observation_days = $first_activity && $window_end && $first_activity <= $window_end ? (int) $first_activity->diff($window_end)->days + 1 : 0;
             $decision = self::classify_metrics(
                 $values['conversions'],
                 $values['clicks'],
                 $values['cost_micros'],
                 $settings['winner_conversions'],
                 $settings['loser_basis'],
-                $settings['loser_clicks'],
-                $settings['loser_spend']
+                $settings['loser_target_cpa'],
+                $settings['loser_spend'],
+                $observation_days,
+                $settings['loser_min_days']
             );
             if ($current && self::sanitize_status($current['status']) === 'winner') {
                 $decision = array(
@@ -1257,8 +1319,48 @@ class MG_Google_Ads_Product_Performance {
         if (($state['start'] ?? '') > $start || ($state['end'] ?? '') < $end) {
             return new WP_Error('mg_ads_import_coverage', 'A teljes Ads-import még nem fedi le a besorolási időszakot.');
         }
-        if (($settings['loser_basis'] ?? 'spend') === 'spend' && strtoupper((string) ($state['currency_code'] ?? '')) !== 'HUF') {
+        if (strtoupper((string) ($state['currency_code'] ?? '')) !== 'HUF') {
             return new WP_Error('mg_ads_currency', 'A forintalapú Loser-besorolás csak igazolt HUF importból futtatható.');
+        }
+        $loser_ready = self::validate_loser_settings($settings);
+        if (is_wp_error($loser_ready)) {
+            return $loser_ready;
+        }
+        return self::validate_import_freshness($settings);
+    }
+
+    public static function validate_loser_settings($settings = null) {
+        $settings = is_array($settings) ? $settings : self::get_settings();
+        $target_cpa = (float) ($settings['loser_target_cpa'] ?? 0);
+        if (($settings['loser_basis'] ?? 'cpa') !== 'spend' && (!is_finite($target_cpa) || $target_cpa <= 0)) {
+            return new WP_Error('mg_ads_target_cpa_missing', 'A kattintási Loser-küszöb helyett add meg az egy vásárlásra megengedett hirdetési költséget (CPA), vagy válaszd a rögzített tesztkeretet. Addig új besorolás nem indul.');
+        }
+        return true;
+    }
+
+    /** Both a recent completed request and recent date coverage are required. */
+    public static function validate_import_freshness($settings = null) {
+        $settings = is_array($settings) ? $settings : self::get_settings();
+        $state = self::get_import_state();
+        $scope = self::get_import_scope($settings);
+        $end = (string) ($state['end'] ?? '');
+        if (($state['scope'] ?? '') !== $scope || empty($state['completed_at']) || !self::is_valid_date($end)) {
+            return new WP_Error('mg_ads_import_incomplete', 'A teljes Ads-import még nem készült el.');
+        }
+        $sync = self::get_sync_status();
+        $last_completed_at = absint($state['completed_at']);
+        if (($sync['scope'] ?? '') === $scope
+            && ($sync['account_id'] ?? '') === ($state['account_id'] ?? '')
+            && ($sync['currency_code'] ?? '') === ($state['currency_code'] ?? '')) {
+            $last_completed_at = max($last_completed_at, absint($sync['timestamp'] ?? 0));
+        }
+        $now = time();
+        $minimum_end = wp_date('Y-m-d', $now - (absint($settings['conversion_lag_days']) + self::IMPORT_MAX_AGE_DAYS) * DAY_IN_SECONDS);
+        if ($now - $last_completed_at > self::IMPORT_MAX_AGE_DAYS * DAY_IN_SECONDS || $end < $minimum_end) {
+            return new WP_Error('mg_ads_import_stale', sprintf(
+                'A besorolás szünetel: az Ads-adatok elavultak. Az utolsó teljes import: %s, az adatok vége: %s. Legfeljebb 48 órás import és legalább %s napig lefedett adatok szükségesek. Futtasd a frissített Google Ads Scriptet. Az utolsó sikeres besorolás megmarad.',
+                wp_date('Y-m-d H:i', $last_completed_at), $end, $minimum_end
+            ));
         }
         return true;
     }
