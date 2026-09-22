@@ -59,4 +59,20 @@ foreach (array(
 expect_gads_performance_status('normal', MG_Google_Ads_Product_Performance::classify_metrics(0, 1000, 100000000000, 2, 'cpa', 0, 10000, 30), 'Missing CPA must not turn every product into a Loser.');
 expect_gads_performance_status('normal', MG_Google_Ads_Product_Performance::classify_metrics(0, 1000, 100000000000, 2, 'spend', 0, 10000, 6), 'The fixed budget also respects the minimum observation period.');
 
+// ROAS mode: 300% break-even ROAS, 10 000 Ft minimum test budget.
+foreach (array(
+    array('normal', 0, 0, 9999, 7, 'Zero revenue must first exhaust the minimum test budget.'),
+    array('loser', 0, 0, 10000, 7, 'Zero revenue at the minimum test budget is Loser.'),
+    array('normal', 0.5, 20000, 19999, 7, 'Revenue proportionally increases the ROAS test budget.'),
+    array('loser', 0.5, 20000, 20000, 7, 'A product at a third of break-even ROAS is Loser.'),
+    array('normal', 1, 2000, 9999, 7, 'Low revenue never lowers the minimum test budget.'),
+    array('loser', 1, 2000, 10000, 7, 'Low revenue after the minimum test budget is Loser.'),
+    array('normal', 0, 0, 100000, 6, 'ROAS mode respects the minimum observation period.'),
+    array('winner', 2, 0, 100000, 7, 'The Winner rule retains priority in ROAS mode.'),
+) as $case) {
+    expect_gads_performance_status($case[0], MG_Google_Ads_Product_Performance::classify_metrics($case[1], 100, $case[3] * 1000000, 2, 'roas', 0, 10000, $case[4], 7, $case[2], 300), $case[5]);
+}
+expect_gads_performance_status('normal', MG_Google_Ads_Product_Performance::classify_metrics(0, 1000, 100000000000, 2, 'roas', 3000, 10000, 30, 7, 0, 0), 'Missing ROAS must not turn every product into a Loser.');
+expect_gads_performance_status('normal', MG_Google_Ads_Product_Performance::classify_metrics(0.5, 100, 13500000000, 2, 'roas', 3000, 10000, 30, 7, 20000, 300), 'Fixed CPA must not apply in ROAS mode.');
+
 echo "Google Ads product performance tests passed.\n";

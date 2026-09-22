@@ -428,6 +428,28 @@ mg_state_expect(!is_wp_error($young) && $young['counts']['normal'] === 1, 'Obser
 $wpdb->metric_rows[0]['first_activity_date'] = wp_date('Y-m-d', $now - 9 * DAY_IN_SECONDS);
 $mature = MG_Google_Ads_Product_Performance::run_rolling_classification();
 mg_state_expect(!is_wp_error($mature) && $mature['counts']['loser'] === 1, 'Seven observed days and excessive CPA must classify the product as Loser.');
+
+$roas_settings = $cpa_settings;
+$roas_settings['loser_basis'] = 'roas';
+$roas_settings['loser_target_roas'] = 'invalid';
+$invalid_roas = MG_Google_Ads_Product_Performance::save_settings($roas_settings);
+mg_state_expect(is_wp_error($invalid_roas) && $invalid_roas->get_error_code() === 'mg_ads_target_roas', 'A malformed ROAS value must not silently become a zero target.');
+$roas_settings['loser_target_roas'] = 0;
+$mg_test_options[MG_Google_Ads_Product_Performance::SETTINGS_OPTION] = $roas_settings;
+$missing_roas = MG_Google_Ads_Product_Performance::run_rolling_classification();
+mg_state_expect(is_wp_error($missing_roas) && $missing_roas->get_error_code() === 'mg_ads_target_roas_missing', 'ROAS mode must suspend classification until a break-even ROAS is configured.');
+$roas_settings['loser_target_roas'] = 300;
+$roas_settings['loser_spend'] = 10000;
+$mg_test_options[MG_Google_Ads_Product_Performance::SETTINGS_OPTION] = $roas_settings;
+// 100 000 Ft spend is below 3 × 200 000 Ft revenue / 300% = 200 000 Ft.
+$wpdb->metric_rows[0]['conversion_value'] = 200000;
+$profitable = MG_Google_Ads_Product_Performance::run_rolling_classification();
+mg_state_expect(!is_wp_error($profitable) && $profitable['counts']['normal'] === 1, 'ROAS mode must use attributed revenue, not a single CPA target.');
+$wpdb->metric_rows[0]['conversion_value'] = 100;
+$unprofitable = MG_Google_Ads_Product_Performance::run_rolling_classification();
+mg_state_expect(!is_wp_error($unprofitable) && $unprofitable['counts']['loser'] === 1, 'ROAS mode must classify revenue-poor spending as Loser.');
+$mg_test_options[MG_Google_Ads_Product_Performance::SETTINGS_OPTION] = $cpa_settings;
+
 $wpdb->old_status = 'winner';
 $winner = MG_Google_Ads_Product_Performance::run_rolling_classification();
 mg_state_expect(!is_wp_error($winner) && $winner['counts']['winner'] === 1, 'The historical Winner behavior remains intact.');

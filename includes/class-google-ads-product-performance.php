@@ -176,6 +176,7 @@ class MG_Google_Ads_Product_Performance {
             'loser_basis' => 'cpa',
             'loser_spend' => 10000,
             'loser_target_cpa' => 0,
+            'loser_target_roas' => 0,
             'loser_min_days' => 7,
             'conversion_lag_days' => 3,
             'history_start_date' => wp_date('Y-m-d', strtotime('-9 months')),
@@ -194,7 +195,7 @@ class MG_Google_Ads_Product_Performance {
         $settings = wp_parse_args($saved, self::defaults());
         // Preserve explicitly configured spend limits, but never keep using a
         // retired click threshold or invent a business-specific target CPA.
-        $settings['loser_basis'] = $settings['loser_basis'] === 'spend' ? 'spend' : 'cpa';
+        $settings['loser_basis'] = self::sanitize_loser_basis($settings['loser_basis']);
         return $settings;
     }
 
@@ -209,11 +210,16 @@ class MG_Google_Ads_Product_Performance {
         }
 
         $campaign_ids = array_filter(array_map('absint', preg_split('/[\s,;]+/', (string) ($input['campaign_ids'] ?? ''))));
-        $loser_basis = ($input['loser_basis'] ?? $old['loser_basis']) === 'spend' ? 'spend' : 'cpa';
+        $loser_basis = self::sanitize_loser_basis($input['loser_basis'] ?? $old['loser_basis']);
         $raw_target_cpa = $input['loser_target_cpa'] ?? $old['loser_target_cpa'];
         $target_cpa = (float) $raw_target_cpa;
         if (($raw_target_cpa !== '' && !is_numeric($raw_target_cpa)) || !is_finite($target_cpa) || $target_cpa < 0) {
             return new WP_Error('mg_ads_target_cpa', 'A megengedett vásárlási költség nem lehet negatív vagy érvénytelen.');
+        }
+        $raw_target_roas = $input['loser_target_roas'] ?? $old['loser_target_roas'];
+        $target_roas = (float) $raw_target_roas;
+        if (($raw_target_roas !== '' && !is_numeric($raw_target_roas)) || !is_finite($target_roas) || $target_roas < 0) {
+            return new WP_Error('mg_ads_target_roas', 'A nullszaldós ROAS nem lehet negatív vagy érvénytelen.');
         }
         $clean = array(
             'enabled' => !empty($input['enabled']) ? 1 : 0,
@@ -223,6 +229,7 @@ class MG_Google_Ads_Product_Performance {
             'loser_basis' => $loser_basis,
             'loser_spend' => max(1, (float) ($input['loser_spend'] ?? 10000)),
             'loser_target_cpa' => $target_cpa,
+            'loser_target_roas' => $target_roas,
             'loser_min_days' => min(90, max(1, absint($input['loser_min_days'] ?? $old['loser_min_days']))),
             'conversion_lag_days' => min(14, max(0, absint($input['conversion_lag_days'] ?? 3))),
             'history_start_date' => $start,
@@ -249,6 +256,7 @@ class MG_Google_Ads_Product_Performance {
             || (string) $clean['loser_basis'] !== (string) $old['loser_basis']
             || (float) $clean['loser_spend'] !== (float) $old['loser_spend']
             || (float) $clean['loser_target_cpa'] !== (float) $old['loser_target_cpa']
+            || (float) $clean['loser_target_roas'] !== (float) $old['loser_target_roas']
             || (int) $clean['loser_min_days'] !== (int) $old['loser_min_days'];
         $reclassification_required = $classification_settings_changed && !$import_changed && !empty($old['initial_completed_at']);
         if ($reclassification_required) {
@@ -950,8 +958,9 @@ class MG_Google_Ads_Product_Performance {
         return compact('accepted', 'rejected', 'min_date', 'max_date');
     }
 
-    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'cpa', $target_cpa = 0, $loser_spend = 10000, $observation_days = 0, $min_days = 7) {
+    public static function classify_metrics($conversions, $clicks, $cost_micros = 0, $winner_threshold = 2.0, $loser_basis = 'cpa', $target_cpa = 0, $loser_spend = 10000, $observation_days = 0, $min_days = 7, $conversion_value = 0, $target_roas = 0) {
         $conversions = max(0, (float) $conversions);
+        $conversion_value = max(0, (float) $conversion_value);
         $spend = max(0, (float) $cost_micros / 1000000);
         if ($conversions >= (float) $winner_threshold) {
             return array('status' => 'winner', 'reason' => 'Legalább ' . self::format_number($winner_threshold) . ' attribútált eladás.');
@@ -966,6 +975,16 @@ class MG_Google_Ads_Product_Performance {
             }
             return array('status' => 'normal', 'reason' => 'Még nem érte el a CPA-alapú ' . self::format_number($spend_limit) . ' Ft-os tesztkeretet.');
         }
+        if ($loser_basis === 'roas' && (float) $target_roas > 0) {
+            // Mirrors the CPA rule on revenue: the minimum test budget grows
+            // with attributed revenue, so a product is only Loser once its
+            // ROAS falls to a third of break-even (or it has no revenue at all).
+            $spend_limit = max((float) $loser_spend, self::LOSER_CPA_MULTIPLIER * $conversion_value / ((float) $target_roas / 100));
+            if ($spend >= $spend_limit) {
+                return array('status' => 'loser', 'reason' => 'Legalább ' . (int) $min_days . ' nap megfigyelés; a költés elérte a ROAS-alapú ' . self::format_number($spend_limit) . ' Ft-os tesztkeretet.');
+            }
+            return array('status' => 'normal', 'reason' => 'Még nem érte el a ROAS-alapú ' . self::format_number($spend_limit) . ' Ft-os tesztkeretet.');
+        }
         if ($conversions <= 0.000001 && $loser_basis === 'spend' && $spend >= (float) $loser_spend) {
             return array('status' => 'loser', 'reason' => 'Nincs eladás legalább ' . self::format_number($loser_spend) . ' Ft költésből.');
         }
@@ -973,6 +992,8 @@ class MG_Google_Ads_Product_Performance {
             $reason = 'Van eladás, de még nem érte el a Winner-küszöböt.';
         } elseif ($loser_basis === 'spend') {
             $reason = 'Még nem érte el a ' . self::format_number($loser_spend) . ' Ft-os Loser-költést.';
+        } elseif ($loser_basis === 'roas') {
+            $reason = 'A Loser-besoroláshoz meg kell adni a nullszaldós ROAS-t.';
         } else {
             $reason = 'A Loser-besoroláshoz meg kell adni a megengedett vásárlási költséget (CPA).';
         }
@@ -1124,7 +1145,9 @@ class MG_Google_Ads_Product_Performance {
                 $settings['loser_target_cpa'],
                 $settings['loser_spend'],
                 $observation_days,
-                $settings['loser_min_days']
+                $settings['loser_min_days'],
+                $values['conversion_value'],
+                $settings['loser_target_roas']
             );
             if ($current && self::sanitize_status($current['status']) === 'winner') {
                 $decision = array(
@@ -1331,8 +1354,13 @@ class MG_Google_Ads_Product_Performance {
 
     public static function validate_loser_settings($settings = null) {
         $settings = is_array($settings) ? $settings : self::get_settings();
+        $basis = self::sanitize_loser_basis($settings['loser_basis'] ?? 'cpa');
+        $target_roas = (float) ($settings['loser_target_roas'] ?? 0);
+        if ($basis === 'roas' && (!is_finite($target_roas) || $target_roas <= 0)) {
+            return new WP_Error('mg_ads_target_roas_missing', 'A ROAS-alapú Loser-szabályhoz add meg a nullszaldós ROAS-t, vagy válassz másik Loser-feltételt. Addig új besorolás nem indul.');
+        }
         $target_cpa = (float) ($settings['loser_target_cpa'] ?? 0);
-        if (($settings['loser_basis'] ?? 'cpa') !== 'spend' && (!is_finite($target_cpa) || $target_cpa <= 0)) {
+        if ($basis === 'cpa' && (!is_finite($target_cpa) || $target_cpa <= 0)) {
             return new WP_Error('mg_ads_target_cpa_missing', 'A kattintási Loser-küszöb helyett add meg az egy vásárlásra megengedett hirdetési költséget (CPA), vagy válaszd a rögzített tesztkeretet. Addig új besorolás nem indul.');
         }
         return true;
@@ -1398,6 +1426,11 @@ class MG_Google_Ads_Product_Performance {
                 }
             }
         }
+    }
+
+    private static function sanitize_loser_basis($basis) {
+        // Retired click thresholds and unknown values fall back to CPA.
+        return in_array($basis, array('spend', 'roas'), true) ? $basis : 'cpa';
     }
 
     private static function sanitize_status($status) {

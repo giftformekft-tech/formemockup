@@ -13,8 +13,9 @@ A kattintásalapú Loser mód megszűnt. Az ezt használó beállítás a CPA-al
 1. Telepítsd a frissített plugint, majd nyisd meg a **Mockup Generator → PMax besorolás** oldalt.
 2. Első körben hagyd kikapcsolva a **Feedcímke bekapcsolása** jelölőt. Így az import és a besorolás ellenőrizhető anélkül, hogy az eredmény azonnal kikerülne a Merchant feedbe.
 3. Állítsd be a címkehelyet. Elsődleges ajánlás: `custom_label_1`; a `custom_label_4` szintén szabad. A `0`, `2` vagy `3` kiválasztása az ott lévő terméktípus- vagy kategóriacímkét váltja fel.
-4. Add meg a Winner küszöböt és a Loser szabályt. Mindkét Loser mód HUF pénznemű Ads-fiókot igényel.
+4. Add meg a Winner küszöböt és a Loser szabályt. Mindhárom Loser mód HUF pénznemű Ads-fiókot igényel.
    - **Megengedett vásárlási költség (CPA), ajánlott:** add meg, mennyi hirdetési költség fér bele egy vásárlásba a saját árrésed alapján. A kód ezt nem találja ki helyetted. A tesztkeret `3 × megengedett CPA × max(1, attribútált konverzió)`; elérésekor, megfelelő megfigyelési idő után a termék Loser lehet. Például 3 000 Ft CPA-nál 0 vagy 0,01 konverzió esetén 9 000 Ft, 1,5 konverziónál 13 500 Ft a költési határ. A 3-as szorzó tesztelési ráhagyás, nem garantált statisztikai bizonyosság.
+   - **Nullszaldós ROAS (eltérő árú terméktípusokhoz):** add meg százalékban azt a konverziós érték / költés arányt, amelynél a hirdetés éppen megtérül (például kb. 33% árrésnél 300%). Egyetlen CPA helyett a ténylegesen attribútált bevételt nézi, így egy bögre és egy pulóver a saját árához mérten kerül megítélésre. A tesztkeret `max(rögzített tesztkeret, 3 × konverziós érték / nullszaldós ROAS)`; elérésekor, megfelelő megfigyelési idő után a termék Loser lehet. Például 300% ROAS-nál és 10 000 Ft rögzített keretnél bevétel nélkül 10 000 Ft, 20 000 Ft bevételnél 20 000 Ft a költési határ – vagyis a termék akkor Loser, ha a ROAS-a a nullszaldós érték harmadára esett.
    - **Rögzített tesztkeret:** nulla konverzió és az általad megadott költési határ elérése kell a Loserhez.
    - **Minimum megfigyelési idő:** alapból 7 nap, az első kattintás vagy költés napjától a konverziós késéssel lezárt utolsó napig, mindkét szélső napot beleszámítva. Ez eltelt megfigyelési idő, nem hét külön költési nap. Hiányzó aktivitási dátumnál nincs Loser-döntés.
    - A Winner szabály továbbra is elsőbbséget kap. A kattintásszám önmagában nem minősít Losernek.
@@ -90,7 +91,7 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 | PMax kampányazonosítók | igen | igen | igen |
 | Konverziós késés | igen | igen | igen |
 | Winner / Loser küszöb | nem | nem | automatikusan lefut mentéskor |
-| CPA / rögzített tesztkeret mód, CPA összege vagy megfigyelési idő | nem | nem | friss import esetén automatikusan lefut mentéskor |
+| CPA / ROAS / rögzített tesztkeret mód, CPA vagy ROAS összege vagy megfigyelési idő | nem | nem | friss import esetén automatikusan lefut mentéskor |
 | Feed custom label helye | nem | nem | nem; a feed regenerálódik |
 | Feedcímke ki-/bekapcsolása | nem | nem | nem; a feed regenerálódik |
 | Importtitok cseréje | igen | nem | nem |
@@ -99,7 +100,8 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 
 - **Elavult script / scope hiba:** mentsd a beállításokat, majd másold be újra az adminoldalon látható teljes scriptet.
 - **Import folyamatban / busy:** ellenőrizd, hogy nem fut-e két scriptpéldány; várd meg az aktív futás végét.
-- **HUF hiba:** a forintos CPA- és tesztkeret-beállításokhoz HUF Ads-fiókot használj.
+- **HUF hiba:** a forintos CPA-, ROAS- és tesztkeret-beállításokhoz HUF Ads-fiókot használj.
+- **Hiányzó ROAS:** ROAS módban add meg a nullszaldós ROAS-t, vagy válassz másik Loser-feltételt.
 - **Besorolás szünetel / elavult adat:** futtasd végig a frissített scriptet, majd ellenőrizd az utolsó teljes import időpontját és az importált időszak végét is. A félbeszakadt importot először be kell fejezni.
 - **Hiányzó CPA:** add meg az egy vásárlásra megengedett hirdetési költséget, vagy válassz rögzített tesztkeretet. Az importálás addig is működik.
 - **A teljes import nem kész:** hagyd futni a napi scriptet; nagy katalógusnál több végrehajtás normális.
@@ -108,6 +110,6 @@ A Winner státusz ugyanazon importbeállításokon belül végleges. Importforr�
 
 ## 9. Fejlesztői ellenőrzések
 
-- `php tests/google-ads-product-performance-test.php`: CPA-keretek, töredékkonverziók, minimum megfigyelési idő és Winner-elsőbbség.
+- `php tests/google-ads-product-performance-test.php`: CPA- és ROAS-keretek, töredékkonverziók, minimum megfigyelési idő és Winner-elsőbbség.
 - `php tests/google-ads-product-performance-state-test.php`: szerveroldali importfolytatás, lefedettség, frissesség, beállításváltás, publikált eredmények megőrzése és besorolási zárolás.
 - `node tests/google-ads-product-performance-script-test.js`: a ténylegesen generált script, többek között a másnap folytatott 600 soros import és az elveszett helyi folytatási adatok helyreállítása.
