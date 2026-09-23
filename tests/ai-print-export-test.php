@@ -72,9 +72,11 @@ function make_png($w, $h, $red, $alpha = true) {
 }
 function wp_remote_post($url, $request) {
     $GLOBALS['http_calls'][] = array($url, $request);
+    if (!empty($GLOBALS['http_hook'])) { $hook = $GLOBALS['http_hook']; unset($GLOBALS['http_hook']); $hook(); }
     $mode = $GLOBALS['http_mode'];
     if ($mode === 'network') { return new WP_Error(); }
     if ($mode === '429') { return array('code' => 429, 'body' => 'secret provider message'); }
+    if ($mode === '401') { return array('code' => 401, 'body' => 'secret provider message'); }
     preg_match('/name="size"\r\n\r\n(\d+)x(\d+)/', $request['body'], $size);
     $png = make_png((int) $size[1], (int) $size[2], count($GLOBALS['http_calls']), $mode !== 'opaque');
     if ($mode === 'bad') { $png = 'not a PNG'; }
@@ -388,7 +390,7 @@ try {
     add_option($lock, time());
     check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'job2')['waiting'], 'concurrent ZIP step waits without mutation');
     delete_option($lock);
-    foreach (array('429' => 'HTTP 429', 'network' => 'hálózati hibával', 'bad' => 'érvényes PNG', 'size' => 'érvényes PNG', 'opaque' => 'átlátszó hátteret') as $mode => $error) {
+    foreach (array('401' => 'API-kulcs érvénytelen', '429' => 'HTTP 429', 'network' => 'hálózati hibával', 'bad' => 'érvényes PNG', 'size' => 'érvényes PNG', 'opaque' => 'átlátszó hátteret') as $mode => $error) {
         $http_mode = (string) $mode;
         $id = 'failure-' . $mode;
         make_job($id, array($tasks[0]));
@@ -403,6 +405,101 @@ try {
         check($failed['status'] === 'error' && $failed['completed'] === 0 && !file_exists($failed['zip_path']), 'failure never exports the original: ' . $mode);
     }
     $http_mode = 'ok';
+    // A blocked scheduler can be serviced by the authenticated browser worker.
+    make_job('fallback', array($tasks[0]));
+    $fallback_progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback');
+    check($fallback_progress['ai_status'] === 'queued' && $fallback_progress['ai_worker_key'] === '', 'initial status distinguishes the queue without racing its dispatcher');
+    $fallback_key = MG_AI_Print_Generator::task_key('fallback', $tasks[0]);
+    $transients[MG_AI_Print_Generator::PREFIX . $fallback_key]['created'] -= 6;
+    $fallback_progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback');
+    check($fallback_progress['ai_worker_key'] === $fallback_key && str_contains($fallback_progress['message'], 'indításra vár'), 'stalled queue exposes a fallback worker and truthful status');
+    $fallback_calls = count($http_calls);
+    $current_user = 8;
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'run_export_ai', 'fallback', $fallback_key), 'más felhasználóhoz');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'retry_export', 'failure-401'), 'más felhasználóhoz');
+    $current_user = 7;
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'fallback', hash('sha256', 'foreign'));
+    $fallback_lock = MG_AI_Print_Generator::PREFIX . 'lock_' . $fallback_key;
+    add_option($fallback_lock, time());
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'fallback', $fallback_key);
+    check(count($http_calls) === $fallback_calls, 'foreign keys and a scheduler-owned lock prevent fallback billing');
+    delete_option($fallback_lock);
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'fallback', $fallback_key);
+    MG_AI_Print_Generator::run($fallback_key);
+    check(count($http_calls) === $fallback_calls + 1 && call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback')['done'], 'fallback completes and late scheduler delivery does not duplicate the edit');
+
+    // Key expiry after an earlier item succeeded must retain that paid result.
+    $recovery_job = make_job('recovery', $tasks);
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'recovery');
+    $first_key = MG_AI_Print_Generator::task_key('recovery', $tasks[0]);
+    MG_AI_Print_Generator::run($first_key);
+    $first_path = MG_AI_Print_Generator::ready_path('recovery', $tasks[0]);
+    $first_bytes = file_get_contents($first_path);
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'recovery');
+    $second_key = MG_AI_Print_Generator::task_key('recovery', $tasks[2]);
+    $http_mode = '401';
+    MG_AI_Print_Generator::run($second_key);
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'recovery'), 'Export folytatása');
+    $saved = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'recovery');
+    check($saved['status'] === 'error' && is_file($first_path) && !is_file($saved['zip_path']), 'API failure preserves the first image while withholding the incomplete ZIP');
+    check(!str_contains($saved['message'], 'secret provider message'), 'authentication failure does not expose provider response bodies');
+    $recovery_calls = count($http_calls);
+    update_option('mg_ai_seo_settings', array('api_key' => 'replacement-key'));
+    call_hidden('MG_Order_Design_Download', 'retry_export', 'recovery');
+    $retry_job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'recovery');
+    check($retry_job['status'] === 'processing' && $retry_job['completed'] === 0 && $retry_job['cache'] === array(), 'retry resets only local ZIP assembly');
+    check(MG_AI_Print_Generator::task_key('recovery', $retry_job['tasks'][0]) === $first_key && MG_AI_Print_Generator::task_key('recovery', $retry_job['tasks'][2]) !== $second_key, 'retry retains ready image identity and isolates the failed attempt');
+    call_hidden('MG_Order_Design_Download', 'retry_export', 'recovery');
+    check(get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'recovery') === $retry_job && count($http_calls) === $recovery_calls, 'duplicate retry requests neither rotate attempts again nor call the API');
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'recovery')['completed'] === 2, 'successful quantity copies rebuild from the retained image');
+    $http_mode = 'ok';
+    $retry_key = MG_AI_Print_Generator::task_key('recovery', $retry_job['tasks'][2]);
+    MG_AI_Print_Generator::run($retry_key);
+    MG_AI_Print_Generator::run($second_key);
+    check(count($http_calls) === $recovery_calls + 1 && end($http_calls)[1]['headers']['Authorization'] === 'Bearer replacement-key', 'only the failed image is retried using the newly saved API key');
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'recovery')['done'], 'recovered export completes');
+    $zip->open($recovery_job['zip_path']);
+    check($zip->numFiles === 4 && $zip->getFromIndex(0) === $first_bytes && $zip->getFromIndex(1) === $first_bytes && $zip->getFromIndex(2) !== $source_bytes, 'recovered ZIP has each copy exactly once and preserves the previous generated image');
+    $zip->close();
+
+    // A killed worker can leave both running state and its non-expiring option lock.
+    make_job('stale-worker', array($tasks[0], $tasks[1]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'stale-worker');
+    $stale_key = MG_AI_Print_Generator::task_key('stale-worker', $tasks[0]);
+    $transients[MG_AI_Print_Generator::PREFIX . $stale_key]['status'] = 'running';
+    $transients[MG_AI_Print_Generator::PREFIX . $stale_key]['created'] -= MG_AI_Print_Generator::WAIT_TIMEOUT + 1;
+    add_option(MG_AI_Print_Generator::PREFIX . 'lock_' . $stale_key, time() - 700);
+    make_job('new-export', array($tasks[0]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'new-export');
+    $new_export_key = MG_AI_Print_Generator::task_key('new-export', $tasks[0]);
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'new-export', $new_export_key);
+    check($new_export_key !== $stale_key && call_hidden('MG_Order_Design_Download', 'process_export_step', 'new-export')['done'], 'a new export completes while the previous export still has a stale running state and lock');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'stale-worker'), 'megszakadt vagy nem indult el');
+    call_hidden('MG_Order_Design_Download', 'retry_export', 'stale-worker');
+    $stale_retry = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'stale-worker');
+    $stale_retry_key = MG_AI_Print_Generator::task_key('stale-worker', $stale_retry['tasks'][0]);
+    check($stale_retry_key !== $stale_key && $stale_retry_key === MG_AI_Print_Generator::task_key('stale-worker', $stale_retry['tasks'][1]), 'stale-lock recovery gives quantity copies one fresh attempt');
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'stale-worker');
+    MG_AI_Print_Generator::run($stale_retry_key);
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'stale-worker')['done'], 'stale worker lock cannot block the explicit replacement attempt');
+
+    // Simulate an old HTTP request returning after timeout and explicit recovery.
+    make_job('late-worker', array($tasks[0]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-worker');
+    $late_key = MG_AI_Print_Generator::task_key('late-worker', $tasks[0]);
+    $http_hook = function () use ($late_key) {
+        $GLOBALS['transients'][MG_AI_Print_Generator::PREFIX . $late_key]['created'] -= MG_AI_Print_Generator::WAIT_TIMEOUT + 1;
+        expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-worker'), 'megszakadt vagy nem indult el');
+        call_hidden('MG_Order_Design_Download', 'retry_export', 'late-worker');
+    };
+    MG_AI_Print_Generator::run($late_key);
+    check(!is_file($test_dir . '/mg-ai-print-' . $late_key . '.png'), 'late old result is discarded without replacing the new attempt');
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-worker');
+    $late_retry = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'late-worker');
+    MG_AI_Print_Generator::run(MG_AI_Print_Generator::task_key('late-worker', $late_retry['tasks'][0]));
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-worker')['done'], 'late response leaves the replacement job usable');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'retry_export', 'missing'), 'lejárt');
+    update_option('mg_ai_seo_settings', array('api_key' => 'test-key'));
     Imagick::$resize_failure = true;
     make_job('upscale-failure', array($tasks[0]));
     call_hidden('MG_Order_Design_Download', 'process_export_step', 'upscale-failure');

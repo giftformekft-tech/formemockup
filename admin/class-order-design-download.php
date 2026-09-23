@@ -83,6 +83,8 @@ class MG_Order_Design_Download {
         add_action('wp_ajax_mg_design_export_review', array(__CLASS__, 'ajax_export_review'));
         add_action('wp_ajax_mg_design_export_preview', array(__CLASS__, 'ajax_export_preview'));
         add_action('wp_ajax_mg_design_export_step', array(__CLASS__, 'ajax_export_step'));
+        add_action('wp_ajax_mg_design_export_retry', array(__CLASS__, 'ajax_export_retry'));
+        add_action('wp_ajax_mg_design_export_run_ai', array(__CLASS__, 'ajax_export_run_ai'));
         add_action('wp_ajax_mg_design_export_download', array(__CLASS__, 'ajax_export_download'));
 
         // Order quick-view: add a download link per line item
@@ -495,6 +497,88 @@ class MG_Order_Design_Download {
 
     /* ------------------------------------------------------------------ */
 
+    public static function ajax_export_retry() {
+        if (!current_user_can('edit_shop_orders') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+            wp_send_json_error(array('message' => __('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg')), 403);
+            return;
+        }
+        try {
+            wp_send_json_success(self::retry_export(sanitize_text_field($_POST['job_id'] ?? '')));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /** Rebuild the ZIP locally, retaining every available, already-paid AI image. */
+    protected static function retry_export($job_id) {
+        $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
+        $job = get_transient($transient_key);
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik. Indíts új exportot.', 'mg'));
+        }
+        $lock = 'mg_export_lock_' . hash('sha256', $job_id);
+        if (!add_option($lock, time(), '', false)) {
+            throw new RuntimeException(__('Az export feldolgozása még folyamatban van. Próbáld újra később; tartós elakadásnál indíts új exportot.', 'mg'));
+        }
+        try {
+            $job = get_transient($transient_key);
+            if (!is_array($job)) throw new RuntimeException(__('A feladat lejárt. Indíts új exportot.', 'mg'));
+            // Lost AJAX responses and duplicate retry clicks must only resume polling.
+            if ($job['status'] === 'error') {
+                $attempt = wp_generate_uuid4();
+                $needs_ai = false;
+                foreach ($job['tasks'] as &$task) {
+                    if (!empty($task['ai_prompt']) && MG_AI_Print_Generator::ready_path($job_id, $task) === '') {
+                        $task['ai_attempt'] = $attempt;
+                        $needs_ai = true;
+                    }
+                }
+                unset($task);
+                if ($needs_ai) MG_AI_Print_Generator::assert_available();
+                // The error handler removed the incomplete ZIP. Old failed worker
+                // keys stay isolated, even when their scheduler delivery arrives late.
+                if (is_file($job['zip_path']) && !@unlink($job['zip_path'])) {
+                    throw new RuntimeException(__('Nem sikerült újrakezdeni a ZIP összeállítását.', 'mg'));
+                }
+                $job['next_index'] = $job['completed'] = 0;
+                $job['cache'] = array();
+                $job['status'] = 'processing';
+                unset($job['message']);
+                set_transient($transient_key, $job, self::JOB_TTL);
+            }
+            return array('job_id' => $job_id, 'total' => $job['total']);
+        } finally {
+            delete_option($lock);
+        }
+    }
+
+    /** Dedicated fallback when the scheduled queue is not being serviced. */
+    public static function ajax_export_run_ai() {
+        if (!current_user_can('edit_shop_orders') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+            wp_send_json_error(array('message' => __('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg')), 403);
+            return;
+        }
+        try {
+            ignore_user_abort(true);
+            self::run_export_ai(sanitize_text_field($_POST['job_id'] ?? ''), sanitize_text_field($_POST['worker_key'] ?? ''));
+            wp_send_json_success();
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    protected static function run_export_ai($job_id, $key) {
+        $job = get_transient(self::JOB_TRANSIENT_PREFIX . $job_id);
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
+        }
+        $task = $job['tasks'][$job['next_index']] ?? null;
+        if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) return;
+        // Uses the same atomic worker lock as Action Scheduler; the two paths
+        // cannot issue a second paid request for the same attempt.
+        MG_AI_Print_Generator::run($key);
+    }
+
     /**
      * AJAX: processes the next small batch of tasks (self::EXPORT_BATCH_SIZE)
      * for a job, appending each finished PNG into the job's ZIP. Designed to
@@ -550,19 +634,22 @@ class MG_Order_Design_Download {
             }
             $waiting = false;
             $message = '';
+            $ai_progress = array();
             $in_batch = 0;
             while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
                 $task = $job['tasks'][$job['next_index']];
                 $design_path = $task['design_path'];
                 if (!empty($task['ai_prompt'])) {
                     try {
-                        $design_path = MG_AI_Print_Generator::poll($job_id, $task);
+                        $design_path = MG_AI_Print_Generator::poll($job_id, $task, $ai_progress);
                     } catch (Throwable $e) {
                         throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: %s', 'mg'), $task['order_id'], $task['item_id'], $e->getMessage()));
                     }
                     if ($design_path === '') {
                         $waiting = true;
-                        $message = sprintf(__('Egyedi AI nyomat készül – rendelés #%d, tétel #%d.', 'mg'), $task['order_id'], $task['item_id']);
+                        $message = sprintf($ai_progress['ai_status'] === 'queued'
+                            ? __('AI nyomat indításra vár – rendelés #%d, tétel #%d.', 'mg')
+                            : __('Egyedi AI nyomat készül – rendelés #%d, tétel #%d.', 'mg'), $task['order_id'], $task['item_id']);
                         break;
                     }
                     if (!in_array($design_path, $job['temp_files'], true)) {
@@ -600,7 +687,7 @@ class MG_Order_Design_Download {
                 $job['temp_files'] = array();
             }
             set_transient($transient_key, $job, self::JOB_TTL);
-            return self::progress_payload($job, $waiting, $message);
+            return array_merge(self::progress_payload($job, $waiting, $message), $waiting ? $ai_progress : array());
         } catch (Throwable $e) {
             if (!is_array($job)) {
                 throw $e;
@@ -609,10 +696,15 @@ class MG_Order_Design_Download {
                 $zip->close();
                 $zip = null;
             }
-            foreach (array_unique($job['temp_files']) as $temp_file) {
-                @unlink($temp_file);
+            $keep = array();
+            foreach ($job['tasks'] as $task) {
+                if (empty($task['ai_prompt'])) continue;
+                $path = MG_AI_Print_Generator::ready_path($job_id, $task);
+                if ($path !== '') $keep[] = $path;
             }
-            $job['temp_files'] = array();
+            foreach (array_diff(array_unique($job['temp_files']), $keep) as $temp_file) @unlink($temp_file);
+            // AI cleanup still expires these files; retry can reuse them meanwhile.
+            $job['temp_files'] = array_values(array_unique($keep));
             if (is_file($job['zip_path'])) {
                 @unlink($job['zip_path']);
             }

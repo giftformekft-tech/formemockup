@@ -48,6 +48,7 @@
                 '<p class="mg-order-export-error" hidden></p>' +
                 '<div class="mg-order-export-actions">' +
                     '<a class="button button-primary mg-order-export-download" hidden></a>' +
+                    '<button type="button" class="button button-primary mg-order-export-retry" hidden>Export folytatása</button>' +
                     '<button type="button" class="button mg-order-export-close"></button>' +
                 '</div>' +
             '</div>';
@@ -63,6 +64,7 @@
         var statusEl      = overlay.querySelector('.mg-order-export-status');
         var errorEl       = overlay.querySelector('.mg-order-export-error');
         var downloadEl    = overlay.querySelector('.mg-order-export-download');
+        var retryEl       = overlay.querySelector('.mg-order-export-retry');
         var closeEl       = overlay.querySelector('.mg-order-export-close');
         var modalEl       = overlay.querySelector('.mg-order-export-modal');
         var reviewEl      = overlay.querySelector('.mg-order-export-review');
@@ -99,6 +101,9 @@
         var imageReady = false;
         var submitting = false;
         var darkBackground = false;
+        var activeJobId = '';
+        var retrying = false;
+        var workers = {};
         titleEl.focus();
         overlay.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') closeEl.click();
@@ -115,13 +120,16 @@
             errorEl.hidden = false;
         };
 
-        var postJson = function (body) {
+        var postJson = function (body, timeoutMs) {
+            var controller = new AbortController();
+            var timeout = window.setTimeout(function () { controller.abort(); }, timeoutMs || 30000);
             return fetch(cfg.ajax_url, {
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body,
-            }).then(function (response) { return response.json(); });
+                signal: controller.signal,
+            }).then(function (response) { return response.json(); }).finally(function () { window.clearTimeout(timeout); });
         };
 
         var updateProgress = function (data) {
@@ -130,13 +138,29 @@
             statusEl.textContent = (data.message || i18n.processing || '') + ' ' + data.completed + ' / ' + data.total + ' (' + percent + '%)';
         };
 
+        var pauseExport = function (message) {
+            if (stopped) return;
+            statusEl.textContent = 'Az export megállt. A hiba javítása után folytathatod; a még elérhető kész AI-képeket újra felhasználjuk. A hiányzó képek újrapróbálása új API-hívást indíthat.';
+            retryEl.hidden = !activeJobId;
+            retryEl.disabled = false;
+            showError(message);
+        };
+
+        var dispatchWorker = function (jobId, key) {
+            if (!key || workers[key] || stopped) return;
+            workers[key] = true;
+            // Polling stays independent of this long request. A proxy timeout does
+            // not trigger another paid call; the shared server lock owns execution.
+            postJson('action=mg_design_export_run_ai&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId) + '&worker_key=' + encodeURIComponent(key), 260000).catch(function () {});
+        };
+
         var step = function (jobId) {
             if (stopped) { return; }
             var body = 'action=mg_design_export_step&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId);
             postJson(body).then(function (payload) {
                 if (stopped) return;
                 if (!payload || !payload.success) {
-                    showError(payload && payload.data && payload.data.message);
+                    pauseExport(payload && payload.data && payload.data.message);
                     return;
                 }
                 updateProgress(payload.data);
@@ -147,11 +171,30 @@
                     downloadEl.hidden = false;
                     return;
                 }
+                dispatchWorker(jobId, payload.data.ai_worker_key);
                 window.setTimeout(function () { step(jobId); }, payload.data.waiting ? 2000 : 100);
             }).catch(function () {
-                showError();
+                pauseExport('Nem érkezett válasz a szervertől. Az Export folytatása gombbal ellenőrizheted és folytathatod a feladatot.');
             });
         };
+
+        retryEl.addEventListener('click', function () {
+            if (stopped || retrying || !activeJobId) return;
+            retrying = true;
+            retryEl.disabled = true;
+            errorEl.hidden = true;
+            postJson('action=mg_design_export_retry&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(activeJobId)).then(function (payload) {
+                if (stopped) return;
+                if (!payload || !payload.success) {
+                    pauseExport(payload && payload.data && payload.data.message);
+                    return;
+                }
+                retryEl.hidden = true;
+                workers = {};
+                statusEl.textContent = 'Export folytatása…';
+                step(activeJobId);
+            }).catch(function () { pauseExport(); }).finally(function () { retrying = false; retryEl.disabled = false; });
+        });
 
         var start = function () {
             if (stopped || submitting || !review || review.items.some(function (item) { return !decisions[item.key]; })) return;
@@ -170,7 +213,8 @@
                 summaryEl.hidden = true;
                 barWrapEl.hidden = false;
                 statusEl.hidden = false;
-                step(payload.data.job_id);
+                activeJobId = payload.data.job_id;
+                step(activeJobId);
             }).catch(function () {
                 submitting = false;
                 confirmEl.disabled = false;

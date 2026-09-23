@@ -24,14 +24,21 @@ function setup() {
         return elements.get(name);
     };
     const overlay = { ...makeElement(), querySelector: element, remove() { this.removed = true; } };
-    const window = { MG_ORDER_EXPORT: { ajax_url: '/admin-ajax.php', nonce: 'nonce', order_ids: [90], i18n: { processing: 'Feldolgozás', done: 'Kész' } }, setTimeout(fn, delay) { timers.push({ fn, delay }); } };
+    const window = {
+        MG_ORDER_EXPORT: { ajax_url: '/admin-ajax.php', nonce: 'nonce', order_ids: [90], i18n: { processing: 'Feldolgozás', done: 'Kész' } },
+        setTimeout(fn, delay) { const timer = { fn, delay }; timers.push(timer); return timer; },
+        clearTimeout(timer) { const index = timers.indexOf(timer); if (index !== -1) timers.splice(index, 1); },
+    };
     vm.runInNewContext(source, {
         window,
+        AbortController,
         document: { addEventListener(name, fn) { fn(); }, createElement(tag) { return tag === 'div' ? overlay : makeElement(); }, body: { appendChild() {} } },
         fetch(url, request) {
             requests.push(request.body);
             const response = responses.shift();
             if (!response) throw new Error('Unexpected request');
+            if (response === 'timeout') return new Promise((resolve, reject) => request.signal.addEventListener('abort', () => reject(new Error('Timed out'))));
+            if (response instanceof Error) return Promise.reject(response);
             return Promise.resolve({ json: () => Promise.resolve(response) });
         },
     });
@@ -123,6 +130,45 @@ async function main() {
     assert.equal(failure.element('.mg-order-export-error').textContent, 'Tétel #12: HTTP 429');
     assert.equal(failure.element('.mg-order-export-download').hidden, true);
     assert.equal(failure.timers.length, 0, 'API error does not retry automatically');
+    assert.equal(failure.element('.mg-order-export-retry').hidden, false, 'failed export offers an explicit retry');
+    assert.match(failure.element('.mg-order-export-status').textContent, /export megállt/);
+    failure.responses.push({ success: true, data: { job_id: 'bad' } }, { success: true, data: { completed: 2, total: 2, done: true } });
+    failure.element('.mg-order-export-retry').handlers.click();
+    failure.element('.mg-order-export-retry').handlers.click();
+    await flush();
+    assert.equal(failure.requests.filter(body => body.includes('action=mg_design_export_retry')).length, 1, 'double retry click is deduplicated');
+    assert.match(failure.requests[3], /job_id=bad/, 'retry resumes the existing job');
+    assert.equal(failure.element('.mg-order-export-retry').hidden, true);
+    assert.equal(failure.element('.mg-order-export-download').hidden, false);
+
+    const stalled = setup();
+    const queued = { success: true, data: { completed: 0, total: 1, waiting: true, ai_worker_key: 'worker1' } };
+    stalled.responses.push(reviewPayload(), { success: true, data: { job_id: 'stalled' } }, queued, { success: true });
+    stalled.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    assert.match(stalled.requests[3], /action=mg_design_export_run_ai/, 'waiting queue triggers a separate worker request');
+    stalled.responses.push(queued);
+    stalled.timers.shift().fn();
+    await flush();
+    assert.equal(stalled.requests.filter(body => body.includes('action=mg_design_export_run_ai')).length, 1, 'polling does not repeatedly dispatch the same worker');
+    stalled.responses.push({ success: true, data: { completed: 1, total: 1, done: true } });
+    stalled.timers.shift().fn();
+    await flush();
+    assert.equal(stalled.element('.mg-order-export-download').hidden, false);
+
+    const timedOut = setup();
+    timedOut.responses.push(reviewPayload(), { success: true, data: { job_id: 'timeout' } }, 'timeout');
+    timedOut.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    assert.equal(timedOut.timers[0].delay, 30000, 'short requests have a bounded timeout');
+    timedOut.timers.shift().fn();
+    await flush();
+    assert.equal(timedOut.element('.mg-order-export-retry').hidden, false, 'network timeout leaves a usable recovery button');
+    timedOut.responses.push({ success: false, data: { message: 'A feladat lejárt. Indíts új exportot.' } });
+    timedOut.element('.mg-order-export-retry').handlers.click();
+    await flush();
+    assert.equal(timedOut.element('.mg-order-export-retry').disabled, false, 'failed recovery remains interactive');
+    assert.match(timedOut.element('.mg-order-export-error').textContent, /lejárt/);
 
     const closed = setup();
     closed.responses.push(reviewPayload(), { success: true, data: { job_id: 'closed' } }, { success: true, data: { completed: 0, total: 1, waiting: true } });

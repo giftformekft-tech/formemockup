@@ -12,6 +12,25 @@ class MG_AI_Print_Generator {
     const OPTION_KEY = 'mg_ai_print_settings';
     const DEFAULT_MODEL = 'gpt-image-2';
     const UPSCALE_FACTOR = 3;
+    const WAIT_TIMEOUT = 600;
+
+    public static function task_key($job_id, array $task) {
+        $identity = $job_id . '|' . $task['item_id'];
+        if (!empty($task['ai_attempt'])) $identity .= '|' . $task['ai_attempt'];
+        return hash('sha256', $identity);
+    }
+
+    public static function ready_path($job_id, array $task) {
+        $state = get_transient(self::PREFIX . self::task_key($job_id, $task));
+        return $state && $state['status'] === 'ready' && !empty($state['path']) && is_file($state['path']) ? $state['path'] : '';
+    }
+
+    protected static function is_current_task($key, array $state, array $job) {
+        foreach ($job['tasks'] as $task) {
+            if (!empty($task['ai_prompt']) && self::task_key($state['job_id'], $task) === $key) return true;
+        }
+        return false;
+    }
 
     public static function get_models() {
         return array(
@@ -172,8 +191,8 @@ class MG_AI_Print_Generator {
     }
 
     /** Separate state from ZIP state: polling cannot overwrite the worker's result. */
-    public static function poll($job_id, array $task) {
-        $key = hash('sha256', $job_id . '|' . $task['item_id']);
+    public static function poll($job_id, array $task, &$progress = null) {
+        $key = self::task_key($job_id, $task);
         $state = get_transient(self::PREFIX . $key);
         if (!$state) {
             self::assert_available();
@@ -197,9 +216,10 @@ class MG_AI_Print_Generator {
             }
             return $state['path'];
         }
-        if (time() - $state['created'] > 600) {
-            throw new RuntimeException(__('Az AI nyomat készítése nem fejeződött be. Ellenőrizd a WooCommerce ütemezett műveleteit; új export új API-hívást indít.', 'mg'));
+        if (time() - $state['created'] > self::WAIT_TIMEOUT) {
+            throw new RuntimeException(__('Az AI nyomat készítése megszakadt vagy nem indult el. Az Export folytatása gombbal újrapróbálhatod a hiányzó képeket; ez új API-hívást indíthat.', 'mg'));
         }
+        $progress = array('ai_status' => $state['status'], 'ai_worker_key' => $state['status'] === 'queued' && time() - $state['created'] >= 5 ? $key : '');
         return '';
     }
 
@@ -217,7 +237,7 @@ class MG_AI_Print_Generator {
                 return;
             }
             $job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $state['job_id']);
-            if (!$job || $job['status'] !== 'processing' || !user_can($job['user_id'], 'edit_shop_orders')) {
+            if (!$job || $job['status'] !== 'processing' || !user_can($job['user_id'], 'edit_shop_orders') || !self::is_current_task($key, $state, $job)) {
                 return;
             }
             $state['status'] = 'running';
@@ -227,6 +247,14 @@ class MG_AI_Print_Generator {
             // Older queued exports used Image 2. New exports pin their model
             // when the task list is built, even if settings change mid-export.
             $state['path'] = self::edit_image($state['task']['design_path'], $state['task']['ai_prompt'], $key, $state['task']['ai_model'] ?? self::DEFAULT_MODEL, !empty($state['task']['ai_defringe']));
+            // A timed-out attempt may finish after an explicit retry. Never publish
+            // that old result into the replacement attempt or recreate expired state.
+            $current = get_transient(self::PREFIX . $key);
+            $job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $state['job_id']);
+            if (!$current || !$job || !self::is_current_task($key, $state, $job)) {
+                @unlink($state['path']);
+                return;
+            }
             $state['status'] = 'ready';
             unset($state['task']);
             set_transient(self::PREFIX . $key, $state, self::TTL);
@@ -316,6 +344,9 @@ class MG_AI_Print_Generator {
         $status = wp_remote_retrieve_response_code($response);
         if ($status !== 200) {
             // Do not echo provider bodies (may contain credentials, prompts or customer data).
+            if ($status === 401) {
+                throw new RuntimeException(__('Az OpenAI API-kulcs érvénytelen, lejárt vagy visszavonták (HTTP 401). Mentsd az új kulcsot az AI Minta SEO és tagelés beállításaiban, majd kattints az Export folytatása gombra.', 'mg'));
+            }
             throw new RuntimeException(sprintf(__('Az OpenAI képszerkesztés hibát jelzett (HTTP %1$d, modell: %2$s). Ellenőrizd az API-kulcsot, a keretet és a modellhozzáférést.', 'mg'), $status, $model));
         }
         $data = json_decode(wp_remote_retrieve_body($response), true);

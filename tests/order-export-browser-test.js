@@ -7,7 +7,7 @@ const os = require('node:os');
 const script = fs.readFileSync(path.join(__dirname, '../assets/js/order-export.js'), 'utf8');
 const css = fs.readFileSync(path.join(__dirname, '../assets/css/order-export.css'), 'utf8');
 async function main() {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, channel: process.env.MG_BROWSER_CHANNEL || undefined });
     try {
         const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
         const errors = [];
@@ -28,6 +28,8 @@ async function main() {
             { key: '292830_9532', order_id: 292830, item_id: 9532, quantity: 1, product_name: 'Születésnapi minta', fields: [{ label: 'Hónap', value: 'május' }, { label: 'Évszám', value: '2001' }] },
         ];
         const requests = [];
+        let recovery = false;
+        let recoveryPhase = 'queued';
         await page.route('https://export.test/**', async route => {
             const request = route.request();
             if (request.url().includes('admin-ajax.php')) {
@@ -36,9 +38,15 @@ async function main() {
                 requests.push(body);
                 const action = body.get('action');
                 let data;
-                if (action === 'mg_design_export_review') data = { review_id: 'mgr_browser', items, total: 3 };
+                if (action === 'mg_design_export_review') data = { review_id: 'mgr_browser', items: recovery ? [] : items, total: 3 };
                 else if (action === 'mg_design_export_start') data = { job_id: 'browser_job', total: 3 };
-                else if (action === 'mg_design_export_step') data = { done: true, completed: 3, total: 3, percent: 100 };
+                else if (action === 'mg_design_export_step') {
+                    if (recovery && recoveryPhase === 'queued') data = { waiting: true, completed: 1, total: 3, percent: 33, ai_worker_key: 'browser_worker', message: 'AI nyomat indításra vár' };
+                    else if (recovery && recoveryPhase === 'error') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ success: false, data: { message: 'Az OpenAI API-kulcs érvénytelen (HTTP 401). Mentsd az új kulcsot, majd folytasd az exportot.' } }) });
+                    else data = { done: true, completed: 3, total: 3, percent: 100 };
+                }
+                else if (action === 'mg_design_export_run_ai') { recoveryPhase = 'error'; data = {}; }
+                else if (action === 'mg_design_export_retry') { recoveryPhase = 'done'; data = { job_id: 'browser_job' }; }
                 else throw new Error('Unexpected request ' + action);
                 return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
             }
@@ -74,8 +82,24 @@ async function main() {
         await page.locator('.mg-order-export-download').waitFor({ state: 'visible' });
         assert.equal(requests.filter(x => x.get('action') === 'mg_design_export_start').length, 1);
         assert.deepEqual(JSON.parse(requests[1].get('decisions')), { '292829_9531': 'original', '292830_9532': 'generate' });
+        recovery = true;
+        await page.reload();
+        await page.getByRole('button', { name: 'Normál export', exact: true }).click();
+        await page.getByRole('button', { name: 'Export folytatása', exact: true }).waitFor({ state: 'visible' });
+        assert.match(await page.locator('.mg-order-export-error').textContent(), /HTTP 401/);
+        assert.match(await page.locator('.mg-order-export-status').textContent(), /export megállt/);
+        assert.equal(await page.locator('.mg-order-export-download').isVisible(), false);
+        assert.equal(requests.filter(x => x.get('action') === 'mg_design_export_run_ai').length, 1, 'stalled queue starts through the separate fallback request');
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile error and recovery controls fit the viewport');
+        await page.screenshot({ path: path.join(screenshotDir, 'export-key-error-mobile.png') });
+        await page.getByRole('button', { name: 'Export folytatása', exact: true }).click();
+        await page.locator('.mg-order-export-download').waitFor({ state: 'visible' });
+        assert.equal(requests.filter(x => x.get('action') === 'mg_design_export_retry').length, 1);
+        assert.equal(requests.filter(x => x.get('action') === 'mg_design_export_start').length, 2, 'recovery does not create a third job');
+        assert.equal(await page.locator('.mg-order-export-retry').isVisible(), false);
+        await page.screenshot({ path: path.join(screenshotDir, 'export-recovered-mobile.png') });
         assert.deepEqual(errors, []);
-        console.log('Browser review passed: grouping, explicit decisions, summary edit, mobile layout, single final start. Screenshots: ' + screenshotDir);
+        console.log('Browser export passed: review, mobile layout, queue fallback, API-key error and explicit recovery. Screenshots: ' + screenshotDir);
     } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
