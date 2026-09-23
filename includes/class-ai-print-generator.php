@@ -27,7 +27,6 @@ class MG_AI_Print_Generator {
             'validate' => __('AI-kép ellenőrzése', 'mg'),
             'upscale' => __('AI-kép 3×-os felnagyítása', 'mg'),
             'save' => __('AI-kép mentése', 'mg'),
-            'approval' => __('AI-kép jóváhagyásra vár', 'mg'),
         );
         return $labels[$stage] ?? __('Egyedi AI nyomat készül', 'mg');
     }
@@ -101,22 +100,6 @@ class MG_AI_Print_Generator {
     public static function ready_path($job_id, array $task) {
         $state = get_transient(self::PREFIX . self::task_key($job_id, $task));
         return $state && $state['status'] === 'ready' && !empty($state['path']) && is_file($state['path']) ? $state['path'] : '';
-    }
-
-    public static function is_approved($job_id, array $task) {
-        $state = get_transient(self::PREFIX . self::task_key($job_id, $task));
-        return $state && $state['status'] === 'ready' && !empty($state['approved']);
-    }
-
-    /** The admin accepted this exact generated image for the ZIP. */
-    public static function approve($job_id, array $task) {
-        $key = self::task_key($job_id, $task);
-        $state = get_transient(self::PREFIX . $key);
-        if (!$state || $state['status'] !== 'ready' || empty($state['path']) || !is_file($state['path'])) {
-            throw new RuntimeException(__('Az AI-kép már nem érhető el. Kérj újragenerálást.', 'mg'));
-        }
-        $state['approved'] = true;
-        set_transient(self::PREFIX . $key, $state, self::TTL);
     }
 
     /** Drop a rejected image; the replacement attempt uses a new key. */
@@ -412,7 +395,7 @@ class MG_AI_Print_Generator {
                 return;
             }
             $job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $state['job_id']);
-            if (!$job || $job['status'] !== 'processing' || !user_can($job['user_id'], 'edit_shop_orders') || !self::is_current_task($key, $state, $job)) {
+            if (!$job || !in_array($job['status'], array('processing', 'review'), true) || !user_can($job['user_id'], 'edit_shop_orders') || !self::is_current_task($key, $state, $job)) {
                 return;
             }
             $state['status'] = 'running';

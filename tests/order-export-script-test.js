@@ -38,7 +38,7 @@ function setup() {
         window,
         AbortController,
         Date: class extends Date { static now() { return now; } },
-        document: { addEventListener(name, fn) { fn(); }, createElement(tag) { return tag === 'div' ? overlay : makeElement(); }, body: { appendChild() {} } },
+        document: { addEventListener(name, fn) { fn(); }, createElement(tag) { if (tag === 'div' && !overlay.created) { overlay.created = true; return overlay; } return makeElement(); }, body: { appendChild() {} } },
         fetch(url, request) {
             requests.push(request.body);
             const response = responses.shift();
@@ -283,41 +283,48 @@ async function main() {
     closedDuringReview.element('.mg-order-export-close').handlers.click();
     await flush();
     assert.equal(closedDuringReview.requests.length, 1, 'closing during review loading never starts export');
-    const approvalData = { key: 'k1', order_id: 90, item_id: 11, product_name: 'Póló', fields: [{ label: 'Hónap', value: 'május' }], instructions: 'A képen látható hónapot cseréld erre: "május".' };
-    const approvalUi = setup();
-    approvalUi.responses.push(reviewPayload(), { success: true, data: { job_id: 'appr' } }, { success: true, data: { completed: 0, total: 1, waiting: true, ai_status: 'approval', ai_key: 'k1', ai_approval: approvalData, message: 'AI-kép jóváhagyásra vár' } });
-    approvalUi.element('.mg-order-export-choice-normal').handlers.click();
+    const reviewItem = { key: 'k1', order_id: 90, item_id: 11, product_name: 'Póló', fields: [{ label: 'Hónap', value: 'május' }], instructions: 'A képen látható hónapot cseréld erre: "május".', state: 'pending' };
+    const reviewState = (item, extra = {}) => ({ success: true, data: { completed: 2, total: 2, percent: 100, done: false, waiting: false, review: [item], message: 'AI-képek ellenőrzése', ...extra } });
+    const gallery = setup();
+    gallery.responses.push(reviewPayload(), { success: true, data: { job_id: 'gal' } }, reviewState(reviewItem));
+    gallery.element('.mg-order-export-choice-normal').handlers.click();
     await flush();
-    assert.equal(approvalUi.element('.mg-order-export-approval').hidden, false, 'a generated image is shown for approval');
-    assert.equal(approvalUi.timers.length, 0, 'polling pauses while the admin decides');
-    assert.equal(approvalUi.intervals.length, 0, 'watchdogs cannot interrupt a slow decision');
-    assert.match(approvalUi.element('.mg-order-export-approval-ai').src, /mg_design_export_ai_preview.*job_id=appr.*key=k1.*which=ai/);
-    approvalUi.element('.mg-order-export-approval-regen').handlers.click();
-    assert.equal(approvalUi.element('.mg-order-export-approval-editor').hidden, false);
-    assert.equal(approvalUi.element('.mg-order-export-approval-prompt').value, approvalData.instructions, 'regeneration opens the current instructions for editing');
-    approvalUi.element('.mg-order-export-approval-prompt').value = 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".';
-    approvalUi.responses.push({ success: false, data: { message: 'Átmeneti hiba' } });
-    approvalUi.element('.mg-order-export-approval-send').handlers.click();
+    assert.equal(gallery.element('.mg-order-export-gallery').hidden, false, 'the finished export opens the AI review gallery');
+    assert.equal(gallery.element('.mg-order-export-download').hidden, true, 'the ZIP is not offered before review');
+    assert.equal(gallery.timers.length, 0, 'nothing polls while the admin reviews');
+    assert.equal(gallery.intervals.length, 0, 'watchdogs cannot interrupt a slow review');
+    const card = () => gallery.element('.mg-order-export-gallery-list').children[0];
+    const find = (node, predicate) => { if (predicate(node)) return node; for (const child of node.children || []) { const hit = find(child, predicate); if (hit) return hit; } return null; };
+    const button = (label) => find(card(), node => node.text === label);
+    const textarea = () => find(card(), node => node.rows === 5);
+    assert.match(find(card(), node => node.alt === 'AI által módosított nyomat').src, /mg_design_export_ai_preview.*job_id=gal.*key=k1.*which=ai/);
+    button('Újragenerálás…').handlers.click();
+    assert.equal(textarea().value, reviewItem.instructions, 'regeneration opens the item instructions for editing');
+    textarea().value = 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".';
+    gallery.responses.push({ success: false, data: { message: 'Átmeneti hiba' } });
+    button('Újragenerálás indítása').handlers.click();
     await flush();
-    assert.equal(approvalUi.element('.mg-order-export-approval').hidden, false, 'a failed decision keeps the approval open');
-    assert.equal(approvalUi.element('.mg-order-export-approval-send').disabled, false);
-    approvalUi.responses.push({ success: true }, { success: true, data: { completed: 0, total: 1, waiting: true, ai_status: 'queued', ai_key: 'k2', message: 'Indításra vár' } });
-    approvalUi.element('.mg-order-export-approval-send').handlers.click();
+    assert.match(gallery.element('.mg-order-export-error').textContent, /Átmeneti hiba/);
+    gallery.responses.push({ success: true }, reviewState({ ...reviewItem, key: 'k2', state: 'regenerating', stage: 'OpenAI válaszára vár' }, { waiting: true, ai_worker_keys: ['k2'] }), { success: true });
+    button('Újragenerálás indítása').handlers.click();
     await flush();
-    const decision = new URLSearchParams(approvalUi.requests[4]);
+    const decision = new URLSearchParams(gallery.requests[4]);
     assert.equal(decision.get('decision'), 'regenerate');
     assert.equal(decision.get('key'), 'k1');
     assert.equal(decision.get('instructions'), 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".', 'edited instructions are sent for this image only');
-    assert.equal(approvalUi.element('.mg-order-export-approval').hidden, true, 'the export resumes polling after the decision');
-    approvalUi.responses.push({ success: true, data: { completed: 0, total: 1, waiting: true, ai_status: 'approval', ai_key: 'k2', ai_approval: { ...approvalData, key: 'k2' }, message: 'AI-kép jóváhagyásra vár' } });
-    approvalUi.timers.shift().fn();
+    assert.ok(gallery.requests.some(body => body.includes('action=mg_design_export_run_ai') && body.includes('worker_key=k2')), 'the regeneration worker starts from the open tab');
+    assert.match(find(card(), node => node.className === 'mg-order-export-card-status').text, /OpenAI válaszára vár/);
+    gallery.responses.push(reviewState({ ...reviewItem, key: 'k2', instructions: 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".' }));
+    gallery.timers.find(timer => timer.delay === 2000).fn();
     await flush();
-    approvalUi.responses.push({ success: true }, { success: true, data: { completed: 1, total: 1, done: true } });
-    approvalUi.element('.mg-order-export-approval-accept').handlers.click();
+    assert.match(find(card(), node => node.alt === 'AI által módosított nyomat').src, /key=k2/, 'the new print is shown once ready');
+    assert.equal(gallery.timers.length, 0);
+    gallery.responses.push({ success: true }, { success: true, data: { completed: 2, total: 2, done: true } });
+    gallery.element('.mg-order-export-gallery-accept-all').handlers.click();
     await flush();
-    assert.equal(new URLSearchParams(approvalUi.requests[7]).get('decision'), 'approve');
-    assert.equal(new URLSearchParams(approvalUi.requests[7]).get('key'), 'k2');
-    assert.equal(approvalUi.element('.mg-order-export-download').hidden, false, 'approved image lets the export finish');
+    assert.equal(new URLSearchParams(gallery.requests.at(-2)).get('decision'), 'approve_all');
+    assert.equal(gallery.element('.mg-order-export-download').hidden, false, 'accepting every image offers the ZIP');
+    assert.equal(gallery.element('.mg-order-export-gallery').hidden, true);
     console.log('Order export UI tests passed (HTTP and DOM mocked).');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

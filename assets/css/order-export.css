@@ -43,8 +43,17 @@
 .mg-order-export-decisions .button { white-space: normal; min-height: 44px; }
 .mg-order-export-decisions [aria-pressed="true"] { background: #e5f3ff; border-color: #2271b1; box-shadow: inset 0 0 0 1px #2271b1; color: #135e96; }
 .mg-order-export-approval-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
-.mg-order-export-approval-grid h4 { margin: 0 0 8px; }
+.mg-order-export-approval-grid h5 { margin: 0 0 6px; font-size: 13px; }
+.mg-order-export-approval-grid .mg-order-export-image-wrap { height: 32vh; min-height: 220px; }
 .mg-order-export-approval-editor textarea { width: 100%; margin-top: 8px; font-size: 14px; }
+.mg-order-export-gallery-toolbar { display: flex; align-items: center; gap: 16px; margin: 12px 0; }
+.mg-order-export-card { border: 1px solid #c3c4c7; border-left-width: 4px; border-radius: 4px; padding: 14px 16px; margin-bottom: 16px; }
+.mg-order-export-card h4 { margin: 0 0 10px; }
+.mg-order-export-card.is-approved { border-left-color: #00a32a; }
+.mg-order-export-card.is-failed { border-left-color: #d63638; }
+.mg-order-export-card.is-regenerating { border-left-color: #dba617; }
+.mg-order-export-card-status { font-weight: 600; }
+.mg-order-export-card .mg-order-export-fields dd { font-size: 16px; margin-bottom: 8px; }
 .mg-order-export-approval-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
 .mg-order-export-approval-actions .button { min-height: 40px; }
 .mg-order-export-review-nav { display: flex; justify-content: space-between; margin-top: 22px; }

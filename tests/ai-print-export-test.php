@@ -163,11 +163,11 @@ require_once dirname(__DIR__) . '/includes/class-outlet.php';
 require_once dirname(__DIR__) . '/admin/class-custom-fields-page.php';
 require_once dirname(__DIR__) . '/admin/class-ai-seo-page.php';
 function call_hidden($class, $method, ...$args) { return (new ReflectionMethod($class, $method))->invoke(null, ...$args); }
-/** Export step that accepts every generated image, as an admin clicking "Elfogad". */
+/** Export step that accepts all generated images at the final review, as an admin would. */
 function step($job_id) {
     $progress = raw_step($job_id);
-    while (!empty($progress['ai_approval'])) {
-        call_hidden('MG_Order_Design_Download', 'decide_ai_image', $job_id, $progress['ai_approval']['key'], 'approve', '');
+    if (!empty($progress['review']) && empty($progress['waiting'])) {
+        call_hidden('MG_Order_Design_Download', 'decide_ai_image', $job_id, '', 'approve_all', '');
         $progress = raw_step($job_id);
     }
     return $progress;
@@ -376,31 +376,48 @@ try {
     $zip->close();
     check(MG_Image_Utils::$stripped === 4, 'black garment export removes black before sizing and again after final alpha');
     check(!file_exists($test_dir . '/mg-ai-print-' . $actions[0][1][0] . '.png'), 'completed export removes generated temporary PNG');
-    // Generated images wait for the admin; a rejected one is regenerated with edited instructions.
-    make_job('approval', array($tasks[0]));
+    // The export runs to the end; generated images are reviewed afterwards and can be regenerated.
+    $approval_job = make_job('approval', array($tasks[0], $tasks[1]));
     raw_step('approval');
     $approval_key = MG_AI_Print_Generator::task_key('approval', $tasks[0]);
     MG_AI_Print_Generator::run($approval_key);
     $pending = raw_step('approval');
-    check($pending['waiting'] && $pending['completed'] === 0 && $pending['ai_approval']['key'] === $approval_key && str_contains($pending['message'], 'jóváhagyásra vár'), 'a generated image waits for approval before entering the ZIP');
-    check(str_contains($pending['ai_approval']['instructions'], '"szeptember"') && !str_contains($pending['ai_approval']['instructions'], 'Ne készíts termékfotót'), 'approval exposes only the editable per-field instructions');
-    check(is_file(call_hidden('MG_Order_Design_Download', 'ai_preview_path', 'approval', $approval_key, false)) && call_hidden('MG_Order_Design_Download', 'ai_preview_path', 'approval', $approval_key, true) === realpath($tasks[0]['design_path']), 'approval previews serve the generated image and the base design');
+    check(!$pending['done'] && !$pending['waiting'] && $pending['completed'] === 2 && count($pending['review']) === 1 && $pending['review'][0]['key'] === $approval_key && $pending['review'][0]['state'] === 'pending', 'the whole export finishes first, then one review entry per item waits for approval');
+    check(str_contains($pending['review'][0]['instructions'], '"szeptember"') && !str_contains($pending['review'][0]['instructions'], 'Ne készíts termékfotót'), 'review exposes only the editable per-field instructions');
+    $zip = new ZipArchive();
+    $zip->open($approval_job['zip_path']);
+    $first_print = $zip->getFromName($tasks[0]['zip_name']);
+    $zip->close();
+    check(call_hidden('MG_Order_Design_Download', 'ai_preview_bytes', 'approval', $approval_key, false) === $first_print && call_hidden('MG_Order_Design_Download', 'ai_preview_bytes', 'approval', $approval_key, true) === $source_bytes, 'review previews show the print stored in the ZIP and the base design');
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', hash('sha256', 'stale'), 'approve', ''), 'nem az aktuális');
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $approval_key, 'regenerate', '  '), 'nem lehet üres');
-    $old_approval_path = MG_AI_Print_Generator::ready_path('approval', $tasks[0]);
     $calls_before_regen = count($http_calls);
     call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $approval_key, 'regenerate', 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".');
-    check(!is_file($old_approval_path) && count($http_calls) === $calls_before_regen, 'regeneration discards the rejected image without calling the API itself');
+    check(count($http_calls) === $calls_before_regen, 'a regeneration request itself never calls the API');
     $regen = raw_step('approval');
-    $regen_task = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'approval')['tasks'][0];
-    $regen_key = MG_AI_Print_Generator::task_key('approval', $regen_task);
-    check($regen_key !== $approval_key && $regen['ai_worker_key'] === $regen_key, 'regeneration starts a new attempt for the same item');
+    $regen_key = $regen['review'][0]['key'];
+    check($regen_key !== $approval_key && $regen['review'][0]['state'] === 'regenerating' && $regen['waiting'] && $regen['ai_worker_keys'] === array($regen_key), 'regeneration starts a new attempt for that item only');
+    $http_mode = '401';
     MG_AI_Print_Generator::run($regen_key);
-    check(count($http_calls) === $calls_before_regen + 1 && str_contains(end($http_calls)[1]['body'], 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".') && str_contains(end($http_calls)[1]['body'], 'Ne készíts termékfotót'), 'the edited instructions replace the field prompt and keep the fixed rules');
+    $failed = raw_step('approval');
+    check($failed['review'][0]['state'] === 'failed' && str_contains($failed['review'][0]['message'], 'HTTP 401') && !$failed['done'] && is_file($approval_job['zip_path']), 'a failed regeneration keeps the finished export and reports the item');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'approve', ''), 'nem fogadható el');
+    $http_mode = 'ok';
+    call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'regenerate', 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".');
+    $regen_key = raw_step('approval')['review'][0]['key'];
+    $calls_before_foreign = count($http_calls);
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'approval', hash('sha256', 'not-under-review'));
+    check(count($http_calls) === $calls_before_foreign && raw_step('approval')['review'][0]['state'] === 'regenerating', 'the browser worker ignores keys that are not being regenerated');
+    call_hidden('MG_Order_Design_Download', 'run_export_ai', 'approval', $regen_key);
+    check(str_contains(end($http_calls)[1]['body'], 'A "SZEPTEMBER" feliratot cseréld erre: "MÁJUS".') && str_contains(end($http_calls)[1]['body'], 'Ne készíts termékfotót'), 'the edited instructions replace the field prompt and keep the fixed rules');
     $pending = raw_step('approval');
-    check($pending['ai_approval']['key'] === $regen_key && str_contains($pending['ai_approval']['instructions'], 'MÁJUS'), 'the regenerated image is offered for approval with the edited instructions');
+    check($pending['review'][0]['state'] === 'pending' && str_contains($pending['review'][0]['instructions'], 'MÁJUS'), 'the regenerated print is offered again for approval');
+    $zip->open($approval_job['zip_path']);
+    check($zip->numFiles === 2 && $zip->getFromName($tasks[1]['zip_name']) === $zip->getFromName($tasks[0]['zip_name']), 'the regenerated print replaces every quantity copy in the ZIP');
+    $zip->close();
     call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'approve', '');
-    check(raw_step('approval')['done'], 'an approved image completes the export');
+    check(raw_step('approval')['done'], 'approving every image completes the export');
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'approve', ''), 'nem aktív');
     foreach (array('gpt-image-2.5-sunburst', 'gpt-image-2.5-flare') as $model) {
         MG_AI_Print_Generator::save_settings(array('model' => $model));
         $model_tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));

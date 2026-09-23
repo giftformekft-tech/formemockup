@@ -51,6 +51,8 @@ class MG_Order_Design_Download {
     const JOB_TRANSIENT_PREFIX = 'mg_design_export_job_';
     const REVIEW_TRANSIENT_PREFIX = 'mg_design_export_review_';
     const JOB_TTL = HOUR_IN_SECONDS;
+    // A finished export may wait for the admin's image review much longer.
+    const REVIEW_TTL = 6 * HOUR_IN_SECONDS;
 
     /**
      * Order IDs pending export, set by maybe_prepare_export_modal() during
@@ -547,6 +549,7 @@ class MG_Order_Design_Download {
                 }
                 $job['next_index'] = $job['completed'] = 0;
                 $job['cache'] = array();
+                $job['review'] = array();
                 $job['status'] = 'processing';
                 unset($job['message']);
                 set_transient($transient_key, $job, self::JOB_TTL);
@@ -572,13 +575,12 @@ class MG_Order_Design_Download {
         }
     }
 
-    /** Current AI task of an owned, running job, matched to the key the browser saw. */
-    protected static function current_ai_task(array $job, $job_id, $key) {
-        $task = $job['tasks'][$job['next_index']] ?? null;
-        if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) {
-            throw new RuntimeException(__('Ez az AI-kép már nem az aktuális tétel. Frissítsd az export állapotát.', 'mg'));
+    /** The review entry whose current attempt the browser saw. */
+    protected static function &review_item(array &$job, $key) {
+        foreach ($job['review'] as &$item) {
+            if ($item['key'] === $key) return $item;
         }
-        return $task;
+        throw new RuntimeException(__('Ez az AI-kép már nem az aktuális változat. Frissítsd az oldalt.', 'mg'));
     }
 
     public static function ajax_export_ai_decision() {
@@ -596,8 +598,8 @@ class MG_Order_Design_Download {
     }
 
     /**
-     * Accept the generated image, or replace it with a new attempt using the
-     * admin's edited instructions. Only this item is regenerated.
+     * Review decisions after the full export: accept an image (or all), or
+     * regenerate one item with the admin's edited instructions.
      */
     protected static function decide_ai_image($job_id, $key, $decision, $instructions) {
         $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
@@ -611,64 +613,88 @@ class MG_Order_Design_Download {
         }
         try {
             $job = get_transient($transient_key);
-            if (!is_array($job)) throw new RuntimeException(__('A feladat lejárt. Indíts új exportot.', 'mg'));
-            $task = self::current_ai_task($job, $job_id, $key);
-            if ($decision === 'approve') {
-                MG_AI_Print_Generator::approve($job_id, $task);
-                return;
+            if (!is_array($job) || $job['status'] !== 'review') {
+                throw new RuntimeException(__('Az AI-képek ellenőrzése nem aktív ennél az exportnál.', 'mg'));
             }
-            if ($decision !== 'regenerate') {
-                throw new RuntimeException(__('Ismeretlen döntés.', 'mg'));
+            if ($decision === 'approve_all') {
+                foreach ($job['review'] as &$each) {
+                    if ($each['state'] === 'pending') $each['state'] = 'approved';
+                }
+                unset($each);
+            } else {
+                $item = &self::review_item($job, $key);
+                if ($decision === 'approve') {
+                    if ($item['state'] !== 'pending' && $item['state'] !== 'approved') {
+                        throw new RuntimeException(__('Ez a kép most nem fogadható el.', 'mg'));
+                    }
+                    $item['state'] = 'approved';
+                } elseif ($decision === 'regenerate') {
+                    if ($item['state'] === 'regenerating') {
+                        throw new RuntimeException(__('Ennek a képnek az újragenerálása már folyamatban van.', 'mg'));
+                    }
+                    $instructions = trim($instructions);
+                    if ($instructions === '') {
+                        throw new RuntimeException(__('Az AI-utasítás nem lehet üres.', 'mg'));
+                    }
+                    $prompt = MG_AI_Print_Generator::build_prompt($instructions);
+                    MG_AI_Print_Generator::assert_available();
+                    MG_AI_Print_Generator::discard($job_id, $job['tasks'][$item['indexes'][0]]);
+                    $attempt = wp_generate_uuid4();
+                    foreach ($item['indexes'] as $index) {
+                        $job['tasks'][$index]['ai_attempt'] = $attempt;
+                        $job['tasks'][$index]['ai_prompt'] = $prompt;
+                        $job['tasks'][$index]['ai_instructions'] = $instructions;
+                    }
+                    $item['key'] = MG_AI_Print_Generator::task_key($job_id, $job['tasks'][$item['indexes'][0]]);
+                    $item['instructions'] = $instructions;
+                    $item['state'] = 'regenerating';
+                    unset($item['message'], $item['stage']);
+                } else {
+                    throw new RuntimeException(__('Ismeretlen döntés.', 'mg'));
+                }
+                unset($item);
             }
-            $instructions = trim($instructions);
-            if ($instructions === '') {
-                throw new RuntimeException(__('Az AI-utasítás nem lehet üres.', 'mg'));
-            }
-            $prompt = MG_AI_Print_Generator::build_prompt($instructions);
-            MG_AI_Print_Generator::assert_available();
-            MG_AI_Print_Generator::discard($job_id, $task);
-            $attempt = wp_generate_uuid4();
-            foreach ($job['tasks'] as $index => &$candidate) {
-                if ($index < $job['next_index'] || $candidate['order_id'] !== $task['order_id'] || $candidate['item_id'] !== $task['item_id']) continue;
-                $candidate['ai_attempt'] = $attempt;
-                $candidate['ai_prompt'] = $prompt;
-                $candidate['ai_instructions'] = $instructions;
-            }
-            unset($candidate);
-            set_transient($transient_key, $job, self::JOB_TTL);
+            set_transient($transient_key, $job, self::job_ttl($job));
         } finally {
             delete_option($lock);
         }
     }
 
-    /** Streams the current task's base design or generated image for approval. */
+    /** Streams the base design or the print actually stored in the ZIP. */
     public static function ajax_export_ai_preview() {
         if (!current_user_can('edit_shop_orders') || !isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'mg_design_export_nonce')) {
             wp_die(__('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg'), '', array('response' => 403));
         }
         try {
-            $path = self::ai_preview_path(sanitize_text_field($_GET['job_id'] ?? ''), sanitize_text_field($_GET['key'] ?? ''), ($_GET['which'] ?? '') === 'original');
+            $bytes = self::ai_preview_bytes(sanitize_text_field($_GET['job_id'] ?? ''), sanitize_text_field($_GET['key'] ?? ''), ($_GET['which'] ?? '') === 'original');
         } catch (Throwable $e) {
             wp_die(esc_html($e->getMessage()), '', array('response' => 404));
         }
         nocache_headers();
         header('Content-Type: image/png');
-        header('Content-Disposition: inline; filename="ai-jovahagyas.png"');
+        header('Content-Disposition: inline; filename="ai-ellenorzes.png"');
         header('X-Content-Type-Options: nosniff');
-        readfile($path);
+        echo $bytes;
         exit;
     }
 
-    protected static function ai_preview_path($job_id, $key, $original) {
+    protected static function ai_preview_bytes($job_id, $key, $original) {
         $job = get_transient(self::JOB_TRANSIENT_PREFIX . $job_id);
-        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id() || empty($job['review'])) {
             throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
         }
-        $task = self::current_ai_task($job, $job_id, $key);
-        if ($original) return self::review_image_path($task['design_path']);
-        $path = MG_AI_Print_Generator::ready_path($job_id, $task);
-        if ($path === '') throw new RuntimeException(__('Az AI-kép még nem készült el vagy már nem érhető el.', 'mg'));
-        return $path;
+        $item = self::review_item($job, $key);
+        $task = $job['tasks'][$item['indexes'][0]];
+        if ($original) {
+            $bytes = file_get_contents(self::review_image_path($task['design_path']));
+        } else {
+            $zip = new ZipArchive();
+            if ($zip->open($job['zip_path']) !== true) throw new RuntimeException(__('Nem sikerült megnyitni a ZIP fájlt.', 'mg'));
+            $bytes = $zip->getFromName($task['zip_name']);
+            $zip->close();
+        }
+        if (!is_string($bytes) || $bytes === '') throw new RuntimeException(__('A kép nem érhető el.', 'mg'));
+        return $bytes;
     }
 
     protected static function run_export_ai($job_id, $key) {
@@ -676,8 +702,17 @@ class MG_Order_Design_Download {
         if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
             throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
         }
-        $task = $job['tasks'][$job['next_index']] ?? null;
-        if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) return;
+        if ($job['status'] === 'review') {
+            // Final review: several regenerations may run side by side.
+            $regenerating = false;
+            foreach ((array) $job['review'] as $item) {
+                if ($item['state'] === 'regenerating' && $item['key'] === $key) $regenerating = true;
+            }
+            if (!$regenerating) return;
+        } else {
+            $task = $job['tasks'][$job['next_index']] ?? null;
+            if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) return;
+        }
         // Uses the same atomic worker lock as Action Scheduler; the two paths
         // cannot issue a second paid request for the same attempt.
         MG_AI_Print_Generator::run($key, 'browser');
@@ -736,6 +771,11 @@ class MG_Order_Design_Download {
             if ($job['status'] === 'error') {
                 throw new RuntimeException($job['message']);
             }
+            if ($job['status'] === 'review') {
+                $payload = self::process_review_step($job_id, $job);
+                set_transient($transient_key, $job, self::job_ttl($job));
+                return $payload;
+            }
             $waiting = false;
             $message = '';
             $ai_progress = array();
@@ -755,23 +795,6 @@ class MG_Order_Design_Download {
                     if ($design_path === '') {
                         $waiting = true;
                         $message = sprintf(__('%1$s – rendelés #%2$d, tétel #%3$d.', 'mg'), MG_AI_Print_Generator::stage_label($ai_progress['ai_stage']), $task['order_id'], $task['item_id']);
-                        break;
-                    }
-                    // Nothing generated reaches the ZIP until the admin accepts it.
-                    if (!MG_AI_Print_Generator::is_approved($job_id, $task)) {
-                        $waiting = true;
-                        $message = sprintf(__('%1$s – rendelés #%2$d, tétel #%3$d.', 'mg'), MG_AI_Print_Generator::stage_label('approval'), $task['order_id'], $task['item_id']);
-                        $ai_progress = array(
-                            'ai_status' => 'approval', 'ai_stage' => 'approval',
-                            'ai_key' => MG_AI_Print_Generator::task_key($job_id, $task),
-                            'ai_approval' => array(
-                                'key' => MG_AI_Print_Generator::task_key($job_id, $task),
-                                'order_id' => $task['order_id'], 'item_id' => $task['item_id'],
-                                'product_name' => $task['product_name'] ?? '',
-                                'fields' => $task['review_fields'] ?? array(),
-                                'instructions' => $task['ai_instructions'] ?? '',
-                            ),
-                        );
                         break;
                     }
                     if (!in_array($design_path, $job['temp_files'], true)) {
@@ -794,6 +817,9 @@ class MG_Order_Design_Download {
                 if (method_exists($zip, 'setCompressionName')) {
                     $zip->setCompressionName($task['zip_name'], ZipArchive::CM_STORE);
                 }
+                if (!empty($task['ai_prompt'])) {
+                    self::register_review_item($job, $job_id, $task, $job['next_index']);
+                }
                 $job['next_index']++;
                 $job['completed']++;
                 $in_batch++;
@@ -806,13 +832,14 @@ class MG_Order_Design_Download {
                 }
             }
             if ($job['next_index'] >= $job['total']) {
-                $job['status'] = 'completed';
-                foreach (array_unique($job['temp_files']) as $temp_file) {
-                    @unlink($temp_file);
-                }
-                $job['temp_files'] = array();
+                // Every print is in the ZIP; generated images still need the admin's OK.
+                $job['status'] = self::review_pending($job) ? 'review' : 'completed';
+                if ($job['status'] === 'completed') self::finish_job($job);
             }
-            set_transient($transient_key, $job, self::JOB_TTL);
+            set_transient($transient_key, $job, self::job_ttl($job));
+            if ($job['status'] === 'review') {
+                return array_merge(self::progress_payload($job), self::review_payload($job));
+            }
             return array_merge(self::progress_payload($job, $waiting, $message), $waiting ? $ai_progress : array());
         } catch (Throwable $e) {
             if (!is_array($job)) {
@@ -844,6 +871,122 @@ class MG_Order_Design_Download {
             }
             delete_option($lock);
         }
+    }
+
+    protected static function job_ttl(array $job) {
+        return $job['status'] === 'review' ? self::REVIEW_TTL : self::JOB_TTL;
+    }
+
+    protected static function finish_job(array &$job) {
+        $job['status'] = 'completed';
+        foreach (array_unique($job['temp_files']) as $temp_file) {
+            @unlink($temp_file);
+        }
+        $job['temp_files'] = array();
+    }
+
+    /** One review entry per ordered item; quantity copies share its image. */
+    protected static function register_review_item(array &$job, $job_id, array $task, $index) {
+        $item_key = $task['order_id'] . '_' . $task['item_id'];
+        if (!isset($job['review'][$item_key])) {
+            $job['review'][$item_key] = array(
+                'key' => MG_AI_Print_Generator::task_key($job_id, $task),
+                'order_id' => $task['order_id'], 'item_id' => $task['item_id'],
+                'product_name' => $task['product_name'] ?? '',
+                'fields' => $task['review_fields'] ?? array(),
+                'instructions' => $task['ai_instructions'] ?? '',
+                'state' => 'pending', 'indexes' => array(),
+            );
+        }
+        if (!in_array($index, $job['review'][$item_key]['indexes'], true)) {
+            $job['review'][$item_key]['indexes'][] = $index;
+        }
+    }
+
+    protected static function review_pending(array $job) {
+        foreach ((array) ($job['review'] ?? array()) as $item) {
+            if ($item['state'] !== 'approved') return true;
+        }
+        return false;
+    }
+
+    protected static function review_payload(array $job, array $worker_keys = array()) {
+        $items = array();
+        $approved = $regenerating = 0;
+        foreach ((array) ($job['review'] ?? array()) as $item) {
+            $approved += $item['state'] === 'approved' ? 1 : 0;
+            $regenerating += $item['state'] === 'regenerating' ? 1 : 0;
+            $items[] = array_intersect_key($item, array_flip(array('key', 'order_id', 'item_id', 'product_name', 'fields', 'instructions', 'state', 'message', 'stage')));
+        }
+        return array(
+            'review' => $items,
+            'waiting' => $regenerating > 0,
+            'ai_worker_keys' => $worker_keys,
+            'message' => sprintf(__('AI-képek ellenőrzése: %1$d / %2$d elfogadva.', 'mg'), $approved, count($items)),
+        );
+    }
+
+    /** After the full export: finish regenerations and swap their prints in the ZIP. */
+    protected static function process_review_step($job_id, array &$job) {
+        $zip = null;
+        $worker_keys = array();
+        try {
+            foreach ($job['review'] as &$item) {
+                if ($item['state'] !== 'regenerating') continue;
+                $first = $job['tasks'][$item['indexes'][0]];
+                $progress = array();
+                try {
+                    $path = MG_AI_Print_Generator::poll($job_id, $first, $progress);
+                } catch (Throwable $e) {
+                    // One failed attempt must not discard the rest of the finished export.
+                    $item['state'] = 'failed';
+                    $item['message'] = $e->getMessage();
+                    unset($item['stage']);
+                    continue;
+                }
+                if ($path === '') {
+                    $item['stage'] = MG_AI_Print_Generator::stage_label($progress['ai_stage'] ?? 'queued');
+                    if (!empty($progress['ai_worker_key'])) $worker_keys[] = $progress['ai_worker_key'];
+                    continue;
+                }
+                if (!in_array($path, $job['temp_files'], true)) {
+                    $job['temp_files'][] = $path;
+                }
+                if ($zip === null) {
+                    $zip = new ZipArchive();
+                    if ($zip->open($job['zip_path']) !== true) {
+                        $zip = null;
+                        throw new RuntimeException(__('Nem sikerült megnyitni a ZIP fájlt.', 'mg'));
+                    }
+                }
+                foreach ($item['indexes'] as $index) {
+                    $task = $job['tasks'][$index];
+                    $strip_black = !empty($job['strip_black']) && !empty($task['is_black_garment']);
+                    $export_path = self::prepare_export_png($path, $task['type'], $task['size'], $job['cache'], $job['temp_files'], !empty($task['large_size']), $strip_black);
+                    if (!$zip->addFile($export_path, $task['zip_name'])) {
+                        throw new RuntimeException(__('Nem sikerült a nyomatot a ZIP fájlba írni.', 'mg'));
+                    }
+                    if (method_exists($zip, 'setCompressionName')) {
+                        $zip->setCompressionName($task['zip_name'], ZipArchive::CM_STORE);
+                    }
+                }
+                $item['state'] = 'pending';
+                unset($item['stage'], $item['message']);
+            }
+            unset($item);
+            if ($zip !== null) {
+                $closed = $zip->close();
+                $zip = null;
+                if (!$closed) throw new RuntimeException(__('Nem sikerült menteni a ZIP fájlt.', 'mg'));
+            }
+        } finally {
+            if ($zip !== null) $zip->close();
+        }
+        if (!self::review_pending($job)) {
+            self::finish_job($job);
+            return self::progress_payload($job);
+        }
+        return array_merge(self::progress_payload($job), self::review_payload($job, $worker_keys));
     }
 
     protected static function progress_payload(array $job, $waiting = false, $message = '') {

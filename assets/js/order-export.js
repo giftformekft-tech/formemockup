@@ -43,30 +43,13 @@
                     '<p class="mg-order-export-summary-counts"></p><ul class="mg-order-export-summary-list"></ul>' +
                     '<button type="button" class="button button-primary mg-order-export-confirm">Export indítása</button>' +
                 '</section>' +
-                '<section class="mg-order-export-approval" hidden>' +
-                    '<p class="mg-order-export-approval-counter"></p>' +
-                    '<h3 class="mg-order-export-approval-title"></h3>' +
-                    '<div class="mg-order-export-approval-grid">' +
-                        '<div><h4>Alapminta</h4><div class="mg-order-export-image-wrap"><img class="mg-order-export-image mg-order-export-approval-original" alt="Alapminta" /></div>' +
-                            '<a class="mg-order-export-approval-original-link" target="_blank" rel="noopener">Teljes méret</a></div>' +
-                        '<div><h4>AI-kép</h4><div class="mg-order-export-image-wrap"><img class="mg-order-export-image mg-order-export-approval-ai" alt="AI által módosított kép" /></div>' +
-                            '<a class="mg-order-export-approval-ai-link" target="_blank" rel="noopener">Teljes méret</a> · ' +
-                            '<button type="button" class="button-link mg-order-export-approval-bg">Sötét háttér</button></div>' +
+                '<section class="mg-order-export-gallery" hidden>' +
+                    '<p><strong>Az export elkészült.</strong> Nézd át az AI-képeket: a ZIP csak akkor tölthető le, ha mindegyiket elfogadtad. Ha egy kép hibás, generáld újra pontosított utasítással; a ZIP-ben csak az a kép cserélődik.</p>' +
+                    '<div class="mg-order-export-gallery-toolbar">' +
+                        '<button type="button" class="button button-primary mg-order-export-gallery-accept-all">Összes elfogadása</button>' +
+                        '<button type="button" class="button-link mg-order-export-gallery-bg">Sötét háttér</button>' +
                     '</div>' +
-                    '<dl class="mg-order-export-fields mg-order-export-approval-fields"></dl>' +
-                    '<div class="mg-order-export-approval-editor" hidden>' +
-                        '<label for="mg-export-approval-prompt"><strong>Utasítás az AI-nak ehhez a képhez</strong></label>' +
-                        '<textarea id="mg-export-approval-prompt" class="large-text mg-order-export-approval-prompt" rows="5"></textarea>' +
-                        '<p class="description">Írd le pontosan, milyen szöveg szerepel most a mintán, és mire cserélje. Például: A „SZEPTEMBER” feliratot cseréld erre: „MÁJUS”. Az általános szabályokat (stílus, háttér megtartása) a rendszer automatikusan hozzáadja.</p>' +
-                        '<div class="mg-order-export-approval-actions">' +
-                            '<button type="button" class="button button-primary mg-order-export-approval-send">Újragenerálás indítása</button>' +
-                            '<button type="button" class="button mg-order-export-approval-cancel">Mégse</button>' +
-                        '</div>' +
-                    '</div>' +
-                    '<div class="mg-order-export-approval-actions mg-order-export-approval-main">' +
-                        '<button type="button" class="button button-primary mg-order-export-approval-accept">Elfogad</button>' +
-                        '<button type="button" class="button mg-order-export-approval-regen">Újragenerálás…</button>' +
-                    '</div>' +
+                    '<div class="mg-order-export-gallery-list"></div>' +
                 '</section>' +
                 '<div class="mg-order-export-progress-bar" hidden><span></span></div>' +
                 '<p class="mg-order-export-status" hidden></p>' +
@@ -108,11 +91,9 @@
         var prevEl        = overlay.querySelector('.mg-order-export-prev');
         var nextEl        = overlay.querySelector('.mg-order-export-next');
         var confirmEl     = overlay.querySelector('.mg-order-export-confirm');
-        var approvalEl    = overlay.querySelector('.mg-order-export-approval');
-        var approvalEditorEl = overlay.querySelector('.mg-order-export-approval-editor');
-        var approvalMainEl = overlay.querySelector('.mg-order-export-approval-main');
-        var approvalPromptEl = overlay.querySelector('.mg-order-export-approval-prompt');
-        var approvalButtons = ['.mg-order-export-approval-accept', '.mg-order-export-approval-regen', '.mg-order-export-approval-send', '.mg-order-export-approval-cancel'].map(function (selector) { return overlay.querySelector(selector); });
+        var galleryEl     = overlay.querySelector('.mg-order-export-gallery');
+        var galleryListEl = overlay.querySelector('.mg-order-export-gallery-list');
+        var acceptAllEl   = overlay.querySelector('.mg-order-export-gallery-accept-all');
         var previousFocus = document.activeElement;
 
         titleEl.textContent       = i18n.title || 'Export';
@@ -138,7 +119,9 @@
         var darkBackground = false;
         var activeJobId = '';
         var retrying = false;
-        var approval = null;
+        var galleryCards = {};
+        var galleryJobId = '';
+        var galleryDark = false;
         var deciding = false;
         var workers = {};
         var pollVersion = 0;
@@ -246,7 +229,6 @@
         var pauseExport = function (message) {
             if (stopped) return;
             stopPolling();
-            hideApproval();
             if (lastReplyAt) {
                 renderTiming();
                 if (lastProgress && lastProgress.message) detailEl.textContent = 'Utolsó ismert lépés: ' + lastProgress.message + ' ' + detailEl.textContent;
@@ -257,85 +239,166 @@
             showError(message);
         };
 
-        var approvalUrl = function (which) {
-            return cfg.ajax_url + '?action=mg_design_export_ai_preview&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(approval.jobId) + '&key=' + encodeURIComponent(approval.key) + '&which=' + which;
+        var galleryImageUrl = function (key, which) {
+            return cfg.ajax_url + '?action=mg_design_export_ai_preview&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(galleryJobId) + '&key=' + encodeURIComponent(key) + '&which=' + which;
         };
-        var setApprovalBusy = function (busy) {
+        var el = function (tag, className, text) {
+            var node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
+        };
+        var setDeciding = function (busy) {
             deciding = busy;
-            approvalButtons.forEach(function (button) { button.disabled = busy; });
-        };
-        var hideApproval = function () {
-            approval = null;
-            approvalEl.hidden = true;
-            modalEl.classList.remove('has-review');
-        };
-        // Polling stays stopped while the admin decides; no watchdog can fire meanwhile.
-        var showApproval = function (jobId, data) {
-            stopPolling();
-            approval = { jobId: jobId, key: data.key, instructions: data.instructions || '' };
-            modalEl.classList.add('has-review');
-            detailEl.hidden = noticeEl.hidden = true;
-            statusEl.textContent = 'Ellenőrizd az AI-képet. Csak jóváhagyás után kerül a ZIP-be.';
-            overlay.querySelector('.mg-order-export-approval-counter').textContent = 'Rendelés #' + data.order_id + ' · Tétel #' + data.item_id;
-            overlay.querySelector('.mg-order-export-approval-title').textContent = data.product_name || '';
-            var fields = overlay.querySelector('.mg-order-export-approval-fields');
-            fields.textContent = '';
-            (data.fields || []).forEach(function (field) {
-                var label = document.createElement('dt');
-                var value = document.createElement('dd');
-                label.textContent = field.label;
-                value.textContent = field.value || 'Nincs megadva';
-                fields.appendChild(label);
-                fields.appendChild(value);
+            acceptAllEl.disabled = busy;
+            Object.keys(galleryCards).forEach(function (id) {
+                var card = galleryCards[id];
+                card.accept.disabled = busy || card.state !== 'pending';
+                card.regen.disabled = busy || card.state === 'regenerating';
+                card.send.disabled = busy;
             });
-            var stamp = '&view=' + Date.now();
-            overlay.querySelector('.mg-order-export-approval-original').src = approvalUrl('original') + stamp;
-            overlay.querySelector('.mg-order-export-approval-ai').src = approvalUrl('ai') + stamp;
-            overlay.querySelector('.mg-order-export-approval-original-link').href = approvalUrl('original');
-            overlay.querySelector('.mg-order-export-approval-ai-link').href = approvalUrl('ai');
-            approvalEditorEl.hidden = true;
-            approvalMainEl.hidden = false;
-            setApprovalBusy(false);
-            approvalEl.hidden = false;
-            titleEl.focus();
         };
-        var decideApproval = function (decision) {
-            if (!approval || deciding || stopped) return;
-            var instructions = decision === 'regenerate' ? approvalPromptEl.value.trim() : '';
-            if (decision === 'regenerate' && !instructions) { showError('Az AI-utasítás nem lehet üres.'); return; }
-            var jobId = approval.jobId;
-            setApprovalBusy(true);
+        var decide = function (decision, key, instructions) {
+            if (deciding || stopped || !galleryJobId) return;
+            var jobId = galleryJobId;
+            setDeciding(true);
             errorEl.hidden = true;
-            postJson('action=mg_design_export_ai_decision&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId) + '&key=' + encodeURIComponent(approval.key) + '&decision=' + decision + '&instructions=' + encodeURIComponent(instructions)).then(function (payload) {
+            postJson('action=mg_design_export_ai_decision&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId) + '&key=' + encodeURIComponent(key || '') + '&decision=' + decision + '&instructions=' + encodeURIComponent(instructions || '')).then(function (payload) {
                 if (stopped) return;
                 if (!payload.success) throw new Error(payload.data && payload.data.message || 'A döntést a szerver elutasította.');
-                hideApproval();
-                statusEl.textContent = decision === 'approve' ? 'AI-kép elfogadva, az export folytatódik…' : 'Újragenerálás indítása…';
+                setDeciding(false);
                 beginPolling(jobId);
             }).catch(function (error) {
                 if (stopped) return;
-                setApprovalBusy(false);
+                setDeciding(false);
                 showError(error.message);
             });
         };
-        overlay.querySelector('.mg-order-export-approval-accept').addEventListener('click', function () { decideApproval('approve'); });
-        overlay.querySelector('.mg-order-export-approval-regen').addEventListener('click', function () {
-            if (!approval || deciding) return;
-            approvalPromptEl.value = approval.instructions;
-            approvalEditorEl.hidden = false;
-            approvalMainEl.hidden = true;
-            approvalPromptEl.focus();
-        });
-        overlay.querySelector('.mg-order-export-approval-cancel').addEventListener('click', function () {
-            if (deciding) return;
-            approvalEditorEl.hidden = true;
-            approvalMainEl.hidden = false;
-        });
-        overlay.querySelector('.mg-order-export-approval-send').addEventListener('click', function () { decideApproval('regenerate'); });
-        overlay.querySelector('.mg-order-export-approval-bg').addEventListener('click', function () {
-            var dark = this.textContent === 'Sötét háttér';
-            Array.prototype.forEach.call(approvalEl.querySelectorAll('.mg-order-export-image-wrap'), function (wrap) { wrap.classList.toggle('is-dark', dark); });
-            this.textContent = dark ? 'Világos háttér' : 'Sötét háttér';
+        var createCard = function (item) {
+            var card = { root: el('div', 'mg-order-export-card') };
+            card.root.appendChild(el('h4', '', '#' + item.order_id + ' / #' + item.item_id + ' – ' + (item.product_name || '')));
+            var grid = el('div', 'mg-order-export-approval-grid');
+            var original = el('div');
+            original.appendChild(el('h5', '', 'Alapminta'));
+            var originalWrap = el('div', 'mg-order-export-image-wrap');
+            card.original = el('img', 'mg-order-export-image');
+            card.original.alt = 'Alapminta';
+            card.original.loading = 'lazy';
+            originalWrap.appendChild(card.original);
+            original.appendChild(originalWrap);
+            var generated = el('div');
+            generated.appendChild(el('h5', '', 'AI-kép (így kerül a ZIP-be)'));
+            var generatedWrap = el('div', 'mg-order-export-image-wrap');
+            card.image = el('img', 'mg-order-export-image');
+            card.image.alt = 'AI által módosított nyomat';
+            card.image.loading = 'lazy';
+            card.placeholder = el('p', 'mg-order-export-card-placeholder');
+            generatedWrap.appendChild(card.image);
+            generatedWrap.appendChild(card.placeholder);
+            generated.appendChild(generatedWrap);
+            card.link = el('a', '', 'Teljes méret');
+            card.link.target = '_blank';
+            card.link.rel = 'noopener';
+            generated.appendChild(card.link);
+            grid.appendChild(original);
+            grid.appendChild(generated);
+            card.root.appendChild(grid);
+            card.wraps = [originalWrap, generatedWrap];
+            var fields = el('dl', 'mg-order-export-fields');
+            (item.fields || []).forEach(function (field) {
+                fields.appendChild(el('dt', '', field.label));
+                fields.appendChild(el('dd', '', field.value || 'Nincs megadva'));
+            });
+            card.root.appendChild(fields);
+            card.status = el('p', 'mg-order-export-card-status');
+            card.root.appendChild(card.status);
+            card.actions = el('div', 'mg-order-export-approval-actions');
+            card.accept = el('button', 'button button-primary', 'Elfogad');
+            card.accept.type = 'button';
+            card.regen = el('button', 'button', 'Újragenerálás…');
+            card.regen.type = 'button';
+            card.actions.appendChild(card.accept);
+            card.actions.appendChild(card.regen);
+            card.root.appendChild(card.actions);
+            card.editor = el('div', 'mg-order-export-approval-editor');
+            card.editor.hidden = true;
+            card.editor.appendChild(el('strong', '', 'Utasítás az AI-nak ehhez a képhez'));
+            card.prompt = el('textarea', 'large-text');
+            card.prompt.rows = 5;
+            card.editor.appendChild(card.prompt);
+            card.editor.appendChild(el('p', 'description', 'Írd le pontosan, milyen szöveg szerepel most a mintán, és mire cserélje. Például: A „SZEPTEMBER” feliratot cseréld erre: „MÁJUS”. A stílus és a háttér megtartását a rendszer automatikusan hozzáadja. Minden újragenerálás új, fizetős API-hívás.'));
+            var editorActions = el('div', 'mg-order-export-approval-actions');
+            card.send = el('button', 'button button-primary', 'Újragenerálás indítása');
+            card.send.type = 'button';
+            card.cancel = el('button', 'button', 'Mégse');
+            card.cancel.type = 'button';
+            editorActions.appendChild(card.send);
+            editorActions.appendChild(card.cancel);
+            card.editor.appendChild(editorActions);
+            card.root.appendChild(card.editor);
+            card.accept.addEventListener('click', function () { decide('approve', card.key); });
+            card.regen.addEventListener('click', function () {
+                if (deciding) return;
+                card.prompt.value = card.instructions;
+                card.editor.hidden = false;
+                card.actions.hidden = true;
+                if (card.prompt.focus) card.prompt.focus();
+            });
+            card.cancel.addEventListener('click', function () { card.editor.hidden = true; card.actions.hidden = false; });
+            card.send.addEventListener('click', function () {
+                var text = (card.prompt.value || '').trim();
+                if (!text) { showError('Az AI-utasítás nem lehet üres.'); return; }
+                decide('regenerate', card.key, text);
+            });
+            galleryListEl.appendChild(card.root);
+            return card;
+        };
+        var updateCard = function (card, item) {
+            var changed = card.key !== item.key || card.state !== item.state;
+            card.instructions = item.instructions || '';
+            card.status.textContent = item.state === 'approved' ? '✓ Elfogadva – bekerül a ZIP-be.'
+                : item.state === 'regenerating' ? 'Újragenerálás folyamatban: ' + (item.stage || 'indítás') + '…'
+                : item.state === 'failed' ? 'Az újragenerálás nem sikerült: ' + (item.message || '') + ' A ZIP-ben az előző kép maradt; próbáld újra.'
+                : 'Jóváhagyásra vár.';
+            card.root.className = 'mg-order-export-card is-' + item.state;
+            if (changed) {
+                card.key = item.key;
+                card.state = item.state;
+                card.editor.hidden = true;
+                card.actions.hidden = false;
+                var stamp = '&view=' + Date.now();
+                card.original.src = galleryImageUrl(item.key, 'original') + stamp;
+                card.image.hidden = item.state === 'regenerating';
+                card.placeholder.textContent = item.state === 'regenerating' ? 'Új kép készül…' : '';
+                card.placeholder.hidden = item.state !== 'regenerating';
+                if (item.state !== 'regenerating') card.image.src = galleryImageUrl(item.key, 'ai') + stamp;
+                card.link.href = galleryImageUrl(item.key, 'ai');
+            }
+            card.accept.textContent = item.state === 'approved' ? 'Elfogadva' : 'Elfogad';
+            card.accept.disabled = deciding || item.state !== 'pending';
+            card.regen.disabled = deciding || item.state === 'regenerating';
+        };
+        var renderGallery = function (jobId, items) {
+            if (galleryJobId !== jobId) { galleryJobId = jobId; galleryCards = {}; galleryListEl.textContent = ''; }
+            modalEl.classList.add('has-review');
+            barWrapEl.hidden = true;
+            galleryEl.hidden = false;
+            var pending = 0;
+            items.forEach(function (item) {
+                var id = item.order_id + '_' + item.item_id;
+                if (!galleryCards[id]) galleryCards[id] = createCard(item);
+                updateCard(galleryCards[id], item);
+                if (item.state === 'pending') pending++;
+            });
+            acceptAllEl.disabled = deciding || !pending;
+        };
+        acceptAllEl.addEventListener('click', function () { decide('approve_all', ''); });
+        overlay.querySelector('.mg-order-export-gallery-bg').addEventListener('click', function () {
+            galleryDark = !galleryDark;
+            Object.keys(galleryCards).forEach(function (id) {
+                galleryCards[id].wraps.forEach(function (wrap) { wrap.classList.toggle('is-dark', galleryDark); });
+            });
+            this.textContent = galleryDark ? 'Világos háttér' : 'Sötét háttér';
         });
 
         var dispatchWorker = function (jobId, key) {
@@ -369,14 +432,20 @@
                 if (payload.data.done) {
                     stopPolling();
                     detailEl.hidden = noticeEl.hidden = true;
+                    galleryEl.hidden = true;
+                    modalEl.classList.remove('has-review');
                     statusEl.textContent = i18n.done || 'Done';
                     downloadEl.textContent = i18n.download || 'Download';
                     downloadEl.href = cfg.ajax_url + '?action=mg_design_export_download&job_id=' + encodeURIComponent(jobId) + '&nonce=' + encodeURIComponent(cfg.nonce);
                     downloadEl.hidden = false;
                     return;
                 }
-                if (payload.data.ai_approval) {
-                    showApproval(jobId, payload.data.ai_approval);
+                if (payload.data.review) {
+                    renderGallery(jobId, payload.data.review);
+                    (payload.data.ai_worker_keys || []).forEach(function (key) { dispatchWorker(jobId, key); });
+                    // Nothing runs while the admin reviews; only regenerations are polled.
+                    if (!payload.data.waiting) { stopPolling(); detailEl.hidden = true; return; }
+                    pollTimer = window.setTimeout(function () { if (version === pollVersion) step(jobId); }, 2000);
                     return;
                 }
                 var worker = workers[activeWorkerKey];
