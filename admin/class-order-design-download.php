@@ -86,6 +86,8 @@ class MG_Order_Design_Download {
         add_action('wp_ajax_mg_design_export_step', array(__CLASS__, 'ajax_export_step'));
         add_action('wp_ajax_mg_design_export_retry', array(__CLASS__, 'ajax_export_retry'));
         add_action('wp_ajax_mg_design_export_run_ai', array(__CLASS__, 'ajax_export_run_ai'));
+        add_action('wp_ajax_mg_design_export_ai_decision', array(__CLASS__, 'ajax_export_ai_decision'));
+        add_action('wp_ajax_mg_design_export_ai_preview', array(__CLASS__, 'ajax_export_ai_preview'));
         add_action('wp_ajax_mg_design_export_download', array(__CLASS__, 'ajax_export_download'));
 
         // Order quick-view: add a download link per line item
@@ -214,7 +216,8 @@ class MG_Order_Design_Download {
                 }
 
                 try {
-                    $ai_prompt = MG_AI_Print_Generator::prompt_for_item($item);
+                    $ai_instructions = MG_AI_Print_Generator::instructions_for_item($item);
+                    $ai_prompt = MG_AI_Print_Generator::build_prompt($ai_instructions);
                 } catch (Throwable $e) {
                     throw new RuntimeException(sprintf(__('Rendelés #%d, tétel #%d: %s', 'mg'), $order_id, $item->get_id(), $e->getMessage()));
                 }
@@ -261,6 +264,7 @@ class MG_Order_Design_Download {
                         'order_id'         => $order_id,
                         'item_id'          => $item->get_id(),
                         'ai_prompt'        => $ai_prompt,
+                        'ai_instructions'  => $ai_prompt !== '' ? $ai_instructions : '',
                         'ai_model'         => $ai_model,
                         'ai_defringe'      => $ai_prompt !== '' && MG_AI_Print_Generator::get_defringe_enabled(),
                         'review_fields'    => $review_fields,
@@ -568,6 +572,105 @@ class MG_Order_Design_Download {
         }
     }
 
+    /** Current AI task of an owned, running job, matched to the key the browser saw. */
+    protected static function current_ai_task(array $job, $job_id, $key) {
+        $task = $job['tasks'][$job['next_index']] ?? null;
+        if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) {
+            throw new RuntimeException(__('Ez az AI-kép már nem az aktuális tétel. Frissítsd az export állapotát.', 'mg'));
+        }
+        return $task;
+    }
+
+    public static function ajax_export_ai_decision() {
+        if (!current_user_can('edit_shop_orders') || !isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'mg_design_export_nonce')) {
+            wp_send_json_error(array('message' => __('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg')), 403);
+            return;
+        }
+        try {
+            $instructions = isset($_POST['instructions']) && is_string($_POST['instructions']) ? sanitize_textarea_field(wp_unslash($_POST['instructions'])) : '';
+            self::decide_ai_image(sanitize_text_field($_POST['job_id'] ?? ''), sanitize_text_field($_POST['key'] ?? ''), sanitize_key($_POST['decision'] ?? ''), $instructions);
+            wp_send_json_success();
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()), 500);
+        }
+    }
+
+    /**
+     * Accept the generated image, or replace it with a new attempt using the
+     * admin's edited instructions. Only this item is regenerated.
+     */
+    protected static function decide_ai_image($job_id, $key, $decision, $instructions) {
+        $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
+        $job = get_transient($transient_key);
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
+        }
+        $lock = 'mg_export_lock_' . hash('sha256', $job_id);
+        if (!add_option($lock, time(), '', false)) {
+            throw new RuntimeException(__('Az export éppen feldolgoz egy lépést. Próbáld újra pár másodperc múlva.', 'mg'));
+        }
+        try {
+            $job = get_transient($transient_key);
+            if (!is_array($job)) throw new RuntimeException(__('A feladat lejárt. Indíts új exportot.', 'mg'));
+            $task = self::current_ai_task($job, $job_id, $key);
+            if ($decision === 'approve') {
+                MG_AI_Print_Generator::approve($job_id, $task);
+                return;
+            }
+            if ($decision !== 'regenerate') {
+                throw new RuntimeException(__('Ismeretlen döntés.', 'mg'));
+            }
+            $instructions = trim($instructions);
+            if ($instructions === '') {
+                throw new RuntimeException(__('Az AI-utasítás nem lehet üres.', 'mg'));
+            }
+            $prompt = MG_AI_Print_Generator::build_prompt($instructions);
+            MG_AI_Print_Generator::assert_available();
+            MG_AI_Print_Generator::discard($job_id, $task);
+            $attempt = wp_generate_uuid4();
+            foreach ($job['tasks'] as $index => &$candidate) {
+                if ($index < $job['next_index'] || $candidate['order_id'] !== $task['order_id'] || $candidate['item_id'] !== $task['item_id']) continue;
+                $candidate['ai_attempt'] = $attempt;
+                $candidate['ai_prompt'] = $prompt;
+                $candidate['ai_instructions'] = $instructions;
+            }
+            unset($candidate);
+            set_transient($transient_key, $job, self::JOB_TTL);
+        } finally {
+            delete_option($lock);
+        }
+    }
+
+    /** Streams the current task's base design or generated image for approval. */
+    public static function ajax_export_ai_preview() {
+        if (!current_user_can('edit_shop_orders') || !isset($_GET['nonce']) || !wp_verify_nonce($_GET['nonce'], 'mg_design_export_nonce')) {
+            wp_die(__('Jogosultság vagy érvényes biztonsági token hiányzik.', 'mg'), '', array('response' => 403));
+        }
+        try {
+            $path = self::ai_preview_path(sanitize_text_field($_GET['job_id'] ?? ''), sanitize_text_field($_GET['key'] ?? ''), ($_GET['which'] ?? '') === 'original');
+        } catch (Throwable $e) {
+            wp_die(esc_html($e->getMessage()), '', array('response' => 404));
+        }
+        nocache_headers();
+        header('Content-Type: image/png');
+        header('Content-Disposition: inline; filename="ai-jovahagyas.png"');
+        header('X-Content-Type-Options: nosniff');
+        readfile($path);
+        exit;
+    }
+
+    protected static function ai_preview_path($job_id, $key, $original) {
+        $job = get_transient(self::JOB_TRANSIENT_PREFIX . $job_id);
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            throw new RuntimeException(__('A feladat lejárt, nem található vagy más felhasználóhoz tartozik.', 'mg'));
+        }
+        $task = self::current_ai_task($job, $job_id, $key);
+        if ($original) return self::review_image_path($task['design_path']);
+        $path = MG_AI_Print_Generator::ready_path($job_id, $task);
+        if ($path === '') throw new RuntimeException(__('Az AI-kép még nem készült el vagy már nem érhető el.', 'mg'));
+        return $path;
+    }
+
     protected static function run_export_ai($job_id, $key) {
         $job = get_transient(self::JOB_TRANSIENT_PREFIX . $job_id);
         if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
@@ -652,6 +755,23 @@ class MG_Order_Design_Download {
                     if ($design_path === '') {
                         $waiting = true;
                         $message = sprintf(__('%1$s – rendelés #%2$d, tétel #%3$d.', 'mg'), MG_AI_Print_Generator::stage_label($ai_progress['ai_stage']), $task['order_id'], $task['item_id']);
+                        break;
+                    }
+                    // Nothing generated reaches the ZIP until the admin accepts it.
+                    if (!MG_AI_Print_Generator::is_approved($job_id, $task)) {
+                        $waiting = true;
+                        $message = sprintf(__('%1$s – rendelés #%2$d, tétel #%3$d.', 'mg'), MG_AI_Print_Generator::stage_label('approval'), $task['order_id'], $task['item_id']);
+                        $ai_progress = array(
+                            'ai_status' => 'approval', 'ai_stage' => 'approval',
+                            'ai_key' => MG_AI_Print_Generator::task_key($job_id, $task),
+                            'ai_approval' => array(
+                                'key' => MG_AI_Print_Generator::task_key($job_id, $task),
+                                'order_id' => $task['order_id'], 'item_id' => $task['item_id'],
+                                'product_name' => $task['product_name'] ?? '',
+                                'fields' => $task['review_fields'] ?? array(),
+                                'instructions' => $task['ai_instructions'] ?? '',
+                            ),
+                        );
                         break;
                     }
                     if (!in_array($design_path, $job['temp_files'], true)) {

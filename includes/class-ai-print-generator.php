@@ -27,6 +27,7 @@ class MG_AI_Print_Generator {
             'validate' => __('AI-kép ellenőrzése', 'mg'),
             'upscale' => __('AI-kép 3×-os felnagyítása', 'mg'),
             'save' => __('AI-kép mentése', 'mg'),
+            'approval' => __('AI-kép jóváhagyásra vár', 'mg'),
         );
         return $labels[$stage] ?? __('Egyedi AI nyomat készül', 'mg');
     }
@@ -100,6 +101,27 @@ class MG_AI_Print_Generator {
     public static function ready_path($job_id, array $task) {
         $state = get_transient(self::PREFIX . self::task_key($job_id, $task));
         return $state && $state['status'] === 'ready' && !empty($state['path']) && is_file($state['path']) ? $state['path'] : '';
+    }
+
+    public static function is_approved($job_id, array $task) {
+        $state = get_transient(self::PREFIX . self::task_key($job_id, $task));
+        return $state && $state['status'] === 'ready' && !empty($state['approved']);
+    }
+
+    /** The admin accepted this exact generated image for the ZIP. */
+    public static function approve($job_id, array $task) {
+        $key = self::task_key($job_id, $task);
+        $state = get_transient(self::PREFIX . $key);
+        if (!$state || $state['status'] !== 'ready' || empty($state['path']) || !is_file($state['path'])) {
+            throw new RuntimeException(__('Az AI-kép már nem érhető el. Kérj újragenerálást.', 'mg'));
+        }
+        $state['approved'] = true;
+        set_transient(self::PREFIX . $key, $state, self::TTL);
+    }
+
+    /** Drop a rejected image; the replacement attempt uses a new key. */
+    public static function discard($job_id, array $task) {
+        self::cleanup(self::task_key($job_id, $task));
     }
 
     protected static function is_current_task($key, array $state, array $job) {
@@ -225,6 +247,11 @@ class MG_AI_Print_Generator {
 
     /** Match stable field IDs; customer data is quoted and never used as a template. */
     public static function prompt_for_item($item) {
+        return self::build_prompt(self::instructions_for_item($item));
+    }
+
+    /** Only the per-field part, which an admin may rewrite before a regeneration. */
+    public static function instructions_for_item($item) {
         $fields = self::fields_for_product($item->get_product_id());
         $values = self::values_for_item($item, $fields);
         $instructions = array();
@@ -245,7 +272,12 @@ class MG_AI_Print_Generator {
             }
             $instructions[] = str_replace('{{ertek}}', wp_json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $template);
         }
-        if (!$instructions) {
+        return implode("\n\n", $instructions);
+    }
+
+    public static function build_prompt($instructions) {
+        $instructions = trim((string) $instructions);
+        if ($instructions === '') {
             return '';
         }
         $prompt = "A mellékelt sík nyomtatási grafikán végezd el az alábbi célzott módosításokat. "
@@ -256,7 +288,7 @@ class MG_AI_Print_Generator {
             . "Minden más szöveg, grafikai elem, szín, arány és kompozíció maradjon változatlan. "
             . "Őrizd meg az eredeti háttér jellegét és átlátszóságát. Ne adj hozzá hátteret, sakktáblamintát, "
             . "árnyékot, keretet vagy új díszítést. Ne készíts termékfotót vagy mockupot. Csak a módosított grafikát add vissza.\n\n"
-            . implode("\n\n", $instructions);
+            . $instructions;
         if (strlen($prompt) > 30000) {
             throw new RuntimeException(__('Az AI nyomat utasításai túl hosszúak. Rövidítsd a mezők promptját.', 'mg'));
         }
