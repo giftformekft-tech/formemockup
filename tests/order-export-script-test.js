@@ -14,7 +14,7 @@ function setup() {
     const responses = [];
     const makeElement = () => ({
         hidden: true, style: {}, handlers: {}, children: [], attributes: {},
-        classList: { add() {}, toggle() {} },
+        classList: { add() {}, remove() {}, toggle() {} },
         addEventListener(event, fn) { this.handlers[event] = fn; },
         appendChild(child) { this.children.push(child); },
         setAttribute(key, value) { this.attributes[key] = value; },

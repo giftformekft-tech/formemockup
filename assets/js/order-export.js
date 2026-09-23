@@ -323,7 +323,11 @@
                 }
                 if (!payload.data || !payload.data.job_id) throw new Error('A szerver nem adott exportazonosítót.');
                 summaryEl.hidden = true;
+                modalEl.classList.remove('has-review');
+                titleEl.textContent = i18n.title || 'Export';
                 barWrapEl.hidden = false;
+                // Replace the stale review-loading text until the first step replies.
+                statusEl.textContent = 'Export elindítva – az első nyomatok feldolgozása és az AI-képek indítása folyamatban…';
                 statusEl.hidden = false;
                 activeJobId = payload.data.job_id;
                 beginPolling(activeJobId);
