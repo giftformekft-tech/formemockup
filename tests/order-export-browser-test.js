@@ -30,6 +30,7 @@ async function main() {
         const requests = [];
         let recovery = false;
         let recoveryPhase = 'queued';
+        let workerReply = 'auth';
         await page.route('https://export.test/**', async route => {
             const request = route.request();
             if (request.url().includes('admin-ajax.php')) {
@@ -41,11 +42,19 @@ async function main() {
                 if (action === 'mg_design_export_review') data = { review_id: 'mgr_browser', items: recovery ? [] : items, total: 3 };
                 else if (action === 'mg_design_export_start') data = { job_id: 'browser_job', total: 3 };
                 else if (action === 'mg_design_export_step') {
-                    if (recovery && recoveryPhase === 'queued') data = { waiting: true, completed: 1, total: 3, percent: 33, ai_worker_key: 'browser_worker', message: 'AI nyomat indításra vár' };
+                    if (recovery && recoveryPhase === 'queued') data = { waiting: true, completed: 1, total: 3, percent: 33, ai_key: 'browser_worker', ai_status: 'queued', ai_stage: 'queued', ai_elapsed: 6, ai_worker_key: 'browser_worker', message: 'AI nyomat indításra vár' };
+                    else if (recovery && recoveryPhase === 'running') data = { waiting: true, completed: 1, total: 3, percent: 33, ai_key: 'browser_worker', ai_status: 'running', ai_stage: 'api', ai_elapsed: 130, ai_api_timeout: 180, message: 'OpenAI válaszára vár – rendelés #292830, tétel #9532.' };
                     else if (recovery && recoveryPhase === 'error') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ success: false, data: { message: 'Az OpenAI API-kulcs érvénytelen (HTTP 401). Mentsd az új kulcsot, majd folytasd az exportot.' } }) });
                     else data = { done: true, completed: 3, total: 3, percent: 100 };
                 }
-                else if (action === 'mg_design_export_run_ai') { recoveryPhase = 'error'; data = {}; }
+                else if (action === 'mg_design_export_run_ai') {
+                    if (workerReply === 'unreadable') return route.fulfill({ status: 503, contentType: 'text/html', body: '<h1>Unavailable</h1><p>private server path</p>' });
+                    if (workerReply === 'proxy') {
+                        recoveryPhase = 'running';
+                        return route.fulfill({ status: 504, contentType: 'text/html', body: '<h1>Gateway timeout</h1>' });
+                    }
+                    recoveryPhase = 'error'; data = {};
+                }
                 else if (action === 'mg_design_export_retry') { recoveryPhase = 'done'; data = { job_id: 'browser_job' }; }
                 else throw new Error('Unexpected request ' + action);
                 return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ success: true, data }) });
@@ -98,8 +107,32 @@ async function main() {
         assert.equal(requests.filter(x => x.get('action') === 'mg_design_export_start').length, 2, 'recovery does not create a third job');
         assert.equal(await page.locator('.mg-order-export-retry').isVisible(), false);
         await page.screenshot({ path: path.join(screenshotDir, 'export-recovered-mobile.png') });
+        recoveryPhase = 'queued';
+        workerReply = 'unreadable';
+        await page.reload();
+        await page.getByRole('button', { name: 'Normál export', exact: true }).click();
+        await page.getByRole('button', { name: 'Export folytatása', exact: true }).waitFor({ state: 'visible' });
+        assert.match(await page.locator('.mg-order-export-error').textContent(), /generálás nem indult el.*HTTP 503/);
+        assert.doesNotMatch(await page.locator('.mg-order-export-error').textContent(), /private server path/);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(screenshotDir, 'export-worker-failure-mobile.png') });
+
+        recoveryPhase = 'queued';
+        workerReply = 'proxy';
+        await page.reload();
+        await page.getByRole('button', { name: 'Normál export', exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('.mg-order-export-status').textContent.includes('OpenAI válaszára vár'));
+        await page.waitForFunction(() => /2:1[1-9]/.test(document.querySelector('.mg-order-export-detail').textContent));
+        assert.match(await page.locator('.mg-order-export-detail').textContent(), /időkorlátja: 3:00/);
+        assert.match(await page.locator('.mg-order-export-notice').textContent(), /HTTP 504/);
+        assert.equal(await page.locator('.mg-order-export-retry').isVisible(), false);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+        await page.screenshot({ path: path.join(screenshotDir, 'export-running-diagnostics-mobile.png') });
+        recoveryPhase = 'done';
+        await page.locator('.mg-order-export-download').waitFor({ state: 'visible' });
+        assert.equal(await page.locator('.mg-order-export-notice').isVisible(), false);
         assert.deepEqual(errors, []);
-        console.log('Browser export passed: review, mobile layout, queue fallback, API-key error and explicit recovery. Screenshots: ' + screenshotDir);
+        console.log('Browser export passed: review, recovery, visible worker errors, live elapsed time, proxy timeout with successful completion and mobile layout. Screenshots: ' + screenshotDir);
     } finally { await browser.close(); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

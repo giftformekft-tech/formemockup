@@ -101,3 +101,12 @@
     justify-content: flex-end;
     gap: 8px;
 }
+
+.mg-order-export-detail, .mg-order-export-notice {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+.mg-order-export-detail { color: #50575e; }
+.mg-order-export-notice { color: #8a4b00; }

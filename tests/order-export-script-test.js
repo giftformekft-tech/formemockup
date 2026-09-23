@@ -8,6 +8,9 @@ function setup() {
     const elements = new Map();
     const requests = [];
     const timers = [];
+    const intervals = [];
+    const deferred = [];
+    let now = 100000;
     const responses = [];
     const makeElement = () => ({
         hidden: true, style: {}, handlers: {}, children: [], attributes: {},
@@ -28,21 +31,27 @@ function setup() {
         MG_ORDER_EXPORT: { ajax_url: '/admin-ajax.php', nonce: 'nonce', order_ids: [90], i18n: { processing: 'Feldolgozás', done: 'Kész' } },
         setTimeout(fn, delay) { const timer = { fn, delay }; timers.push(timer); return timer; },
         clearTimeout(timer) { const index = timers.indexOf(timer); if (index !== -1) timers.splice(index, 1); },
+        setInterval(fn, delay) { const timer = { fn, delay }; intervals.push(timer); return timer; },
+        clearInterval(timer) { const index = intervals.indexOf(timer); if (index !== -1) intervals.splice(index, 1); },
     };
     vm.runInNewContext(source, {
         window,
         AbortController,
+        Date: class extends Date { static now() { return now; } },
         document: { addEventListener(name, fn) { fn(); }, createElement(tag) { return tag === 'div' ? overlay : makeElement(); }, body: { appendChild() {} } },
         fetch(url, request) {
             requests.push(request.body);
             const response = responses.shift();
-            if (!response) throw new Error('Unexpected request');
+            if (response === undefined) throw new Error('Unexpected request');
             if (response === 'timeout') return new Promise((resolve, reject) => request.signal.addEventListener('abort', () => reject(new Error('Timed out'))));
+            if (response === 'hang') return new Promise(() => {});
+            if (response === 'deferred') return new Promise((resolve, reject) => deferred.push({ resolve: payload => resolve({ json: () => Promise.resolve(payload) }), reject }));
             if (response instanceof Error) return Promise.reject(response);
+            if (response && response.invalidJson) return Promise.resolve({ status: response.httpStatus, json: () => Promise.reject(new SyntaxError('private HTML and server paths')) });
             return Promise.resolve({ json: () => Promise.resolve(response) });
         },
     });
-    return { element, requests, responses, timers, overlay };
+    return { element, requests, responses, timers, intervals, deferred, overlay, advance(ms, tick = true) { now += ms; if (tick) [...intervals].forEach(timer => timer.fn()); } };
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 async function main() {
@@ -170,12 +179,102 @@ async function main() {
     assert.equal(timedOut.element('.mg-order-export-retry').disabled, false, 'failed recovery remains interactive');
     assert.match(timedOut.element('.mg-order-export-error').textContent, /lejárt/);
 
+    const runningPayload = { success: true, data: { completed: 0, total: 1, waiting: true, ai_status: 'running', ai_key: 'running-worker', ai_stage: 'api', ai_elapsed: 12, ai_api_timeout: 180, message: 'OpenAI válaszára vár' } };
+    const clockUi = setup();
+    clockUi.responses.push(reviewPayload(), { success: true, data: { job_id: 'clock' } }, runningPayload);
+    clockUi.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    assert.match(clockUi.element('.mg-order-export-detail').textContent, /0:12/);
+    clockUi.advance(3000);
+    assert.match(clockUi.element('.mg-order-export-detail').textContent, /0:15/);
+    assert.match(clockUi.element('.mg-order-export-detail').textContent, /3:00/);
+    clockUi.advance(43000);
+    assert.match(clockUi.element('.mg-order-export-error').textContent, /45 másodperce/);
+    assert.match(clockUi.element('.mg-order-export-detail').textContent, /Utolsó ismert lépés: OpenAI/);
+    assert.equal(clockUi.element('.mg-order-export-retry').hidden, false, 'independent watchdog exposes recovery when polling stops');
+    assert.equal(clockUi.intervals.length, 0);
+    assert.equal(clockUi.timers.length, 0);
+
+    for (const [reply, expected] of [[{ invalidJson: true, httpStatus: 504 }, /HTTP 504/], [0, /nem ismeri/], [-1, /biztonsági token/], [{ success: true }, /Hiányzik az export állapota/], [{ success: false }, /HTTP 200/]]) {
+        const broken = setup();
+        broken.responses.push(reviewPayload(), { success: true, data: { job_id: 'broken' } }, reply);
+        broken.element('.mg-order-export-choice-normal').handlers.click();
+        await flush();
+        assert.match(broken.element('.mg-order-export-error').textContent, expected, 'unexpected server replies yield a useful visible diagnosis');
+        assert.doesNotMatch(broken.element('.mg-order-export-error').textContent, /private HTML/);
+        assert.equal(broken.element('.mg-order-export-retry').hidden, false);
+    }
+
+    const workerRejected = setup();
+    const queuePayload = { success: true, data: { completed: 0, total: 1, waiting: true, ai_key: 'rejected-worker', ai_worker_key: 'rejected-worker', ai_status: 'queued', message: 'Indításra vár' } };
+    workerRejected.responses.push(reviewPayload(), { success: true, data: { job_id: 'rejected' } }, queuePayload, { invalidJson: true, httpStatus: 503 });
+    workerRejected.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    assert.equal(workerRejected.element('.mg-order-export-notice').hidden, false, 'background HTTP errors are no longer swallowed');
+    assert.match(workerRejected.element('.mg-order-export-notice').textContent, /HTTP 503/);
+    workerRejected.responses.push(queuePayload);
+    workerRejected.timers.shift().fn();
+    await flush();
+    assert.match(workerRejected.element('.mg-order-export-error').textContent, /generálás nem indult el/);
+    assert.equal(workerRejected.element('.mg-order-export-retry').hidden, false);
+
+    const proxyTimeout = setup();
+    proxyTimeout.responses.push(reviewPayload(), { success: true, data: { job_id: 'proxy' } }, queuePayload, { invalidJson: true, httpStatus: 504 });
+    proxyTimeout.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    proxyTimeout.responses.push({ success: true, data: { ...runningPayload.data, ai_key: 'rejected-worker' } });
+    proxyTimeout.timers.shift().fn();
+    await flush();
+    assert.equal(proxyTimeout.element('.mg-order-export-retry').hidden, true, 'a proxy timeout does not declare a still-running worker failed');
+    proxyTimeout.responses.push({ success: true, data: { completed: 1, total: 1, done: true } });
+    proxyTimeout.timers.shift().fn();
+    await flush();
+    assert.equal(proxyTimeout.element('.mg-order-export-download').hidden, false);
+    assert.equal(proxyTimeout.element('.mg-order-export-notice').hidden, true);
+    assert.equal(proxyTimeout.requests.filter(body => body.includes('action=mg_design_export_run_ai')).length, 1, 'ambiguous worker response never repeats the paid request');
+
+    const hardTimeout = setup();
+    hardTimeout.responses.push(reviewPayload(), { success: true, data: { job_id: 'hang' } }, 'hang');
+    hardTimeout.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    hardTimeout.timers.shift().fn();
+    await flush();
+    assert.match(hardTimeout.element('.mg-order-export-error').textContent, /30 másodpercen belül/);
+    assert.equal(hardTimeout.element('.mg-order-export-retry').hidden, false, 'timeout recovery works even if fetch ignores abort');
+
+    const lateWorker = setup();
+    lateWorker.responses.push(reviewPayload(), { success: true, data: { job_id: 'late-worker' } }, queuePayload, 'deferred');
+    lateWorker.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    lateWorker.responses.push({ success: true, data: { completed: 1, total: 1, done: true } });
+    lateWorker.timers.find(timer => timer.delay === 2000).fn();
+    await flush();
+    lateWorker.deferred[0].reject(new Error('Late disconnect'));
+    await flush();
+    assert.equal(lateWorker.element('.mg-order-export-download').hidden, false);
+    assert.equal(lateWorker.element('.mg-order-export-notice').hidden, true, 'late worker errors cannot overwrite a completed export');
+
+    const frozen = setup();
+    frozen.responses.push(reviewPayload(), { success: true, data: { job_id: 'frozen' } }, runningPayload);
+    frozen.element('.mg-order-export-choice-normal').handlers.click();
+    await flush();
+    for (let i = 0; i < 31; i++) {
+        frozen.advance(20000, false);
+        frozen.responses.push(runningPayload);
+        frozen.timers.shift().fn();
+        await flush();
+        frozen.advance(0);
+    }
+    assert.match(frozen.element('.mg-order-export-error').textContent, /10 perce nem változott/);
+    assert.equal(frozen.element('.mg-order-export-retry').hidden, false, 'repeated stale success replies cannot keep the modal waiting forever');
+
     const closed = setup();
     closed.responses.push(reviewPayload(), { success: true, data: { job_id: 'closed' } }, { success: true, data: { completed: 0, total: 1, waiting: true } });
     closed.element('.mg-order-export-choice-normal').handlers.click();
     await flush();
     closed.element('.mg-order-export-close').handlers.click();
-    closed.timers.shift().fn();
+    assert.equal(closed.timers.length, 0, 'closing removes the pending poll timer');
+    assert.equal(closed.intervals.length, 0, 'closing removes the independent progress clock');
     await flush();
     assert.equal(closed.requests.length, 3, 'closing the modal stops subsequent work dispatch');
     const closedDuringReview = setup();

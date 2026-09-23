@@ -13,6 +13,71 @@ class MG_AI_Print_Generator {
     const DEFAULT_MODEL = 'gpt-image-2';
     const UPSCALE_FACTOR = 3;
     const WAIT_TIMEOUT = 600;
+    const HTTP_TIMEOUT = 180;
+    const WORKER_TIMEOUT = 240;
+    const STALLED_TIMEOUT = 300;
+
+    public static function stage_label($stage) {
+        $labels = array(
+            'queued' => __('AI nyomat indításra vár', 'mg'),
+            'prepare' => __('Alapminta előkészítése', 'mg'),
+            'api' => __('OpenAI válaszára vár', 'mg'),
+            'validate' => __('AI-kép ellenőrzése', 'mg'),
+            'upscale' => __('AI-kép 3×-os felnagyítása', 'mg'),
+            'save' => __('AI-kép mentése', 'mg'),
+        );
+        return $labels[$stage] ?? __('Egyedi AI nyomat készül', 'mg');
+    }
+
+    protected static function set_stage($key, $stage) {
+        $state = get_transient(self::PREFIX . $key);
+        if (!$state || $state['status'] !== 'running') return;
+        $state['stage'] = $stage;
+        $state['stage_started'] = time();
+        set_transient(self::PREFIX . $key, $state, self::TTL);
+    }
+
+    /** Persist a safe diagnosis even if the HTTP connection has already closed. */
+    protected static function fail_worker($key, $message, $reason, $persist = true) {
+        $state = get_transient(self::PREFIX . $key);
+        if (!$state || !in_array($state['status'], array('queued', 'running'), true)) return;
+        $stage = $state['stage'] ?? $state['status'];
+        $elapsed = max(0, time() - ($state['started'] ?? $state['created']));
+        $item_id = (int) ($state['task']['item_id'] ?? 0);
+        if ($reason === 'generation_error' && preg_match('/\b(HTTP|cURL) (\d{1,3})\b/', $message, $code)) {
+            $reason = strtolower($code[1]) . '_' . $code[2];
+        }
+        $state['status'] = 'error';
+        $state['message'] = $message . ' ' . sprintf(__('Utolsó lépés: %1$s. Eltelt idő: %2$d mp.', 'mg'), self::stage_label($stage), $elapsed);
+        $state['error_kind'] = $reason;
+        unset($state['task']);
+        if ($persist) set_transient(self::PREFIX . $key, $state, self::TTL);
+        // Never log the request, API key, provider body or customer prompt.
+        if (function_exists('wc_get_logger')) {
+            try {
+                wc_get_logger()->error('AI print generation stopped: ' . $reason, array(
+                    'source' => 'mg-ai-print', 'job_id' => $state['job_id'],
+                    'item_id' => $item_id, 'stage' => $stage, 'elapsed_seconds' => $elapsed,
+                ));
+            } catch (Throwable $ignored) {}
+        }
+        return $state['message'];
+    }
+
+    protected static function record_interrupted_worker($key, $error) {
+        $detail = is_array($error) ? ($error['message'] ?? '') : '';
+        $reason = 'worker_interrupted';
+        $message = __('A szerver megszakította az AI-feldolgozást, mielőtt az befejeződött.', 'mg');
+        if (stripos($detail, 'Allowed memory size') !== false || stripos($detail, 'Out of memory') !== false) {
+            $reason = 'memory_limit';
+            $message = __('Az AI-feldolgozás túllépte a szerver PHP-memóriakeretét.', 'mg');
+        } elseif (stripos($detail, 'Maximum execution time') !== false) {
+            $reason = 'execution_timeout';
+            $message = __('Az AI-feldolgozást a szerver PHP-futásidőkorlátja állította le.', 'mg');
+        }
+        self::fail_worker($key, $message, $reason);
+        delete_option(self::PREFIX . 'lock_' . $key);
+    }
 
     public static function task_key($job_id, array $task) {
         $identity = $job_id . '|' . $task['item_id'];
@@ -196,7 +261,7 @@ class MG_AI_Print_Generator {
         $state = get_transient(self::PREFIX . $key);
         if (!$state) {
             self::assert_available();
-            $state = array('status' => 'queued', 'created' => time(), 'job_id' => $job_id, 'task' => $task);
+            $state = array('status' => 'queued', 'stage' => 'queued', 'created' => time(), 'job_id' => $job_id, 'task' => $task);
             set_transient(self::PREFIX . $key, $state, self::TTL);
             wp_schedule_single_event(time() + self::TTL, self::CLEANUP_HOOK, array($key));
             // Explicit export dispatch only. No checkout/order-status hooks.
@@ -216,10 +281,27 @@ class MG_AI_Print_Generator {
             }
             return $state['path'];
         }
+        if ($state['status'] === 'running' && isset($state['started']) && time() - $state['started'] > self::STALLED_TIMEOUT) {
+            // The ZIP job persists this error. Do not overwrite a worker result
+            // that may finish concurrently: a late valid image can still be reused.
+            $message = self::fail_worker($key, __('Az AI-feldolgozás 5 percen belül nem fejeződött be. A szerverfolyamat megszakadhatott; az Export folytatása gombbal újrapróbálhatod.', 'mg'), 'worker_stalled', false);
+            if ($message === null) {
+                $ready = self::ready_path($job_id, $task);
+                if ($ready !== '') return $ready;
+            }
+            throw new RuntimeException($message ?? __('Az AI-feladat állapota megváltozott. Az Export folytatása gombbal ellenőrizheted.', 'mg'));
+        }
         if (time() - $state['created'] > self::WAIT_TIMEOUT) {
             throw new RuntimeException(__('Az AI nyomat készítése megszakadt vagy nem indult el. Az Export folytatása gombbal újrapróbálhatod a hiányzó képeket; ez új API-hívást indíthat.', 'mg'));
         }
-        $progress = array('ai_status' => $state['status'], 'ai_worker_key' => $state['status'] === 'queued' && time() - $state['created'] >= 5 ? $key : '');
+        $progress = array(
+            'ai_status' => $state['status'], 'ai_key' => $key,
+            'ai_stage' => $state['stage'] ?? $state['status'],
+            'ai_elapsed' => max(0, time() - ($state['started'] ?? $state['created'])),
+            'ai_stage_elapsed' => max(0, time() - ($state['stage_started'] ?? $state['started'] ?? $state['created'])),
+            'ai_api_timeout' => self::HTTP_TIMEOUT,
+            'ai_worker_key' => $state['status'] === 'queued' && time() - $state['created'] >= 5 ? $key : '',
+        );
         return '';
     }
 
@@ -231,6 +313,8 @@ class MG_AI_Print_Generator {
         if (!add_option($lock, time(), '', false)) {
             return;
         }
+        $finished = false;
+        $reserve = null;
         try {
             $state = get_transient(self::PREFIX . $key);
             if (!$state || $state['status'] !== 'queued') {
@@ -241,8 +325,18 @@ class MG_AI_Print_Generator {
                 return;
             }
             $state['status'] = 'running';
+            $state['stage'] = 'prepare';
+            $state['started'] = $state['stage_started'] = time();
             set_transient(self::PREFIX . $key, $state, self::TTL);
-            @set_time_limit(240);
+            // PHP fatal errors/exit bypass catch/finally. Reserve memory so an OOM
+            // shutdown can still persist the failure and release this worker lock.
+            register_shutdown_function(function () use ($key, &$finished, &$reserve) {
+                if ($finished) return;
+                $reserve = null;
+                self::record_interrupted_worker($key, error_get_last());
+            });
+            $reserve = str_repeat('x', 256 * 1024);
+            @set_time_limit(self::WORKER_TIMEOUT);
             @ini_set('memory_limit', '512M');
             // Older queued exports used Image 2. New exports pin their model
             // when the task list is built, even if settings change mid-export.
@@ -251,21 +345,18 @@ class MG_AI_Print_Generator {
             // that old result into the replacement attempt or recreate expired state.
             $current = get_transient(self::PREFIX . $key);
             $job = get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . $state['job_id']);
-            if (!$current || !$job || !self::is_current_task($key, $state, $job)) {
+            if (!$current || $current['status'] !== 'running' || !$job || !self::is_current_task($key, $state, $job)) {
                 @unlink($state['path']);
                 return;
             }
-            $state['status'] = 'ready';
+            $state = array_merge($current, array('path' => $state['path'], 'status' => 'ready'));
             unset($state['task']);
             set_transient(self::PREFIX . $key, $state, self::TTL);
         } catch (Throwable $e) {
-            if (!empty($state)) {
-                $state['status'] = 'error';
-                $state['message'] = $e->getMessage();
-                unset($state['task']);
-                set_transient(self::PREFIX . $key, $state, self::TTL);
-            }
+            self::fail_worker($key, $e->getMessage(), 'generation_error');
         } finally {
+            $finished = true;
+            $reserve = null;
             delete_option($lock);
         }
     }
@@ -331,14 +422,26 @@ class MG_AI_Print_Generator {
         }
         $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"image[]\"; filename=\"design.png\"\r\nContent-Type: image/png\r\n\r\n" . $bytes . "\r\n--" . $boundary . "--\r\n";
         $settings = MG_AI_SEO_Generator::get_settings();
+        self::set_stage($key, 'api');
         $response = wp_remote_post('https://api.openai.com/v1/images/edits', array(
-            'timeout' => 180,
+            'timeout' => self::HTTP_TIMEOUT,
             'redirection' => 0,
             'headers' => array('Authorization' => 'Bearer ' . $settings['api_key'], 'Content-Type' => 'multipart/form-data; boundary=' . $boundary),
             'body' => $body,
         ));
         unset($body, $bytes);
         if (is_wp_error($response)) {
+            $detail = method_exists($response, 'get_error_message') ? $response->get_error_message() : '';
+            if (preg_match('/cURL error (\d+)/i', $detail, $match)) {
+                $causes = array(
+                    6 => __('A szerver nem tudta feloldani az OpenAI címét (DNS-hiba, cURL 6).', 'mg'),
+                    7 => __('A szerver nem tudott kapcsolódni az OpenAI-hoz (cURL 7).', 'mg'),
+                    28 => sprintf(__('Az OpenAI-kérés túllépte a %d másodperces időkorlátot (cURL 28).', 'mg'), self::HTTP_TIMEOUT),
+                    35 => __('TLS-kapcsolati hiba történt az OpenAI elérésekor (cURL 35).', 'mg'),
+                    60 => __('A szerver nem tudta ellenőrizni az OpenAI TLS-tanúsítványát (cURL 60).', 'mg'),
+                );
+                if (isset($causes[(int) $match[1]])) throw new RuntimeException($causes[(int) $match[1]]);
+            }
             throw new RuntimeException(__('Az OpenAI képszerkesztés hálózati hibával vagy időtúllépéssel leállt. Nem történt automatikus újrapróbálás.', 'mg'));
         }
         $status = wp_remote_retrieve_response_code($response);
@@ -349,6 +452,7 @@ class MG_AI_Print_Generator {
             }
             throw new RuntimeException(sprintf(__('Az OpenAI képszerkesztés hibát jelzett (HTTP %1$d, modell: %2$s). Ellenőrizd az API-kulcsot, a keretet és a modellhozzáférést.', 'mg'), $status, $model));
         }
+        self::set_stage($key, 'validate');
         $data = json_decode(wp_remote_retrieve_body($response), true);
         $encoded = $data['data'][0]['b64_json'] ?? null;
         $png = is_string($encoded) ? base64_decode($encoded, true) : false;
@@ -366,6 +470,7 @@ class MG_AI_Print_Generator {
                 MG_Image_Utils::clean_transparent_edges($result);
             }
             // Upscale only the generated PNG, once per item, before print-size processing.
+            self::set_stage($key, 'upscale');
             $width = $result_info[0] * self::UPSCALE_FACTOR;
             $height = $result_info[1] * self::UPSCALE_FACTOR;
             if (!$result->resizeImage($width, $height, Imagick::FILTER_LANCZOS, 1.0)) {
@@ -384,6 +489,7 @@ class MG_AI_Print_Generator {
         } finally {
             $result->clear();
         }
+        self::set_stage($key, 'save');
         $path = self::output_path($key);
         if (file_put_contents($path, $png, LOCK_EX) !== strlen($png)) {
             @unlink($path);

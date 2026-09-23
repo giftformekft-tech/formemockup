@@ -9,6 +9,7 @@ define('HOUR_IN_SECONDS', 3600);
 $options = $transients = $actions = $http_calls = $posts = $orders = array();
 $current_user = 7;
 $http_mode = 'ok';
+$worker_stages = $worker_logs = array();
 $test_dir = sys_get_temp_dir() . '/mg-ai-test-' . bin2hex(random_bytes(6));
 mkdir($test_dir);
 function __($s) { return $s; }
@@ -45,7 +46,11 @@ function add_option($key, $value, $deprecated = '', $autoload = null) {
     return update_option($key, $value);
 }
 function delete_option($key) { unset($GLOBALS['options'][$key]); }
-function set_transient($key, $value, $ttl) { $GLOBALS['transients'][$key] = $value; }
+function set_transient($key, $value, $ttl) {
+    $GLOBALS['transients'][$key] = $value;
+    if (($value['status'] ?? '') === 'running' && isset($value['stage'])) $GLOBALS['worker_stages'][$key][] = $value['stage'];
+}
+function wc_get_logger() { return new class { public function error($message, $context) { $GLOBALS['worker_logs'][] = array($message, $context); } }; }
 function get_transient($key) { return $GLOBALS['transients'][$key] ?? false; }
 function delete_transient($key) { unset($GLOBALS['transients'][$key]); }
 function current_time($format) { return '2026-09-08 12:00:00'; }
@@ -63,7 +68,7 @@ function wc_get_order($id) { return $GLOBALS['orders'][$id] ?? false; }
 function is_wp_error($r) { return $r instanceof WP_Error; }
 function wp_remote_retrieve_response_code($r) { return $r['code']; }
 function wp_remote_retrieve_body($r) { return $r['body']; }
-class WP_Error {}
+class WP_Error { public function __construct(private $message = '') {} public function get_error_message() { return $this->message; } }
 function png_chunk($type, $data) { return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data)); }
 function make_png($w, $h, $red, $alpha = true) {
     $pixel = chr($red) . "\x00\x00" . ($alpha ? "\x00" : '');
@@ -75,6 +80,7 @@ function wp_remote_post($url, $request) {
     if (!empty($GLOBALS['http_hook'])) { $hook = $GLOBALS['http_hook']; unset($GLOBALS['http_hook']); $hook(); }
     $mode = $GLOBALS['http_mode'];
     if ($mode === 'network') { return new WP_Error(); }
+    if ($mode === 'timeout28') { return new WP_Error('cURL error 28: secret provider URL and credentials'); }
     if ($mode === '429') { return array('code' => 429, 'body' => 'secret provider message'); }
     if ($mode === '401') { return array('code' => 401, 'body' => 'secret provider message'); }
     preg_match('/name="size"\r\n\r\n(\d+)x(\d+)/', $request['body'], $size);
@@ -311,7 +317,13 @@ try {
     call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
     check(count($actions) === 1, 'repeated polling does not enqueue twice');
     MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '0'));
+    $http_hook = function () {
+        $during_api = call_hidden('MG_Order_Design_Download', 'process_export_step', 'job1');
+        check($during_api['ai_stage'] === 'api' && $during_api['ai_status'] === 'running' && $during_api['ai_api_timeout'] === 180 && str_contains($during_api['message'], 'OpenAI válaszára vár'), 'polling exposes the real API stage and its configured timeout');
+        check(isset($during_api['ai_elapsed'], $during_api['ai_stage_elapsed'], $during_api['ai_key']), 'progress includes elapsed times and the item attempt identity');
+    };
     MG_AI_Print_Generator::run($actions[0][1][0]);
+    check($worker_stages[MG_AI_Print_Generator::PREFIX . $actions[0][1][0]] === array('prepare', 'api', 'validate', 'upscale', 'save'), 'worker checkpoints each processing stage before expensive work');
     MG_AI_Print_Generator::run($actions[0][1][0]);
     check(MG_Image_Utils::$defringed === 0, 'generation skips fringe correction');
     MG_AI_Print_Generator::save_settings(array('model' => 'gpt-image-2', 'defringe_enabled' => '1'));
@@ -390,7 +402,7 @@ try {
     add_option($lock, time());
     check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'job2')['waiting'], 'concurrent ZIP step waits without mutation');
     delete_option($lock);
-    foreach (array('401' => 'API-kulcs érvénytelen', '429' => 'HTTP 429', 'network' => 'hálózati hibával', 'bad' => 'érvényes PNG', 'size' => 'érvényes PNG', 'opaque' => 'átlátszó hátteret') as $mode => $error) {
+    foreach (array('401' => 'API-kulcs érvénytelen', '429' => 'HTTP 429', 'network' => 'hálózati hibával', 'timeout28' => '180 másodperces időkorlátot', 'bad' => 'érvényes PNG', 'size' => 'érvényes PNG', 'opaque' => 'átlátszó hátteret') as $mode => $error) {
         $http_mode = (string) $mode;
         $id = 'failure-' . $mode;
         make_job($id, array($tasks[0]));
@@ -405,6 +417,41 @@ try {
         check($failed['status'] === 'error' && $failed['completed'] === 0 && !file_exists($failed['zip_path']), 'failure never exports the original: ' . $mode);
     }
     $http_mode = 'ok';
+    $timeout_state = get_transient(MG_AI_Print_Generator::PREFIX . MG_AI_Print_Generator::task_key('failure-timeout28', $tasks[0]));
+    check(str_contains($timeout_state['message'], 'cURL 28') && str_contains($timeout_state['message'], 'OpenAI válaszára vár') && !str_contains($timeout_state['message'], 'secret'), 'network timeout identifies the cause and last stage without leaking transport details');
+    check(count($worker_logs) > 0 && end($worker_logs)[1]['source'] === 'mg-ai-print' && !str_contains(json_encode($worker_logs), 'secret'), 'failures have persistent, safe WooCommerce log context');
+
+    make_job('worker-deadline', array($tasks[0]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'worker-deadline');
+    $deadline_key = MG_AI_Print_Generator::task_key('worker-deadline', $tasks[0]);
+    $deadline_state =& $transients[MG_AI_Print_Generator::PREFIX . $deadline_key];
+    $deadline_state['status'] = 'running';
+    $deadline_state['stage'] = 'api';
+    $deadline_state['started'] = time() - MG_AI_Print_Generator::STALLED_TIMEOUT - 1;
+    expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'worker-deadline'), '5 percen belül');
+    check(get_transient(MG_Order_Design_Download::JOB_TRANSIENT_PREFIX . 'worker-deadline')['status'] === 'error' && str_contains(end($worker_logs)[0], 'worker_stalled'), 'a killed process gets a persisted export error and log even when its shutdown callback cannot run');
+    unset($deadline_state);
+    make_job('late-before-retry', array($tasks[0]));
+    call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-before-retry');
+    $late_before_key = MG_AI_Print_Generator::task_key('late-before-retry', $tasks[0]);
+    $http_hook = function () use ($late_before_key) {
+        $GLOBALS['transients'][MG_AI_Print_Generator::PREFIX . $late_before_key]['started'] -= MG_AI_Print_Generator::STALLED_TIMEOUT + 1;
+        expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-before-retry'), '5 percen belül');
+    };
+    MG_AI_Print_Generator::run($late_before_key);
+    $before_late_retry_calls = count($http_calls);
+    call_hidden('MG_Order_Design_Download', 'retry_export', 'late-before-retry');
+    check(call_hidden('MG_Order_Design_Download', 'process_export_step', 'late-before-retry')['done'] && count($http_calls) === $before_late_retry_calls, 'valid result arriving after the watchdog but before explicit retry is reused without another API call');
+    foreach (array('Allowed memory size exhausted: private-path' => 'memóriakeretét', 'Maximum execution time exceeded: private-path' => 'PHP-futásidőkorlátja') as $fatal_text => $expected) {
+        $fatal_job = make_job('fatal-diagnosis', array($tasks[0]));
+        $fatal_key = MG_AI_Print_Generator::task_key('fatal-diagnosis', $tasks[0]);
+        set_transient(MG_AI_Print_Generator::PREFIX . $fatal_key, array('status' => 'running', 'stage' => 'upscale', 'started' => time() - 31, 'created' => time() - 35, 'job_id' => 'fatal-diagnosis', 'task' => $tasks[0]), 3600);
+        add_option(MG_AI_Print_Generator::PREFIX . 'lock_' . $fatal_key, time());
+        call_hidden('MG_AI_Print_Generator', 'record_interrupted_worker', $fatal_key, array('type' => E_ERROR, 'message' => $fatal_text));
+        expect_error(fn() => call_hidden('MG_Order_Design_Download', 'process_export_step', 'fatal-diagnosis'), $expected);
+        $fatal_state = get_transient(MG_AI_Print_Generator::PREFIX . $fatal_key);
+        check(str_contains($fatal_state['message'], 'felnagyítása') && !str_contains($fatal_state['message'], 'private-path') && !get_option(MG_AI_Print_Generator::PREFIX . 'lock_' . $fatal_key), 'fatal diagnosis keeps the last stage, redacts raw details and releases the worker lock');
+    }
     // A blocked scheduler can be serviced by the authenticated browser worker.
     make_job('fallback', array($tasks[0]));
     $fallback_progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback');

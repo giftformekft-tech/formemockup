@@ -617,7 +617,7 @@ class MG_Order_Design_Download {
             if (time() - (int) get_option($lock) > 300) {
                 throw new RuntimeException(__('Az export feldolgozása megszakadt. Indíts új exportot.', 'mg'));
             }
-            return self::progress_payload($job, true);
+            return self::progress_payload($job, true, __('A ZIP előző feldolgozási lépésére vár.', 'mg'));
         }
         $zip = null;
         try {
@@ -647,9 +647,7 @@ class MG_Order_Design_Download {
                     }
                     if ($design_path === '') {
                         $waiting = true;
-                        $message = sprintf($ai_progress['ai_status'] === 'queued'
-                            ? __('AI nyomat indításra vár – rendelés #%d, tétel #%d.', 'mg')
-                            : __('Egyedi AI nyomat készül – rendelés #%d, tétel #%d.', 'mg'), $task['order_id'], $task['item_id']);
+                        $message = sprintf(__('%1$s – rendelés #%2$d, tétel #%3$d.', 'mg'), MG_AI_Print_Generator::stage_label($ai_progress['ai_stage']), $task['order_id'], $task['item_id']);
                         break;
                     }
                     if (!in_array($design_path, $job['temp_files'], true)) {
