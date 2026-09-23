@@ -53,7 +53,9 @@ foreach (array('fatal', 'exit', 'caught') as $mode) {
         if (($mode === 'caught' ? $exit_code !== 0 : $exit_code === 0) || ($state['status'] ?? '') !== 'error'
             || ($state['error_kind'] ?? '') !== $expected || !str_contains($state['message'] ?? '', 'Alapminta előkészítése')
             || !empty($result['options']) || count($result['logs'] ?? array()) !== 1 || isset($state['task'])
-            || str_contains($state['message'] ?? '', 'private details')) {
+            || str_contains($state['message'] ?? '', 'private details')
+            || ($mode === 'fatal' && !str_contains($state['message'], 'PHP-hiba, típus: ' . E_USER_ERROR))
+            || ($mode === 'exit' && !str_contains($state['message'], 'PHP-hiba nélküli leállítás'))) {
             throw new RuntimeException('Shutdown recovery failed for ' . $mode . ': ' . $stdout . $stderr);
         }
         echo 'ok - ' . $mode . ': persisted error and stage, released lock, one safe log entry' . PHP_EOL;

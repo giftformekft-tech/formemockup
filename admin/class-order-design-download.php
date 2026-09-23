@@ -577,7 +577,7 @@ class MG_Order_Design_Download {
         if ($job['status'] !== 'processing' || !$task || empty($task['ai_prompt']) || MG_AI_Print_Generator::task_key($job_id, $task) !== $key) return;
         // Uses the same atomic worker lock as Action Scheduler; the two paths
         // cannot issue a second paid request for the same attempt.
-        MG_AI_Print_Generator::run($key);
+        MG_AI_Print_Generator::run($key, 'browser');
     }
 
     /**

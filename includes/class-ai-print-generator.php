@@ -16,6 +16,8 @@ class MG_AI_Print_Generator {
     const HTTP_TIMEOUT = 180;
     const WORKER_TIMEOUT = 240;
     const STALLED_TIMEOUT = 300;
+    // The browser worker starts first; the scheduler only covers a closed tab.
+    const SCHEDULER_DELAY = 45;
 
     public static function stage_label($stage) {
         $labels = array(
@@ -58,6 +60,7 @@ class MG_AI_Print_Generator {
                 wc_get_logger()->error('AI print generation stopped: ' . $reason, array(
                     'source' => 'mg-ai-print', 'job_id' => $state['job_id'],
                     'item_id' => $item_id, 'stage' => $stage, 'elapsed_seconds' => $elapsed,
+                    'runner' => $state['runner'] ?? '', 'sapi' => PHP_SAPI,
                 ));
             } catch (Throwable $ignored) {}
         }
@@ -78,6 +81,12 @@ class MG_AI_Print_Generator {
             $reason = 'connection_aborted';
             $message = __('A háttérkérés kapcsolata megszakadt, ezért a szerver leállította az AI-feldolgozást. Az Export folytatása gombbal újrapróbálhatod.', 'mg');
         }
+        // Safe technical hint (no paths or provider data) to tell exit() from a fatal.
+        $state = get_transient(self::PREFIX . $key);
+        $runner = is_array($state) && ($state['runner'] ?? '') === 'browser' ? __('böngésző', 'mg') : __('ütemező', 'mg');
+        $type = is_array($error) ? (int) ($error['type'] ?? 0) : 0;
+        $fatal = $type & (E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR | E_RECOVERABLE_ERROR);
+        $message .= ' ' . sprintf(__('(Indító: %1$s; %2$s.)', 'mg'), $runner, $fatal ? sprintf(__('PHP-hiba, típus: %d', 'mg'), $type) : __('PHP-hiba nélküli leállítás', 'mg'));
         self::fail_worker($key, $message, $reason);
         delete_option(self::PREFIX . 'lock_' . $key);
     }
@@ -305,7 +314,13 @@ class MG_AI_Print_Generator {
             set_transient(self::PREFIX . $key, $state, self::TTL);
             wp_schedule_single_event(time() + self::TTL, self::CLEANUP_HOOK, array($key));
             // Explicit export dispatch only. No checkout/order-status hooks.
-            $action_id = as_enqueue_async_action(self::HOOK, array($key), 'mg-ai-print', true);
+            // The open export tab runs the worker immediately in a request it keeps
+            // open. Async scheduler requests are dropped by the loopback at once,
+            // and some hosts kill them mid-request, so the queue is only a delayed
+            // fallback for when the tab is closed.
+            $action_id = function_exists('as_schedule_single_action')
+                ? as_schedule_single_action(time() + self::SCHEDULER_DELAY, self::HOOK, array($key), 'mg-ai-print', true)
+                : as_enqueue_async_action(self::HOOK, array($key), 'mg-ai-print', true);
             if (!$action_id) {
                 $state['status'] = 'error';
                 $state['message'] = __('Nem sikerült elindítani az AI nyomat készítését.', 'mg');
@@ -340,12 +355,12 @@ class MG_AI_Print_Generator {
             'ai_elapsed' => max(0, time() - ($state['started'] ?? $state['created'])),
             'ai_stage_elapsed' => max(0, time() - ($state['stage_started'] ?? $state['started'] ?? $state['created'])),
             'ai_api_timeout' => self::HTTP_TIMEOUT,
-            'ai_worker_key' => $state['status'] === 'queued' && time() - $state['created'] >= 5 ? $key : '',
+            'ai_worker_key' => $state['status'] === 'queued' ? $key : '',
         );
         return '';
     }
 
-    public static function run($key) {
+    public static function run($key, $runner = 'scheduler') {
         if (!is_string($key) || !preg_match('/^[a-f0-9]{64}$/', $key)) {
             return;
         }
@@ -371,6 +386,7 @@ class MG_AI_Print_Generator {
             $state['status'] = 'running';
             $state['stage'] = 'prepare';
             $state['started'] = $state['stage_started'] = time();
+            $state['runner'] = $runner === 'browser' ? 'browser' : 'scheduler';
             set_transient(self::PREFIX . $key, $state, self::TTL);
             // PHP fatal errors/exit bypass catch/finally. Reserve memory so an OOM
             // shutdown can still persist the failure and release this worker lock.

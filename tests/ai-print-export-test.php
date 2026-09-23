@@ -58,6 +58,10 @@ function get_current_user_id() { return $GLOBALS['current_user']; }
 function user_can($id, $cap) { return $id === 7; }
 function wp_generate_uuid4() { return bin2hex(random_bytes(16)); }
 function wp_schedule_single_event($time, $hook, $args) { return true; }
+function as_schedule_single_action($time, $hook, $args, $group, $unique) {
+    $GLOBALS['action_delays'][] = $time - time();
+    return as_enqueue_async_action($hook, $args, $group, $unique);
+}
 function as_enqueue_async_action($hook, $args, $group, $unique) {
     $GLOBALS['actions'][] = array($hook, $args);
     return count($GLOBALS['actions']);
@@ -460,11 +464,9 @@ try {
     // A blocked scheduler can be serviced by the authenticated browser worker.
     make_job('fallback', array($tasks[0]));
     $fallback_progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback');
-    check($fallback_progress['ai_status'] === 'queued' && $fallback_progress['ai_worker_key'] === '', 'initial status distinguishes the queue without racing its dispatcher');
     $fallback_key = MG_AI_Print_Generator::task_key('fallback', $tasks[0]);
-    $transients[MG_AI_Print_Generator::PREFIX . $fallback_key]['created'] -= 6;
-    $fallback_progress = call_hidden('MG_Order_Design_Download', 'process_export_step', 'fallback');
-    check($fallback_progress['ai_worker_key'] === $fallback_key && str_contains($fallback_progress['message'], 'indításra vár'), 'stalled queue exposes a fallback worker and truthful status');
+    check($fallback_progress['ai_status'] === 'queued' && $fallback_progress['ai_worker_key'] === $fallback_key && str_contains($fallback_progress['message'], 'indításra vár'), 'queued work is handed to the open export tab immediately');
+    check(min($GLOBALS['action_delays']) >= MG_AI_Print_Generator::SCHEDULER_DELAY - 1, 'the scheduler is only a delayed fallback, not the first worker');
     $fallback_calls = count($http_calls);
     $current_user = 8;
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'run_export_ai', 'fallback', $fallback_key), 'más felhasználóhoz');
