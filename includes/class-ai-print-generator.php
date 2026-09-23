@@ -74,6 +74,9 @@ class MG_AI_Print_Generator {
         } elseif (stripos($detail, 'Maximum execution time') !== false) {
             $reason = 'execution_timeout';
             $message = __('Az AI-feldolgozást a szerver PHP-futásidőkorlátja állította le.', 'mg');
+        } elseif (connection_aborted()) {
+            $reason = 'connection_aborted';
+            $message = __('A háttérkérés kapcsolata megszakadt, ezért a szerver leállította az AI-feldolgozást. Az Export folytatása gombbal újrapróbálhatod.', 'mg');
         }
         self::fail_worker($key, $message, $reason);
         delete_option(self::PREFIX . 'lock_' . $key);
@@ -160,16 +163,52 @@ class MG_AI_Print_Generator {
         return false;
     }
 
-    /** Shared by the export review and prompt builder so both show the same values. */
-    public static function values_for_item($item) {
-        $values = array();
+    protected static function clean_value($raw) {
+        return is_scalar($raw) ? trim(html_entity_decode(wp_strip_all_tags((string) $raw), ENT_QUOTES, 'UTF-8')) : '';
+    }
+
+    protected static function label_key($label) {
+        $label = self::clean_value($label);
+        return function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
+    }
+
+    /**
+     * Shared by the export review and prompt builder so both show the same values.
+     * Stable field IDs win. When a preset was re-created after the order (new IDs),
+     * the ordered value is matched by its label, then by the visible order item meta.
+     */
+    public static function values_for_item($item, $fields = null) {
+        $values = $by_label = array();
         foreach ((array) $item->get_meta('_mg_custom_fields', true) as $stored) {
             if (!is_array($stored) || empty($stored['id'])) {
                 continue;
             }
             $raw = array_key_exists('raw_value', $stored) ? $stored['raw_value'] : ($stored['value'] ?? '');
-            if (is_scalar($raw)) {
-                $values[$stored['id']] = trim(html_entity_decode(wp_strip_all_tags((string) $raw), ENT_QUOTES, 'UTF-8'));
+            if (!is_scalar($raw)) {
+                continue;
+            }
+            $values[$stored['id']] = self::clean_value($raw);
+            if (!empty($stored['label']) && $values[$stored['id']] !== '') {
+                $by_label[self::label_key($stored['label'])] = $values[$stored['id']];
+            }
+        }
+        if ($fields === null) {
+            $fields = self::fields_for_product($item->get_product_id());
+        }
+        foreach ((array) $fields as $field) {
+            if (empty($field['id']) || (isset($values[$field['id']]) && $values[$field['id']] !== '' && $values[$field['id']] !== '—')) {
+                continue;
+            }
+            $label = (string) ($field['label'] ?? '');
+            if ($label === '') {
+                continue;
+            }
+            $value = $by_label[self::label_key($label)] ?? '';
+            if ($value === '') {
+                $value = self::clean_value($item->get_meta($label, true));
+            }
+            if ($value !== '') {
+                $values[$field['id']] = $value;
             }
         }
         return $values;
@@ -177,9 +216,10 @@ class MG_AI_Print_Generator {
 
     /** Match stable field IDs; customer data is quoted and never used as a template. */
     public static function prompt_for_item($item) {
-        $values = self::values_for_item($item);
+        $fields = self::fields_for_product($item->get_product_id());
+        $values = self::values_for_item($item, $fields);
         $instructions = array();
-        foreach (self::fields_for_product($item->get_product_id()) as $field) {
+        foreach ($fields as $field) {
             if (empty($field['ai_print_enabled'])) {
                 continue;
             }
@@ -309,6 +349,10 @@ class MG_AI_Print_Generator {
         if (!is_string($key) || !preg_match('/^[a-f0-9]{64}$/', $key)) {
             return;
         }
+        // Action Scheduler's async runner and the browser fallback both close
+        // their HTTP connection early; without this, hosts such as LiteSpeed
+        // kill the worker while it waits for OpenAI (seen as "0 mp" failures).
+        ignore_user_abort(true);
         $lock = self::PREFIX . 'lock_' . $key;
         if (!add_option($lock, time(), '', false)) {
             return;

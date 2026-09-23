@@ -240,6 +240,11 @@ try {
     $item->meta['_mg_custom_fields'][0]['raw_value'] = 'július';
     check(str_contains(MG_AI_Print_Generator::prompt_for_item($item), '"július"'), 'new raw order value takes precedence');
     unset($item->meta['_mg_custom_fields'][0]['raw_value']);
+    $relabeled = new WC_Order_Item_Product(16, 42, 1, array(array('id' => 'month', 'value' => 'május'), array('id' => 'old_year_id', 'label' => ' év ', 'value' => '1987')));
+    check(str_contains(MG_AI_Print_Generator::prompt_for_item($relabeled), '"1987"') && MG_AI_Print_Generator::values_for_item($relabeled)['year'] === '1987', 'value stored under an old field ID is matched by label');
+    $visible_only = new WC_Order_Item_Product(17, 42, 1, array(array('id' => 'month', 'value' => 'május')));
+    $visible_only->meta['Év'] = '2003';
+    check(str_contains(MG_AI_Print_Generator::prompt_for_item($visible_only), '"2003"'), 'visible order item meta is used when the stored field entry is missing');
     $_POST = array('field_ai_print_enabled' => '1', 'field_ai_print_prompt' => addslashes('Csere: {{ertek}}. "Példa"'));
     $request_field = call_hidden('MG_Custom_Fields_Page', 'read_field_from_request');
     check($request_field['ai_print_enabled'] && $request_field['ai_print_prompt'] === 'Csere: {{ertek}}. "Példa"', 'admin save preserves prompt quotes and enabled flag');
