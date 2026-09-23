@@ -46,6 +46,7 @@ class MG_Order_Design_Download {
      * Cloudflare's 524), no matter how many orders are selected.
      */
     const EXPORT_BATCH_SIZE = 3;
+    const STEP_TIME_BUDGET = 20;
 
     const JOB_TRANSIENT_PREFIX = 'mg_design_export_job_';
     const REVIEW_TRANSIENT_PREFIX = 'mg_design_export_review_';
@@ -636,7 +637,10 @@ class MG_Order_Design_Download {
             $message = '';
             $ai_progress = array();
             $in_batch = 0;
-            while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total']) {
+            $step_started = microtime(true);
+            // Stay well inside the browser's step timeout on slow hosts: after the
+            // first print, start another only while the step is still short.
+            while ($in_batch < self::EXPORT_BATCH_SIZE && $job['next_index'] < $job['total'] && ($in_batch === 0 || microtime(true) - $step_started < self::STEP_TIME_BUDGET)) {
                 $task = $job['tasks'][$job['next_index']];
                 $design_path = $task['design_path'];
                 if (!empty($task['ai_prompt'])) {
@@ -665,6 +669,10 @@ class MG_Order_Design_Download {
                 $export_path = self::prepare_export_png($design_path, $task['type'], $task['size'], $job['cache'], $job['temp_files'], !empty($task['large_size']), $strip_black);
                 if (!$zip->addFile($export_path, $task['zip_name'])) {
                     throw new RuntimeException(__('Nem sikerült a nyomatot a ZIP fájlba írni.', 'mg'));
+                }
+                // PNGs are already compressed; deflating them again only slows close().
+                if (method_exists($zip, 'setCompressionName')) {
+                    $zip->setCompressionName($task['zip_name'], ZipArchive::CM_STORE);
                 }
                 $job['next_index']++;
                 $job['completed']++;

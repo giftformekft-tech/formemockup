@@ -133,6 +133,9 @@
             errorEl.hidden = false;
         };
 
+        // A step converts up to a few large print PNGs; slow hosts need more than
+        // the 30 s allowed for short requests (PHP limit for a step is 120 s).
+        var STEP_TIMEOUT = 110000;
         var postJson = function (body, timeoutMs) {
             var controller = typeof AbortController === 'function' ? new AbortController() : null;
             var limit = timeoutMs || 30000;
@@ -242,7 +245,7 @@
             if (stopped) { return; }
             var version = pollVersion;
             var body = 'action=mg_design_export_step&nonce=' + encodeURIComponent(cfg.nonce) + '&job_id=' + encodeURIComponent(jobId);
-            postJson(body).then(function (payload) {
+            postJson(body, STEP_TIMEOUT).then(function (payload) {
                 if (stopped || version !== pollVersion) return;
                 if (!payload || !payload.success) {
                     pauseExport(payload && payload.data && payload.data.message);
@@ -281,7 +284,7 @@
             renderTiming();
             clockTimer = window.setInterval(function () {
                 renderTiming();
-                if (Date.now() - lastReplyAt > 45000) pauseExport('45 másodperce nem érkezett állapotfrissítés. A folyamat állapota bizonytalan; az Export folytatása gombbal ellenőrizheted.');
+                if (Date.now() - lastReplyAt > STEP_TIMEOUT + 10000) pauseExport('2 perce nem érkezett állapotfrissítés. A folyamat állapota bizonytalan; az Export folytatása gombbal ellenőrizheted.');
                 else if (Date.now() - lastProgressAt > 600000) pauseExport('10 perce nem változott a feldolgozás lépése. A generálás elakadhatott; az Export folytatása gombbal ellenőrizheted.');
             }, 1000);
             step(jobId);

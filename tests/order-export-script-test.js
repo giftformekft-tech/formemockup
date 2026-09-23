@@ -169,7 +169,7 @@ async function main() {
     timedOut.responses.push(reviewPayload(), { success: true, data: { job_id: 'timeout' } }, 'timeout');
     timedOut.element('.mg-order-export-choice-normal').handlers.click();
     await flush();
-    assert.equal(timedOut.timers[0].delay, 30000, 'short requests have a bounded timeout');
+    assert.equal(timedOut.timers[0].delay, 110000, 'export steps have a bounded timeout long enough for slow print processing');
     timedOut.timers.shift().fn();
     await flush();
     assert.equal(timedOut.element('.mg-order-export-retry').hidden, false, 'network timeout leaves a usable recovery button');
@@ -188,8 +188,8 @@ async function main() {
     clockUi.advance(3000);
     assert.match(clockUi.element('.mg-order-export-detail').textContent, /0:15/);
     assert.match(clockUi.element('.mg-order-export-detail').textContent, /3:00/);
-    clockUi.advance(43000);
-    assert.match(clockUi.element('.mg-order-export-error').textContent, /45 másodperce/);
+    clockUi.advance(118000);
+    assert.match(clockUi.element('.mg-order-export-error').textContent, /2 perce nem érkezett/);
     assert.match(clockUi.element('.mg-order-export-detail').textContent, /Utolsó ismert lépés: OpenAI/);
     assert.equal(clockUi.element('.mg-order-export-retry').hidden, false, 'independent watchdog exposes recovery when polling stops');
     assert.equal(clockUi.intervals.length, 0);
@@ -239,7 +239,7 @@ async function main() {
     await flush();
     hardTimeout.timers.shift().fn();
     await flush();
-    assert.match(hardTimeout.element('.mg-order-export-error').textContent, /30 másodpercen belül/);
+    assert.match(hardTimeout.element('.mg-order-export-error').textContent, /110 másodpercen belül/);
     assert.equal(hardTimeout.element('.mg-order-export-retry').hidden, false, 'timeout recovery works even if fetch ignores abort');
 
     const lateWorker = setup();
