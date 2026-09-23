@@ -1,6 +1,43 @@
 # formemockup
 mymockup
 
+## DesignFlow-felismerés és szerkeszthető presetmegfeleltetés (2.38.11)
+
+Az **Egyedi mezők** adminoldal **AI felismerés → preset megfeleltetés** részén
+rendeld a felismerési típusokat a saját, meglévő presetjeidhez. Mindegyik sorban
+a presetet és azon belül a megfelelő mezőket is válaszd ki, majd ments:
+
+| Felismert elemek | Példa a meglévő presetre |
+| --- | --- |
+| Hónap | Hónap választó |
+| Név | Név |
+| Név + évszám | Név + évszám |
+| Életkor / eltelt évek + évszám | Év + évszám |
+| Évszám | Évszám |
+| Évszám + hónap | évszám hónap |
+
+A megfeleltetés az azonosítókhoz kötődik, ezért az átnevezés nem bontja meg.
+Törölt vagy nem megfelelő preset/mező esetén kézi ellenőrzés szükséges.
+Az összetett felismerés mindig a teljes kombinációhoz tartozó presetet választja.
+
+A tömeges feltöltőben a PNG-k mellé válaszd ki a DesignFlow JSON-jait is,
+majd kapcsold be az **AI/JSON** módot és az **Egyedi mezők és preset** opciót.
+Egyértelmű, kész képről származó felismerésnél az Egyedi jelölő és a preset
+automatikusan kitöltődik. A sor jelzi a felismert értéket és a választott presetet.
+A kézi választás elsőbbséget kap. Bizonytalan vagy megfeleltetés nélküli találatnál
+„Ellenőrizendő” jelzés jelenik meg; régi JSON nem állítja át az egyedi mezőket.
+A közvetlen feltöltés és a háttérsor is ugyanezeket a szabályokat használja.
+
+A képen látható érték csak felismerési adat, nem vásárlói alapérték. A meglévő
+preset felárai, AI-nyomatbeállításai és válaszlehetőségei változatlanul érvényesek.
+Korábbi JSON-okhoz a DesignFlow **Kész designok → Egyedi mezők pótlása** művelete
+készíti el a szükséges adatot, fájlátnevezés és a többi termékadat módosítása nélkül.
+
+Ellenőrzés: `php tests/personalization-import-test.php`,
+`node tests/personalization-import-test.js`. A közös
+`tests/fixtures/personalization-contract.json` a DesignFlow tényleges exportját
+használja mind a hat profil feloldásának ellenőrzésére.
+
 ## AI egyedi nyomat a rendelés ZIP-exportjában (2.37.0)
 
 Az **Egyedi mezők → megfelelő sablon → mező szerkesztése** alatt kapcsold be

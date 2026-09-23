@@ -395,6 +395,10 @@ class MG_Bulk_Queue {
         $created_new_product = false;
         try {
             $payload = isset($job['payload']) && is_array($job['payload']) ? $job['payload'] : array();
+            if (isset($payload['personalization_selection'])) {
+                $valid = MG_Personalization_Import::validate_selection($payload['personalization_selection']);
+                if (is_wp_error($valid)) throw new RuntimeException($valid->get_error_message());
+            }
             $design_path = isset($payload['design_path']) ? $payload['design_path'] : '';
             if (!$design_path || !file_exists($design_path)) {
                 throw new RuntimeException(__('A design fájl nem található.', 'mgdtp'));
@@ -640,7 +644,10 @@ class MG_Bulk_Queue {
                     wp_set_object_terms($result_product_id, $tags, 'product_tag', true);
                 }
             }
-            if ($result_product_id > 0 && !empty($payload['custom_product'])) {
+            if ($result_product_id > 0 && isset($payload['personalization_selection'])) {
+                $valid = MG_Personalization_Import::apply_selection($result_product_id, $payload['personalization_selection']);
+                if (is_wp_error($valid)) throw new RuntimeException($valid->get_error_message());
+            } elseif ($result_product_id > 0 && !empty($payload['custom_product'])) {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, true);
                 if (!empty($payload['preset_id'])) {
                     MG_Custom_Fields_Manager::apply_preset_to_product($result_product_id, sanitize_key($payload['preset_id']));
@@ -917,6 +924,11 @@ class MG_Bulk_Queue {
         $clean['trigger'] = isset($payload['trigger']) ? sanitize_key($payload['trigger']) : 'bulk_queue';
         $clean['custom_product'] = !empty($payload['custom_product']) ? 1 : 0;
         $clean['preset_id'] = isset($payload['preset_id']) ? sanitize_key($payload['preset_id']) : '';
+        if (isset($payload['personalization_selection'])) {
+            $valid = MG_Personalization_Import::validate_selection($payload['personalization_selection']);
+            if (is_wp_error($valid)) throw new RuntimeException($valid->get_error_message());
+            $clean['personalization_selection'] = $payload['personalization_selection'];
+        }
         $tags = isset($payload['tags']) ? (array)$payload['tags'] : array();
         $tags = array_map('sanitize_text_field', array_filter(array_map('trim', $tags)));
         $clean['tags'] = array_values(array_filter(array_unique($tags)));

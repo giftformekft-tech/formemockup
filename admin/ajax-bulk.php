@@ -258,8 +258,8 @@ add_action('wp_ajax_mg_bulk_process', function(){
             : '';
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
-        $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
-        $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+        $personalization_selection = MG_Personalization_Import::selection_from_request($_POST);
+        if (is_wp_error($personalization_selection)) $mg_bulk_fail($personalization_selection->get_error_message(), 400);
         $sample_seo = isset($_POST['sample_seo']) ? wp_kses_post(wp_unslash($_POST['sample_seo'])) : '';
         if (taxonomy_exists('product_cat')) {
             if ($main_cat > 0) {
@@ -355,10 +355,8 @@ add_action('wp_ajax_mg_bulk_process', function(){
         if ($parent_id > 0) {
             $result = $creator->add_type_to_existing_parent($parent_id, $selected, $images_by_type_color, $parent_name, $cats, $defaults, $generation_context);
             if (is_wp_error($result)) $mg_bulk_fail($result->get_error_message(), 500);
-            MG_Custom_Fields_Manager::set_custom_product($parent_id, $is_custom_product);
-            if ($is_custom_product && $preset_id !== '') {
-                MG_Custom_Fields_Manager::apply_preset_to_product($parent_id, $preset_id);
-            }
+            $personalization_result = MG_Personalization_Import::apply_selection($parent_id, $personalization_selection);
+            if (is_wp_error($personalization_result)) $mg_bulk_fail($personalization_result->get_error_message(), 400);
             if ($guard_key !== '') {
                 set_transient($guard_key, array('product_id' => $parent_id), DAY_IN_SECONDS);
             }
@@ -373,10 +371,8 @@ add_action('wp_ajax_mg_bulk_process', function(){
             $pid = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, $cats, $defaults, $generation_context);
             if (is_wp_error($pid)) $mg_bulk_fail($pid->get_error_message(), 500);
             MG_Product_Creator::apply_bulk_suffix_slug($pid, $parent_name);
-            MG_Custom_Fields_Manager::set_custom_product($pid, $is_custom_product);
-            if ($is_custom_product && $preset_id !== '') {
-                MG_Custom_Fields_Manager::apply_preset_to_product($pid, $preset_id);
-            }
+            $personalization_result = MG_Personalization_Import::apply_selection($pid, $personalization_selection);
+            if (is_wp_error($personalization_result)) $mg_bulk_fail($personalization_result->get_error_message(), 400);
             // A vázlatként előre létrehozott termék csak most, a sikeres
             // generálás végén válik publikálttá.
             $pid = intval($pid);
@@ -441,8 +437,10 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             : '';
         $main_cat  = max(0, intval($_POST['main_cat'] ?? 0));
         $sub_cats  = isset($_POST['sub_cats']) ? array_map('intval', (array)$_POST['sub_cats']) : array();
-        $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
-        $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+        $personalization_selection = MG_Personalization_Import::selection_from_request($_POST);
+        if (is_wp_error($personalization_selection)) wp_send_json_error(array('message' => $personalization_selection->get_error_message()), 400);
+        $is_custom_product = !empty($personalization_selection['custom']);
+        $preset_id = $personalization_selection['preset_id'] ?? '';
         if (taxonomy_exists('product_cat')) {
             if ($main_cat > 0) {
                 $main_term = get_term($main_cat, 'product_cat');
@@ -492,6 +490,7 @@ add_action('wp_ajax_mg_bulk_queue_enqueue', function(){
             'tags' => $tags,
             'custom_product' => $is_custom_product ? 1 : 0,
             'preset_id' => $preset_id,
+            'personalization_selection' => $personalization_selection,
             'sample_seo' => $sample_seo,
             'trigger' => 'bulk_queue',
         );

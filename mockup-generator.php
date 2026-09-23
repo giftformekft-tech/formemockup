@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.38.10
+Version: 2.38.11
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.38.10');
+    define('MG_VERSION', '2.38.11');
 }
 
 register_deactivation_hook(__FILE__, function () {
@@ -66,6 +66,7 @@ add_action('plugins_loaded', function(){
         'includes/class-generator.php',
         'includes/class-product-creator.php',
         'includes/class-custom-fields-manager.php',
+        'includes/class-personalization-import.php',
         'includes/class-custom-field-product-variants.php',
         'includes/class-custom-fields-frontend.php',
         'includes/class-size-selection.php',

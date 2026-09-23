@@ -530,3 +530,15 @@
     });
 
 })(jQuery);
+
+// A preset change requires explicit selection of its own fields.
+jQuery(document).on('change', '.mg-personalization-preset', function () {
+    var $row = jQuery(this).closest('.mg-personalization-mapping');
+    var preset = (window.mgPersonalizationPresets || {})[jQuery(this).val()] || {};
+    $row.find('.mg-personalization-field').each(function () {
+        var $select = jQuery(this).empty().append(jQuery('<option>', {value: '', text: '— Válassz mezőt —'}));
+        (preset.fields || []).forEach(function (field) {
+            $select.append(jQuery('<option>', {value: field.id, text: field.label}));
+        });
+    });
+});

@@ -8,6 +8,7 @@ class MG_Custom_Fields_Page {
     const NONCE_ACTION = 'mg_custom_fields_action';
 
     public static function init() {
+        add_action('wp_ajax_mg_personalization_resolve', array('MG_Personalization_Import', 'ajax_resolve'));
         add_action('wp_ajax_mgcf_save_product_assignments', array(__CLASS__, 'ajax_save_product_assignments'));
         add_action('wp_ajax_mgcf_update_preset', array(__CLASS__, 'ajax_update_preset'));
         add_action('wp_ajax_mgcf_search_products_by_minta', array(__CLASS__, 'ajax_search_products_by_minta'));
@@ -61,6 +62,7 @@ class MG_Custom_Fields_Page {
             file_exists($js_path) ? filemtime($js_path) : '1.0.0',
             true
         );
+        wp_localize_script('mg-custom-fields-admin-js', 'mgPersonalizationPresets', MG_Custom_Fields_Manager::get_presets());
         wp_localize_script('mg-custom-fields-admin-js', 'mgcfAdmin', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce(self::NONCE_ACTION),
@@ -92,6 +94,10 @@ class MG_Custom_Fields_Page {
         $preset_id = isset($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
 
         switch ($action) {
+            case 'save_personalization_mappings':
+                $result = MG_Personalization_Import::save_mappings(wp_unslash($_POST['personalization_mappings'] ?? array()));
+                add_settings_error('mg_custom_fields_admin', 'mg_personalization_saved', is_wp_error($result) ? $result->get_error_message() : 'A megfeleltetések mentve.', is_wp_error($result) ? 'error' : 'updated');
+                break;
             case 'create_preset':
                 $preset_name = isset($_POST['preset_name']) ? sanitize_text_field($_POST['preset_name']) : '';
                 if ($preset_name === '') {
@@ -435,6 +441,7 @@ class MG_Custom_Fields_Page {
             }
         } else {
             self::render_header_main();
+            MG_Personalization_Import::render_admin();
             self::render_presets_list();
         }
 

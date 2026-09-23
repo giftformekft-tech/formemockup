@@ -1,0 +1,332 @@
+[
+  {
+    "profile": "month",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "month",
+          "value": "január",
+          "visible_text": "JANUÁRBAN",
+          "evidence": "A legjobb apukák JANUÁRBAN születnek",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "month",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "month",
+            "value": "január",
+            "visible_text": "JANUÁRBAN",
+            "evidence": "A legjobb apukák JANUÁRBAN születnek",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "month",
+      "title_hu_short_for_filename": "month"
+    }
+  },
+  {
+    "profile": "name",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "name",
+          "value": "Bence",
+          "visible_text": "BENCE",
+          "evidence": "BENCE a legjobb apa",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "name",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "name",
+            "value": "Bence",
+            "visible_text": "BENCE",
+            "evidence": "BENCE a legjobb apa",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "name",
+      "title_hu_short_for_filename": "name"
+    }
+  },
+  {
+    "profile": "name_year",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "name",
+          "value": "Bence",
+          "visible_text": "BENCE",
+          "evidence": "BENCE legenda 1990 óta",
+          "confidence": "high"
+        },
+        {
+          "kind": "year",
+          "value": "1990",
+          "visible_text": "1990",
+          "evidence": "BENCE legenda 1990 óta",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "name_year",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "name",
+            "value": "Bence",
+            "visible_text": "BENCE",
+            "evidence": "BENCE legenda 1990 óta",
+            "confidence": "high"
+          },
+          {
+            "kind": "year",
+            "value": "1990",
+            "visible_text": "1990",
+            "evidence": "BENCE legenda 1990 óta",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "name_year",
+      "title_hu_short_for_filename": "name_year"
+    }
+  },
+  {
+    "profile": "age_year",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "age",
+          "value": "36",
+          "visible_text": "36",
+          "evidence": "36 éves legenda 1990 óta",
+          "confidence": "high"
+        },
+        {
+          "kind": "year",
+          "value": "1990",
+          "visible_text": "1990",
+          "evidence": "36 éves legenda 1990 óta",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "age_year",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "age",
+            "value": "36",
+            "visible_text": "36",
+            "evidence": "36 éves legenda 1990 óta",
+            "confidence": "high"
+          },
+          {
+            "kind": "year",
+            "value": "1990",
+            "visible_text": "1990",
+            "evidence": "36 éves legenda 1990 óta",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "age_year",
+      "title_hu_short_for_filename": "age_year"
+    }
+  },
+  {
+    "profile": "year",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "year",
+          "value": "1990",
+          "visible_text": "1990",
+          "evidence": "Legenda 1990 óta",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "year",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "year",
+            "value": "1990",
+            "visible_text": "1990",
+            "evidence": "Legenda 1990 óta",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "year",
+      "title_hu_short_for_filename": "year"
+    }
+  },
+  {
+    "profile": "year_month",
+    "model_result": {
+      "status": "detected",
+      "reason": "Cserélhető személyes felirat.",
+      "fields": [
+        {
+          "kind": "year",
+          "value": "1990",
+          "visible_text": "1990",
+          "evidence": "1990 évben, JANUÁRBAN születtem",
+          "confidence": "high"
+        },
+        {
+          "kind": "month",
+          "value": "január",
+          "visible_text": "JANUÁRBAN",
+          "evidence": "1990 évben, JANUÁRBAN születtem",
+          "confidence": "high"
+        }
+      ]
+    },
+    "sidecar": {
+      "title_hu": "year_month",
+      "confidence": 0.0,
+      "personalization": {
+        "schema_version": 1,
+        "basis": "final_image",
+        "status": "detected",
+        "fields": [
+          {
+            "kind": "year",
+            "value": "1990",
+            "visible_text": "1990",
+            "evidence": "1990 évben, JANUÁRBAN születtem",
+            "confidence": "high"
+          },
+          {
+            "kind": "month",
+            "value": "január",
+            "visible_text": "JANUÁRBAN",
+            "evidence": "1990 évben, JANUÁRBAN születtem",
+            "confidence": "high"
+          }
+        ],
+        "reason": "Cserélhető személyes felirat."
+      },
+      "description": "",
+      "short_description": "",
+      "tags": [],
+      "unmatched_concepts": [],
+      "categories": {
+        "main": "Foglalkozások",
+        "sub": "Asztalos"
+      },
+      "version": 2,
+      "model": "contract-test",
+      "tag_dictionary_version": "2026-08-02",
+      "filename_base": "year_month",
+      "title_hu_short_for_filename": "year_month"
+    }
+  }
+]

@@ -83,8 +83,8 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
     $keys = isset($_POST['product_keys']) ? (array) $_POST['product_keys'] : array();
     $keys = array_map('sanitize_text_field', $keys);
     if (empty($keys)) wp_send_json_error(array('message'=>'Nincs kiválasztott terméktípus.'), 400);
-    $is_custom_product = !empty($_POST['custom_product']) && $_POST['custom_product'] === '1';
-    $preset_id = $is_custom_product && !empty($_POST['preset_id']) ? sanitize_key($_POST['preset_id']) : '';
+    $personalization_selection = MG_Personalization_Import::selection_from_request($_POST);
+    if (is_wp_error($personalization_selection)) wp_send_json_error(array('message' => $personalization_selection->get_error_message()), 400);
 
     require_once plugin_dir_path(__FILE__) . '../includes/class-generator.php';
     require_once plugin_dir_path(__FILE__) . '../includes/class-product-creator.php';
@@ -147,10 +147,8 @@ add_action('wp_ajax_mg_bulk_process_one', function(){
         }
         $product_id = $creator->create_parent_with_type_color_size_webp_fast($parent_name, $selected, $images_by_type_color, array(), $defaults, $generation_context);
         if (is_wp_error($product_id)) wp_send_json_error(array('message'=>$product_id->get_error_message()), 500);
-        MG_Custom_Fields_Manager::set_custom_product($product_id, $is_custom_product);
-        if ($is_custom_product && $preset_id !== '') {
-            MG_Custom_Fields_Manager::apply_preset_to_product($product_id, $preset_id);
-        }
+        $personalization_result = MG_Personalization_Import::apply_selection($product_id, $personalization_selection);
+        if (is_wp_error($personalization_result)) wp_send_json_error(array('message' => $personalization_result->get_error_message()), 400);
 
         if ($batch_id !== '' && class_exists('MG_Bulk_Batch')) {
             MG_Bulk_Batch::register_product($product_id, $batch_id);

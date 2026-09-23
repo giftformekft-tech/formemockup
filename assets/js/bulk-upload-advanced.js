@@ -91,7 +91,8 @@
         main: $('#mg-ai-field-main').is(':checked'),
         sub: $('#mg-ai-field-sub').is(':checked'),
         tags: $('#mg-ai-field-tags').is(':checked'),
-        seo: $('#mg-ai-field-seo').is(':checked')
+        seo: $('#mg-ai-field-seo').is(':checked'),
+        personalization: $('#mg-ai-field-personalization').is(':checked')
       }
     };
   }
@@ -135,7 +136,9 @@
 
   function applyAiDataToRow($row, payload) {
     if (!$row || !$row.length || !payload || typeof payload !== 'object') { return; }
+    if (window.MG_BULK_ADV && window.MG_BULK_ADV._isRunning) { return; }
     var config = getAiConfig();
+    MGPersonalization.updateRow($row, payload, config.enabled && config.fields.personalization);
     if (!config.enabled) { return; }
     var categories = payload.categories || {};
     var mainLabel = (categories && typeof categories.main === 'string') ? categories.main : '';
@@ -183,8 +186,6 @@
   }
 
   function applyAiToExistingRows() {
-    var config = getAiConfig();
-    if (!config.enabled) { return; }
     $('#mg-bulk-rows .mg-item-row').each(function () {
       var payload = $(this).data('mgAiPayload');
       if (payload) { applyAiDataToRow($(this), payload); }
@@ -592,7 +593,9 @@
       }
 
       var reader = new FileReader();
+      $tr.data('mgJsonLoading', true);
       reader.onload = function () {
+        $tr.data('mgJsonLoading', false);
         var text = reader.result || '';
         try {
           var payload = JSON.parse(text);
@@ -604,6 +607,7 @@
         }
       };
       reader.onerror = function () {
+        $tr.data('mgJsonLoading', false);
         setJsonStatus($tr, 'Nem olvasható JSON – kézi kitöltés.', 'is-error');
       };
       reader.readAsText(jsonFile);
@@ -742,6 +746,11 @@
 
   $('#mg-bulk-files-adv').on('change', function () { renderRows(this.files); });
   $(document).on('change', '#mg-default-type', function () { updateAllAutoNames(); });
+  $(document).on('change', '.mg-custom-flag, .mg-preset-select', function () {
+    var $row = $(this).closest('.mg-item-row');
+    MGPersonalization.manual($row[0]);
+    $row.find('.mg-personalization-status').text('Kézi beállítás');
+  });
   // Toggle preset dropdown when custom checkbox changes
   $(document).on('change', '.mg-custom-flag', function () {
     var $row = $(this).closest('.mg-item-row');
@@ -826,6 +835,7 @@
       $row.find('.mg-custom-flag').prop('checked', checked);
       var $presetSelect = $row.find('.mg-preset-select');
       $presetSelect.val(presetVal);
+      MGPersonalization.manual($row[0]);
       if (checked) {
         $presetSelect.show();
       } else {
@@ -1098,6 +1108,20 @@
     return deferred.promise();
   }
 
+  // Freeze the values reviewed before upload, including AI switches and manual overrides.
+  function setPersonalizationBusy(busy) {
+    $('#mg-ai-mode-toggle, .mg-ai-field-cb, #mg-bulk-files-adv, .mg-custom-flag, .mg-preset-select, #mg-bulk-copy-custom').each(function () {
+      var $control = $(this);
+      if (busy) {
+        $control.data('mgPersonalizationDisabled', $control.prop('disabled'));
+        $control.prop('disabled', true);
+      } else {
+        $control.prop('disabled', $control.data('mgPersonalizationDisabled') === true);
+        $control.removeData('mgPersonalizationDisabled');
+      }
+    });
+  }
+
   function startQueueProcessing($rowsCollection, files, keys, defaultsSnapshot, batchId) {
     var rows = $rowsCollection.toArray();
     var total = rows.length;
@@ -1110,6 +1134,7 @@
     var pollingTimer = null;
 
     window.MG_BULK_ADV._isRunning = true;
+    setPersonalizationBusy(true);
     $('#mg-bulk-start').prop('disabled', true);
     updateDuplicateFilterUi();
     $('.mg-worker-toggle').prop('disabled', true);
@@ -1146,6 +1171,7 @@
 
     function finalize() {
       window.MG_BULK_ADV._isRunning = false;
+      setPersonalizationBusy(false);
       $('#mg-bulk-start').prop('disabled', false);
       updateDuplicateFilterUi();
       $('.mg-worker-toggle').prop('disabled', false);
@@ -1230,6 +1256,7 @@
       var presetId = isCustomProduct ? ($row.find('.mg-preset-select').val() || '') : '';
       var sampleSeo = $row.data('mgSampleSeo') || '';
       var form = new FormData();
+      MGPersonalization.append($row, form);
       form.append('action', 'mg_bulk_queue_enqueue');
       form.append('nonce', MG_BULK_ADV.nonce);
       form.append('design_file', file);
@@ -1292,6 +1319,12 @@
   }
 
   $('#mg-bulk-start').on('click', function (e) {
+    try {
+      $('#mg-bulk-rows .mg-item-row').each(function () {
+        if ($(this).data('mgJsonLoading')) throw new Error('Várd meg a JSON fájlok beolvasását.');
+        MGPersonalization.selection(this);
+      });
+    } catch (error) { e.preventDefault(); $('#mg-bulk-status').text(error.message); return; }
     e.preventDefault();
     if (!window.MG_BULK_ADV) { window.MG_BULK_ADV = {}; }
     if (window.MG_BULK_ADV._isRunning) { return; }
@@ -1326,6 +1359,7 @@
     limit = Math.max(1, Math.min(limit, total));
 
     window.MG_BULK_ADV._isRunning = true;
+    setPersonalizationBusy(true);
     $('#mg-bulk-start').prop('disabled', true);
     updateDuplicateFilterUi();
     $('.mg-worker-toggle').prop('disabled', true);
@@ -1363,6 +1397,7 @@
 
     function finalize() {
       window.MG_BULK_ADV._isRunning = false;
+      setPersonalizationBusy(false);
       $('#mg-bulk-start').prop('disabled', false);
       updateDuplicateFilterUi();
       $('.mg-worker-toggle').prop('disabled', false);
@@ -1405,6 +1440,7 @@
       var $name = $row.find('input.mg-name');
       var parentId = parseInt($row.find('.mg-parent-id').val(), 10) || 0;
       var form = new FormData();
+      MGPersonalization.append($row, form);
       form.append('action', 'mg_bulk_process');
       form.append('nonce', MG_BULK_ADV.nonce);
       // Idempotencia-azonosító: az automatikus újrapróbálkozások ugyanezt a

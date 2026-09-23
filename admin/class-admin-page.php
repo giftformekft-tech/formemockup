@@ -805,11 +805,13 @@ class MG_Admin_Page {
         echo '<span>' . esc_html__('Tag-ek', 'mockup-generator') . '</span>';
         echo '</label>';
         echo '<label class="mg-type">';
+        echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-personalization" checked /> Egyedi mezők és preset';
+        echo '</label><label class="mg-type">';
         echo '<input type="checkbox" class="mg-ai-field-cb" id="mg-ai-field-seo" checked /> ';
         echo '<span>' . esc_html__('Minta SEO leírás', 'mockup-generator') . '</span>';
         echo '</label>';
         echo '</div>';
-        echo '<p class="description">' . esc_html__('A JSON fájl neve legyen a képfájl neve + .json. Az AI mód csak a bejelölt mezőket tölti: categories.main, categories.sub, tags tömb és description (a minta egyedi SEO leírása, a termékleírás sablonban {sample_seo} változóként érhető el). Hiányzó vagy hibás JSON esetén marad a kézi kitöltés.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('A JSON fájl neve legyen a képfájl neve + .json. Az AI mód csak a bejelölt mezőket tölti: egyedi mezők és preset, categories.main, categories.sub, tags tömb és description (a minta egyedi SEO leírása, a termékleírás sablonban {sample_seo} változóként érhető el). Hiányzó vagy hibás JSON esetén marad a kézi kitöltés.', 'mockup-generator') . '</p>';
         echo '</div>';
 
         echo '</div>'; // .card
@@ -1170,6 +1172,7 @@ class MG_Admin_Page {
         $css_path = plugin_dir_path(__FILE__) . '../assets/css/bulk-upload.css';
         $search_js = plugin_dir_path(__FILE__) . '../assets/js/product-search.js';
         $bulk_js = plugin_dir_path(__FILE__) . '../assets/js/bulk-upload-advanced.js';
+        wp_enqueue_script('mg-personalization-import', plugins_url('../assets/js/personalization-import.js', __FILE__), array('jquery'), MG_VERSION, true);
 
         wp_enqueue_style(
             'mg-bulk-upload',
@@ -1189,7 +1192,7 @@ class MG_Admin_Page {
         wp_enqueue_script(
             'mg-bulk-advanced',
             plugins_url('../assets/js/bulk-upload-advanced.js', __FILE__),
-            array('jquery'),
+            array('jquery', 'mg-personalization-import'),
             file_exists($bulk_js) ? filemtime($bulk_js) : '1.0.0',
             true
         );
