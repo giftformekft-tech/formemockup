@@ -219,6 +219,12 @@ class MG_Admin_Page {
                 'group'      => 'sales',
                 'capability' => 'edit_products',
             ),
+            'order_attribution' => array(
+                'label'      => __('Rendelésforrás-statisztika', 'mockup-generator'),
+                'type'       => 'order_attribution',
+                'group'      => 'marketing',
+                'capability' => 'manage_woocommerce',
+            ),
             'gads' => array(
                 'label'      => __('Google Ads mérés', 'mockup-generator'),
                 'type'       => 'legacy',
@@ -618,6 +624,9 @@ class MG_Admin_Page {
      */
     private static function render_panel_body($id, $tab) {
         switch ($tab['type']) {
+            case 'order_attribution':
+                MG_Order_Attribution_Page::render_page();
+                break;
             case 'legacy':
                 self::render_legacy_panel($tab);
                 break;

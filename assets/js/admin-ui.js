@@ -898,10 +898,16 @@
         });
 
         $(document).on('change input', '.mg-panel input, .mg-panel select, .mg-panel textarea', function () {
+            if ($(this).closest('[data-mg-readonly]').length) {
+                return;
+            }
             markDirty();
         });
 
         $(document).on('submit', '.mg-panel form', function () {
+            if ($(this).closest('[data-mg-readonly]').length) {
+                return;
+            }
             handleFormSubmit.call(this);
         });
 

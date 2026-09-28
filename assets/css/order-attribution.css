@@ -1,0 +1,47 @@
+.mg-attribution { color: #1e293b; max-width: 1600px; margin: 0 auto; }
+.mg-attribution [hidden] { display: none !important; }
+.mg-attribution-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.mg-attribution h2 { margin: 0 0 8px; font-size: 24px; line-height: 1.3; }
+.mg-attribution-heading p { color: #64748b; margin: 0; }
+.mg-attribution-badge { background: #eaf4ff; color: #185a9d; border: 1px solid #c9e1f7; border-radius: 20px; padding: 7px 12px; font-size: 12px; white-space: nowrap; }
+.mg-attribution-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; padding: 18px; background: #fff; border: 1px solid #dce3eb; border-radius: 10px; margin: 0 0 12px; }
+.mg-attribution-filters label { display: flex; flex: 1 1 150px; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; min-width: 0; }
+.mg-attribution-filters input, .mg-attribution-filters select { min-height: 36px; width: 100%; max-width: 100%; margin: 0; box-sizing: border-box; }
+.mg-attribution-filters .button { min-height: 36px; }
+.mg-attribution-view-filters { background: #f8fafc; }
+.mg-attribution-status { padding: 10px 2px; min-height: 28px; color: #536176; }
+.mg-attribution-status.is-error { color: #b42318; }
+.mg-attribution-status .button { margin-left: 8px; }
+.mg-attribution-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 14px 0 22px; }
+.mg-attribution-cards > div { background: #fff; border: 1px solid #dce3eb; border-top: 3px solid #2271b1; border-radius: 10px; padding: 18px; min-width: 0; }
+.mg-attribution-cards span, .mg-attribution-cards small { display: block; color: #64748b; }
+.mg-attribution-cards strong { display: block; font-size: clamp(19px, 2.1vw, 30px); line-height: 1.25; margin: 12px 0 8px; overflow-wrap: anywhere; }
+.mg-attribution-section { background: #fff; border: 1px solid #dce3eb; border-radius: 10px; padding: 20px; margin-bottom: 18px; min-width: 0; }
+.mg-attribution-section h3 { margin: 0 0 10px; font-size: 17px; }
+.mg-attribution-section p { margin: 0 0 14px; color: #64748b; }
+.mg-attribution-table { max-width: 100%; overflow: auto; }
+.mg-attribution-table table { border: 0; }
+.mg-attribution-table th { white-space: nowrap; font-weight: 600; }
+.mg-attribution-table td { vertical-align: middle; }
+.mg-attribution-table td:not(:first-child) { white-space: nowrap; }
+.mg-attribution-table td:first-child { min-width: 140px; max-width: 420px; overflow-wrap: anywhere; }
+.mg-attribution-table .button-link { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.mg-attribution-empty { padding: 16px 0; }
+.mg-attribution-chart { max-width: 100%; overflow-x: auto; padding: 10px 0 4px; }
+.mg-attribution-chart-track { display: flex; gap: 8px; align-items: end; min-width: 100%; width: max-content; }
+.mg-attribution-chart-column { display: flex; flex: 1 0 76px; width: 76px; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; min-height: 190px; font-size: 12px; }
+.mg-attribution-chart-bar { width: 30px; min-height: 2px; background: #2271b1; border-radius: 5px 5px 0 0; }
+.mg-attribution-chart-column small { display: block; text-align: center; width: 76px; height: 32px; line-height: 16px; color: #64748b; }
+.mg-attribution-explanation { margin: 20px 0; padding: 16px; background: #f1f5f9; border-radius: 8px; }
+.mg-attribution-explanation summary { cursor: pointer; font-weight: 600; }
+.mg-attribution-explanation p { max-width: 1000px; }
+@media (max-width: 1050px) { .mg-attribution-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+    .mg-attribution-heading { align-items: flex-start; flex-direction: column; }
+    .mg-attribution h2 { font-size: 21px; }
+    .mg-attribution-filters { padding: 12px; }
+    .mg-attribution-filters label { flex-basis: 100%; }
+    .mg-attribution-section { padding: 12px; }
+    .mg-attribution-cards { gap: 8px; }
+    .mg-attribution-cards > div { padding: 12px; }
+}

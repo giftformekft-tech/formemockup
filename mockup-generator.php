@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.38.11
+Version: 2.39.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.38.11');
+    define('MG_VERSION', '2.39.0');
 }
 
 register_deactivation_hook(__FILE__, function () {
@@ -99,6 +99,8 @@ add_action('plugins_loaded', function(){
         'includes/class-custom-feed-manager.php',
         'includes/class-product-structured-data.php',
         'includes/class-analytics-price-fix.php',
+        'includes/class-order-attribution-report.php',
+        'admin/class-order-attribution-page.php',
         'includes/class-server-side-price.php',
         'includes/class-price-override.php',
         'includes/class-google-customer-reviews.php',
@@ -329,6 +331,8 @@ add_action('plugins_loaded', function(){
         MG_Consent_Bridge::init();
     }
     MG_OpenAI_Pixel::init();
+    MG_Order_Attribution_Report::init();
+    MG_Order_Attribution_Page::init();
     if (class_exists('MG_Purchase_Recovery')) {
         MG_Purchase_Recovery::init();
     }
