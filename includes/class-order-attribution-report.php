@@ -90,7 +90,9 @@ class MG_Order_Attribution_Report {
         $created = $hpos ? 'date_created_gmt' : 'post_date_gmt';
         $meta_id = $hpos ? 'id' : 'meta_id';
         $meta_order = $hpos ? 'order_id' : 'post_id';
-        $statuses = array_unique(array_merge(wc_get_is_paid_statuses(), array('refunded')));
+        // Supplier export moves accepted purchases from processing to our own
+        // manufacturing state. They must remain in historical purchase reports.
+        $statuses = array_unique(array_merge(wc_get_is_paid_statuses(), array('manufacturing', 'refunded')));
         $statuses = array_map(function ($value) { return 'wc-' . preg_replace('/^wc-/', '', sanitize_key($value)); }, $statuses);
         $slots = implode(',', array_fill(0, count($statuses), '%s'));
         $where = $wpdb->prepare(

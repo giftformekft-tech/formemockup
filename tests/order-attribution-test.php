@@ -8,7 +8,7 @@ namespace Automattic\WooCommerce\Utilities {
 namespace {
 define('ABSPATH', dirname(__DIR__) . '/');
 define('ARRAY_A', 'ARRAY_A');
-define('MG_VERSION', '2.39.0');
+define('MG_VERSION', '2.39.1');
 $GLOBALS['allow_report'] = true;
 $GLOBALS['valid_nonce'] = true;
 $GLOBALS['prefix'] = 'wc_order_attribution_';
@@ -127,6 +127,7 @@ fixture_order(11, '2026-09-16 12:00:00', 99999, 'HUF', source('fb'), 'wc-failed'
 fixture_order(12, '2026-09-16 12:00:00', 99999, 'HUF', source('fb'), 'wc-cancelled');
 fixture_order(13, '2026-08-31 21:59:59', 99999, 'HUF', source('fb'));
 fixture_order(14, '2026-09-30 22:00:00', 99999, 'HUF', source('fb'));
+fixture_order(15, '2026-09-18 12:00:00', 8000, 'HUF', source('facebook.com', 'referral', '', 'referral'), 'wc-manufacturing');
 fixture_order(1001, '2026-10-01 12:00:00', 500, 'HUF', array(), 'wc-completed', 'shop_order_refund', 1);
 fixture_order(1002, '2026-10-02 12:00:00', 100, 'HUF', array(), 'wc-completed', 'shop_order_refund', 1);
 fixture_order(1003, '2026-10-02 12:00:00', 9000, 'HUF', array(), 'trash', 'shop_order_refund', 1);
@@ -141,8 +142,8 @@ foreach (array(false, true) as $hpos) {
     \Automattic\WooCommerce\Utilities\OrderUtil::$hpos = $hpos;
     $data = MG_Order_Attribution_Report::read_batch($range);
     same(true, $data['done'], 'Small query completes');
-    same(9, $data['total'], 'Only paid/refunded orders within local boundaries');
-    same(9, array_sum(array_column($data['rows'], 'orders')), 'Exactly one count per order');
+    same(10, $data['total'], 'Paid, manufacturing and refunded orders within local boundaries');
+    same(10, array_sum(array_column($data['rows'], 'orders')), 'Exactly one count per order');
     same(16000000, array_sum(array_column($data['rows'], 'refunds')), 'Partial/full refunds included, trashed refund excluded');
     $first = array_values(array_filter($data['rows'], function ($row) { return $row['day'] === '2026-09-01'; }))[0];
     same('facebook', $first['platform'], 'Platform alias normalization');
@@ -151,6 +152,10 @@ foreach (array(false, true) as $hpos) {
     same('2026-09-07', $data['rows'][2]['day'], 'Local midnight conversion');
     same(123456, $data['rows'][8]['gross'], 'Currency precision preserved');
     same('EUR', $data['rows'][8]['currency'], 'Foreign currency remains separate');
+    $manufacturing = array_values(array_filter($data['rows'], function ($row) { return $row['day'] === '2026-09-18'; }));
+    same(1, count($manufacturing), 'Earlier manufacturing purchases stay in the report');
+    same('', $manufacturing[0]['campaign'], 'Historical purchases do not require UTM campaign tags');
+    same(80000000, $manufacturing[0]['gross'], 'Manufacturing order value remains in revenue');
     $results[] = $data['rows'];
 }
 same($results[0], $results[1], 'Legacy and HPOS produce identical facts');
@@ -204,7 +209,7 @@ foreach (array(false, true) as $hpos) {
         same(true, $next['cursor'] > $page['cursor'], 'Cursor advances');
         $count += $next['processed']; $page = $next;
     } while (!$page['done']);
-    same(519, $count, 'Every purchase counted once across batches');
+    same(520, $count, 'Every purchase counted once across batches');
 }
 $sql = ''; fixture_order(900, '2026-09-21 12:00:00', 100, 'HUF', source('fb'));
 $wpdb->run($sql, 'exec');

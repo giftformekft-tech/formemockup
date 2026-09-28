@@ -70,7 +70,7 @@ class MG_Order_Attribution_Page {
                 <section class="mg-attribution-section"><h3>Időszakos bontás</h3><div class="mg-attribution-table" id="mg-attribution-timeline"></div></section>
             </div>
             <details class="mg-attribution-explanation"><summary>Mit tartalmaz a kimutatás?</summary>
-                <p>A WooCommerce szerint kifizetett állapotú (alapesetben Feldolgozás alatt és Teljesítve), valamint a Visszatérítve állapotú rendeléseket számoljuk. A függő, sikertelen és lemondott rendelések kimaradnak. A vásárlások száma a visszatérített rendeléseket is tartalmazza.</p>
+                <p>A Feldolgozás alatt, Gyártás alatt, Teljesítve és Visszatérítve állapotú rendeléseket számoljuk, továbbá a WooCommerce által kifizetettként kezelt egyedi állapotokat. A függő, sikertelen és lemondott rendelések kimaradnak. A vásárlások száma a visszatérített rendeléseket is tartalmazza.</p>
                 <p>A bevétel a kedvezmények utáni bruttó rendelésérték szállítással együtt, a rögzített visszatérítések levonásával. A visszatérítés az eredeti rendelés időszakát módosítja. Eltérő pénznemeket külön mutatunk.</p>
                 <p>A bontás a rendelés létrehozásának idejét és a webshop időzónáját használja. A hét hétfőn kezdődik. A régi, forrásadat nélküli rendeléseket Ismeretlen forrásként mutatjuk; kampányadatot nem pótolunk visszamenőleg.</p>
                 <p>A Facebook vagy Google forrás önmagában nem bizonyít fizetett hirdetést. A Fizetett hirdetés szűrő az UTM-médiumot (például paid_social vagy cpc) használja. A WooCommerce munkamenethez kötött forrásadata eltérhet a hirdetéskezelő számaitól. Hirdetési költséget és megtérülést ez a kimutatás nem tartalmaz.</p>
