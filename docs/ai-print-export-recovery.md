@@ -10,6 +10,7 @@
 - A háttérindítás HTTP-, hálózati és értelmezhetetlen válaszhibái láthatók. Egy proxy-időtúllépés után a felület tovább ellenőrzi a szerver állapotát, mert a generálás még futhat. Ha a munka továbbra sem indult el, hiba és folytatásgomb jelenik meg. A nyers HTML/szerverhibaoldal sosem kerül a felületre.
 - A rövid böngészős kérések 30 másodperc után önállóan hibára futnak akkor is, ha a kapcsolat megszakítása nem működik. A külön böngészős állapotfigyelő 45 mp állapotválasz-hiányt, illetve tíz perce változatlan feldolgozási lépést is jelez. Nincs automatikus fizetős újragenerálás; a folytatás először a meglévő feladatot használja tovább.
 - A szerveroldali hibák WooCommerce naplóforrása **mg-ai-print**. A napló a feladatot, tételt, utolsó lépést, eltelt időt és biztonságos hibakategóriát (például `http_401`, `curl_28`, `memory_limit`) tartalmazza. API-kulcsot, ügyfélpromptot és nyers szolgáltatói választ nem naplózunk.
+- A kész ZIP a `wp-content/uploads/mg-design-exports/` védett mappába kerül (nem a rendszer ideiglenes mappájába, amit a tárhely takaríthat), és a letöltés végéig megmarad; a megszakadt letöltés újrapróbálható. A letöltési hibaüzenet külön jelzi, ha a feladat lejárt, az export még nem kész, vagy a ZIP fájl tűnt el. A 12 óránál régebbi, letöltetlen ZIP-eket a következő export törli.
 - Frissítés után az adminoldalt újra kell tölteni: egy korábban nyitva maradt exportablak továbbra is a régi JavaScriptet futtatja.
 
 ## Ellenőrzés

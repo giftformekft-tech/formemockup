@@ -449,7 +449,7 @@ class MG_Order_Design_Download {
             unset($task);
             if (!class_exists('ZipArchive')) throw new RuntimeException(__('A ZIP letöltés nem támogatott a szerveren (ZipArchive hiányzik).', 'mg'));
 
-            $zip_path = tempnam(sys_get_temp_dir(), 'mg_designs_');
+            $zip_path = self::create_zip_file();
             if ($zip_path === false) {
                 throw new RuntimeException(__('Nem sikerült ideiglenes ZIP fájlt létrehozni.', 'mg'));
             }
@@ -873,6 +873,27 @@ class MG_Order_Design_Download {
         }
     }
 
+    /**
+     * A reviewed export can wait for hours. The system temp directory is often
+     * purged (service restarts, tmp cleaners) in the meantime, so the ZIP lives
+     * in a protected uploads folder; the system temp directory is the fallback.
+     */
+    protected static function create_zip_file() {
+        $uploads = wp_upload_dir();
+        $dir = !empty($uploads['basedir']) ? trailingslashit($uploads['basedir']) . 'mg-design-exports' : '';
+        if ($dir !== '' && (is_dir($dir) || @mkdir($dir, 0755, true))) {
+            if (!is_file($dir . '/index.php')) @file_put_contents($dir . '/index.php', "<?php\n// Silence is golden.\n");
+            if (!is_file($dir . '/.htaccess')) @file_put_contents($dir . '/.htaccess', "Require all denied\n<IfModule !mod_authz_core.c>\nDeny from all\n</IfModule>\n");
+            // Abandoned exports never get downloaded; drop them after twice the review time.
+            foreach ((array) glob($dir . '/mg_designs_*') as $old) {
+                if (is_file($old) && filemtime($old) < time() - 2 * self::REVIEW_TTL) @unlink($old);
+            }
+            $path = tempnam($dir, 'mg_designs_');
+            if ($path !== false) return $path;
+        }
+        return tempnam(sys_get_temp_dir(), 'mg_designs_');
+    }
+
     protected static function job_ttl(array $job) {
         return $job['status'] === 'review' ? self::REVIEW_TTL : self::JOB_TTL;
     }
@@ -1017,12 +1038,19 @@ class MG_Order_Design_Download {
         $job_id        = isset($_GET['job_id']) ? sanitize_text_field($_GET['job_id']) : '';
         $transient_key = self::JOB_TRANSIENT_PREFIX . $job_id;
         $job           = $job_id !== '' ? get_transient($transient_key) : false;
-        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id() || $job['status'] !== 'completed' || !file_exists($job['zip_path'])) {
-            wp_die(__('A ZIP fájl nem található vagy lejárt.', 'mg'), '', array('response' => 404));
+        if (!is_array($job) || (int) $job['user_id'] !== get_current_user_id()) {
+            wp_die(__('Az export feladata lejárt vagy már törölve lett. Indíts új exportot.', 'mg'), '', array('response' => 404));
+        }
+        if ($job['status'] !== 'completed') {
+            wp_die(__('Az export még nem fejeződött be (az AI-képek ellenőrzése vagy a feldolgozás folyamatban van).', 'mg'), '', array('response' => 409));
+        }
+        if (!file_exists($job['zip_path'])) {
+            wp_die(__('A kész ZIP fájl eltűnt a szerverről (ideiglenes mappa takarítása). Indíts új exportot.', 'mg'), '', array('response' => 404));
         }
 
+        // The job stays until the whole file is sent, so an interrupted or
+        // repeated download request can be retried while the job is valid.
         $zip_path = $job['zip_path'];
-        delete_transient($transient_key);
 
         $filename = 'mintak_' . date('Ymd_His') . '.zip';
 
@@ -1033,8 +1061,11 @@ class MG_Order_Design_Download {
         header('Cache-Control: no-cache, must-revalidate');
         header('Pragma: no-cache');
 
-        readfile($zip_path);
-        @unlink($zip_path);
+        $sent = readfile($zip_path);
+        if ($sent !== false && $sent === (int) filesize($zip_path) && !connection_aborted()) {
+            delete_transient($transient_key);
+            @unlink($zip_path);
+        }
         exit;
     }
 

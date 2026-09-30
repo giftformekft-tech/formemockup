@@ -418,6 +418,15 @@ try {
     call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'approve', '');
     check(raw_step('approval')['done'], 'approving every image completes the export');
     expect_error(fn() => call_hidden('MG_Order_Design_Download', 'decide_ai_image', 'approval', $regen_key, 'approve', ''), 'nem aktív');
+    // The finished ZIP must outlive system temp cleaners while the admin reviews.
+    $stale_zip = $test_dir . '/mg-design-exports/mg_designs_stale';
+    @mkdir($test_dir . '/mg-design-exports');
+    file_put_contents($stale_zip, 'x');
+    touch($stale_zip, time() - 13 * HOUR_IN_SECONDS);
+    $new_zip = call_hidden('MG_Order_Design_Download', 'create_zip_file');
+    check(str_starts_with($new_zip, $test_dir . '/mg-design-exports/') && is_file($test_dir . '/mg-design-exports/.htaccess') && is_file($test_dir . '/mg-design-exports/index.php'), 'export ZIP lives in a protected uploads folder, not the system temp directory');
+    check(!is_file($stale_zip), 'abandoned export ZIPs are purged');
+    unlink($new_zip);
     foreach (array('gpt-image-2.5-sunburst', 'gpt-image-2.5-flare') as $model) {
         MG_AI_Print_Generator::save_settings(array('model' => $model));
         $model_tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
@@ -721,6 +730,8 @@ try {
     fwrite(STDERR, $e->getMessage() . "\n");
     exit(1);
 } finally {
+    foreach (glob($test_dir . '/mg-design-exports/{,.}*', GLOB_BRACE) as $file) { if (is_file($file)) unlink($file); }
+    @rmdir($test_dir . '/mg-design-exports');
     foreach (glob($test_dir . '/*') as $file) { unlink($file); }
     rmdir($test_dir);
 }
