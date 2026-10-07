@@ -61,6 +61,14 @@ neve, ahogy a feedek eddig is küldték.
 AI-keresők:
 
 - `/llms.txt`: a bolt összefoglalója kategóriafával, fontos oldalakkal és kapcsolattal.
+  A **Vásárlási információk** mezőbe soronként írt tények (szállítási díjak, ingyenes
+  szállítás határa, szállítási idő, fizetés, elállás) a kategóriák elé kerülnek. Az
+  oldalak rövid kivonattal szerepelnek; a főoldal, a bolt, a kosár, a pénztár és a fiók
+  kimarad, a többit pipával lehet ki-be tenni (2.40.2).
+- Ha a webgyökérben fizikai `llms.txt` van (például a Hostinger Tools bővítmény
+  LLMs.txt funkciójáé), a webszerver azt adja ki a miénk helyett. A beállításoldal ezt
+  jelzi, megmondja, hol kell kikapcsolni (Hostinger → Tools → LLM Optimization), és
+  egy gombbal törölhető a maradék fájl.
 - A robots.txt ellenőrzése megmutatja, hogy az OAI-SearchBot (ChatGPT keresés), a
   PerplexityBot, a Claude-SearchBot, a Bingbot és a Googlebot elérheti-e az oldalt. A
   Cloudflare AI Crawl Control tűzfal-szinten is tilthat: ott a keresőbotokat engedd.

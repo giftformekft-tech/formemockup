@@ -88,6 +88,8 @@ class MG_SEO_Meta {
             'noindex_tags' => 0,
             'llms_txt' => 1,
             'llms_summary' => '',
+            'llms_facts' => '',
+            'llms_excluded_pages' => array(),
             'legal_name' => 'Gift for me Kft.',
             'street' => 'Hunyadi utca 35.',
             'city' => 'Nyírlugos',
@@ -156,6 +158,11 @@ class MG_SEO_Meta {
             $clean[$key] = isset($input[$key]) ? trim(sanitize_text_field(wp_unslash($input[$key]))) : '';
         }
         $clean['llms_summary'] = isset($input['llms_summary']) ? trim(sanitize_textarea_field(wp_unslash($input['llms_summary']))) : '';
+        $clean['llms_facts'] = isset($input['llms_facts']) ? trim(sanitize_textarea_field(wp_unslash($input['llms_facts']))) : '';
+        // Az llms.txt-ből kihagyott oldalak: a listázott, de be nem pipált oldalak.
+        $listed = isset($input['llms_pages_listed']) && is_array($input['llms_pages_listed']) ? array_map('absint', $input['llms_pages_listed']) : array();
+        $checked = isset($input['llms_pages_checked']) && is_array($input['llms_pages_checked']) ? array_map('absint', $input['llms_pages_checked']) : array();
+        $clean['llms_excluded_pages'] = array_values(array_filter(array_unique(array_diff($listed, $checked))));
         // Üres H1 sablonnál a kategória neve a H1.
         $clean['category_h1_template'] = isset($input['category_h1_template']) ? trim(sanitize_text_field(wp_unslash($input['category_h1_template']))) : '';
 

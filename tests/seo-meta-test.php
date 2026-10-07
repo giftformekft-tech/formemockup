@@ -36,7 +36,7 @@ class WP_Term {
     public function __construct($data) { foreach ($data as $k => $v) { $this->$k = $v; } }
 }
 class WP_Post {
-    public $ID; public $post_type = 'product'; public $post_name = ''; public $post_status = 'publish'; public $post_excerpt = ''; public $post_content = '';
+    public $ID; public $post_type = 'product'; public $post_name = ''; public $post_status = 'publish'; public $post_excerpt = ''; public $post_content = ''; public $post_title = '';
     public function __construct($data) { foreach ($data as $k => $v) { $this->$k = $v; } }
 }
 class WP_Query {
@@ -176,8 +176,15 @@ function get_site_icon_url() { return 'https://forme.hu/icon.png'; }
 function wp_get_attachment_image_url() { return ''; }
 function wp_get_attachment_url() { return ''; }
 function get_permalink($post) { return 'https://forme.hu/termek/' . $post->post_name . '/'; }
-function get_the_title($post) { return 'Szállítás'; }
-function get_posts($args) { return $GLOBALS['get_posts_result'] ?? array(); }
+function get_the_title($post) { return $post->post_title !== '' ? $post->post_title : 'Szállítás'; }
+function get_posts($args) {
+    $not_in = array_map('intval', $args['post__not_in'] ?? array());
+    return array_values(array_filter($GLOBALS['get_posts_result'] ?? array(), function ($post) use ($not_in) {
+        return !in_array(is_object($post) ? (int) $post->ID : (int) $post, $not_in, true);
+    }));
+}
+function absint($value) { return abs((int) $value); }
+function get_home_path() { return $GLOBALS['home_path'] ?? '/nonexistent/'; }
 function wc_get_page_id($page) { return 0; }
 function wc_get_page_permalink($page) { return 'https://forme.hu/bolt/'; }
 function get_page_by_path($slug, $output = OBJECT, $type = 'page') {
@@ -447,6 +454,46 @@ update_term_meta(95, MG_SEO_Meta::TERM_NOINDEX, '1');
 check(strpos(MG_SEO_AI_Visibility::build_llms_txt(), 'Horgász') === false, 'noindex categories skipped');
 delete_term_meta(95, MG_SEO_Meta::TERM_NOINDEX);
 $GLOBALS['get_posts_result'] = array();
+
+/* ---------------- llms.txt: vásárlási infók, oldalválasztás, fizikai fájl ---------------- */
+$GLOBALS['get_posts_result'] = array(
+    new WP_Post(array('ID' => 7, 'post_type' => 'page', 'post_name' => 'shipping_policy', 'post_title' => 'Szállítás',
+        'post_content' => '<!-- wp:paragraph --><p>Szállítási díjak:&nbsp;GLS csomagpont 990 Ft</p><!-- /wp:paragraph --><p>Ingyenes szállítás 15000 Ft felett.</p>[cookie_banner id="2"]')),
+    new WP_Post(array('ID' => 8, 'post_type' => 'page', 'post_name' => 'info-menu', 'post_title' => 'Info menü', 'post_content' => 'info menü')),
+    new WP_Post(array('ID' => 9, 'post_type' => 'page', 'post_name' => 'home', 'post_title' => 'Home', 'post_content' => 'Főoldal')),
+    new WP_Post(array('ID' => 10, 'post_type' => 'page', 'post_name' => 'tervezd-meg', 'post_title' => 'Tervezd meg', 'post_content' => '[designer]')),
+);
+$options['page_on_front'] = 9;
+$options[MG_SEO_Meta::OPTION] = array('llms_facts' => "Ingyenes szállítás 15 000 Ft feletti rendelésnél.\n- Várható szállítási idő: 2–4 munkanap\n\n• Fizetés: bankkártya vagy utánvét\n„Tervezd meg” oldalon saját minta\n€ nélkül", 'llms_excluded_pages' => array(8));
+MG_SEO_Meta::reset_cache();
+$llms = MG_SEO_AI_Visibility::build_llms_txt();
+check(strpos($llms, "## Vásárlási információk\n\n- Ingyenes szállítás 15 000 Ft feletti rendelésnél.\n- Várható szállítási idő: 2–4 munkanap\n- Fizetés: bankkártya vagy utánvét\n- „Tervezd meg” oldalon saját minta\n- € nélkül\n") !== false, 'facts listed one per line without duplicate bullets, multibyte starts intact');
+check(strpos($llms, '## Vásárlási információk') < strpos($llms, '## Termékkategóriák'), 'facts come before the category tree');
+check(strpos($llms, '- [Szállítás](https://forme.hu/termek/shipping_policy/): Szállítási díjak: GLS csomagpont 990 Ft Ingyenes szállítás 15000 Ft felett.' . "\n") !== false, 'page listed with a readable summary: ' . $llms);
+check(strpos($llms, 'Info menü') === false, 'pages unticked in the settings are left out');
+check(strpos($llms, '[Home]') === false, 'front page left out');
+check(strpos($llms, "- [Tervezd meg](https://forme.hu/termek/tervezd-meg/)\n") !== false, 'page without text kept without summary');
+check(strpos($llms, '- Cím: 4371 Nyírlugos, Hunyadi utca 35.') !== false, 'contact lists the company address');
+check(count(MG_SEO_AI_Visibility::llms_page_candidates()) === 3 && count(MG_SEO_AI_Visibility::llms_pages()) === 2, 'candidates exclude system pages, list excludes unticked pages');
+$saved = MG_SEO_Meta::save_settings(array('llms_pages_listed' => array('7', '8', '10'), 'llms_pages_checked' => array('7'), 'llms_facts' => "<b>Tény</b>\nMásik"));
+check($saved['llms_excluded_pages'] === array(8, 10) && $saved['llms_facts'] === "Tény\nMásik", 'unticked pages saved as excluded, facts sanitized');
+$options[MG_SEO_Meta::OPTION] = array();
+unset($options['page_on_front']);
+MG_SEO_Meta::reset_cache();
+$GLOBALS['get_posts_result'] = array();
+
+$home = sys_get_temp_dir() . '/mg-seo-home-' . getmypid() . '/';
+@mkdir($home);
+$GLOBALS['home_path'] = $home;
+check(MG_SEO_AI_Visibility::physical_llms_path() === '', 'no physical llms.txt');
+file_put_contents($home . 'llms.txt', "# www.forme.hu\n\n## Posts\n\n- [Hello world!](https://forme.hu/hello-world/)\n" . str_repeat("- [Termék](https://forme.hu/termek/x/): leírás\n", 400) . "\n[comment]: # (Generated by Hostinger Tools Plugin)\n");
+check(MG_SEO_AI_Visibility::physical_llms_path() === $home . 'llms.txt', 'physical llms.txt found in the site root');
+check(MG_SEO_AI_Visibility::physical_llms_generator($home . 'llms.txt') === 'Hostinger Tools', 'Hostinger Tools file recognised from its closing comment');
+file_put_contents($home . 'llms.txt', "# Saját\n");
+check(MG_SEO_AI_Visibility::physical_llms_generator($home . 'llms.txt') === '', 'other physical files have no known generator');
+unlink($home . 'llms.txt');
+rmdir($home);
+unset($GLOBALS['home_path']);
 
 /* ---------------- IndexNow ---------------- */
 check(!MG_IndexNow::is_enabled(), 'IndexNow off by default');

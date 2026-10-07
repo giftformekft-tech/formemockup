@@ -14,6 +14,7 @@ class MG_SEO_Settings_Page {
         add_action('admin_menu', array(__CLASS__, 'add_submenu_page'));
         add_action('admin_post_mg_seo_settings_save', array(__CLASS__, 'handle_save'));
         add_action('admin_post_mg_seo_robots_check', array(__CLASS__, 'handle_robots_check'));
+        add_action('admin_post_mg_seo_llms_delete', array(__CLASS__, 'handle_llms_delete'));
     }
 
     public static function add_submenu_page() {
@@ -62,6 +63,21 @@ class MG_SEO_Settings_Page {
         exit;
     }
 
+    /** A webgyökérben maradt fizikai llms.txt törlése, hogy a bővítmény összefoglalója jusson el a botokhoz. */
+    public static function handle_llms_delete() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_seo_llms_delete_action');
+        $path = MG_SEO_AI_Visibility::physical_llms_path();
+        if ($path !== '') {
+            wp_delete_file($path);
+        }
+        $result = MG_SEO_AI_Visibility::physical_llms_path() === '' ? 'llms_deleted' : 'llms_delete_failed';
+        wp_safe_redirect(self::page_url(array($result => 1)) . '#mg-seo-ai-settings');
+        exit;
+    }
+
     protected static function checkbox($name, $checked, $label, $help = '') {
         echo '<label><input type="checkbox" name="mg_seo_settings[' . esc_attr($name) . ']" value="1"' . checked((bool) $checked, true, false) . ' /> ' . esc_html($label) . '</label>';
         if ($help !== '') {
@@ -103,6 +119,11 @@ class MG_SEO_Settings_Page {
             <h1><?php esc_html_e('SEO és AI keresők', 'mockup-generator'); ?></h1>
             <?php if (isset($_GET['updated'])): ?>
                 <div class="notice notice-success is-dismissible"><p><?php esc_html_e('Beállítások elmentve. A LiteSpeed/Cloudflare gyorsítótárat érdemes üríteni, hogy a változás a látogatóknál is megjelenjen.', 'mockup-generator'); ?></p></div>
+            <?php endif; ?>
+            <?php if (isset($_GET['llms_deleted'])): ?>
+                <div class="notice notice-success is-dismissible"><p><?php esc_html_e('A fizikai llms.txt törölve: a /llms.txt mostantól a bővítmény összefoglalóját adja. Ha a Hostinger Tools LLMs.txt kapcsolója még be van kapcsolva, kapcsold ki, különben a következő tartalommódosításkor újra létrehozza a fájlt. Utána ürítsd a gyorsítótárat.', 'mockup-generator'); ?></p></div>
+            <?php elseif (isset($_GET['llms_delete_failed'])): ?>
+                <div class="notice notice-error is-dismissible"><p><?php esc_html_e('A fizikai llms.txt nem törölhető (fájlengedély). Töröld a tárhely fájlkezelőjében a webgyökérből (public_html/llms.txt).', 'mockup-generator'); ?></p></div>
             <?php endif; ?>
             <?php if ($seo_plugin !== ''): ?>
                 <div class="notice notice-warning"><p><?php echo esc_html(sprintf(__('Aktív SEO bővítmény: %s. A fejléc-kimenet (cím, meta leírás, Open Graph, canonical, breadcrumb) ezért kimarad; a kategóriaoldal H1-e, alsó szövege és GYIK-je továbbra is megjelenik.', 'mockup-generator'), $seo_plugin)); ?></p></div>
@@ -238,11 +259,45 @@ class MG_SEO_Settings_Page {
                 <table class="form-table" role="presentation">
                     <?php
                     self::row('llms.txt', function () use ($s) {
-                        self::checkbox('llms_txt', $s['llms_txt'], __('Bolt-összefoglaló a /llms.txt címen (kategóriák, fontos oldalak, kapcsolat)', 'mockup-generator'));
+                        self::checkbox('llms_txt', $s['llms_txt'], __('Bolt-összefoglaló a /llms.txt címen (kategóriák, vásárlási információk, fontos oldalak, kapcsolat)', 'mockup-generator'));
                         echo '<p class="description"><a href="' . esc_url(home_url('/llms.txt')) . '" target="_blank" rel="noopener">' . esc_html(home_url('/llms.txt')) . '</a></p>';
+                        $physical = MG_SEO_AI_Visibility::physical_llms_path();
+                        if ($physical !== '') {
+                            $generator = MG_SEO_AI_Visibility::physical_llms_generator($physical);
+                            echo '<div class="notice notice-warning inline" style="margin:10px 0 0"><p><strong>' . esc_html(sprintf(
+                                __('A webgyökérben fizikai llms.txt fájl van%s, ezért a /llms.txt címen a webszerver azt adja ki, nem ezt az összefoglalót.', 'mockup-generator'),
+                                $generator !== '' ? ' (' . $generator . ')' : ''
+                            )) . '</strong></p>';
+                            if ($generator === 'Hostinger Tools') {
+                                echo '<p>' . esc_html__('Kapcsold ki a Hostinger Tools llms.txt funkcióját: WordPress admin → Hostinger → Tools (Eszközök) → LLM Optimization / AI Preferences → LLMs.txt. A kikapcsolás a fájlt is törli; ha mégis megmarad, töröld az alábbi gombbal.', 'mockup-generator') . '</p>';
+                            }
+                            $delete_url = wp_nonce_url(admin_url('admin-post.php?action=mg_seo_llms_delete'), 'mg_seo_llms_delete_action');
+                            echo '<p><a class="button" href="' . esc_url($delete_url) . '" onclick="return confirm(\'' . esc_js(__('Törlöd a webgyökérben lévő llms.txt fájlt? A /llms.txt utána a bővítmény összefoglalóját adja.', 'mockup-generator')) . '\');">' . esc_html__('Fizikai llms.txt törlése', 'mockup-generator') . '</a> <code>' . esc_html($physical) . '</code></p></div>';
+                        }
                     });
                     self::row(__('llms.txt összefoglaló', 'mockup-generator'), function () use ($s) {
                         self::textarea('llms_summary', $s['llms_summary'], 3, __('Üresen automatikus: webshopnév + terméktípusok + előnyök. 1–3 mondat arról, mit árul a bolt és miben különleges.', 'mockup-generator'));
+                    });
+                    self::row(__('Vásárlási információk', 'mockup-generator'), function () use ($s) {
+                        self::textarea('llms_facts', $s['llms_facts'], 7, __('Soronként egy tény (szállítási módok és díjak, ingyenes szállítás határa, szállítási idő, fizetési módok, elállás, gyártás, ügyfélfogadás). Ezekből válaszolnak az AI-keresők a vásárlási kérdésekre. Csak a weboldalon is szereplő, valós adatot írj.', 'mockup-generator'));
+                    });
+                    self::row(__('Oldalak az llms.txt-ben', 'mockup-generator'), function () use ($s) {
+                        $pages = MG_SEO_AI_Visibility::llms_page_candidates();
+                        if (!$pages) {
+                            echo '<p class="description">' . esc_html__('Nincs közzétett oldal.', 'mockup-generator') . '</p>';
+                            return;
+                        }
+                        $excluded = array_map('intval', (array) $s['llms_excluded_pages']);
+                        echo '<fieldset style="columns:2 320px">';
+                        foreach ($pages as $page) {
+                            $summary = MG_SEO_AI_Visibility::page_summary($page);
+                            echo '<input type="hidden" name="mg_seo_settings[llms_pages_listed][]" value="' . (int) $page->ID . '" />';
+                            echo '<label style="display:block;margin:0 0 6px;break-inside:avoid"><input type="checkbox" name="mg_seo_settings[llms_pages_checked][]" value="' . (int) $page->ID . '"' . checked(!in_array((int) $page->ID, $excluded, true), true, false) . ' /> '
+                                . esc_html(get_the_title($page)) . ' <code>/' . esc_html($page->post_name) . '/</code>'
+                                . ($summary === '' ? ' <span style="color:#b32d2e">' . esc_html__('(nincs szöveg)', 'mockup-generator') . '</span>' : '') . '</label>';
+                        }
+                        echo '</fieldset>';
+                        echo '<p class="description">' . esc_html__('A főoldal, a bolt, a kosár, a pénztár és a fiókoldal automatikusan kimarad. Vedd ki a duplikált (pl. két ÁSZF, két adatvédelmi oldal) és az üres oldalakat; a duplikátumokat érdemes az oldalon is visszavonni.', 'mockup-generator') . '</p>';
                     });
                     if (class_exists('MG_IndexNow')) self::row('IndexNow', function () use ($indexnow) {
                         echo '<label><input type="checkbox" name="mg_indexnow_enabled" value="1"' . checked(!empty($indexnow['enabled']), true, false) . ' /> ' . esc_html__('Új és módosított termékek, kategóriák azonnali bejelentése a Bingnek (ChatGPT keresés, Copilot)', 'mockup-generator') . '</label>';
