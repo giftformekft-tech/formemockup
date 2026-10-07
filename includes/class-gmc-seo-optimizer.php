@@ -16,6 +16,7 @@ class MG_GMC_SEO_Optimizer {
         // Rewrite rules
         add_filter('query_vars', [self::class, 'add_query_vars']);
         add_action('init', [self::class, 'add_virtual_rewrite_rules'], 10);
+        add_filter('request', [self::class, 'resolve_base_slug_collision'], 5);
         
         // Hydrate $_GET from query_var before the rest of the logic
         add_action('template_redirect', [self::class, 'hydrate_get_parameters'], 1);
@@ -81,6 +82,62 @@ class MG_GMC_SEO_Optimizer {
         add_rewrite_rule($regex, $redirect, 'top');
     }
 
+    /**
+     * A virtuális szabály (termek/(.+)-(típus)) a típusra végződő alap
+     * termék-URL-eket is elnyeli: a „…-polo-pulcsi” slugú termék alap URL-je
+     * „…-polo” termék + „pulcsi” típus lenne, ami nem létezik, így 404.
+     * Ha a rövid slug nem létezik, de a teljes igen, az alap terméket adjuk.
+     */
+    public static function resolve_base_slug_collision($query_vars) {
+        if (empty($query_vars['mg_v_type']) || empty($query_vars['product']) || !is_string($query_vars['product'])) {
+            return $query_vars;
+        }
+        $slug = (string) $query_vars['product'];
+        $type = sanitize_title((string) $query_vars['mg_v_type']);
+        if (self::product_slug_exists($slug)) {
+            return $query_vars;
+        }
+        $full = $slug . '-' . $type;
+        if (!self::product_slug_exists($full)) {
+            return $query_vars;
+        }
+        $query_vars['product'] = $full;
+        if (isset($query_vars['name'])) {
+            $query_vars['name'] = $full;
+        }
+        unset($query_vars['mg_v_type']);
+        return $query_vars;
+    }
+
+    private static function product_slug_exists($slug) {
+        $slug = sanitize_title($slug);
+        if ($slug === '') {
+            return false;
+        }
+        // A get_page_by_path csatolmányt is visszaadhat: csak a termék számít.
+        $post = get_page_by_path($slug, OBJECT, 'product');
+        return $post instanceof WP_Post && $post->post_type === 'product';
+    }
+
+    /** A lekérdezett termék (a global $product a wp_head idején még nem megbízható). */
+    public static function get_queried_product() {
+        if (!function_exists('is_product') || !is_product()) {
+            return null;
+        }
+        $product = wc_get_product(get_queried_object_id());
+        return $product instanceof WC_Product ? $product : null;
+    }
+
+    /** Érvényes, a termékhez tartozó kért típus, vagy üres szöveg. */
+    private static function get_requested_type($product) {
+        if (!isset($_GET['mg_type']) || !class_exists('MG_Virtual_Variant_Manager')) {
+            return '';
+        }
+        $type = sanitize_title(wp_unslash($_GET['mg_type']));
+        $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
+        return isset($config['types'][$type]) ? $type : '';
+    }
+
     public static function hydrate_get_parameters() {
         if (is_product() && get_query_var('mg_v_type')) {
             $type = sanitize_text_field(get_query_var('mg_v_type'));
@@ -100,10 +157,25 @@ class MG_GMC_SEO_Optimizer {
     }
 
     public static function override_canonical($canonical, $post = null) {
-        if (is_product() && isset($_GET['mg_type'])) {
-            global $product;
-            if ($product) {
-                return self::get_virtual_permalink($product, sanitize_text_field($_GET['mg_type']));
+        $product = self::get_queried_product();
+        if (!$product) {
+            return $canonical;
+        }
+        // Más bejegyzés kanonikusát (pl. kapcsolódó termék) nem írjuk át.
+        if ($post && is_object($post) && isset($post->ID) && (int) $post->ID !== (int) $product->get_id()) {
+            return $canonical;
+        }
+        $type = self::get_requested_type($product);
+        if ($type !== '') {
+            return self::get_virtual_permalink($product, $type);
+        }
+        // Az alap /termek/minta/ URL ugyanazt mutatja, mint az alapértelmezett
+        // típus URL-je, amit a lista, a feedek és a séma is használ: a bot is
+        // a virtuális típusos URL-t kapja kanonikusnak.
+        if (class_exists('MG_SEO_Meta') && MG_SEO_Meta::should_consolidate_base_url($product)) {
+            $url = MG_SEO_Meta::get_product_canonical_url($product);
+            if ($url !== '') {
+                return $url;
             }
         }
         return $canonical;
@@ -143,7 +215,7 @@ class MG_GMC_SEO_Optimizer {
 
     public static function override_image($image_url) {
         if (is_product() && isset($_GET['mg_type'])) {
-            global $product;
+            $product = self::get_queried_product();
             if ($product && class_exists('MG_Virtual_Variant_Manager')) {
                 $config = MG_Virtual_Variant_Manager::get_frontend_config($product);
                 $type_slug = sanitize_text_field($_GET['mg_type']);

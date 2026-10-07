@@ -159,7 +159,8 @@ class MG_Google_Merchant_Feed {
             $base_sku = 'ID_' . $product_id;
         }
         
-        $blog_name = get_bloginfo('name');
+        // Ugyanaz a márka, mint a termékoldal sémájában (alapból a webshop neve).
+        $blog_name = class_exists('MG_SEO_Meta') ? MG_SEO_Meta::get_brand_name() : get_bloginfo('name');
         $currency = get_woocommerce_currency();
 
         // Get custom URL mappings if any

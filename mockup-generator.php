@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.39.1
+Version: 2.40.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.39.1');
+    define('MG_VERSION', '2.40.0');
 }
 
 register_deactivation_hook(__FILE__, function () {
@@ -121,6 +121,11 @@ add_action('plugins_loaded', function(){
 
         'includes/class-email-footer.php',
         'includes/class-catalog-integration.php',
+        'includes/class-seo-meta.php',
+        'includes/class-seo-category-content.php',
+        'includes/class-seo-ai-visibility.php',
+        'includes/class-indexnow.php',
+        'admin/class-seo-settings-page.php',
         'includes/class-gmc-seo-optimizer.php',
         'includes/class-category-popularity-pins.php',
     ];
@@ -400,6 +405,14 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_GMC_SEO_Optimizer')) {
         MG_GMC_SEO_Optimizer::init();
+    }
+    if (class_exists('MG_SEO_Meta')) {
+        MG_SEO_Meta::init();
+        foreach (array('MG_SEO_Category_Content', 'MG_SEO_AI_Visibility', 'MG_IndexNow', 'MG_SEO_Settings_Page') as $mg_seo_class) {
+            if (class_exists($mg_seo_class)) {
+                $mg_seo_class::init();
+            }
+        }
     }
     if (class_exists('MG_Category_Popularity_Pins')) {
         MG_Category_Popularity_Pins::init();

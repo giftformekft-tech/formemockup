@@ -133,6 +133,7 @@ class MG_Virtual_Variant_Manager {
         // Merge with existing product config to preserve SKU
         $product_extras = array(
             'id' => $product->get_id(),
+            'slug' => $product->get_slug(),
             'design_id' => self::get_design_id($product),
             'render_version' => self::get_render_version($product),
         );
@@ -150,6 +151,11 @@ class MG_Virtual_Variant_Manager {
         // a get_default_selection() teljes értékét kapják.
         if (isset($config['default']) && is_array($config['default'])) {
             $config['default']['size'] = '';
+        }
+
+        // Típusváltáskor a böngészőfül címe is a kiválasztott típus SEO-címét mutatja.
+        if (class_exists('MG_SEO_Meta')) {
+            $config['seoTitles'] = MG_SEO_Meta::get_type_titles($product);
         }
 
         wp_localize_script('mg-virtual-variant-display', 'MG_VIRTUAL_VARIANTS', self::prepare_browser_config($config));
@@ -277,6 +283,14 @@ class MG_Virtual_Variant_Manager {
         // Extreme early fallback: parse from REQUEST_URI using known catalog slugs
         if (isset($_SERVER['REQUEST_URI'])) {
             $uri = urldecode($_SERVER['REQUEST_URI']);
+            // A típusra végződő slugú termék alap URL-je („…-polo-pulcsi/”) nem típusos URL.
+            $queried = ($wp_query instanceof WP_Query) ? $wp_query->get_queried_object() : null;
+            if ($queried instanceof WP_Post && $queried->post_type === 'product') {
+                $path = (string) parse_url($uri, PHP_URL_PATH);
+                if (basename(rtrim($path, '/')) === $queried->post_name) {
+                    return false;
+                }
+            }
             $catalog = class_exists('MG_Variant_Display_Manager') ? MG_Variant_Display_Manager::get_catalog_index() : array();
             if (!empty($catalog)) {
                 $slugs = array_keys($catalog);

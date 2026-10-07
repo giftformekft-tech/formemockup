@@ -253,6 +253,13 @@ class MG_Admin_Page {
                 'group'      => 'marketing',
                 'capability' => 'manage_options',
             ),
+            'seo' => array(
+                'label'      => __('SEO és AI keresők', 'mockup-generator'),
+                'type'       => 'legacy',
+                'page_slug'  => 'mg-seo-settings',
+                'group'      => 'marketing',
+                'capability' => 'manage_options',
+            ),
             'stock_matrix' => array(
                 'label'      => __('Készletmátrix', 'mockup-generator'),
                 'type'       => 'local_stock',
@@ -417,6 +424,7 @@ class MG_Admin_Page {
             'mockup-generator-crosssell'        => 'crosssell',
             'mockup-generator-gift-finder'      => 'gift_finder',
             'mg-ai-seo'                         => 'ai_seo',
+            'mg-seo-settings'                   => 'seo',
             'mg-gads-settings'                  => 'gads',
             'mg-gads-product-performance'       => 'gads_performance',
             'mg-fb-pixel-settings'              => 'meta_pixel',
@@ -467,6 +475,9 @@ class MG_Admin_Page {
         }
         if (class_exists('MG_AI_SEO_Page')) {
             $callbacks['mg-ai-seo'] = array('MG_AI_SEO_Page', 'render_page');
+        }
+        if (class_exists('MG_SEO_Settings_Page')) {
+            $callbacks['mg-seo-settings'] = array('MG_SEO_Settings_Page', 'render_page');
         }
         if (class_exists('MG_Google_Ads_Settings')) {
             $callbacks['mg-gads-settings'] = array('MG_Google_Ads_Settings', 'render_settings_page');

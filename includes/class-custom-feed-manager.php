@@ -615,6 +615,8 @@ class MG_Custom_Feed_Manager {
         $output = '';
         $base_sku = $product->get_sku() ?: 'ID_'.$product_id;
         $blog_name = get_bloginfo('name');
+        // Ugyanaz a márka, mint a termékoldal sémájában (alapból a webshop neve).
+        $brand_name = class_exists('MG_SEO_Meta') ? MG_SEO_Meta::get_brand_name() : get_bloginfo('name');
         $currency = get_woocommerce_currency();
         $custom_urls = isset($config['typeUrls']) ? $config['typeUrls'] : array();
 
@@ -667,7 +669,7 @@ class MG_Custom_Feed_Manager {
                 $missing = array();
                 if ($description === '') $missing[] = 'description: üres leírás';
                 if ($plain($product->get_name()) === '') $missing[] = 'title: üres terméknév';
-                if ($plain($blog_name) === '') $missing[] = 'brand/seller_name: üres webshopnév';
+                if ($plain($blog_name) === '' || $plain($brand_name) === '') $missing[] = 'brand/seller_name: üres webshopnév';
                 if (!is_finite($price_val) || $price_val <= 0) $missing[] = 'price: nem pozitív ár';
                 foreach (array('url' => $g_link, 'image_url' => $g_image_link) as $field => $url) {
                     if (!is_string($url) || !filter_var($url, FILTER_VALIDATE_URL) || stripos($url, 'https://') !== 0) {
@@ -687,7 +689,7 @@ class MG_Custom_Feed_Manager {
                 if ($gender === '') $gender = preg_match('/férfi|ferfi/iu', $label) ? 'male' : (preg_match('/női|noi/iu', $label) ? 'female' : 'unisex');
                 if ($age === '') $age = stripos($label, 'baba') !== false ? 'infant' : (stripos($label, 'gyerek') !== false ? 'kids' : 'adult');
                 $output .= self::csv_row(array(self::get_openai_item_id($product, $type_slug), $plain($g_title),
-                    $description, $g_link, $plain($blog_name), $plain($blog_name), $g_image_link,
+                    $description, $g_link, $plain($brand_name), $plain($blog_name), $g_image_link,
                     $g_availability, number_format($price_val, 2, '.', '') . ' ' . $currency, 'new', $gender, $age,
                     'true', 'true', 'false'));
                 $report['exported'] = ($report['exported'] ?? 0) + 1;
@@ -703,7 +705,7 @@ class MG_Custom_Feed_Manager {
             $output .= '<g:condition>new</g:condition>' . PHP_EOL;
             $output .= '<g:availability>' . $g_availability . '</g:availability>' . PHP_EOL;
             $output .= '<g:price>' . number_format($price_val, 2, '.', '') . ' ' . $currency . '</g:price>' . PHP_EOL;
-            $output .= '<g:brand>' . self::xml_sanitize($blog_name) . '</g:brand>' . PHP_EOL;
+            $output .= '<g:brand>' . self::xml_sanitize($brand_name) . '</g:brand>' . PHP_EOL;
             // $output .= '<g:item_group_id>' . self::xml_sanitize($base_sku) . '</g:item_group_id>' . PHP_EOL;
             $performance_slot = null;
             $performance_label = '';

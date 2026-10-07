@@ -1,6 +1,73 @@
 # formemockup
 mymockup
 
+## SEO és AI keresők (2.40.0)
+
+Az oldalon nincs SEO bővítmény, ezért a WordPress eddig csak „Név – www.forme.hu”
+címet írt ki, meta leírás, kategória-canonical és Open Graph nélkül. A kategóriaoldalról
+a téma elrejtette a H1-et. A régi Yoast/Rank Math filterek (típus a címben, OG kép)
+le sem futottak. A **Marketing & Mérés → SEO és AI keresők** fül és az alábbi
+működés ezt pótolja. Dedikált SEO bővítmény mellett a fejléc-kimenet magától kimarad.
+
+A vevőknek, a botoknak és a feedeknek ugyanaz a virtuális típusrendszer látszik.
+Minden típus önálló termék: saját URL (`/termek/minta-ferfi-polo/`), „Név - Típus”
+név (mint a feed `g:title`-je és a H1), `SKU_típus` azonosító, a típus képe és ára.
+
+Termékoldal:
+
+- `<title>`: `{termek} - {tipus} | {kategoria} | {oldal}`, például
+  „50-nek születik - Férfi póló | Születésnap | Forme.hu”. A kategória nem
+  ismétlődik, ha a név már tartalmazza. 70 karakter fölött előbb az oldalnév, majd a
+  kategória marad el. Típusváltáskor a böngészőfül címe is a típusét mutatja.
+- Kategória: a kategória **„Kifejezés a termékoldalak címében”** mezője (pl.
+  „Születésnapi ajándék”), egyébként a neve. Ha a terméknek több kategóriája van, a
+  kitöltött mezőjű kategória kerül a címbe, ennek híján a feedhez hasonlóan az első
+  alkategória.
+- Meta leírás: név, típus, a minta AI SEO szövegéből (`_mg_sample_seo`) vagy a
+  kategória leírásából annyi mondat, amennyi 160 karakterbe fér, és az előnyök.
+- Kanonikus URL: az alap `/termek/minta/` URL kanonikusa és sitemap-bejegyzése az
+  alapértelmezett típus URL-je. A lista, a feedek és a termékséma eddig is ezt
+  használták. A típusos URL-ek önmagukra kanonizálnak, a GMC landing page-ek nem változnak.
+- Javítva: a típusra végződő slugú termékek (pl. `…-polo-pulcsi`) alap URL-je
+  eddig 404-et adott, mert a virtuális szabály „…-polo” termékként és „pulcsi”
+  típusként olvasta. A típusválasztó ilyen oldalon sem ír már hibás URL-t a címsorba.
+- Open Graph / Twitter: a típus képe és ára, `product:retailer_item_id` = feed ID.
+- Séma: a termékséma `category` mezője a feed `product_type`-ja. A márka a feedeké,
+  és valódi értékeléseknél `aggregateRating` is kerül bele. Mellette BreadcrumbList.
+
+Kategóriaoldal (**Termékek → Kategóriák → szerkesztés → SEO és AI keresők**):
+
+- SEO cím, H1, meta leírás (karakterszámlálóval), termékcím-kifejezés.
+- **Alsó SEO szöveg** és **GYIK**: csak az első oldalon, a terméklista alatt
+  jelenik meg. A GYIK FAQPage sémát is kap. Formátum: első sor a kérdés, alatta a
+  válasz, a kérdések között üres sor. A `K:`/`V:` és a `Kérdés? | Válasz` forma is jó.
+- noindex: a kategória kimarad a keresőkből, a sitemapből és az llms.txt-ből.
+- Üres mezőknél sablon érvényes, például „Születésnap – vicces, egyedi pólók és
+  ajándékok | Forme.hu”. Lapozott oldalaknál „N. oldal” kerül a címbe, és saját
+  canonical készül. CollectionPage/ItemList séma is van.
+
+Közös márka: a beállítás **Márkanév** mezője a sémát, az Open Graph-ot és mindhárom
+termékfeedet (Google, Facebook, egyedi/ChatGPT) egyszerre állítja. Üresen a webhely
+neve, ahogy a feedek eddig is küldték.
+
+AI-keresők:
+
+- `/llms.txt`: a bolt összefoglalója kategóriafával, fontos oldalakkal és kapcsolattal.
+- A robots.txt ellenőrzése megmutatja, hogy az OAI-SearchBot (ChatGPT keresés), a
+  PerplexityBot, a Claude-SearchBot, a Bingbot és a Googlebot elérheti-e az oldalt. A
+  Cloudflare AI Crawl Control tűzfal-szinten is tilthat: ott a keresőbotokat engedd.
+- IndexNow (alapból ki): az új és módosított termékek, kategóriák típusos URL-jét
+  azonnal bejelenti a Bingnek, amire a ChatGPT keresés és a Copilot is támaszkodik.
+- A sitemapből kimarad a szerzői archívum. A noindex kategóriák sem kerülnek bele.
+
+Élesítés után: ellenőrizd a **Cégadatok** címét a lábléchez képest, majd ürítsd a
+LiteSpeed és a Cloudflare gyorsítótárát. Utána a Search Console-ban küldd be újra a
+`wp-sitemap.xml`-t, a Bing Webmaster Toolsban pedig importáld a Search Console-ból.
+
+Ellenőrzés: `php tests/seo-meta-test.php`. Böngészős teszt a fülcímre és a
+`…-pulcsi` slugokra (Playwright + Chromium szükséges):
+`node tests/seo-virtual-title-browser-test.js`.
+
 ## DesignFlow-felismerés és szerkeszthető presetmegfeleltetés (2.38.11)
 
 Az **Egyedi mezők** adminoldal **AI felismerés → preset megfeleltetés** részén

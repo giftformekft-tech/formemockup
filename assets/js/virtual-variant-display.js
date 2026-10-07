@@ -377,6 +377,12 @@
             // Virtual Permalink detection from path
             if (this.config && this.config.useVirtualPermalinks && this.config.types) {
                 var path = window.location.pathname || '';
+                // A típusra végződő slugú termék alap URL-je (pl. „…-polo-pulcsi/”) nem típusos URL.
+                var productSlug = this.config.product && this.config.product.slug ? String(this.config.product.slug) : '';
+                var lastSegment = path.replace(/\/+$/, '').split('/').pop();
+                if (productSlug && lastSegment === productSlug) {
+                    return '';
+                }
                 var pathParts = path.replace(/\/$/, '').split('-');
                 if (pathParts.length > 1) {
                     // Start checking backwards since slugs can have multiple hyphens
@@ -417,6 +423,21 @@
                 url.searchParams.delete('mg_type');
 
                 var path = url.pathname;
+                // Ismert termék-slugnál abból építjük az URL-t: a típusra végződő
+                // slug („…-polo-pulcsi”) végét nem szabad típusként levágni.
+                var productSlug = this.config.product && this.config.product.slug ? String(this.config.product.slug) : '';
+                var segments = path.replace(/\/+$/, '').split('/');
+                var lastSegment = segments[segments.length - 1];
+                if (productSlug && (lastSegment === productSlug || lastSegment.indexOf(productSlug + '-') === 0)) {
+                    segments[segments.length - 1] = typeSlug ? productSlug + '-' + typeSlug : productSlug;
+                    var slugPath = segments.join('/') + '/';
+                    if (url.pathname === slugPath && !url.searchParams.has('mg_type')) {
+                        return;
+                    }
+                    url.pathname = slugPath;
+                    window.history.replaceState({}, '', url.toString());
+                    return;
+                }
                 // Strip existing known type slugs from the end of the path
                 if (this.config.types) {
                     var allSlugs = Object.keys(this.config.types).sort(function (a, b) { return b.length - a.length; });
@@ -509,6 +530,10 @@
             nextTitle = this.baseTitle + ' - ' + typeLabel;
         }
         this.$title.text(nextTitle);
+        var seoTitles = this.config.seoTitles || {};
+        if (this.state.type && seoTitles[this.state.type] && typeof document !== 'undefined') {
+            document.title = seoTitles[this.state.type];
+        }
     };
 
     VirtualVariantDisplay.prototype.syncDefaults = function () {
