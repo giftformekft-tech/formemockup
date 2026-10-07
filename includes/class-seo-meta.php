@@ -76,6 +76,7 @@ class MG_SEO_Meta {
             'product_description_template' => '{termek} - {tipus}. {minta_leiras} {elonyok}',
             'category_title_template' => '{kategoria} – vicces, egyedi pólók és ajándékok | {oldal}',
             'category_description_template' => '{kategoria}: {db} egyedi, vicces minta pólón, pulóveren és bögrén. {elonyok}',
+            'category_h1_template' => '{kategoria} – vicces, egyedi pólók, pulóverek és bögrék',
             'usp' => 'Prémium minőség, tartós nyomtatás, gyors gyártás.',
             'home_title' => '{oldal} – vicces, egyedi pólók, pulóverek és bögrék ajándékba',
             'home_description' => 'Vicces és egyedi mintás pólók, pulóverek, bögrék és táskák születésnapra, ünnepekre és minden alkalomra. Prémium minőség, tartós nyomtatás, gyors gyártás.',
@@ -155,6 +156,8 @@ class MG_SEO_Meta {
             $clean[$key] = isset($input[$key]) ? trim(sanitize_text_field(wp_unslash($input[$key]))) : '';
         }
         $clean['llms_summary'] = isset($input['llms_summary']) ? trim(sanitize_textarea_field(wp_unslash($input['llms_summary']))) : '';
+        // Üres H1 sablonnál a kategória neve a H1.
+        $clean['category_h1_template'] = isset($input['category_h1_template']) ? trim(sanitize_text_field(wp_unslash($input['category_h1_template']))) : '';
 
         $separator = isset($input['separator']) ? trim(sanitize_text_field(wp_unslash($input['separator']))) : '';
         $clean['separator'] = in_array($separator, array('|', '–', '-', '·', '•'), true) ? $separator : '|';
@@ -334,6 +337,51 @@ class MG_SEO_Meta {
             $map['{' . $key . '}'] = (string) $value;
         }
         return $map;
+    }
+
+    /**
+     * A sablon saját szavai közül kihagyja a felsorolásban álló, a megadott
+     * névben már szereplő szót: „{kategoria} – vicces, egyedi pólók” a
+     * „Vicces” kategóriánál „Vicces – egyedi pólók” lesz. A helyőrzők
+     * értékéhez és a felsoroláson kívüli szavakhoz nem nyúl.
+     */
+    public static function drop_repeated_words($template, $name) {
+        $known = array();
+        foreach (explode(' ', self::normalize($name)) as $word) {
+            if (strlen($word) >= 3) {
+                $known[$word] = true;
+            }
+        }
+        $parts = preg_split('/(\{[a-z_]+\})/', (string) $template, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (!$known || !$parts) {
+            return (string) $template;
+        }
+        $patterns = array(
+            '/(?<![\p{L}\p{N}])%s,\s*/u',      // „vicces, egyedi” → „egyedi”
+            '/\s*,\s*%s(?![\p{L}\p{N}])/u',    // „egyedi, vicces minta” → „egyedi minta”
+            '/(?<![\p{L}\p{N}])%s\s+és\s+/u',  // „vicces és egyedi” → „egyedi”
+            '/\s+és\s+%s(?![\p{L}\p{N}])/u',   // „pulóverek és bögrék” → „pulóverek”
+        );
+        foreach ($parts as $index => $part) {
+            // A páratlan indexű részek a helyőrzők.
+            if ($index % 2 === 1 || !preg_match_all('/[\p{L}\p{N}]+/u', $part, $matches)) {
+                continue;
+            }
+            foreach (array_unique($matches[0]) as $word) {
+                if (!isset($known[self::normalize($word)])) {
+                    continue;
+                }
+                foreach ($patterns as $pattern) {
+                    $count = 0;
+                    $part = preg_replace(sprintf($pattern, preg_quote($word, '/')), '', $part, 1, $count);
+                    if ($count) {
+                        break;
+                    }
+                }
+            }
+            $parts[$index] = $part;
+        }
+        return implode('', $parts);
     }
 
     /**
@@ -675,24 +723,63 @@ class MG_SEO_Meta {
     /* Kategória-kontextus                                                 */
     /* ------------------------------------------------------------------ */
 
-    public static function get_term_h1($term) {
+    /** A kategória neve címekhez: a slug-szerű név („minecraft-polok”) olvasható alakban. */
+    public static function get_term_display_name($term) {
+        $name = self::plain($term->name);
+        if (!self::looks_like_slug($name)) {
+            return $name;
+        }
+        $name = str_replace('-', ' ', $name);
+        return function_exists('mb_strtoupper')
+            ? mb_strtoupper(mb_substr($name, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($name, 1, null, 'UTF-8')
+            : ucfirst($name);
+    }
+
+    /** A kategóriasablonok közös helyőrzői. */
+    protected static function term_vars($term) {
+        $parent = '';
+        if (!empty($term->parent)) {
+            $parent_term = get_term((int) $term->parent, $term->taxonomy);
+            if ($parent_term && !is_wp_error($parent_term)) {
+                $parent = self::get_term_display_name($parent_term);
+            }
+        }
+        return array(
+            'kategoria' => self::get_term_display_name($term),
+            'szulo' => $parent,
+            'db' => (int) $term->count,
+            'oldal' => (string) self::get_setting('site_name'),
+            'elonyok' => trim((string) self::get_setting('usp')),
+        );
+    }
+
+    /** A H1 sablon szerinti alakja, az egyedi H1 mezőtől függetlenül. */
+    public static function build_term_h1($term) {
+        $vars = self::term_vars($term);
+        $template = trim((string) self::get_setting('category_h1_template'));
+        if ($template === '') {
+            return $vars['kategoria'];
+        }
+        $h1 = self::clean_segment(strtr(self::drop_repeated_words($template, $vars['kategoria']), self::placeholders($vars)));
+        return $h1 !== '' ? $h1 : $vars['kategoria'];
+    }
+
+    /** A kategóriaoldal H1-e: az egyedi mező, különben a sablon (vagy a név). */
+    public static function get_term_h1($term, $use_template = true) {
         $custom = trim((string) get_term_meta($term->term_id, self::TERM_H1, true));
-        return $custom !== '' ? self::plain($custom) : self::plain($term->name);
+        if ($custom !== '') {
+            return self::plain($custom);
+        }
+        return $use_template ? self::build_term_h1($term) : self::get_term_display_name($term);
     }
 
     public static function build_term_title($term, $include_site = true) {
-        $site = (string) self::get_setting('site_name');
+        $vars = self::term_vars($term) + array('h1' => self::get_term_h1($term));
         $custom = trim((string) get_term_meta($term->term_id, self::TERM_TITLE, true));
-        $vars = array(
-            'kategoria' => self::plain($term->name),
-            'h1' => self::get_term_h1($term),
-            'db' => (int) $term->count,
-            'oldal' => $site,
-        );
         if ($custom !== '') {
-            $template = self::contains($custom, $site) || strpos($custom, '{oldal}') !== false ? $custom : $custom . ' | {oldal}';
+            $template = self::contains($custom, $vars['oldal']) || strpos($custom, '{oldal}') !== false ? $custom : $custom . ' | {oldal}';
         } else {
-            $template = (string) self::get_setting('category_title_template');
+            $template = self::drop_repeated_words((string) self::get_setting('category_title_template'), $vars['kategoria']);
         }
         return self::render_title($template, $vars, self::page_suffix(), $include_site);
     }
@@ -702,18 +789,21 @@ class MG_SEO_Meta {
         if ($custom !== '') {
             return self::truncate($custom, self::DESCRIPTION_MAX);
         }
+        $vars = self::term_vars($term);
         $from_description = self::fit_sentences(term_description($term->term_id, $term->taxonomy), self::DESCRIPTION_MAX);
         if ($from_description !== '') {
+            // Egy rövid (pl. 60 karakteres) leírás után az előnyök is bekerülnek, ha elférnek.
+            $usp = $vars['elonyok'];
+            if ($usp !== '' && self::length($from_description) < 120 && preg_match('/[.!?]$/u', $from_description)
+                && !self::contains($from_description, $usp)
+                && self::length($from_description . ' ' . $usp) <= self::DESCRIPTION_MAX) {
+                $from_description .= ' ' . $usp;
+            }
             return $from_description;
         }
-        $vars = array(
-            'kategoria' => self::plain($term->name),
-            'h1' => self::get_term_h1($term),
-            'db' => (int) $term->count,
-            'oldal' => (string) self::get_setting('site_name'),
-            'elonyok' => trim((string) self::get_setting('usp')),
-        );
-        $text = self::clean_description(strtr((string) self::get_setting('category_description_template'), self::placeholders($vars)));
+        $vars['h1'] = self::get_term_h1($term);
+        $template = self::drop_repeated_words((string) self::get_setting('category_description_template'), $vars['kategoria']);
+        $text = self::clean_description(strtr($template, self::placeholders($vars)));
         return self::truncate($text, self::DESCRIPTION_MAX);
     }
 

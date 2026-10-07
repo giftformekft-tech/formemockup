@@ -44,8 +44,8 @@ class MG_SEO_Category_Content {
         if (!$term || !MG_SEO_Meta::content_enabled()) {
             return $title;
         }
-        $custom = trim((string) get_term_meta($term->term_id, MG_SEO_Meta::TERM_H1, true));
-        return $custom !== '' ? esc_html($custom) : $title;
+        $h1 = MG_SEO_Meta::get_term_h1($term);
+        return $h1 !== '' ? esc_html($h1) : $title;
     }
 
     /**
@@ -188,8 +188,14 @@ class MG_SEO_Category_Content {
         self::text_row(MG_SEO_Meta::TERM_TITLE, __('SEO cím (title)', 'mockup-generator'), $get(MG_SEO_Meta::TERM_TITLE), 60,
             sprintf(__('Jelenleg: %s – a „| Oldalnév” automatikusan a végére kerül, ha hiányzik.', 'mockup-generator'), $current_title),
             __('pl. Születésnapi pólók – Vicces és egyedi pólók', 'mockup-generator'));
+        if (MG_SEO_Meta::looks_like_slug(MG_SEO_Meta::plain($term->name))) {
+            echo '<tr class="form-field"><td colspan="2"><div class="notice notice-warning inline"><p>' . esc_html(sprintf(
+                __('A kategória neve slug-szerű („%s”): nevezd át olvasható névre (pl. „Minecraft pólók”), mert a címekben és a H1-ben is a név jelenik meg.', 'mockup-generator'),
+                $term->name
+            )) . '</p></div></td></tr>';
+        }
         self::text_row(MG_SEO_Meta::TERM_H1, __('H1 főcím', 'mockup-generator'), $get(MG_SEO_Meta::TERM_H1), 70,
-            __('A kategóriaoldal látható főcíme. Üresen a kategória neve.', 'mockup-generator'),
+            sprintf(__('A kategóriaoldal látható főcíme. Üresen a H1 sablon szerint: %s', 'mockup-generator'), MG_SEO_Meta::build_term_h1($term)),
             __('pl. Születésnapi pólók – egyedi és vicces minták minden korra', 'mockup-generator'));
 
         echo '<tr class="form-field"><th scope="row"><label for="mg-seo-desc">' . esc_html__('Meta leírás', 'mockup-generator') . '</label></th><td>';

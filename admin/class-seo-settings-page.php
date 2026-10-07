@@ -161,11 +161,14 @@ class MG_SEO_Settings_Page {
                 </table>
 
                 <h2><?php esc_html_e('Kategóriaoldalak', 'mockup-generator'); ?></h2>
-                <p class="description"><?php esc_html_e('Kategóriánként a Termékek → Kategóriák → szerkesztés alatt adhatsz egyedi címet, H1-et, meta leírást, alsó szöveget és GYIK-et. Ahol üres, ezek a sablonok érvényesek.', 'mockup-generator'); ?></p>
+                <p class="description"><?php esc_html_e('Kategóriánként a Termékek → Kategóriák → szerkesztés alatt adhatsz egyedi címet, H1-et, meta leírást, alsó szöveget és GYIK-et. Ahol üres, ezek a sablonok érvényesek. A sablon felsorolásából kimarad az a szó, ami a kategória nevében már szerepel (a „Vicces” kategóriánál: „Vicces – egyedi pólók…”, nem „Vicces – vicces, egyedi pólók…”).', 'mockup-generator'); ?></p>
                 <table class="form-table" role="presentation">
                     <?php
                     self::row(__('Cím sablon', 'mockup-generator'), function () use ($s) {
-                        self::text('category_title_template', $s['category_title_template'], __('Helyőrzők: {kategoria}, {h1}, {db}, {oldal}. A 2. oldaltól „N. oldal” is bekerül.', 'mockup-generator'));
+                        self::text('category_title_template', $s['category_title_template'], __('Helyőrzők: {kategoria}, {szulo}, {h1}, {db}, {oldal}. A 2. oldaltól „N. oldal” is bekerül.', 'mockup-generator'));
+                    });
+                    self::row(__('H1 sablon', 'mockup-generator'), function () use ($s) {
+                        self::text('category_h1_template', $s['category_h1_template'], __('A kategóriaoldal látható főcíme. Helyőrzők: {kategoria}, {szulo} (szülőkategória), {db}. Üresen a kategória neve. Kategóriánként a H1 mezőben felülírható – a legfontosabb kategóriáknál érdemes kézzel megírni (pl. „Születésnapi pólók – …”).', 'mockup-generator'));
                     });
                     self::row(__('Meta leírás sablon', 'mockup-generator'), function () use ($s) {
                         self::textarea('category_description_template', $s['category_description_template'], 2, __('Akkor használt, ha a kategóriának nincs sem egyedi meta leírása, sem leírása. Helyőrzők: {kategoria}, {h1}, {db}, {elonyok}, {oldal}.', 'mockup-generator'));
@@ -279,16 +282,19 @@ class MG_SEO_Settings_Page {
 
     protected static function render_preview() {
         echo '<h2>' . esc_html__('Előnézet', 'mockup-generator') . '</h2>';
-        echo '<p class="description">' . esc_html__('A jelenlegi beállításokkal így jelennek meg a legnagyobb kategóriák és a legutóbbi termékek (alapértelmezett típussal). Zárójelben a karakterszám.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('A mentett beállításokkal így jelenik meg a 10 legnagyobb kategória és az 5 legutóbbi termék (alapértelmezett típussal). Zárójelben a karakterszám.', 'mockup-generator') . '</p>';
 
-        $terms = get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => true, 'orderby' => 'count', 'order' => 'DESC', 'number' => 6));
+        $terms = get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => true, 'orderby' => 'count', 'order' => 'DESC', 'number' => 10));
         if (!is_wp_error($terms) && $terms) {
             echo '<table class="widefat striped" style="max-width:1200px;margin-bottom:20px"><thead><tr><th>' . esc_html__('Kategória', 'mockup-generator') . '</th><th>Title</th><th>H1</th><th>' . esc_html__('Meta leírás', 'mockup-generator') . '</th></tr></thead><tbody>';
             foreach ($terms as $term) {
                 $title = MG_SEO_Meta::build_term_title($term);
                 $description = MG_SEO_Meta::build_term_description($term);
                 $edit = get_edit_term_link($term->term_id, 'product_cat', 'product');
-                echo '<tr><td><a href="' . esc_url((string) $edit) . '">' . esc_html($term->name) . '</a> (' . (int) $term->count . ')</td>';
+                $slug_warning = MG_SEO_Meta::looks_like_slug(MG_SEO_Meta::plain($term->name))
+                    ? '<br /><span style="color:#b32d2e">' . esc_html__('⚠ slug-szerű név – nevezd át', 'mockup-generator') . '</span>'
+                    : '';
+                echo '<tr><td><a href="' . esc_url((string) $edit) . '">' . esc_html($term->name) . '</a> (' . (int) $term->count . ')' . $slug_warning . '</td>';
                 echo '<td>' . esc_html($title) . ' ' . self::chars($title) . '</td>';
                 echo '<td>' . esc_html(MG_SEO_Meta::get_term_h1($term)) . '</td>';
                 echo '<td>' . esc_html($description) . ' ' . self::chars($description) . '</td></tr>';

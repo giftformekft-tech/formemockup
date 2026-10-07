@@ -45,6 +45,14 @@ Kategóriaoldal (**Termékek → Kategóriák → szerkesztés → SEO és AI ke
 - Üres mezőknél sablon érvényes, például „Születésnap – vicces, egyedi pólók és
   ajándékok | Forme.hu”. Lapozott oldalaknál „N. oldal” kerül a címbe, és saját
   canonical készül. CollectionPage/ItemList séma is van.
+- **H1 sablon** (2.40.1): `{kategoria} – vicces, egyedi pólók, pulóverek és bögrék`,
+  helyőrzők: `{kategoria}`, `{szulo}`, `{db}`. Üresen a kategória neve; kategóriánként
+  a H1 mező felülírja. A sablon felsorolásából kimarad a kategórianévben már szereplő
+  szó: a „Vicces” kategória H1-e „Vicces – egyedi pólók, pulóverek és bögrék”, a címe
+  „Vicces – egyedi pólók és ajándékok | Forme.hu”. A slug-szerű nevek („minecraft-polok”)
+  olvasható alakban kerülnek a címbe, az előnézet és a kategóriaszerkesztő jelzi őket.
+- A rövid (120 karakternél rövidebb) kategórialeírásból készült meta leírás végére az
+  előnyök is bekerülnek, ha elférnek.
 
 Közös márka: a beállítás **Márkanév** mezője a sémát, az Open Graph-ot és mindhárom
 termékfeedet (Google, Facebook, egyedi/ChatGPT) egyszerre állítja. Üresen a webhely

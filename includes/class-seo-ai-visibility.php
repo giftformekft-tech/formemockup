@@ -114,7 +114,8 @@ class MG_SEO_AI_Visibility {
                 if (is_wp_error($link)) {
                     continue;
                 }
-                $out[] = str_repeat('  ', $depth) . '- ' . self::md_link(MG_SEO_Meta::get_term_h1($term), $link, MG_SEO_Meta::build_term_description($term));
+                // A fában a név (vagy az egyedi H1) áll: a H1 sablon minden sorban ugyanazt ismételné.
+                $out[] = str_repeat('  ', $depth) . '- ' . self::md_link(MG_SEO_Meta::get_term_h1($term, false), $link, MG_SEO_Meta::build_term_description($term));
                 $render((int) $term->term_id, $depth + 1);
             }
         };
