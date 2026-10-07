@@ -68,7 +68,8 @@ AI-keresők:
 - Ha a webgyökérben fizikai `llms.txt` van (például a Hostinger Tools bővítmény
   LLMs.txt funkciójáé), a webszerver azt adja ki a miénk helyett. A beállításoldal ezt
   jelzi, megmondja, hol kell kikapcsolni (Hostinger → Tools → LLM Optimization), és
-  egy gombbal törölhető a maradék fájl.
+  egy gombbal törölhető a maradék fájl. A Hostinger kapcsolójának kikapcsolása nem
+  mindig törli a korábban létrehozott fájlt.
 - A robots.txt ellenőrzése megmutatja, hogy az OAI-SearchBot (ChatGPT keresés), a
   PerplexityBot, a Claude-SearchBot, a Bingbot és a Googlebot elérheti-e az oldalt. A
   Cloudflare AI Crawl Control tűzfal-szinten is tilthat: ott a keresőbotokat engedd.

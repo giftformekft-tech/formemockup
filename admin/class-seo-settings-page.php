@@ -121,7 +121,7 @@ class MG_SEO_Settings_Page {
                 <div class="notice notice-success is-dismissible"><p><?php esc_html_e('Beállítások elmentve. A LiteSpeed/Cloudflare gyorsítótárat érdemes üríteni, hogy a változás a látogatóknál is megjelenjen.', 'mockup-generator'); ?></p></div>
             <?php endif; ?>
             <?php if (isset($_GET['llms_deleted'])): ?>
-                <div class="notice notice-success is-dismissible"><p><?php esc_html_e('A fizikai llms.txt törölve: a /llms.txt mostantól a bővítmény összefoglalóját adja. Ha a Hostinger Tools LLMs.txt kapcsolója még be van kapcsolva, kapcsold ki, különben a következő tartalommódosításkor újra létrehozza a fájlt. Utána ürítsd a gyorsítótárat.', 'mockup-generator'); ?></p></div>
+                <div class="notice notice-success is-dismissible"><p><?php esc_html_e('A fizikai llms.txt törölve: a /llms.txt mostantól a bővítmény összefoglalóját adja (ürítsd a LiteSpeed és a Cloudflare gyorsítótárát). Ha a fájl egy termék vagy oldal mentése után visszakerül, valami újra létrehozza: nézd meg a Hostinger Tools LLMs.txt kapcsolóját és a Hostinger hPanel LLMs.txt / AI beállítását.', 'mockup-generator'); ?></p></div>
             <?php elseif (isset($_GET['llms_delete_failed'])): ?>
                 <div class="notice notice-error is-dismissible"><p><?php esc_html_e('A fizikai llms.txt nem törölhető (fájlengedély). Töröld a tárhely fájlkezelőjében a webgyökérből (public_html/llms.txt).', 'mockup-generator'); ?></p></div>
             <?php endif; ?>
@@ -269,7 +269,7 @@ class MG_SEO_Settings_Page {
                                 $generator !== '' ? ' (' . $generator . ')' : ''
                             )) . '</strong></p>';
                             if ($generator === 'Hostinger Tools') {
-                                echo '<p>' . esc_html__('Kapcsold ki a Hostinger Tools llms.txt funkcióját: WordPress admin → Hostinger → Tools (Eszközök) → LLM Optimization / AI Preferences → LLMs.txt. A kikapcsolás a fájlt is törli; ha mégis megmarad, töröld az alábbi gombbal.', 'mockup-generator') . '</p>';
+                                echo '<p>' . esc_html__('Ha a Hostinger Tools LLMs.txt kapcsolója (WordPress admin → Hostinger → Tools → LLM Optimization / AI Preferences) már ki van kapcsolva, ez egy korábbi bekapcsolásból itt maradt fájl: a kikapcsolás nem mindig törli. Töröld az alábbi gombbal. Ha még be van kapcsolva, előbb kapcsold ki, különben újra létrehozza.', 'mockup-generator') . '</p>';
                             }
                             $delete_url = wp_nonce_url(admin_url('admin-post.php?action=mg_seo_llms_delete'), 'mg_seo_llms_delete_action');
                             echo '<p><a class="button" href="' . esc_url($delete_url) . '" onclick="return confirm(\'' . esc_js(__('Törlöd a webgyökérben lévő llms.txt fájlt? A /llms.txt utána a bővítmény összefoglalóját adja.', 'mockup-generator')) . '\');">' . esc_html__('Fizikai llms.txt törlése', 'mockup-generator') . '</a> <code>' . esc_html($physical) . '</code></p></div>';
