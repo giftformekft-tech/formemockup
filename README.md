@@ -45,14 +45,17 @@ Kategóriaoldal (**Termékek → Kategóriák → szerkesztés → SEO és AI ke
 - Üres mezőknél sablon érvényes, például „Születésnap – vicces, egyedi pólók és
   ajándékok | Forme.hu”. Lapozott oldalaknál „N. oldal” kerül a címbe, és saját
   canonical készül. CollectionPage/ItemList séma is van.
-- **H1 sablon** (2.40.1): `{kategoria} – vicces, egyedi pólók, pulóverek és bögrék`,
+- **H1 sablon** (2.40.1): `{kategoria} – vicces, egyedi pólók, pulóverek és ajándékok`,
   helyőrzők: `{kategoria}`, `{szulo}`, `{db}`. Üresen a kategória neve; kategóriánként
   a H1 mező felülírja. A sablon felsorolásából kimarad a kategórianévben már szereplő
-  szó: a „Vicces” kategória H1-e „Vicces – egyedi pólók, pulóverek és bögrék”, a címe
+  szó: a „Vicces” kategória H1-e „Vicces – egyedi pólók, pulóverek és ajándékok”, a címe
   „Vicces – egyedi pólók és ajándékok | Forme.hu”. A slug-szerű nevek („minecraft-polok”)
   olvasható alakban kerülnek a címbe, az előnézet és a kategóriaszerkesztő jelzi őket.
 - A rövid (120 karakternél rövidebb) kategórialeírásból készült meta leírás végére az
   előnyök is bekerülnek, ha elférnek.
+- Az alapszövegek a valós katalógust írják le (férfi, női, gyerek póló, pulóver, párna,
+  sapka, táska; bögre nincs). A régi, bögrét említő alapértéket, ha változatlanul volt
+  elmentve, az új váltja (2.40.4).
 
 Közös márka: a beállítás **Márkanév** mezője a sémát, az Open Graph-ot és mindhárom
 termékfeedet (Google, Facebook, egyedi/ChatGPT) egyszerre állítja. Üresen a webhely
@@ -61,6 +64,9 @@ neve, ahogy a feedek eddig is küldték.
 AI-keresők:
 
 - `/llms.txt`: a bolt összefoglalója kategóriafával, fontos oldalakkal és kapcsolattal.
+  Minden kategória a minták számával és a saját leírásával (egyedi meta leírás vagy a
+  kategórialeírás eleje) szerepel. Az `init` 20-as prioritásán készül, mert a WooCommerce
+  az 5-ösön regisztrálja a `product_cat` taxonómiát; a gyorsítótár verziónként külön van.
   A **Vásárlási információk** mezőbe soronként írt tények (szállítási díjak, ingyenes
   szállítás határa, szállítási idő, fizetés, elállás) a kategóriák elé kerülnek. Az
   oldalak rövid kivonattal szerepelnek; a főoldal, a bolt, a kosár, a pénztár és a fiók

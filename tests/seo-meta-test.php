@@ -119,13 +119,14 @@ function remove_accents($text) {
 }
 function apply_filters($name, $value) { return $value; }
 function do_action() {}
-function add_action() {}
+function add_action($hook, $callback, $priority = 10) { $GLOBALS['actions'][] = array($hook, $callback, $priority); }
 function add_filter() {}
 function get_option($name, $default = false) { return array_key_exists($name, $GLOBALS['options']) ? $GLOBALS['options'][$name] : $default; }
 function update_option($name, $value) { $GLOBALS['options'][$name] = $value; return true; }
-function get_transient($key) { return false; }
-function set_transient() { return true; }
-function delete_transient() { return true; }
+function get_transient($key) { return $GLOBALS['transients'][$key] ?? false; }
+function set_transient($key, $value) { $GLOBALS['transients'][$key] = $value; return true; }
+function delete_transient($key) { unset($GLOBALS['transients'][$key]); return true; }
+function taxonomy_exists($taxonomy) { return $GLOBALS['taxonomies_registered'] ?? true; }
 function home_url($path = '/') { return 'https://forme.hu' . $path; }
 function wp_parse_url($url, $component = -1) { return parse_url($url, $component); }
 function get_bloginfo($key = 'name') { return $key === 'admin_email' ? 'info@forme.hu' : 'www.forme.hu'; }
@@ -308,7 +309,7 @@ check(strpos($description, 'Egyedi születésnapi pólók vicces') !== false, 'c
 /* ---------------- kategória ---------------- */
 $term = $terms[93];
 check(MG_SEO_Meta::build_term_title($term) === 'Születésnap – vicces, egyedi pólók és ajándékok | Forme.hu', 'category template title');
-check(MG_SEO_Meta::get_term_h1($term) === 'Születésnap – vicces, egyedi pólók, pulóverek és bögrék', 'H1 from the template: ' . MG_SEO_Meta::get_term_h1($term));
+check(MG_SEO_Meta::get_term_h1($term) === 'Születésnap – vicces, egyedi pólók, pulóverek és ajándékok', 'H1 from the template: ' . MG_SEO_Meta::get_term_h1($term));
 check(MG_SEO_Meta::get_term_h1($term, false) === 'Születésnap', 'H1 without template is the name');
 $query_vars['paged'] = 2;
 check(MG_SEO_Meta::build_term_title($term) === 'Születésnap – vicces, egyedi pólók és ajándékok | 2. oldal | Forme.hu', 'paged category title');
@@ -323,24 +324,24 @@ $description = MG_SEO_Meta::build_term_description($term);
 check($description === 'Egyedi születésnapi pólók vicces, poénos és stílusos mintákkal. Tökéletes ajándék férfiaknak, nőknek és barátoknak bármilyen életkorra.', 'term description trimmed to whole sentences: ' . $description);
 update_term_meta(93, MG_SEO_Meta::TERM_DESCRIPTION, 'Több száz születésnapi póló férfiaknak és nőknek.');
 check(MG_SEO_Meta::build_term_description($term) === 'Több száz születésnapi póló férfiaknak és nőknek.', 'custom meta description wins');
-check(MG_SEO_Meta::build_term_description($terms[94]) === 'Hobbi: 0 egyedi, vicces minta pólón, pulóveren és bögrén. Prémium minőség, tartós nyomtatás, gyors gyártás.', 'template description when nothing else');
-check(MG_SEO_Meta::build_term_h1($term) === 'Születésnap – vicces, egyedi pólók, pulóverek és bögrék', 'template H1 shown as the hint next to a custom H1');
+check(MG_SEO_Meta::build_term_description($terms[94]) === 'Hobbi: 0 egyedi, vicces minta férfi, női és gyerek pólón, pulóveren, párnán és táskán. Prémium minőség, tartós nyomtatás, gyors gyártás.', 'template description when nothing else: ' . MG_SEO_Meta::build_term_description($terms[94]));
+check(MG_SEO_Meta::build_term_h1($term) === 'Születésnap – vicces, egyedi pólók, pulóverek és ajándékok', 'template H1 shown as the hint next to a custom H1');
 check(MG_SEO_Meta::get_term_h1($term, false) === 'Születésnapi pólók – egyedi és vicces minták minden korra', 'custom H1 wins even without template');
 
 /* ---------------- kategória H1 sablon, ismétlődő szavak ---------------- */
 check(MG_SEO_Meta::drop_repeated_words('{kategoria} – vicces, egyedi pólók', 'Vicces') === '{kategoria} – egyedi pólók', 'repeated word before a comma dropped');
 check(MG_SEO_Meta::drop_repeated_words('{kategoria}: {db} egyedi, vicces minta', 'Vicces') === '{kategoria}: {db} egyedi minta', 'repeated word after a comma dropped');
 check(MG_SEO_Meta::drop_repeated_words('{kategoria} – vicces és egyedi minták', 'Vicces') === '{kategoria} – egyedi minták', 'repeated word before „és” dropped');
-check(MG_SEO_Meta::drop_repeated_words('{kategoria} – pólók, pulóverek és bögrék', 'Bögrék') === '{kategoria} – pólók, pulóverek', 'repeated last list item dropped');
+check(MG_SEO_Meta::drop_repeated_words('{kategoria} – pólók, pulóverek és táskák', 'Táskák') === '{kategoria} – pólók, pulóverek', 'repeated last list item dropped');
 check(MG_SEO_Meta::drop_repeated_words('{kategoria} – vicces pólók', 'Vicces') === '{kategoria} – vicces pólók', 'words outside a list are kept');
 check(MG_SEO_Meta::drop_repeated_words('{kategoria} – vicces, egyedi pólók', 'Születésnap') === '{kategoria} – vicces, egyedi pólók', 'nothing dropped without overlap');
 check(MG_SEO_Meta::drop_repeated_words('{kategoria}, egyedi', 'Kategoria egyedi') === '{kategoria}', 'placeholders are never touched');
 $vicces = $terms[98];
-check(MG_SEO_Meta::get_term_h1($vicces) === 'Vicces – egyedi pólók, pulóverek és bögrék', 'H1 template does not repeat the category name: ' . MG_SEO_Meta::get_term_h1($vicces));
+check(MG_SEO_Meta::get_term_h1($vicces) === 'Vicces – egyedi pólók, pulóverek és ajándékok', 'H1 template does not repeat the category name: ' . MG_SEO_Meta::get_term_h1($vicces));
 check(MG_SEO_Meta::build_term_title($vicces) === 'Vicces – egyedi pólók és ajándékok | Forme.hu', 'title template does not repeat the category name: ' . MG_SEO_Meta::build_term_title($vicces));
 check(MG_SEO_Meta::build_term_description($vicces) === 'Vicces egyedi pólók poénos, szókimondó és kreatív mintákkal. Prémium minőség, tartós nyomtatás, gyors gyártás.', 'short category description completed with the USP: ' . MG_SEO_Meta::build_term_description($vicces));
 check(MG_SEO_Meta::get_term_display_name($terms[96]) === 'Minecraft polok', 'slug-like name made readable');
-check(MG_SEO_Meta::get_term_h1($terms[96]) === 'Minecraft polok – vicces, egyedi pulóverek és bögrék', 'slug-like name in the H1 template: ' . MG_SEO_Meta::get_term_h1($terms[96]));
+check(MG_SEO_Meta::get_term_h1($terms[96]) === 'Minecraft polok – vicces, egyedi pulóverek és ajándékok', 'slug-like name in the H1 template: ' . MG_SEO_Meta::get_term_h1($terms[96]));
 $options[MG_SEO_Meta::OPTION] = array('category_h1_template' => '{kategoria} pólók – {szulo} témában, {db} mintával');
 MG_SEO_Meta::reset_cache();
 check(MG_SEO_Meta::get_term_h1($terms[95]) === 'Horgász pólók – Hobbi témában, 0 mintával', 'parent and count placeholders: ' . MG_SEO_Meta::get_term_h1($terms[95]));
@@ -351,7 +352,7 @@ $is['product_category'] = true; $queried_object = $vicces;
 check(MG_SEO_Category_Content::filter_page_title('Vicces') === 'Vicces', 'category page H1 is the name without template');
 $options[MG_SEO_Meta::OPTION] = array();
 MG_SEO_Meta::reset_cache();
-check(MG_SEO_Category_Content::filter_page_title('Vicces') === 'Vicces – egyedi pólók, pulóverek és bögrék', 'category page H1 uses the template');
+check(MG_SEO_Category_Content::filter_page_title('Vicces') === 'Vicces – egyedi pólók, pulóverek és ajándékok', 'category page H1 uses the template');
 update_term_meta(98, MG_SEO_Meta::TERM_H1, 'Vicces & "poénos" <b>pólók</b>');
 check(MG_SEO_Category_Content::filter_page_title('Vicces') === 'Vicces &amp; &quot;poénos&quot; pólók', 'custom category page H1 is plain text, escaped');
 delete_term_meta(98, MG_SEO_Meta::TERM_H1);
@@ -360,6 +361,17 @@ $saved = MG_SEO_Meta::save_settings(array('category_h1_template' => '  ', 'categ
 check($saved['category_h1_template'] === '' && $saved['category_title_template'] === MG_SEO_Meta::defaults()['category_title_template'], 'H1 template may be emptied, required templates fall back');
 $saved = MG_SEO_Meta::save_settings(array('category_h1_template' => '{kategoria} pólók és ajándékok'));
 check($saved['category_h1_template'] === '{kategoria} pólók és ajándékok', 'H1 template saved');
+$options[MG_SEO_Meta::OPTION] = array(
+    'category_h1_template' => '{kategoria} – vicces, egyedi pólók, pulóverek és bögrék',
+    'home_title' => '{oldal} – vicces, egyedi pólók, pulóverek és bögrék ajándékba',
+    'category_description_template' => 'Saját: {kategoria} bögrén is',
+);
+MG_SEO_Meta::reset_cache();
+check(MG_SEO_Meta::get_setting('category_h1_template') === MG_SEO_Meta::defaults()['category_h1_template'] && MG_SEO_Meta::get_setting('home_title') === MG_SEO_Meta::defaults()['home_title'], 'unchanged old defaults mentioning mugs are replaced');
+check(MG_SEO_Meta::get_setting('category_description_template') === 'Saját: {kategoria} bögrén is', 'customized templates are kept');
+foreach (array('category_description_template', 'category_h1_template', 'home_title', 'home_description') as $key) {
+    check(stripos(MG_SEO_Meta::defaults()[$key], 'bögr') === false, 'no mug in the default ' . $key);
+}
 $options[MG_SEO_Meta::OPTION] = array();
 MG_SEO_Meta::reset_cache();
 
@@ -454,6 +466,28 @@ update_term_meta(95, MG_SEO_Meta::TERM_NOINDEX, '1');
 check(strpos(MG_SEO_AI_Visibility::build_llms_txt(), 'Horgász') === false, 'noindex categories skipped');
 delete_term_meta(95, MG_SEO_Meta::TERM_NOINDEX);
 $GLOBALS['get_posts_result'] = array();
+
+/* ---------------- llms.txt: kategóriák, kiszolgálás, gyorsítótár ---------------- */
+$GLOBALS['actions'] = array();
+MG_SEO_AI_Visibility::init();
+$serve = array_values(array_filter($GLOBALS['actions'], function ($action) {
+    return $action[0] === 'init' && $action[1] === array('MG_SEO_AI_Visibility', 'maybe_serve_llms_txt');
+}));
+check(count($serve) === 1 && $serve[0][2] > 5, 'llms.txt served after WooCommerce registers product_cat (init 5)');
+$llms = MG_SEO_AI_Visibility::build_llms_txt();
+check(strpos($llms, "- [Születésnap](https://forme.hu/product-category/szuletesnapi-polok/): 442 minta. Több száz születésnapi póló férfiaknak és nőknek.\n") !== false, 'category line has the name, the design count and its own description: ' . $llms);
+check(strpos($llms, "- [Vicces](https://forme.hu/product-category/vicces-polok/): 1789 minta. Vicces egyedi pólók poénos, szókimondó és kreatív mintákkal.\n") !== false, 'category description without the repeated benefits sentence');
+check(strpos($llms, "  - [Minecraft polok](https://forme.hu/product-category/minecraft/)\n") !== false, 'slug-like category shown readable, empty note omitted');
+check(substr_count($llms, 'Prémium minőség') === 1, 'benefits appear once, in the summary');
+$GLOBALS['transients'] = array();
+$GLOBALS['taxonomies_registered'] = false;
+MG_SEO_AI_Visibility::get_llms_txt();
+check($GLOBALS['transients'] === array(), 'llms.txt built before product_cat exists is not cached');
+$GLOBALS['taxonomies_registered'] = true;
+$body = MG_SEO_AI_Visibility::get_llms_txt();
+check(count($GLOBALS['transients']) === 1 && reset($GLOBALS['transients']) === $body, 'llms.txt cached once categories are available');
+MG_SEO_AI_Visibility::flush_llms_cache();
+check($GLOBALS['transients'] === array(), 'cache flush clears the versioned key');
 
 /* ---------------- llms.txt: vásárlási infók, oldalválasztás, fizikai fájl ---------------- */
 $GLOBALS['get_posts_result'] = array(

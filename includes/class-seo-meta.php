@@ -75,11 +75,11 @@ class MG_SEO_Meta {
             'product_title_template' => '{termek} - {tipus} | {kategoria} | {oldal}',
             'product_description_template' => '{termek} - {tipus}. {minta_leiras} {elonyok}',
             'category_title_template' => '{kategoria} – vicces, egyedi pólók és ajándékok | {oldal}',
-            'category_description_template' => '{kategoria}: {db} egyedi, vicces minta pólón, pulóveren és bögrén. {elonyok}',
-            'category_h1_template' => '{kategoria} – vicces, egyedi pólók, pulóverek és bögrék',
+            'category_description_template' => '{kategoria}: {db} egyedi, vicces minta férfi, női és gyerek pólón, pulóveren, párnán és táskán. {elonyok}',
+            'category_h1_template' => '{kategoria} – vicces, egyedi pólók, pulóverek és ajándékok',
             'usp' => 'Prémium minőség, tartós nyomtatás, gyors gyártás.',
-            'home_title' => '{oldal} – vicces, egyedi pólók, pulóverek és bögrék ajándékba',
-            'home_description' => 'Vicces és egyedi mintás pólók, pulóverek, bögrék és táskák születésnapra, ünnepekre és minden alkalomra. Prémium minőség, tartós nyomtatás, gyors gyártás.',
+            'home_title' => '{oldal} – vicces, egyedi pólók, pulóverek és ajándékok',
+            'home_description' => 'Vicces, egyedi mintás pólók, pulóverek, párnák, sapkák és táskák férfiaknak, nőknek és gyerekeknek. Prémium minőség, tartós nyomtatás, gyors gyártás.',
             'category_h1' => 1,
             'category_content' => 1,
             'og_tags' => 1,
@@ -101,10 +101,29 @@ class MG_SEO_Meta {
         );
     }
 
+    /**
+     * Korábbi alapértékek, amelyek bögrét említettek, pedig a katalógusban
+     * nincs bögre. A változatlanul elmentett régi alapérték helyett az új jár.
+     */
+    protected static function legacy_defaults() {
+        return array(
+            'category_description_template' => '{kategoria}: {db} egyedi, vicces minta pólón, pulóveren és bögrén. {elonyok}',
+            'category_h1_template' => '{kategoria} – vicces, egyedi pólók, pulóverek és bögrék',
+            'home_title' => '{oldal} – vicces, egyedi pólók, pulóverek és bögrék ajándékba',
+            'home_description' => 'Vicces és egyedi mintás pólók, pulóverek, bögrék és táskák születésnapra, ünnepekre és minden alkalomra. Prémium minőség, tartós nyomtatás, gyors gyártás.',
+        );
+    }
+
     public static function get_settings() {
         if (self::$settings === null) {
+            $defaults = self::defaults();
             $stored = get_option(self::OPTION, array());
-            self::$settings = array_merge(self::defaults(), is_array($stored) ? $stored : array());
+            self::$settings = array_merge($defaults, is_array($stored) ? $stored : array());
+            foreach (self::legacy_defaults() as $key => $legacy) {
+                if (self::$settings[$key] === $legacy) {
+                    self::$settings[$key] = $defaults[$key];
+                }
+            }
         }
         return self::$settings;
     }
@@ -367,7 +386,7 @@ class MG_SEO_Meta {
             '/(?<![\p{L}\p{N}])%s,\s*/u',      // „vicces, egyedi” → „egyedi”
             '/\s*,\s*%s(?![\p{L}\p{N}])/u',    // „egyedi, vicces minta” → „egyedi minta”
             '/(?<![\p{L}\p{N}])%s\s+és\s+/u',  // „vicces és egyedi” → „egyedi”
-            '/\s+és\s+%s(?![\p{L}\p{N}])/u',   // „pulóverek és bögrék” → „pulóverek”
+            '/\s+és\s+%s(?![\p{L}\p{N}])/u',   // „pulóverek és táskák” → „pulóverek”
         );
         foreach ($parts as $index => $part) {
             // A páratlan indexű részek a helyőrzők.

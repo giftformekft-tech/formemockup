@@ -213,7 +213,7 @@ class MG_SEO_Category_Content {
             'media_buttons' => false,
             'teeny' => true,
         ));
-        echo '<p class="description">' . esc_html__('A terméklista alatt jelenik meg. Alcímekkel (H2/H3) írd le, kinek, milyen alkalomra, milyen terméktípuson (póló, pulóver, bögre…) érhető el a téma, kérhető-e egyedi felirat, és mit érdemes tudni a rendelésről.', 'mockup-generator') . '</p></td></tr>';
+        echo '<p class="description">' . esc_html__('A terméklista alatt jelenik meg. Alcímekkel (H2/H3) írd le, kinek, milyen alkalomra, milyen terméktípuson (férfi, női, gyerek póló, pulóver, párna, táska…) érhető el a téma, kérhető-e egyedi felirat, és mit érdemes tudni a rendelésről.', 'mockup-generator') . '</p></td></tr>';
 
         echo '<tr class="form-field"><th scope="row"><label for="mg-seo-faq">' . esc_html__('Gyakori kérdések (GYIK)', 'mockup-generator') . '</label></th><td>';
         echo '<textarea name="' . esc_attr(MG_SEO_Meta::TERM_FAQ) . '" id="mg-seo-faq" rows="8" class="large-text code">' . esc_textarea($get(MG_SEO_Meta::TERM_FAQ)) . '</textarea>';

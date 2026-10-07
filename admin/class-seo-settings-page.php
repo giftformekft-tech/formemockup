@@ -129,7 +129,7 @@ class MG_SEO_Settings_Page {
                 <div class="notice notice-warning"><p><?php echo esc_html(sprintf(__('Aktív SEO bővítmény: %s. A fejléc-kimenet (cím, meta leírás, Open Graph, canonical, breadcrumb) ezért kimarad; a kategóriaoldal H1-e, alsó szövege és GYIK-je továbbra is megjelenik.', 'mockup-generator'), $seo_plugin)); ?></p></div>
             <?php endif; ?>
 
-            <p style="max-width:900px"><?php esc_html_e('A termékoldalak a virtuális típusrendszert mutatják a vevőknek, a keresőknek és a feedeknek is: minden típus (pl. Férfi póló, Bögre) saját URL-t, „Név - Típus” nevet, árat és képet kap. Az alap termék-URL kanonikusa az alapértelmezett típus URL-je, a sitemap is ezt adja.', 'mockup-generator'); ?></p>
+            <p style="max-width:900px"><?php esc_html_e('A termékoldalak a virtuális típusrendszert mutatják a vevőknek, a keresőknek és a feedeknek is: minden típus (pl. Férfi póló, Vászontáska) saját URL-t, „Név - Típus” nevet, árat és képet kap. Az alap termék-URL kanonikusa az alapértelmezett típus URL-je, a sitemap is ezt adja.', 'mockup-generator'); ?></p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_seo_settings_save" />

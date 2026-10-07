@@ -16,9 +16,12 @@ if (!defined('ABSPATH')) {
 class MG_SEO_AI_Visibility {
     const LLMS_CACHE = 'mg_seo_llms_txt';
     const ROBOTS_CACHE = 'mg_seo_ai_robots';
+    // A WooCommerce az init 5-ös prioritásán regisztrálja a product_cat taxonómiát:
+    // korábban a kategórialista üres lenne.
+    const SERVE_PRIORITY = 20;
 
     public static function init() {
-        add_action('init', array(__CLASS__, 'maybe_serve_llms_txt'), 1);
+        add_action('init', array(__CLASS__, 'maybe_serve_llms_txt'), self::SERVE_PRIORITY);
         foreach (array('mg_seo_term_saved', 'mg_seo_settings_saved', 'created_product_cat', 'edited_product_cat', 'delete_product_cat', 'save_post_page', 'deleted_post') as $hook) {
             add_action($hook, array(__CLASS__, 'flush_llms_cache'));
         }
@@ -49,8 +52,26 @@ class MG_SEO_AI_Visibility {
         return stripos($tail, 'Hostinger') !== false ? 'Hostinger Tools' : '';
     }
 
+    /** Verziónként külön gyorsítótár: frissítés után nem marad meg egy régi (pl. hibás) változat. */
+    protected static function llms_cache_key() {
+        return self::LLMS_CACHE . (defined('MG_VERSION') ? '_' . MG_VERSION : '');
+    }
+
     public static function flush_llms_cache() {
-        delete_transient(self::LLMS_CACHE);
+        delete_transient(self::llms_cache_key());
+    }
+
+    /** Az llms.txt tartalma; csak akkor kerül gyorsítótárba, ha a termékkategóriák már elérhetők. */
+    public static function get_llms_txt() {
+        $body = get_transient(self::llms_cache_key());
+        if (is_string($body) && $body !== '') {
+            return $body;
+        }
+        $body = self::build_llms_txt();
+        if (!function_exists('taxonomy_exists') || taxonomy_exists('product_cat')) {
+            set_transient(self::llms_cache_key(), $body, 12 * HOUR_IN_SECONDS);
+        }
+        return $body;
     }
 
     protected static function request_path() {
@@ -66,11 +87,7 @@ class MG_SEO_AI_Visibility {
         if (self::request_path() !== $target) {
             return;
         }
-        $body = get_transient(self::LLMS_CACHE);
-        if (!is_string($body) || $body === '') {
-            $body = self::build_llms_txt();
-            set_transient(self::LLMS_CACHE, $body, 12 * HOUR_IN_SECONDS);
-        }
+        $body = self::get_llms_txt();
         status_header(200);
         header('Content-Type: text/plain; charset=utf-8');
         // Géppel olvasható összefoglaló, nem találati oldal.
@@ -98,6 +115,20 @@ class MG_SEO_AI_Visibility {
         $line = '[' . $label . '](' . esc_url_raw($url) . ')';
         $note = MG_SEO_Meta::plain($note);
         return $note !== '' ? $line . ': ' . $note : $line;
+    }
+
+    /**
+     * Kategória a fában: a minták száma és a kategória saját leírása (egyedi
+     * meta leírás vagy a kategórialeírás eleje). Sablonszöveg és előnyök nem
+     * kerülnek bele, hogy ne ismétlődjön ugyanaz minden sorban.
+     */
+    public static function term_note($term) {
+        $text = MG_SEO_Meta::plain((string) get_term_meta($term->term_id, MG_SEO_Meta::TERM_DESCRIPTION, true));
+        if ($text === '') {
+            $text = MG_SEO_Meta::fit_sentences(term_description($term->term_id, $term->taxonomy), 200);
+        }
+        $count = (int) $term->count;
+        return trim(($count > 0 ? $count . ' minta. ' : '') . $text);
     }
 
     /** Az llms.txt-be nem való rendszeroldalak: főoldal, blogoldal, bolt, kosár, pénztár, fiók. */
@@ -197,8 +228,7 @@ class MG_SEO_AI_Visibility {
                 if (is_wp_error($link)) {
                     continue;
                 }
-                // A fában a név (vagy az egyedi H1) áll: a H1 sablon minden sorban ugyanazt ismételné.
-                $out[] = str_repeat('  ', $depth) . '- ' . self::md_link(MG_SEO_Meta::get_term_h1($term, false), $link, MG_SEO_Meta::build_term_description($term));
+                $out[] = str_repeat('  ', $depth) . '- ' . self::md_link(MG_SEO_Meta::get_term_display_name($term), $link, self::term_note($term));
                 $render((int) $term->term_id, $depth + 1);
             }
         };
