@@ -332,6 +332,8 @@ check(MG_SEO_Meta::build_feed_title(new WC_Product(9, 'Pontyos minta', 'pontyos'
 $object_terms[9] = array(95);
 check(MG_SEO_Meta::build_feed_title(new WC_Product(9, 'Pontyos minta', 'pontyos'), 'Férfi póló') === 'Horgász férfi póló – Pontyos minta', 'type word not repeated from the keyword');
 check(MG_SEO_Meta::build_feed_title(new WC_Product(9, 'Pontyos minta póló', 'pontyos'), 'Férfi póló') === 'Horgász férfi póló – Pontyos minta', 'type word glued to the name end removed');
+check(MG_SEO_Meta::build_feed_title(new WC_Product(9, 'Igazi férfi', 'igazi'), 'Férfi póló') === 'Horgász férfi póló – Igazi férfi', 'only the product noun is cut from the name end, not the gender word');
+check(MG_SEO_Meta::build_feed_title(new WC_Product(9, 'Kapitány Horgász', 'kapitany'), 'Férfi póló') === 'Horgász férfi póló – Kapitány', 'capitalised category word at the end moves to the front');
 delete_term_meta(94, MG_SEO_Meta::TERM_PRODUCT_KEYWORD);
 delete_term_meta(95, MG_SEO_Meta::TERM_PRODUCT_KEYWORD);
 unset($object_terms[9]);

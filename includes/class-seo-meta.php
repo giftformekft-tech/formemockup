@@ -792,7 +792,7 @@ class MG_SEO_Meta {
      * „Az élet 50 felett kezdődik Születésnap” → „Az élet 50 felett kezdődik”.
      * A kategóriaszót csak nagy kezdőbetűvel vágja (az AI-nevekben csak az
      * első betű nagy, így a „Kapitány horgász” felirat egészben marad), a
-     * típus szavát („póló”) kisbetűvel is. Legalább egy szó mindig marad.
+     * termékfajta szavát („póló”) kisbetűvel is. Legalább egy szó mindig marad.
      */
     protected static function strip_glued_tail($name, array $category_words, array $type_words) {
         $tokens = preg_split('/\s+/u', trim((string) $name));
@@ -847,7 +847,10 @@ class MG_SEO_Meta {
             }
         }
         $type_words = self::words($type);
-        $name = self::strip_glued_tail($name, array_merge(self::words($keyword), self::words($category)), $type_words);
+        // A névről csak a termékfajta szava vágható („póló”, „pulcsi”), a
+        // típus többi szava nem: az „Igazi férfi” felirat egészben marad.
+        $type_noun = $type_words ? array(end($type_words)) : array();
+        $name = self::strip_glued_tail($name, array_merge(self::words($keyword), self::words($category)), $type_noun);
         if ($keyword !== '') {
             $keyword = self::drop_known_words($keyword, $type_words);
         }
