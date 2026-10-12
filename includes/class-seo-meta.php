@@ -85,6 +85,7 @@ class MG_SEO_Meta {
             'og_tags' => 1,
             'breadcrumb_schema' => 1,
             'consolidate_base_url' => 1,
+            'legacy_titles' => 0,
             'noindex_tags' => 0,
             'llms_txt' => 1,
             'llms_summary' => '',
@@ -156,7 +157,7 @@ class MG_SEO_Meta {
     public static function save_settings(array $input) {
         $defaults = self::defaults();
         $clean = array();
-        $checkboxes = array('enabled', 'category_h1', 'category_content', 'og_tags', 'breadcrumb_schema', 'consolidate_base_url', 'noindex_tags', 'llms_txt');
+        $checkboxes = array('enabled', 'category_h1', 'category_content', 'og_tags', 'breadcrumb_schema', 'consolidate_base_url', 'legacy_titles', 'noindex_tags', 'llms_txt');
         foreach ($checkboxes as $key) {
             $clean[$key] = !empty($input[$key]) ? 1 : 0;
         }
@@ -533,10 +534,22 @@ class MG_SEO_Meta {
         if (!$candidates) {
             return null;
         }
+        $with_keyword = array();
         foreach ($candidates as $term) {
             if (trim((string) get_term_meta($term->term_id, self::TERM_PRODUCT_KEYWORD, true)) !== '') {
-                return $term;
+                $with_keyword[] = $term;
             }
+        }
+        // Új címformátumnál az alkategória saját kifejezése megelőzi a főkategóriáét.
+        if ($with_keyword && !self::use_legacy_titles()) {
+            foreach ($with_keyword as $term) {
+                if (!empty($term->parent)) {
+                    return $term;
+                }
+            }
+        }
+        if ($with_keyword) {
+            return $with_keyword[0];
         }
         // Ugyanaz a választás, mint a termékfeedek product_type mezőjében:
         // az első alkategória, ennek híján az első kategória.
@@ -556,6 +569,14 @@ class MG_SEO_Meta {
         $custom = trim((string) get_term_meta($term->term_id, self::TERM_PRODUCT_KEYWORD, true));
         if ($custom !== '') {
             return self::plain($custom);
+        }
+        // Új címformátumnál az üres mezőjű alkategória a szülő kifejezését
+        // örökli: elég a főkategóriákat kitölteni.
+        if (!empty($term->parent) && !self::use_legacy_titles()) {
+            $inherited = trim((string) get_term_meta((int) $term->parent, self::TERM_PRODUCT_KEYWORD, true));
+            if ($inherited !== '') {
+                return self::plain($inherited);
+            }
         }
         $name = self::plain($term->name);
         if ($name !== '' && !self::looks_like_slug($name)) {
@@ -655,6 +676,9 @@ class MG_SEO_Meta {
     }
 
     public static function build_product_title(array $ctx, $include_site = true) {
+        if (!self::use_legacy_titles()) {
+            return self::build_keyword_product_title($ctx, $include_site);
+        }
         list($name, $type) = self::display_name($ctx);
         $keyword = $ctx['keyword'];
         if ($keyword !== '' && (self::contains($name, $keyword) || ($type !== '' && self::contains($type, $keyword)))) {
@@ -668,6 +692,227 @@ class MG_SEO_Meta {
             'oldal' => (string) self::get_setting('site_name'),
         );
         return self::render_title((string) self::get_setting('product_title_template'), $vars, '', $include_site);
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Kulcsszó-elöl címformátum (feedek és <title>)                       */
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Legacy kapcsoló: bekapcsolva minden cím a régi „Név - Típus” formájú,
+     * a feedek neme/korcsoportja is a régi módon, a címből jön.
+     */
+    public static function use_legacy_titles() {
+        return (bool) self::get_setting('legacy_titles');
+    }
+
+    public static function upper_first($text) {
+        if ($text === '' || !function_exists('mb_strtoupper')) {
+            return ucfirst($text);
+        }
+        return mb_strtoupper(mb_substr($text, 0, 1, 'UTF-8'), 'UTF-8') . mb_substr($text, 1, null, 'UTF-8');
+    }
+
+    /** Ékezet- és kisbetű-független szavak. */
+    protected static function words($text) {
+        $normalized = self::normalize($text);
+        return $normalized === '' ? array() : explode(' ', $normalized);
+    }
+
+    /** Csak a legalább 4 betűs szavaknak van összevethető töve („az”, „50” nem). */
+    protected static function is_stem_word($word) {
+        return strlen($word) >= 4 && preg_match('/[a-z]/', $word);
+    }
+
+    /**
+     * Azonos szótő a ragozott alakokra: születésnap = születésnapi =
+     * születésnapot, póló = pólók, horgász = horgászos, foci = focis.
+     * A „születik” és a „születésnap” már nem azonos.
+     */
+    public static function same_stem($a, $b) {
+        if ($a === $b) {
+            return true;
+        }
+        $short = strlen($a) <= strlen($b) ? $a : $b;
+        $long = $short === $a ? $b : $a;
+        $length = strlen($short);
+        if (!self::is_stem_word($short)) {
+            return false;
+        }
+        $common = 0;
+        while ($common < $length && $short[$common] === $long[$common]) {
+            $common++;
+        }
+        if ($common === $length) {
+            return $length >= 5 || strlen($long) - $length <= 2;
+        }
+        return $common >= 6 && $common >= $length - 1;
+    }
+
+    protected static function has_stem($word, array $words) {
+        foreach ($words as $other) {
+            if (self::same_stem($word, $other)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A kifejezésből kihagyja azokat a szavakat, amelyek töve a $known
+     * szavak között már szerepel. Ha nem marad értelmes szó, üres.
+     */
+    protected static function drop_known_words($phrase, array $known) {
+        $kept = array();
+        $meaningful = false;
+        foreach (preg_split('/\s+/u', trim((string) $phrase)) as $token) {
+            if ($token === '') {
+                continue;
+            }
+            $stems = array_filter(self::words($token), array(__CLASS__, 'is_stem_word'));
+            $known_token = false;
+            foreach ($stems as $word) {
+                if (self::has_stem($word, $known)) {
+                    $known_token = true;
+                }
+            }
+            if ($known_token) {
+                continue;
+            }
+            $kept[] = $token;
+            if ($stems) {
+                $meaningful = true;
+            }
+        }
+        return $meaningful ? implode(' ', $kept) : '';
+    }
+
+    /**
+     * A név végére ragadt kategórianév vagy típusszó levágása:
+     * „Az élet 50 felett kezdődik Születésnap” → „Az élet 50 felett kezdődik”.
+     * A kategóriaszót csak nagy kezdőbetűvel vágja (az AI-nevekben csak az
+     * első betű nagy, így a „Kapitány horgász” felirat egészben marad), a
+     * típus szavát („póló”) kisbetűvel is. Legalább egy szó mindig marad.
+     */
+    protected static function strip_glued_tail($name, array $category_words, array $type_words) {
+        $tokens = preg_split('/\s+/u', trim((string) $name));
+        while (count($tokens) > 1) {
+            $last = end($tokens);
+            $words = self::words($last);
+            if (!$words) {
+                break;
+            }
+            $first = mb_substr($last, 0, 1, 'UTF-8');
+            $capital = $first !== mb_strtolower($first, 'UTF-8');
+            foreach ($words as $word) {
+                $is_type = self::is_stem_word($word) && self::has_stem($word, $type_words);
+                $is_category = $capital && self::is_stem_word($word) && self::has_stem($word, $category_words);
+                if (!$is_type && !$is_category) {
+                    break 2;
+                }
+            }
+            array_pop($tokens);
+        }
+        return implode(' ', $tokens);
+    }
+
+    /** Szóhatáron rövidít, a végén maradt írásjel nélkül. */
+    public static function fit_words($text, $max) {
+        $text = trim((string) $text);
+        if ($max <= 0) {
+            return '';
+        }
+        if (self::length($text) <= $max) {
+            return $text;
+        }
+        $cut = mb_substr($text, 0, $max + 1, 'UTF-8');
+        $space = mb_strrpos($cut, ' ', 0, 'UTF-8');
+        $cut = $space !== false && $space > 0 ? mb_substr($cut, 0, $space, 'UTF-8') : mb_substr($text, 0, $max, 'UTF-8');
+        return trim(preg_replace('/[\s,;:–—-]+$/u', '', $cut));
+    }
+
+    /**
+     * Kulcsszó elöl, a minta neve hátul:
+     * „Születésnapi férfi póló – Az élet 50 felett kezdődik”.
+     * A kulcsszó a típusban vagy a névben már szereplő szavai kimaradnak,
+     * hosszú címnél csak a minta neve rövidül.
+     */
+    public static function compose_keyword_title($name, $type, $keyword, $category = '', $max = 150) {
+        $name = self::plain($name);
+        $type = self::plain($type);
+        $keyword = self::plain($keyword);
+        foreach (array(' póló pulcsi', ' polo pulcsi') as $postfix) {
+            if (strlen($name) > strlen($postfix) && substr($name, -strlen($postfix)) === $postfix) {
+                $name = trim(substr($name, 0, -strlen($postfix)));
+            }
+        }
+        $type_words = self::words($type);
+        $name = self::strip_glued_tail($name, array_merge(self::words($keyword), self::words($category)), $type_words);
+        if ($keyword !== '') {
+            $keyword = self::drop_known_words($keyword, $type_words);
+        }
+        $separator = ' – ';
+        // A kulcsszót a ténylegesen látszó névvel vetjük össze: ha a rövidítés
+        // levágja a névből a kulcsszót, a kulcsszó visszakerül elölre.
+        $visible = $name;
+        for ($round = 0; $round < 2; $round++) {
+            $lead_keyword = $keyword !== '' ? self::drop_known_words($keyword, self::words($visible)) : '';
+            if ($lead_keyword !== '' && $type !== '') {
+                $lead = self::upper_first($lead_keyword) . ' ' . self::lower_first($type);
+            } else {
+                $lead = self::upper_first($lead_keyword !== '' ? $lead_keyword : $type);
+            }
+            if ($lead === '') {
+                return self::fit_words($name, $max);
+            }
+            if (self::length($lead) >= $max) {
+                return self::fit_words($lead, $max);
+            }
+            $fitted = self::fit_words($name, $max - self::length($lead . $separator));
+            if ($fitted === $visible) {
+                break;
+            }
+            $visible = $fitted;
+        }
+        return $visible === '' ? $lead : $lead . $separator . $visible;
+    }
+
+    /** <title> az új formátumban; az oldalnév csak akkor kerül a végére, ha belefér. */
+    protected static function build_keyword_product_title(array $ctx, $include_site) {
+        $category = $ctx['term'] ? self::plain($ctx['term']->name) : '';
+        $max = (int) apply_filters('mg_seo_title_max_length', self::TITLE_MAX);
+        $full = self::compose_keyword_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, PHP_INT_MAX);
+        $site = trim((string) self::get_setting('site_name'));
+        if ($include_site && $site !== '') {
+            $with_site = $full . ' ' . trim((string) self::get_setting('separator')) . ' ' . $site;
+            if (self::length($with_site) <= $max) {
+                return $with_site;
+            }
+        }
+        return self::compose_keyword_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, $max);
+    }
+
+    /**
+     * A termékfeedek (Google, Facebook, egyedi/ChatGPT) g:title mezője az új
+     * formátumban. Legacy módban a feedek a saját régi címüket használják.
+     */
+    public static function build_feed_title($product, $type_label, $max = 150) {
+        $term = self::get_primary_category($product->get_id());
+        $keyword = $term ? self::get_term_keyword($term) : '';
+        $category = $term ? self::plain($term->name) : '';
+        return self::compose_keyword_title((string) $product->get_name(), (string) $type_label, $keyword, $category, $max);
+    }
+
+    /**
+     * A feedek nem- és korcsoport-felismerésének szövege: az új formátumban
+     * csak a típus (a kulcsszó, pl. „Női focis”, nem írhatja felül a férfi
+     * pólót), legacy módban a régi módon a cím és a típus slugja.
+     */
+    public static function feed_audience_text($title, $type_slug, $type_label) {
+        if (self::use_legacy_titles()) {
+            return $title . ' ' . $type_slug;
+        }
+        return $type_label . ' ' . $type_slug;
     }
 
     /** A minta saját (AI) SEO szövege, ennek híján a kategória leírása. */

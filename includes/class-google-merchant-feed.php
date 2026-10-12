@@ -173,8 +173,14 @@ class MG_Google_Merchant_Feed {
             // Unique ID for this Variant Type
             $g_id = $base_sku . '_' . $type_slug;
             
-            // Title: Product Name + Type Label
-            $g_title = $product->get_name() . ' - ' . $type_label;
+            // Title: „Kulcsszó típus – Név”, legacy módban „Név - Típus”
+            $keyword_titles = class_exists('MG_SEO_Meta') && !MG_SEO_Meta::use_legacy_titles();
+            $g_title = $keyword_titles
+                ? MG_SEO_Meta::build_feed_title($product, $type_label)
+                : $product->get_name() . ' - ' . $type_label;
+            $audience_text = class_exists('MG_SEO_Meta')
+                ? MG_SEO_Meta::feed_audience_text($g_title, $type_slug, $type_label)
+                : $g_title . ' ' . $type_slug;
             
             // Description
             $g_description = $product->get_short_description();
@@ -300,7 +306,7 @@ class MG_Google_Merchant_Feed {
 
             // Age Group Logic
             $age_group = 'adult';
-            $concat_name_check = $g_title . ' ' . $type_slug;
+            $concat_name_check = $audience_text;
             if (stripos($concat_name_check, 'baba') !== false) {
                 $age_group = 'infant'; 
             } elseif (stripos($concat_name_check, 'gyerek') !== false) {
@@ -310,7 +316,7 @@ class MG_Google_Merchant_Feed {
             
             // Gender logic
             $gender = 'unisex';
-            $concat_name = $g_title . ' ' . $type_slug;
+            $concat_name = $audience_text;
             if (stripos($concat_name, 'férfi') !== false || stripos($concat_name, 'ferfi') !== false) {
                 $gender = 'male';
             } elseif (stripos($concat_name, 'női') !== false || stripos($concat_name, 'noi') !== false) {

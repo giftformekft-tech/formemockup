@@ -203,8 +203,8 @@ class MG_SEO_Category_Content {
         echo '<p class="description">' . esc_html(sprintf(__('120–160 karakter ajánlott. Jelenleg: %s', 'mockup-generator'), $current_description)) . '</p></td></tr>';
 
         self::text_row(MG_SEO_Meta::TERM_PRODUCT_KEYWORD, __('Kifejezés a termékoldalak címében', 'mockup-generator'), $get(MG_SEO_Meta::TERM_PRODUCT_KEYWORD), 30,
-            __('A kategória termékeinek <title>-jébe kerül (pl. „Minta - Férfi póló | Születésnapi ajándék | Forme.hu”). Üresen a kategória neve. Ha a terméknek több kategóriája van, a kitöltött mezőjű kategória élvez elsőbbséget.', 'mockup-generator'),
-            __('pl. Születésnapi ajándék', 'mockup-generator'));
+            __('A kategória termékeinek feed címe és <title>-je ezzel kezdődik, a típus elé: „Születésnapi férfi póló – Minta neve | Forme.hu”. Melléknévi alakot írj, ami a típus elé illik (Születésnapi, Vicces horgász, Focis). Üresen a szülőkategória kifejezése, annak híján a kategória neve. Ha a terméknek több kategóriája van, a kitöltött mezőjű alkategória, majd a kitöltött mezőjű kategória élvez elsőbbséget. (Legacy címformátumnál a régi helyén: „Minta - Férfi póló | Kifejezés | Forme.hu”.)', 'mockup-generator'),
+            __('pl. Születésnapi', 'mockup-generator'));
 
         echo '<tr class="form-field"><th scope="row"><label for="mg_seo_bottom">' . esc_html__('Alsó SEO szöveg', 'mockup-generator') . '</label></th><td>';
         wp_editor($get(MG_SEO_Meta::TERM_BOTTOM_TEXT), 'mg_seo_bottom', array(

@@ -38,7 +38,17 @@ class MG_SEO_Settings_Page {
         }
         check_admin_referer('mg_seo_settings_save_action');
         $input = isset($_POST['mg_seo_settings']) && is_array($_POST['mg_seo_settings']) ? $_POST['mg_seo_settings'] : array();
+        $was_legacy = MG_SEO_Meta::use_legacy_titles();
         MG_SEO_Meta::save_settings($input);
+        // A címformátum váltása után a Google és a Facebook feed a háttérben
+        // újragenerálódik, nem csak a következő napi frissítéskor.
+        if ($was_legacy !== MG_SEO_Meta::use_legacy_titles()) {
+            foreach (array('mg_cron_regenerate_feed', 'mg_cron_regenerate_facebook_feed') as $hook) {
+                if (!wp_next_scheduled($hook)) {
+                    wp_schedule_single_event(time(), $hook);
+                }
+            }
+        }
 
         $contact = isset($_POST['mg_seo_contact']) && is_array($_POST['mg_seo_contact']) ? wp_unslash($_POST['mg_seo_contact']) : array();
         update_option('mg_seo_contact', array(
@@ -129,7 +139,7 @@ class MG_SEO_Settings_Page {
                 <div class="notice notice-warning"><p><?php echo esc_html(sprintf(__('Aktív SEO bővítmény: %s. A fejléc-kimenet (cím, meta leírás, Open Graph, canonical, breadcrumb) ezért kimarad; a kategóriaoldal H1-e, alsó szövege és GYIK-je továbbra is megjelenik.', 'mockup-generator'), $seo_plugin)); ?></p></div>
             <?php endif; ?>
 
-            <p style="max-width:900px"><?php esc_html_e('A termékoldalak a virtuális típusrendszert mutatják a vevőknek, a keresőknek és a feedeknek is: minden típus (pl. Férfi póló, Vászontáska) saját URL-t, „Név - Típus” nevet, árat és képet kap. Az alap termék-URL kanonikusa az alapértelmezett típus URL-je, a sitemap is ezt adja.', 'mockup-generator'); ?></p>
+            <p style="max-width:900px"><?php esc_html_e('A termékoldalak a virtuális típusrendszert mutatják a vevőknek, a keresőknek és a feedeknek is: minden típus (pl. Férfi póló, Vászontáska) saját URL-t, árat és képet kap. A H1 „Név - Típus”, a <title> és a feedek címe „Kulcsszó típus – Név” (a legacy kapcsolóval a régi „Név - Típus”). Az alap termék-URL kanonikusa az alapértelmezett típus URL-je, a sitemap is ezt adja.', 'mockup-generator'); ?></p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="mg_seo_settings_save" />
@@ -163,8 +173,12 @@ class MG_SEO_Settings_Page {
                 <h2><?php esc_html_e('Termékoldalak (virtuális típusok)', 'mockup-generator'); ?></h2>
                 <table class="form-table" role="presentation">
                     <?php
-                    self::row(__('Cím sablon', 'mockup-generator'), function () use ($s) {
-                        self::text('product_title_template', $s['product_title_template'], __('Helyőrzők: {termek}, {tipus}, {tipus_kisbetu}, {kategoria}, {oldal}. A „|” szakaszhatár: az üres szakasz kimarad, 70 karakter fölött előbb az oldalnév, majd a kategória esik ki. A {kategoria} a termék kategóriájának „Kifejezés a termékoldalak címében” mezője vagy neve; ha a terméknév már tartalmazza, nem ismétlődik.', 'mockup-generator'));
+                    self::row(__('Címformátum', 'mockup-generator'), function () use ($s) {
+                        self::checkbox('legacy_titles', $s['legacy_titles'], __('Legacy: a régi „Név - Típus” cím a feedekben és a <title>-ben', 'mockup-generator'),
+                            __('Kikapcsolva (alapértelmezés) a Google, Facebook és egyedi/ChatGPT feed címe és a termékoldal <title>-je kulcsszóval kezdődik: „Születésnapi férfi póló – Az élet 50 felett kezdődik”. A kulcsszó a kategória „Kifejezés a termékoldalak címében” mezője (üresen a szülőkategóriáé, majd a kategória neve); a név végére ragadt kategórianév előre kerül, az ismétlődő szó (születésnap/születésnapi) kimarad, hosszú címnél csak a minta neve rövidül. A feed neme és korcsoportja a típusból jön. Bekapcsolva minden a régi módon működik. Váltáskor a Google és a Facebook feed a háttérben újragenerálódik, az egyedi feedeket kézzel generáld újra.', 'mockup-generator'));
+                    });
+                    self::row(__('Cím sablon (legacy)', 'mockup-generator'), function () use ($s) {
+                        self::text('product_title_template', $s['product_title_template'], __('Csak legacy címformátumnál érvényes. Helyőrzők: {termek}, {tipus}, {tipus_kisbetu}, {kategoria}, {oldal}. A „|” szakaszhatár: az üres szakasz kimarad, 70 karakter fölött előbb az oldalnév, majd a kategória esik ki. A {kategoria} a termék kategóriájának „Kifejezés a termékoldalak címében” mezője vagy neve; ha a terméknév már tartalmazza, nem ismétlődik.', 'mockup-generator'));
                     });
                     self::row(__('Meta leírás sablon', 'mockup-generator'), function () use ($s) {
                         self::textarea('product_description_template', $s['product_description_template'], 2, __('Helyőrzők: {termek}, {tipus}, {kategoria}, {minta_leiras}, {elonyok}, {oldal}. A {minta_leiras} a minta AI SEO szövegéből (_mg_sample_seo) vagy a kategória leírásából annyi mondat, amennyi 160 karakterbe fér.', 'mockup-generator'));
@@ -337,7 +351,7 @@ class MG_SEO_Settings_Page {
 
     protected static function render_preview() {
         echo '<h2>' . esc_html__('Előnézet', 'mockup-generator') . '</h2>';
-        echo '<p class="description">' . esc_html__('A mentett beállításokkal így jelenik meg a 10 legnagyobb kategória és az 5 legutóbbi termék (alapértelmezett típussal). Zárójelben a karakterszám.', 'mockup-generator') . '</p>';
+        echo '<p class="description">' . esc_html__('A mentett beállításokkal így jelenik meg a 10 legnagyobb kategória és a 10 legutóbbi termék (alapértelmezett típussal). A feed címnél az új és a legacy formátum is látszik, hogy váltás előtt összevethesd. Zárójelben a karakterszám.', 'mockup-generator') . '</p>';
 
         $terms = get_terms(array('taxonomy' => 'product_cat', 'hide_empty' => true, 'orderby' => 'count', 'order' => 'DESC', 'number' => 10));
         if (!is_wp_error($terms) && $terms) {
@@ -357,9 +371,9 @@ class MG_SEO_Settings_Page {
             echo '</tbody></table>';
         }
 
-        $ids = get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => 5, 'fields' => 'ids', 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true));
+        $ids = get_posts(array('post_type' => 'product', 'post_status' => 'publish', 'posts_per_page' => 10, 'fields' => 'ids', 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true));
         if ($ids) {
-            echo '<table class="widefat striped" style="max-width:1200px"><thead><tr><th>' . esc_html__('Termék', 'mockup-generator') . '</th><th>Title</th><th>' . esc_html__('Meta leírás', 'mockup-generator') . '</th><th>' . esc_html__('Kanonikus URL', 'mockup-generator') . '</th></tr></thead><tbody>';
+            echo '<table class="widefat striped" style="max-width:1400px"><thead><tr><th>' . esc_html__('Termék', 'mockup-generator') . '</th><th>Title</th><th>' . esc_html__('Feed cím (új)', 'mockup-generator') . '</th><th>' . esc_html__('Feed cím (legacy)', 'mockup-generator') . '</th><th>' . esc_html__('Meta leírás', 'mockup-generator') . '</th><th>' . esc_html__('Kanonikus URL', 'mockup-generator') . '</th></tr></thead><tbody>';
             foreach ($ids as $id) {
                 $product = wc_get_product($id);
                 $ctx = $product ? MG_SEO_Meta::get_product_context($product, '') : null;
@@ -369,8 +383,12 @@ class MG_SEO_Settings_Page {
                 $title = MG_SEO_Meta::build_product_title($ctx);
                 $description = MG_SEO_Meta::build_product_description($ctx);
                 $canonical = MG_SEO_Meta::get_product_canonical_url($product);
+                $feed_title = MG_SEO_Meta::build_feed_title($product, $ctx['type_label']);
+                $legacy_feed_title = $ctx['type_label'] !== '' ? $product->get_name() . ' - ' . $ctx['type_label'] : $product->get_name();
                 echo '<tr><td><a href="' . esc_url((string) get_edit_post_link($id)) . '">' . esc_html($product->get_name()) . '</a></td>';
                 echo '<td>' . esc_html($title) . ' ' . self::chars($title) . '</td>';
+                echo '<td>' . esc_html($feed_title) . ' ' . self::chars($feed_title) . '</td>';
+                echo '<td>' . esc_html($legacy_feed_title) . ' ' . self::chars($legacy_feed_title) . '</td>';
                 echo '<td>' . esc_html($description) . ' ' . self::chars($description) . '</td>';
                 echo '<td><a href="' . esc_url($canonical) . '" target="_blank" rel="noopener">' . esc_html($canonical) . '</a></td></tr>';
             }

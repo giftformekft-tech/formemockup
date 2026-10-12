@@ -628,7 +628,14 @@ class MG_Custom_Feed_Manager {
 
             $type_label = isset($type_data['label']) ? $type_data['label'] : $type_slug;
             $g_id = $base_sku . '_' . $type_slug;
-            $g_title = $product->get_name() . ' - ' . $type_label;
+            // „Kulcsszó típus – Név”, legacy módban „Név - Típus”
+            $keyword_titles = class_exists('MG_SEO_Meta') && !MG_SEO_Meta::use_legacy_titles();
+            $g_title = $keyword_titles
+                ? MG_SEO_Meta::build_feed_title($product, $type_label)
+                : $product->get_name() . ' - ' . $type_label;
+            $audience_text = class_exists('MG_SEO_Meta')
+                ? MG_SEO_Meta::feed_audience_text($g_title, $type_slug, $type_label)
+                : $g_title . ' ' . $type_slug;
             
             // Description
             $g_description = $product->get_short_description() ?: $product->get_description();
@@ -685,7 +692,7 @@ class MG_Custom_Feed_Manager {
                 }
                 $gender = $feed_config['force_gender'] ?? '';
                 $age = $feed_config['force_age_group'] ?? '';
-                $label = $g_title . ' ' . $type_slug;
+                $label = $audience_text;
                 if ($gender === '') $gender = preg_match('/férfi|ferfi/iu', $label) ? 'male' : (preg_match('/női|noi/iu', $label) ? 'female' : 'unisex');
                 if ($age === '') $age = stripos($label, 'baba') !== false ? 'infant' : (stripos($label, 'gyerek') !== false ? 'kids' : 'adult');
                 $output .= self::csv_row(array(self::get_openai_item_id($product, $type_slug), $plain($g_title),
@@ -776,7 +783,7 @@ class MG_Custom_Feed_Manager {
                 $age_group = $feed_config['force_age_group'];
             } else {
                 $age_group = 'adult';
-                $concat_name_check = $g_title . ' ' . $type_slug;
+                $concat_name_check = $audience_text;
                 if (stripos($concat_name_check, 'baba') !== false) {
                     $age_group = 'infant';
                 } elseif (stripos($concat_name_check, 'gyerek') !== false) {
@@ -790,7 +797,7 @@ class MG_Custom_Feed_Manager {
                 $gender = $feed_config['force_gender'];
             } else {
                 $gender = 'unisex';
-                $concat_name = $g_title . ' ' . $type_slug;
+                $concat_name = $audience_text;
                 if (stripos($concat_name, 'férfi') !== false || stripos($concat_name, 'ferfi') !== false) {
                     $gender = 'male';
                 } elseif (stripos($concat_name, 'női') !== false || stripos($concat_name, 'noi') !== false) {
