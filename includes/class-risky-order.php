@@ -28,6 +28,8 @@ class MG_Risky_Order {
 
         add_action('admin_head', array(__CLASS__, 'print_status_style'));
 
+        add_action('woocommerce_order_status_' . self::STATUS, array(__CLASS__, 'add_admin_note'), 10, 2);
+
         // Enélkül a WC nem tölti be az email rendszert az állapotváltáskor,
         // így az email osztály nem iratkozik fel, és nem megy ki levél.
         add_filter('woocommerce_email_actions', array(__CLASS__, 'register_email_action'));
@@ -74,6 +76,53 @@ class MG_Risky_Order {
             return;
         }
         echo '<style>.order-status.status-' . esc_attr(self::STATUS) . '{background:#f8dada;color:#8a1f1f;}</style>';
+    }
+
+    /**
+     * Az utánvét díját egy másik plugin teszi fel díj (fee) sorként. Előre
+     * utalásnál ez nem jár, ezért kihagyjuk az utalandó összegből.
+     */
+    public static function get_cod_fee_total($order) {
+        $patterns = apply_filters('mg_risky_order_cod_fee_patterns', array('/utánvét/u', '/utanvet/u', '/cash on delivery/u', '/\bcod\b/u'));
+        $total = 0.0;
+        foreach ($order->get_fees() as $fee) {
+            $name = mb_strtolower((string) $fee->get_name(), 'UTF-8');
+            foreach ($patterns as $pattern) {
+                if (preg_match($pattern, $name)) {
+                    $total += (float) $fee->get_total() + (float) $fee->get_total_tax();
+                    break;
+                }
+            }
+        }
+        return $total;
+    }
+
+    public static function get_prepay_amount($order) {
+        return max(0, (float) $order->get_total() - self::get_cod_fee_total($order));
+    }
+
+    /**
+     * Emlékeztető az adminnak: a rendelésen még utánvét van, amit a
+     * szállítási plugin a csomagra is ráírna.
+     */
+    public static function add_admin_note($order_id, $order = null) {
+        if (!$order instanceof WC_Order) {
+            $order = wc_get_order($order_id);
+        }
+        if (!$order) {
+            return;
+        }
+        $args = array('currency' => $order->get_currency());
+        $price = function ($amount) use ($args) {
+            return html_entity_decode(wp_strip_all_tags(wc_price($amount, $args)), ENT_QUOTES, 'UTF-8');
+        };
+        $cod_fee = self::get_cod_fee_total($order);
+        $note = 'Előre utalás kérve: ' . $price(self::get_prepay_amount($order));
+        $note .= $cod_fee > 0
+            ? ' (az utánvét díja – ' . $price($cod_fee) . ' – nélkül).'
+            : ' (utánvét díj sort nem találtunk, a teljes végösszeget kértük).';
+        $note .= ' Az utalás beérkezése után töröld az utánvét díjat, és állítsd át a fizetési módot előre utalásra, hogy a futár ne szedjen be utánvétet.';
+        $order->add_order_note($note);
     }
 
     public static function register_email_action($actions) {
