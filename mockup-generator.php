@@ -121,6 +121,7 @@ add_action('plugins_loaded', function(){
 
         'includes/class-email-footer.php',
         'includes/class-risky-order.php',
+        'includes/class-registration-bot-guard.php',
         'includes/class-catalog-integration.php',
         'includes/class-seo-meta.php',
         'includes/class-seo-category-content.php',
@@ -380,6 +381,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Risky_Order')) {
         MG_Risky_Order::init();
+    }
+    if (class_exists('MG_Registration_Bot_Guard')) {
+        MG_Registration_Bot_Guard::init();
     }
 
     // Ensure WooCommerce boots the email system when an order moves to "manufacturing".
