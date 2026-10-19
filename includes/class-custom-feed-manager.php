@@ -423,7 +423,14 @@ class MG_Custom_Feed_Manager {
         if (!$state) return 'Még nincs generálva.';
         if ($state['status'] === 'failed') return 'Hiba: ' . $state['error'] . ' A Generálás gombbal újraindítható.';
         $count = intval($state['processed']);
-        $text = $state['status'] === 'complete' ? 'Elkészült: ' . $count . ' termék feldolgozva.' : 'Generálás folyamatban: ' . $count . ' termék feldolgozva.';
+        $text = $state['status'] === 'complete' ? 'Elkészült: ' . $count . ' termék feldolgozva' : 'Generálás folyamatban: ' . $count . ' termék feldolgozva';
+        if (self::is_openai($state['config'] ?? array())) {
+            $text .= '.';
+        } elseif (isset($state['items'])) {
+            $text .= ', ' . intval($state['items']) . ' feedtétel (termék × típus).';
+        } else {
+            $text .= '.';
+        }
         if (self::is_openai($state['config'] ?? array())) {
             $text .= ' CSV ajánlatok: ' . intval($state['exported'] ?? 0) . ', kihagyva: ' . intval($state['skipped'] ?? 0) . '.';
             if (!empty($state['warnings'])) $text .= ' Hiányos tételek (legfeljebb 5): ' . implode(' | ', $state['warnings']);
@@ -466,7 +473,7 @@ class MG_Custom_Feed_Manager {
             // A broken product or filesystem must not trigger a retry on every crawler hit.
             if (!$manual && $state && $state['status'] === 'failed' && time() - $state['updated_at'] < 5 * MINUTE_IN_SECONDS) return false;
             $state = array('status' => 'running', 'config' => $feeds[$slug], 'cursor' => 0,
-                'processed' => 0, 'bytes' => 0, 'attempts' => 0, 'updated_at' => time(), 'error' => '',
+                'processed' => 0, 'items' => 0, 'bytes' => 0, 'attempts' => 0, 'updated_at' => time(), 'error' => '',
                 'exported' => 0, 'skipped' => 0, 'warnings' => array());
             update_option('mg_custom_feed_job_' . $slug, $state, false);
             if (!self::schedule_batch($slug)) {
@@ -561,7 +568,10 @@ class MG_Custom_Feed_Manager {
             $started = microtime(true);
             $ids = self::get_batch_ids($state);
             foreach ($ids as $product_id) {
-                self::write_chunk($handle, self::get_product_xml($product_id, $state['config'], $state));
+                $chunk = self::get_product_xml($product_id, $state['config'], $state);
+                self::write_chunk($handle, $chunk);
+                // Egy termékből típusonként külön feedtétel lesz.
+                $state['items'] = ($state['items'] ?? 0) + substr_count($chunk, '<item>');
                 $state['cursor'] = (int) $product_id;
                 $state['processed']++;
                 if (microtime(true) - $started >= 5) break;

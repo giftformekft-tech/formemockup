@@ -139,6 +139,7 @@ try {
     finish_feed('normal');
     $xml = file_get_contents($path);
     check(substr_count($xml, '<item>') === 250, 'every product appears exactly once despite interruption and deletion');
+    check(MG_Custom_Feed_Manager::get_state('normal')['items'] === 250, 'feed item count matches the written items');
     check(strpos($xml, 'INTERRUPTED') === false && strpos($xml, 'SKU101_shirt') !== false, 'partial tail removed and cursor preserved');
     check(strpos($xml, '_mug') === false, 'product type filter preserved');
     check(substr_count($xml, '<g:gender>female</g:gender>') === 250, 'gender override preserved');
