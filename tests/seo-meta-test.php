@@ -298,15 +298,15 @@ check($ctx['keyword'] === 'Gamer', 'slug-like category name replaced by parent n
 $options[MG_SEO_Meta::OPTION] = array();
 MG_SEO_Meta::reset_cache();
 
-/* ---------------- kulcsszó-elöl cím (alapértelmezett) ---------------- */
-check(!MG_SEO_Meta::use_legacy_titles(), 'keyword-first titles are the default');
+/* ---------------- név-elöl cím (alapértelmezett) ---------------- */
+check(!MG_SEO_Meta::use_legacy_titles(), 'name-first titles are the default');
 check(MG_SEO_Meta::same_stem('szuletesnap', 'szuletesnapi') && MG_SEO_Meta::same_stem('szuletesnapi', 'szuletesnapot'), 'inflected birthday forms share a stem');
 check(MG_SEO_Meta::same_stem('polo', 'polok') && MG_SEO_Meta::same_stem('horgasz', 'horgaszos') && MG_SEO_Meta::same_stem('foci', 'focis'), 'short suffixes share a stem');
 check(!MG_SEO_Meta::same_stem('szuletik', 'szuletesnap') && !MG_SEO_Meta::same_stem('papa', 'papagaj') && !MG_SEO_Meta::same_stem('az', 'azt'), 'different words do not share a stem');
 
 $ctx = MG_SEO_Meta::get_product_context($products[1], '');
-check(MG_SEO_Meta::build_product_title($ctx) === 'Születésnap férfi póló – 50-nek születik | Forme.hu', 'category name leads when no keyword is set: ' . MG_SEO_Meta::build_product_title($ctx));
-check(MG_SEO_Meta::build_product_title($ctx, false) === 'Születésnap férfi póló – 50-nek születik', 'og title without site name');
+check(MG_SEO_Meta::build_product_title($ctx) === '50-nek születik születésnap póló – férfi | Forme.hu', 'name leads, category name before the product noun when no keyword is set: ' . MG_SEO_Meta::build_product_title($ctx));
+check(MG_SEO_Meta::build_product_title($ctx, false) === '50-nek születik születésnap póló – férfi', 'og title without site name');
 check(MG_SEO_Meta::build_feed_title($products[1], 'Bögre') === '50-nek születik születésnap bögre', 'feed title per type, no qualifier for a one-word type');
 
 $ctx = MG_SEO_Meta::get_product_context($products[2], '');
@@ -315,7 +315,7 @@ update_term_meta(93, MG_SEO_Meta::TERM_PRODUCT_KEYWORD, 'Születésnapi');
 MG_SEO_Meta::reset_cache();
 check(MG_SEO_Meta::build_feed_title($products[2], 'Férfi póló') === 'Az élet 50 felett kezdődik születésnapi póló – férfi', 'adjective keyword, birthday only once');
 $ctx = MG_SEO_Meta::get_product_context($products[2], '');
-check(MG_SEO_Meta::build_product_title($ctx) === 'Születésnapi férfi póló – Az élet 50 felett kezdődik | Forme.hu', 'document title uses the same order');
+check(MG_SEO_Meta::build_product_title($ctx) === 'Az élet 50 felett kezdődik születésnapi póló – férfi | Forme.hu', 'document title uses the feed order');
 check(MG_SEO_Meta::build_feed_title($products[1], 'Női póló') === '50-nek születik születésnapi póló – női', '„születik” is not the birthday stem, short gender word kept');
 delete_term_meta(93, MG_SEO_Meta::TERM_PRODUCT_KEYWORD);
 MG_SEO_Meta::reset_cache();
@@ -350,7 +350,7 @@ MG_SEO_Meta::reset_cache();
 
 $ctx = MG_SEO_Meta::get_product_context($products[4], '');
 $title = MG_SEO_Meta::build_product_title($ctx);
-check($title === 'Horgász férfi póló – Ez egy nagyon hosszú, sok szavas mintanév a', 'long title drops the site and shortens only the design name: ' . $title);
+check($title === 'Ez egy nagyon hosszú, sok szavas mintanév a vicces horgász póló', 'long title drops the site and the gender, shortens the design name: ' . $title);
 check(MG_SEO_Meta::length($title) <= 70, 'document title within 70 chars');
 $feed = MG_SEO_Meta::build_feed_title($products[4], 'Férfi póló', 40);
 check($feed === 'Ez egy nagyon hosszú, sok horgász póló', 'long feed title drops the gender, cuts the name on a word boundary and brings the keyword back: ' . $feed);
@@ -465,7 +465,7 @@ MG_SEO_Meta::reset_cache();
 
 $data = MG_SEO_Meta::get_page_data();
 check($data['kind'] === 'product' && $data['canonical'] === 'https://forme.hu/termek/50-nek-szuletik-ferfi-polo/', 'page data canonical is virtual');
-check($data['title'] === 'Születésnap férfi póló – 50-nek születik | Forme.hu', 'document title on product page: ' . $data['title']);
+check($data['title'] === '50-nek születik születésnap póló – férfi | Forme.hu', 'document title on product page: ' . $data['title']);
 $og = MG_SEO_Meta::build_open_graph($data);
 check($og['og:type'] === 'product' && $og['product:price:amount'] === '5990.00' && $og['product:retailer_item_id'] === 'FORME1_ferfi-polo', 'OG product like the feed item');
 check($og['product:brand'] === 'www.forme.hu' && $og['og:site_name'] === 'Forme.hu', 'feed brand and short site name');

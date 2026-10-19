@@ -695,7 +695,7 @@ class MG_SEO_Meta {
     }
 
     /* ------------------------------------------------------------------ */
-    /* Kulcsszó-elöl címformátum (feedek és <title>)                       */
+    /* Név-elöl címformátum (feedek és <title>)                            */
     /* ------------------------------------------------------------------ */
 
     /**
@@ -842,51 +842,6 @@ class MG_SEO_Meta {
     }
 
     /**
-     * Kulcsszó elöl, a minta neve hátul:
-     * „Születésnapi férfi póló – Az élet 50 felett kezdődik”.
-     * A kulcsszó a típusban vagy a névben már szereplő szavai kimaradnak,
-     * hosszú címnél csak a minta neve rövidül.
-     */
-    public static function compose_keyword_title($name, $type, $keyword, $category = '', $max = 150) {
-        $name = self::plain($name);
-        $type = self::plain($type);
-        $keyword = self::plain($keyword);
-        $name = self::strip_generic_postfix($name);
-        $type_words = self::words($type);
-        // A névről csak a termékfajta szava vágható („póló”, „pulcsi”), a
-        // típus többi szava nem: az „Igazi férfi” felirat egészben marad.
-        $type_noun = $type_words ? array(end($type_words)) : array();
-        $name = self::strip_glued_tail($name, array_merge(self::words($keyword), self::words($category)), $type_noun);
-        if ($keyword !== '') {
-            $keyword = self::drop_known_words($keyword, $type_words);
-        }
-        $separator = ' – ';
-        // A kulcsszót a ténylegesen látszó névvel vetjük össze: ha a rövidítés
-        // levágja a névből a kulcsszót, a kulcsszó visszakerül elölre.
-        $visible = $name;
-        for ($round = 0; $round < 2; $round++) {
-            $lead_keyword = $keyword !== '' ? self::drop_known_words($keyword, self::words($visible)) : '';
-            if ($lead_keyword !== '' && $type !== '') {
-                $lead = self::upper_first($lead_keyword) . ' ' . self::lower_first($type);
-            } else {
-                $lead = self::upper_first($lead_keyword !== '' ? $lead_keyword : $type);
-            }
-            if ($lead === '') {
-                return self::fit_words($name, $max);
-            }
-            if (self::length($lead) >= $max) {
-                return self::fit_words($lead, $max);
-            }
-            $fitted = self::fit_words($name, $max - self::length($lead . $separator));
-            if ($fitted === $visible) {
-                break;
-            }
-            $visible = $fitted;
-        }
-        return $visible === '' ? $lead : $lead . $separator . $visible;
-    }
-
-    /**
      * A cím közepére kerülő kulcsszó kisbetűvel kezdődik, kivéve a
      * tulajdonnév-szerűt („Harry Potter”) és a rövidítést („PS5”).
      */
@@ -966,11 +921,14 @@ class MG_SEO_Meta {
         return self::upper_first(self::fit_words(trim($visible . ' ' . $tail), $max));
     }
 
-    /** <title> az új formátumban; az oldalnév csak akkor kerül a végére, ha belefér. */
+    /**
+     * <title> az új formátumban, a feedcímmel azonos sorrendben; az oldalnév
+     * csak akkor kerül a végére, ha belefér.
+     */
     protected static function build_keyword_product_title(array $ctx, $include_site) {
         $category = $ctx['term'] ? self::plain($ctx['term']->name) : '';
         $max = (int) apply_filters('mg_seo_title_max_length', self::TITLE_MAX);
-        $full = self::compose_keyword_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, PHP_INT_MAX);
+        $full = self::compose_name_first_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, PHP_INT_MAX);
         $site = trim((string) self::get_setting('site_name'));
         if ($include_site && $site !== '') {
             $with_site = $full . ' ' . trim((string) self::get_setting('separator')) . ' ' . $site;
@@ -978,13 +936,12 @@ class MG_SEO_Meta {
                 return $with_site;
             }
         }
-        return self::compose_keyword_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, $max);
+        return self::compose_name_first_title($ctx['name'], $ctx['type_label'], $ctx['keyword'], $category, $max);
     }
 
     /**
      * A termékfeedek (Google, Facebook, egyedi/ChatGPT) g:title mezője az új
-     * formátumban, a minta nevével kezdve. Legacy módban a feedek a saját
-     * régi címüket használják.
+     * formátumban. Legacy módban a feedek a saját régi címüket használják.
      */
     public static function build_feed_title($product, $type_label, $max = 150) {
         $term = self::get_primary_category($product->get_id());
