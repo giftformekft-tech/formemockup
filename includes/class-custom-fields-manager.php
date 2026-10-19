@@ -685,7 +685,30 @@ class MG_Custom_Fields_Manager {
             $mockup['additional'] = isset($field['mockup']['additional']) ? sanitize_text_field($field['mockup']['additional']) : '';
         }
         $description = isset($field['description']) ? sanitize_textarea_field($field['description']) : '';
-        $linked_product_variants = ($type === 'select' && !empty($field['linked_product_variants']));
+        $linked_product_variants = in_array($type, array('select', 'text', 'number'), true) && !empty($field['linked_product_variants']);
+        // Pre-generated "Minta variációk" values, one product each. Free-text
+        // fields need their own list; a select may reuse its options.
+        $variation_values = array();
+        $raw_variations = isset($field['variation_values']) ? $field['variation_values'] : array();
+        if (is_string($raw_variations)) {
+            $raw_variations = preg_split('/\r?\n|,/', $raw_variations);
+        }
+        foreach ((array) $raw_variations as $value) {
+            $value = sanitize_text_field(is_scalar($value) ? (string) $value : '');
+            if ($value !== '' && !in_array($value, $variation_values, true)) {
+                $variation_values[] = $value;
+            }
+        }
+        $linked_option_categories = array();
+        if ($linked_product_variants && !empty($field['linked_option_categories']) && is_array($field['linked_option_categories'])) {
+            foreach ($field['linked_option_categories'] as $slug => $term_id) {
+                $slug = sanitize_title($slug);
+                $term_id = absint($term_id);
+                if ($slug !== '' && $term_id > 0) {
+                    $linked_option_categories[$slug] = $term_id;
+                }
+            }
+        }
 
         return array(
             'id'              => $id,
@@ -703,6 +726,9 @@ class MG_Custom_Fields_Manager {
             'mockup'          => $mockup,
             'description'     => $description,
             'linked_product_variants' => $linked_product_variants,
+            'variation_values' => $variation_values,
+            'variation_ai_prompt' => isset($field['variation_ai_prompt']) && is_string($field['variation_ai_prompt']) ? sanitize_textarea_field($field['variation_ai_prompt']) : '',
+            'linked_option_categories' => $linked_option_categories,
             'ai_print_enabled' => !empty($field['ai_print_enabled']),
             'ai_print_prompt' => isset($field['ai_print_prompt']) && is_string($field['ai_print_prompt']) ? sanitize_textarea_field($field['ai_print_prompt']) : '',
         );

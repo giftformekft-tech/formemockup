@@ -228,6 +228,23 @@ class MG_AI_Print_Generator {
         return $values;
     }
 
+    /**
+     * A "Minta variációk" product's PNG already shows its own value, so an
+     * order for that value needs no AI edit; any other typed value still does.
+     */
+    protected static function is_value_on_design($product_id, $field_id, $value) {
+        if (!class_exists('MG_Custom_Field_Product_Variants')) {
+            return false;
+        }
+        $product_id = (int) $product_id;
+        if (get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_GROUP, true) === ''
+            || get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_FIELD, true) !== $field_id) {
+            return false;
+        }
+        $label = (string) get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_OPTION_LABEL, true);
+        return $label !== '' && self::label_key($label) === self::label_key($value);
+    }
+
     /** Match stable field IDs; customer data is quoted and never used as a template. */
     public static function prompt_for_item($item) {
         return self::build_prompt(self::instructions_for_item($item));
@@ -247,6 +264,9 @@ class MG_AI_Print_Generator {
                 if (!empty($field['required'])) {
                     throw new RuntimeException(sprintf(__('Hiányzik a rendelt érték ehhez az AI mezőhöz: %s.', 'mg'), $field['label']));
                 }
+                continue;
+            }
+            if (!empty($field['linked_product_variants']) && self::is_value_on_design($item->get_product_id(), $field['id'], $value)) {
                 continue;
             }
             $template = $field['ai_print_prompt'] ?? '';
@@ -434,6 +454,15 @@ class MG_AI_Print_Generator {
             $reserve = null;
             delete_option($lock);
         }
+    }
+
+    /**
+     * One synchronous edit outside the export (admin "Minta variációk").
+     *
+     * @return string Temporary PNG path; the caller moves or deletes it.
+     */
+    public static function edit_variation_image($source_path, $prompt, $key) {
+        return self::edit_image($source_path, $prompt, $key, self::get_model(), false);
     }
 
     protected static function output_path($key) {

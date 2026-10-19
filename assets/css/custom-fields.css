@@ -854,6 +854,11 @@ body.mgcf-modal-open {
     color: #1d4ed8;
 }
 
+.mg-linked-product-custom {
+    margin: 8px 0 0;
+    font-size: 14px;
+}
+
 .mg-linked-product-option.is-current {
     border-color: #2563eb;
     background: #2563eb;
@@ -867,7 +872,7 @@ body.mgcf-modal-open {
 }
 
 .mgcf-variant-mapping-table th:first-child {
-    width: 28%;
+    width: 14%;
 }
 
 .mgcf-variant-mapping__asset {
@@ -878,19 +883,50 @@ body.mgcf-modal-open {
 }
 
 .mgcf-variant-mapping__preview {
-    width: 110px;
+    width: 230px;
     min-height: 70px;
     vertical-align: middle;
 }
 
+/* Large enough to read the swapped text; the checkerboard keeps white or
+   light artwork visible on its transparent background. */
 .mgcf-variant-png-preview {
     display: block;
-    width: 80px;
-    height: 80px;
+    width: 220px;
+    height: 220px;
     object-fit: contain;
     border: 1px solid #dcdcde;
-    background: #fff;
+    background-color: #fff;
+    background-image: linear-gradient(45deg, #e5e7eb 25%, transparent 25%), linear-gradient(-45deg, #e5e7eb 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e7eb 75%), linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
     padding: 3px;
+}
+
+.mgcf-variant-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.mgcf-variant-ai-status {
+    flex-basis: 100%;
+    color: #50575e;
+    font-size: 12px;
+}
+
+.mgcf-variant-ai-progress {
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+.mgcf-variation-categories td {
+    padding: 2px 8px 2px 0;
 }
 
 .mgcf-variant-ai-section {

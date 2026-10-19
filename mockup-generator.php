@@ -67,6 +67,7 @@ add_action('plugins_loaded', function(){
         'includes/class-product-creator.php',
         'includes/class-custom-fields-manager.php',
         'includes/class-personalization-import.php',
+        'includes/class-variant-name-inflector.php',
         'includes/class-custom-field-product-variants.php',
         'includes/class-custom-fields-frontend.php',
         'includes/class-size-selection.php',

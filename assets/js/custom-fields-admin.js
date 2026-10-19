@@ -12,6 +12,14 @@
 
         bindEvents: function() {
             // Templates only change the current field when explicitly applied.
+            $(document).on('click', '.mgcf-apply-variation-prompt', function() {
+                var form = $(this).closest('form');
+                var prompt = form.find('.mgcf-variation-prompt-template option:selected').attr('data-prompt');
+                if (prompt) {
+                    form.find('[name="field_variation_ai_prompt"]').val(prompt);
+                }
+            });
+
             $(document).on('click', '.mgcf-apply-ai-prompt', function() {
                 var form = $(this).closest('form');
                 var option = form.find('.mgcf-ai-prompt-template option:selected');
@@ -168,7 +176,9 @@
                         return;
                     }
                     var imageUrl = attachment.url || '';
-                    if (attachment.sizes && attachment.sizes.thumbnail && attachment.sizes.thumbnail.url) {
+                    if (attachment.sizes && attachment.sizes.medium && attachment.sizes.medium.url) {
+                        imageUrl = attachment.sizes.medium.url;
+                    } else if (attachment.sizes && attachment.sizes.thumbnail && attachment.sizes.thumbnail.url) {
                         imageUrl = attachment.sizes.thumbnail.url;
                     }
                     input.val(parseInt(attachment.id, 10) || 0);
@@ -176,6 +186,8 @@
                     preview = $(button.data('preview'));
                     preview.attr('src', imageUrl);
                     remove.show();
+                    // A hand-picked PNG is the admin's own choice: no approval needed.
+                    MGCF.markVariantRow(button.closest('.mgcf-variant-row'), false, true, '');
                 });
                 frame.open();
             });
@@ -188,9 +200,11 @@
                 input.val('0');
                 preview.replaceWith('<span id="' + preview.attr('id') + '" class="mgcf-no-image">—</span>');
                 button.hide();
+                MGCF.markVariantRow(button.closest('.mgcf-variant-row'), false, false, '');
             });
 
             this.bindVariantAiImport();
+            this.bindVariantAiGenerate();
 
             // Assign searched products
             $('#mgcf-search-assign-btn').on('click', function(e) {
@@ -523,6 +537,148 @@
             $('.mgcf-modal').fadeOut(200);
             $('body').removeClass('mgcf-modal-open');
         }
+    };
+
+    MGCF.markVariantRow = function(row, aiGenerated, approved, status) {
+        if (!row || !row.length) {
+            return;
+        }
+        var isBase = row.attr('data-base') === '1';
+        var hasPng = (parseInt(row.find('.mgcf-variant-attachment').val(), 10) || 0) > 0;
+        row.attr('data-has-png', hasPng ? '1' : '0');
+        row.find('.mgcf-variant-ai-flag').val(aiGenerated ? '1' : '0');
+        row.find('.mgcf-variant-approved')
+            .prop('checked', hasPng && approved)
+            .prop('disabled', isBase || (hasPng && !aiGenerated));
+        row.find('.mgcf-variant-ai-status').text(status);
+    };
+
+    // AI variation PNGs: one admin-ajax request per value, at most two at a
+    // time. A request cut off by a proxy keeps running on the server, so the
+    // row then polls the status endpoint until the image is stored.
+    MGCF.bindVariantAiGenerate = function() {
+        var trigger = $('#mgcf-variant-ai-all');
+        if (!trigger.length) {
+            return;
+        }
+        var base = {
+            nonce: mgcfAdmin.nonce,
+            preset_id: trigger.data('preset'),
+            product_id: trigger.data('product'),
+            field_id: trigger.data('field')
+        };
+        var queue = [];
+        var active = 0;
+        var progress = $('#mgcf-variant-ai-progress');
+
+        function report() {
+            var waiting = queue.length + active;
+            progress.text(waiting > 0 ? 'AI-képek készülnek: még ' + waiting + ' db. Ne zárd be az oldalt.' : 'Kész. Nézd át a képeket, pipáld be, ami rendben van, majd kattints a Mentés gombra.');
+        }
+
+        function finish(row, data) {
+            row.find('.mgcf-variant-attachment').val(data.attachment_id);
+            var preview = row.find('.mgcf-variant-mapping__preview');
+            var img = $('<img class="mgcf-variant-png-preview" alt="" />').attr('src', data.preview || data.full).attr('id', row.find('.mgcf-png-select').data('preview').replace('#', ''));
+            preview.empty().append($('<a target="_blank" rel="noopener noreferrer"></a>').attr('href', data.full).append(img));
+            row.find('.mgcf-png-remove').show();
+            row.find('.mgcf-variant-ai-one').text('Újragenerálás AI-val');
+            MGCF.markVariantRow(row, true, false, 'AI-val készült – nézd át és hagyd jóvá.');
+        }
+
+        function poll(row, started) {
+            setTimeout(function() {
+                $.post(mgcfAdmin.ajaxUrl, $.extend({ action: 'mgcf_variant_ai_status', slug: row.data('slug') }, base)).done(function(response) {
+                    var data = response && response.data ? response.data : {};
+                    if (data.status === 'done') {
+                        finish(row, data);
+                        done(row);
+                    } else if (data.status === 'error') {
+                        row.find('.mgcf-variant-ai-status').text('Hiba: ' + (data.message || 'ismeretlen'));
+                        done(row);
+                    } else if (Date.now() - started > 420000) {
+                        row.find('.mgcf-variant-ai-status').text('Hiba: nem érkezett válasz. Próbáld újra.');
+                        done(row);
+                    } else {
+                        poll(row, started);
+                    }
+                }).fail(function() {
+                    poll(row, started);
+                });
+            }, 5000);
+        }
+
+        function done(row) {
+            row.data('queued', false);
+            active--;
+            next();
+        }
+
+        function next() {
+            report();
+            while (active < 2 && queue.length) {
+                start(queue.shift());
+            }
+        }
+
+        function start(row) {
+            active++;
+            var started = Date.now();
+            row.find('.mgcf-variant-ai-status').text('Készül…');
+            $.ajax({
+                url: mgcfAdmin.ajaxUrl,
+                method: 'POST',
+                timeout: 330000,
+                data: $.extend({ action: 'mgcf_variant_ai_generate', slug: row.data('slug') }, base)
+            }).done(function(response) {
+                var data = response && response.data ? response.data : {};
+                if (response && response.success && data.status === 'done') {
+                    finish(row, data);
+                    done(row);
+                } else if (response && response.success) {
+                    poll(row, started);
+                } else {
+                    row.find('.mgcf-variant-ai-status').text('Hiba: ' + (data.message || 'ismeretlen'));
+                    done(row);
+                }
+            }).fail(function() {
+                poll(row, started);
+            });
+        }
+
+        function enqueue(row) {
+            if (row.data('queued')) {
+                return;
+            }
+            row.data('queued', true);
+            row.find('.mgcf-variant-ai-status').text('Sorban áll…');
+            queue.push(row);
+        }
+
+        trigger.on('click', function() {
+            $('.mgcf-variant-row').each(function() {
+                var row = $(this);
+                if (row.attr('data-base') !== '1' && row.attr('data-has-png') !== '1') {
+                    enqueue(row);
+                }
+            });
+            if (!queue.length && !active) {
+                progress.text('Minden értékhez van már PNG. Egyenként az „Újragenerálás AI-val” gombbal kérhetsz újat.');
+                return;
+            }
+            next();
+        });
+
+        $(document).on('click', '.mgcf-variant-ai-one', function() {
+            var row = $(this).closest('.mgcf-variant-row');
+            row.data('queued', false);
+            enqueue(row);
+            next();
+        });
+
+        $('#mgcf-variant-approve-all').on('click', function() {
+            $('.mgcf-variant-approved:enabled').prop('checked', true);
+        });
     };
 
     $(document).ready(function() {

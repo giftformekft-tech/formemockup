@@ -13,6 +13,8 @@ class MG_Custom_Fields_Page {
         add_action('wp_ajax_mgcf_update_preset', array(__CLASS__, 'ajax_update_preset'));
         add_action('wp_ajax_mgcf_search_products_by_minta', array(__CLASS__, 'ajax_search_products_by_minta'));
         add_action('wp_ajax_mgcf_assign_searched_products', array(__CLASS__, 'ajax_assign_searched_products'));
+        add_action('wp_ajax_mgcf_variant_ai_generate', array(__CLASS__, 'ajax_variant_ai_generate'));
+        add_action('wp_ajax_mgcf_variant_ai_status', array(__CLASS__, 'ajax_variant_ai_status'));
     }
 
     public static function add_submenu_page() {
@@ -147,10 +149,26 @@ class MG_Custom_Fields_Page {
                     break;
                 }
 
-                $mapping = self::read_variant_mapping_from_request($variant_context['field']);
+                $existing_mapping = MG_Custom_Field_Product_Variants::get_mapping($variant_product_id, $variant_field_id);
+                $mapping = self::read_variant_mapping_from_request($variant_context['field'], $existing_mapping);
                 $saved = MG_Custom_Field_Product_Variants::save_mapping($variant_product_id, $variant_field_id, $mapping);
                 if (is_wp_error($saved)) {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_variant_mapping_failed', $saved->get_error_message(), 'error');
+                    break;
+                }
+                $base_slug = isset($_POST['variant_base_slug']) ? sanitize_title(wp_unslash($_POST['variant_base_slug'])) : '';
+                $base_label = '';
+                foreach (self::get_variant_options($variant_context['field']) as $option) {
+                    if ($option['slug'] === $base_slug) {
+                        $base_label = $option['label'];
+                    }
+                }
+                $group_exists = get_post_meta($variant_product_id, MG_Custom_Field_Product_Variants::META_GROUP, true) !== '';
+                if ($base_label !== '' && !$group_exists) {
+                    MG_Custom_Field_Product_Variants::save_config($variant_product_id, $variant_field_id, array('base_slug' => $base_slug));
+                }
+                if ($base_label !== '' && MG_Custom_Field_Product_Variants::ensure_base_attachment($variant_product_id, $variant_field_id, MG_Custom_Field_Product_Variants::get_base_slug($variant_product_id, $variant_field_id, self::get_variant_options($variant_context['field'])), $base_label) <= 0) {
+                    add_settings_error('mg_custom_fields_admin', 'mgcf_variant_base_png', __('A termék mostani mintájához nem található PNG. Az alapértékhez válaszd ki kézzel a PNG-t.', 'mgcf'), 'error');
                     break;
                 }
 
@@ -212,7 +230,9 @@ class MG_Custom_Fields_Page {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_variant_generation_invalid', $variant_context->get_error_message(), 'error');
                     break;
                 }
-                $validated = MG_Custom_Field_Product_Variants::validate_completeness($variant_product_id, $variant_field_id);
+                // Members copy the source's fields, so refresh them from the preset first.
+                MG_Custom_Fields_Manager::apply_preset_to_product($variant_product_id, $preset_id);
+                $validated = MG_Custom_Field_Product_Variants::validate_completeness($variant_product_id, $variant_field_id, null, $variant_context['field']);
                 if (is_wp_error($validated)) {
                     $counts = self::get_variant_mapping_counts($variant_product_id, $variant_field_id, $variant_context['field']);
                     add_settings_error(
@@ -226,7 +246,11 @@ class MG_Custom_Fields_Page {
                 $generated = MG_Custom_Field_Product_Variants::generate_or_update(
                     $variant_product_id,
                     $variant_field_id,
-                    array('mapping' => $validated['mapping'])
+                    array(
+                        'mapping' => $validated['mapping'],
+                        'field' => $variant_context['field'],
+                        'preset_id' => $preset_id,
+                    )
                 );
                 if (is_wp_error($generated)) {
                     add_settings_error('mg_custom_fields_admin', 'mgcf_variant_generation_failed', $generated->get_error_message(), 'error');
@@ -309,9 +333,17 @@ class MG_Custom_Fields_Page {
                         add_settings_error(
                             'mg_custom_fields_admin',
                             'mgcf_linked_field_conflict',
-                            __('Egy presetben csak egy választómező vezérelhet kapcsolt termékeket.', 'mgcf'),
+                            __('Egy presetben csak egy mezőnél lehetnek minta variációk.', 'mgcf'),
                             'error'
                         );
+                        break;
+                    }
+                    if (trim($field['variation_ai_prompt']) !== '' && strpos($field['variation_ai_prompt'], '{{ertek}}') === false) {
+                        add_settings_error('mg_custom_fields_admin', 'mgcf_variation_prompt', __('A variáció AI-utasításnak tartalmaznia kell a {{ertek}} helyőrzőt.', 'mgcf'), 'error');
+                        break;
+                    }
+                    if ($field['type'] !== 'select' && trim($field['variation_values']) === '') {
+                        add_settings_error('mg_custom_fields_admin', 'mgcf_variation_values_missing', __('Beírós mezőnél add meg a variációk listáját (soronként egy érték).', 'mgcf'), 'error');
                         break;
                     }
                 }
@@ -387,7 +419,15 @@ class MG_Custom_Fields_Page {
         $field['ai_print_prompt'] = isset($_POST['field_ai_print_prompt']) && is_string($_POST['field_ai_print_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['field_ai_print_prompt'])) : '';
         $options_raw = isset($_POST['field_options']) ? wp_kses_post($_POST['field_options']) : '';
         $field['options'] = $options_raw;
-        $field['linked_product_variants'] = ($field['type'] === 'select' && !empty($_POST['field_linked_product_variants']));
+        $field['linked_product_variants'] = in_array($field['type'], array('select', 'text', 'number'), true) && !empty($_POST['field_linked_product_variants']);
+        $field['variation_ai_prompt'] = isset($_POST['field_variation_ai_prompt']) && is_string($_POST['field_variation_ai_prompt']) ? sanitize_textarea_field(wp_unslash($_POST['field_variation_ai_prompt'])) : '';
+        $field['variation_values'] = isset($_POST['field_variation_values']) && is_string($_POST['field_variation_values']) ? sanitize_textarea_field(wp_unslash($_POST['field_variation_values'])) : '';
+        $field['linked_option_categories'] = array();
+        if (isset($_POST['field_linked_categories']) && is_array($_POST['field_linked_categories'])) {
+            foreach (wp_unslash($_POST['field_linked_categories']) as $slug => $term_id) {
+                $field['linked_option_categories'][sanitize_title($slug)] = absint($term_id);
+            }
+        }
         $field['surcharge_type'] = isset($_POST['field_surcharge_type']) ? sanitize_key($_POST['field_surcharge_type']) : 'none';
         $field['surcharge_amount'] = isset($_POST['field_surcharge_amount']) ? floatval($_POST['field_surcharge_amount']) : 0.0;
         $field['mockup'] = array(
@@ -585,16 +625,20 @@ class MG_Custom_Fields_Page {
         }
 
         $field = $context['field'];
+        $options = self::get_variant_options($field);
         $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
         $product_name = $product && method_exists($product, 'get_name') ? $product->get_name() : get_the_title($product_id);
-        $mapping = class_exists('MG_Custom_Field_Product_Variants')
-            ? MG_Custom_Field_Product_Variants::get_mapping($product_id, $field_id)
-            : array();
+        $config = MG_Custom_Field_Product_Variants::get_config($product_id, $field_id);
+        $mapping = MG_Custom_Field_Product_Variants::get_mapping($product_id, $field_id);
         $counts = self::get_variant_mapping_counts($product_id, $field_id, $field);
-        $complete = false;
-        if (class_exists('MG_Custom_Field_Product_Variants')) {
-            $complete = !is_wp_error(MG_Custom_Field_Product_Variants::validate_completeness($product_id, $field_id));
-        }
+        $validation = MG_Custom_Field_Product_Variants::validate_completeness($product_id, $field_id, null, $field);
+        $complete = !is_wp_error($validation);
+        $base_saved = !empty($config['base_slug']);
+        $base_slug = MG_Custom_Field_Product_Variants::get_base_slug($product_id, $field_id, $options);
+        $group_exists = get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_GROUP, true) !== '';
+        // Names depend on the base value, so they are only previewed once it is known.
+        $names = ($base_saved || $group_exists) ? MG_Custom_Field_Product_Variants::preview_names($product_id, $field_id, $options, $base_slug) : array();
+        $categories = MG_Custom_Field_Product_Variants::get_option_categories($field);
         $back_link = add_query_arg(array('page' => 'mockup-generator-custom-fields', 'preset_id' => $preset_id), admin_url('admin.php'));
 
         echo '<nav class="mgcf-breadcrumb">';
@@ -605,7 +649,7 @@ class MG_Custom_Fields_Page {
 
         echo '<header class="mgcf-hero">';
         echo '<div class="mgcf-hero__text">';
-        echo '<h1>' . esc_html(sprintf(__('%s – PNG minták', 'mgcf'), $product_name)) . '</h1>';
+        echo '<h1>' . esc_html(sprintf(__('%s – Minta variációk', 'mgcf'), $product_name)) . '</h1>';
         echo '<p>' . esc_html(sprintf(__('%s mező: %d/%d PNG megadva', 'mgcf'), isset($field['label']) ? $field['label'] : '', $counts['mapped'], $counts['total'])) . '</p>';
         echo '</div>';
         echo '<div class="mgcf-hero__actions">';
@@ -614,47 +658,91 @@ class MG_Custom_Fields_Page {
         echo '</header>';
 
         echo '<section class="mgcf-section mgcf-variant-mapping-section">';
-        echo '<div class="mgcf-section__header">';
-        echo '<h2>' . esc_html__('PNG hozzárendelés', 'mgcf') . '</h2>';
-        echo '<p>' . esc_html__('Válassz kizárólag PNG képet minden értékhez. Részleges mentés engedélyezett; a kapcsolt termékek generálása csak teljes mappingnél érhető el.', 'mgcf') . '</p>';
-        echo '</div>';
-
         echo '<form method="post" class="mgcf-variant-mapping-form">';
         wp_nonce_field(self::NONCE_ACTION, self::NONCE_FIELD);
         echo '<input type="hidden" name="mg_custom_fields_action" value="save_product_variant_mapping" />';
         echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
         echo '<input type="hidden" name="variant_product_id" value="' . esc_attr($product_id) . '" />';
         echo '<input type="hidden" name="field_id" value="' . esc_attr($field_id) . '" />';
+
+        echo '<div class="mgcf-section__header">';
+        echo '<h2>' . esc_html__('1. Alapbeállítás', 'mgcf') . '</h2>';
+        echo '<p>' . esc_html__('Melyik érték szerepel most a minta képén? Ez az eredeti termék marad, a többi értékből új termék készül.', 'mgcf') . '</p>';
+        echo '</div>';
+        echo '<p><select name="variant_base_slug" id="mgcf-variant-base"' . disabled($group_exists, true, false) . '>';
+        if (!$base_saved && !$group_exists) {
+            echo '<option value="">' . esc_html__('Válaszd ki…', 'mgcf') . '</option>';
+        }
+        foreach ($options as $option) {
+            $selected = ($base_saved || $group_exists) && $option['slug'] === $base_slug;
+            echo '<option value="' . esc_attr($option['slug']) . '"' . selected($selected, true, false) . '>' . esc_html($option['label']) . '</option>';
+        }
+        echo '</select>';
+        if ($group_exists) {
+            echo '<input type="hidden" name="variant_base_slug" value="' . esc_attr($base_slug) . '" />';
+            echo ' <span class="description">' . esc_html__('A csoport már létezik, az alapbeállítás nem módosítható.', 'mgcf') . '</span>';
+        }
+        echo '</p>';
+
+        echo '<div class="mgcf-section__header">';
+        echo '<h2>' . esc_html__('2. PNG-k és jóváhagyás', 'mgcf') . '</h2>';
+        echo '<p>' . esc_html__('Az alapérték PNG-je a termék mostani mintája. A többit az AI elkészíti a preset variáció-utasításával, vagy kézzel is kiválaszthatsz PNG-t. Az AI-képeket jóvá kell hagyni: ezek így kerülnek nyomtatásra, exportkor már nem módosulnak.', 'mgcf') . '</p>';
+        echo '</div>';
+        if ($base_saved || $group_exists) {
+            echo '<p class="mgcf-variant-ai-actions"><button type="button" class="button button-primary" id="mgcf-variant-ai-all"' . ' data-preset="' . esc_attr($preset_id) . '" data-product="' . esc_attr($product_id) . '" data-field="' . esc_attr($field_id) . '">' . esc_html__('Hiányzó PNG-k elkészítése AI-val', 'mgcf') . '</button> ';
+            echo '<button type="button" class="button" id="mgcf-variant-approve-all">' . esc_html__('Összes kijelölése jóváhagyásra', 'mgcf') . '</button> ';
+            echo '<span id="mgcf-variant-ai-progress" class="mgcf-variant-ai-progress" role="status" aria-live="polite"></span></p>';
+        } else {
+            echo '<p class="description">' . esc_html__('Az AI-generáláshoz előbb válaszd ki és mentsd az alapbeállítást.', 'mgcf') . '</p>';
+        }
+
         echo '<div class="mgcf-table-wrap">';
         echo '<table class="widefat striped mgcf-table mgcf-variant-mapping-table">';
-        echo '<thead><tr><th>' . esc_html__('Választási érték', 'mgcf') . '</th><th>' . esc_html__('PNG minta', 'mgcf') . '</th><th>' . esc_html__('Előnézet', 'mgcf') . '</th></tr></thead><tbody>';
-        foreach (self::get_variant_options($field) as $option) {
+        echo '<thead><tr><th>' . esc_html__('Érték', 'mgcf') . '</th><th>' . esc_html__('PNG', 'mgcf') . '</th><th>' . esc_html__('Előnézet', 'mgcf') . '</th><th>' . esc_html__('Jóváhagyva', 'mgcf') . '</th><th>' . esc_html__('Termék neve és alkategória', 'mgcf') . '</th></tr></thead><tbody>';
+        foreach ($options as $option) {
             $slug = $option['slug'];
+            $is_base = ($base_saved || $group_exists) && $slug === $base_slug;
             $entry = isset($mapping[$slug]) && is_array($mapping[$slug]) ? $mapping[$slug] : array();
             $attachment_id = !empty($entry['attachment_id']) ? absint($entry['attachment_id']) : 0;
             if ($attachment_id > 0 && !self::is_png_attachment($attachment_id)) {
                 $attachment_id = 0;
             }
+            $ai_generated = $attachment_id > 0 && !empty($entry['ai_generated']);
+            $approved = $attachment_id > 0 && (!array_key_exists('approved', $entry) || !empty($entry['approved']));
             $input_id = 'mgcf-png-' . sanitize_key($field_id) . '-' . sanitize_key($slug);
             $preview_id = $input_id . '-preview';
-            echo '<tr>';
-            echo '<th scope="row"><label for="' . esc_attr($input_id) . '">' . esc_html($option['label']) . '</label></th>';
+            echo '<tr class="mgcf-variant-row" data-slug="' . esc_attr($slug) . '" data-base="' . ($is_base ? '1' : '0') . '" data-has-png="' . ($attachment_id > 0 ? '1' : '0') . '">';
+            echo '<th scope="row"><label for="' . esc_attr($input_id) . '">' . esc_html($option['label']) . '</label>';
+            if ($is_base) {
+                echo '<br /><span class="mgcf-variant-badge">' . esc_html__('Alap – eredeti termék', 'mgcf') . '</span>';
+            }
+            echo '</th>';
             echo '<td><div class="mgcf-variant-mapping__asset">';
-            echo '<input type="hidden" id="' . esc_attr($input_id) . '" name="variant_mapping[' . esc_attr($slug) . ']" value="' . esc_attr($attachment_id) . '" />';
+            echo '<input type="hidden" id="' . esc_attr($input_id) . '" class="mgcf-variant-attachment" name="variant_mapping[' . esc_attr($slug) . ']" value="' . esc_attr($attachment_id) . '" />';
+            echo '<input type="hidden" class="mgcf-variant-ai-flag" name="variant_ai[' . esc_attr($slug) . ']" value="' . ($ai_generated ? '1' : '0') . '" />';
             echo '<button type="button" class="button mgcf-png-select" data-input="#' . esc_attr($input_id) . '" data-preview="#' . esc_attr($preview_id) . '">' . esc_html__('PNG kiválasztása', 'mgcf') . '</button> ';
+            if (!$is_base && ($base_saved || $group_exists)) {
+                echo '<button type="button" class="button mgcf-variant-ai-one">' . esc_html($attachment_id > 0 ? __('Újragenerálás AI-val', 'mgcf') : __('Elkészítés AI-val', 'mgcf')) . '</button> ';
+            }
             echo '<button type="button" class="button-link-delete mgcf-png-remove" data-input="#' . esc_attr($input_id) . '" data-preview="#' . esc_attr($preview_id) . '"' . ($attachment_id > 0 ? '' : ' style="display:none;"') . '>' . esc_html__('Törlés', 'mgcf') . '</button>';
+            echo '<div class="mgcf-variant-ai-status" role="status" aria-live="polite">' . ($ai_generated ? esc_html__('AI-val készült', 'mgcf') : '') . '</div>';
             echo '</div></td>';
             echo '<td class="mgcf-variant-mapping__preview">';
             if ($attachment_id > 0) {
-                $image = wp_get_attachment_image($attachment_id, 'thumbnail', false, array('id' => $preview_id, 'class' => 'mgcf-variant-png-preview', 'alt' => $option['label']));
-                echo $image ? $image : '<span id="' . esc_attr($preview_id) . '" class="mgcf-no-image">—</span>';
+                $full = wp_get_attachment_url($attachment_id);
+                $image = wp_get_attachment_image($attachment_id, 'medium', false, array('id' => $preview_id, 'class' => 'mgcf-variant-png-preview', 'alt' => $option['label']));
+                echo $image ? '<a href="' . esc_url($full) . '" target="_blank" rel="noopener noreferrer">' . $image . '</a>' : '<span id="' . esc_attr($preview_id) . '" class="mgcf-no-image">—</span>';
             } else {
                 echo '<span id="' . esc_attr($preview_id) . '" class="mgcf-no-image">—</span>';
             }
-            echo '</td></tr>';
+            echo '</td>';
+            echo '<td><label><input type="checkbox" class="mgcf-variant-approved" name="variant_approved[' . esc_attr($slug) . ']" value="1"' . checked($approved, true, false) . disabled($is_base || ($attachment_id > 0 && !$ai_generated), true, false) . ' /> ' . esc_html__('Rendben', 'mgcf') . '</label></td>';
+            $category = !empty($categories[$slug]) ? get_term($categories[$slug], 'product_cat') : null;
+            echo '<td>' . esc_html(isset($names[$slug]) ? $names[$slug] : '') . '<br /><span class="description">' . esc_html($category && !is_wp_error($category) ? $category->name : __('nincs alkategória', 'mgcf')) . '</span></td>';
+            echo '</tr>';
         }
         echo '</tbody></table></div>';
-        echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Mapping mentése', 'mgcf') . '</button></p>';
+        echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('Mentés', 'mgcf') . '</button></p>';
         echo '</form>';
 
         $ai_options = array();
@@ -692,8 +780,9 @@ class MG_Custom_Fields_Page {
         echo '<input type="hidden" name="preset_id" value="' . esc_attr($preset_id) . '" />';
         echo '<input type="hidden" name="variant_product_id" value="' . esc_attr($product_id) . '" />';
         echo '<input type="hidden" name="field_id" value="' . esc_attr($field_id) . '" />';
-        echo '<p class="mgcf-variant-generation-status">' . esc_html($complete ? __('A mapping teljes, generálható.', 'mgcf') : __('A generálás teljes PNG-mappinget igényel.', 'mgcf')) . '</p>';
-        echo '<button type="submit" class="button button-primary"' . disabled($complete, false, false) . '>' . esc_html__('Kapcsolt termékek generálása/frissítése', 'mgcf') . '</button>';
+        echo '<h2>' . esc_html__('3. Termékek generálása', 'mgcf') . '</h2>';
+        echo '<p class="mgcf-variant-generation-status">' . esc_html($complete ? __('Minden PNG megvan és jóvá van hagyva, generálható.', 'mgcf') : $validation->get_error_message()) . '</p>';
+        echo '<button type="submit" class="button button-primary"' . disabled($complete && ($base_saved || $group_exists), false, false) . '>' . esc_html__('Variáció termékek generálása/frissítése', 'mgcf') . '</button>';
         echo '</form>';
         echo '</section>';
 
@@ -775,6 +864,29 @@ class MG_Custom_Fields_Page {
         echo '</div>';
         echo '</div>';
         echo '</div>';
+    }
+
+    /** Starter prompts for pre-generating variation PNGs from a design's base value. */
+    public static function get_variation_prompt_templates() {
+        $keep = ' Őrizd meg a betűtípust, a színt, a körvonalat, az ívelést és az elhelyezést; a betűméretet és a betűközt csak annyira igazítsd, hogy az új érték ugyanoda férjen. A minta minden más szövege, száma és grafikai eleme maradjon pontosan változatlan.';
+        return array(
+            'general' => array(
+                'label' => 'Általános',
+                'prompt' => 'A mintán jelenleg ez az érték szerepel: {{alap}}. Cseréld le erre: {{ertek}}, minden előfordulásánál. Ha az érték toldalékkal szerepel (például {{alap}}i, {{alap}}ban, {{alap}}-as), az új értékhez a helyes magyar toldalékot használd.' . $keep,
+            ),
+            'month' => array(
+                'label' => 'Hónap',
+                'prompt' => 'A mintán szereplő hónap most: {{alap}}. Cseréld erre a hónapra: {{ertek}}, minden előfordulásánál. Őrizd meg a hónap eredeti formáját (kiírt név, rövidítés vagy szám) és a kis- és nagybetűzést. Ha a hónap toldalékkal szerepel, az új hónaphoz a helyes magyar toldalékot használd (például FEBRUÁRI → SZEPTEMBERI, májusban → októberben). Évszámot, napot vagy életkort ne módosíts.' . $keep,
+            ),
+            'age' => array(
+                'label' => 'Életkor',
+                'prompt' => 'A mintán szereplő életkor most: {{alap}}. Cseréld erre: {{ertek}}, minden előfordulásánál. Tartsd meg a hozzá tartozó szavakat és jelöléseket (például „éves”, „felett”, „-as/-es”), és az új számhoz a helyes magyar toldalékot használd (például 60-as → 50-es). Csak ezt a számot változtasd meg; évszámot vagy más számot ne számolj ki és ne módosíts.' . $keep,
+            ),
+            'year' => array(
+                'label' => 'Évszám',
+                'prompt' => 'A mintán szereplő évszám most: {{alap}}. Cseréld erre az évszámra: {{ertek}}, minden előfordulásánál. A számjegyeket pontosan használd, és ha az évszám toldalékkal szerepel, az új évszámhoz a helyes magyar toldalékot használd (például 1960-as → 1966-os). Életkort, hónapot vagy más számot ne módosíts.' . $keep,
+            ),
+        );
     }
 
     /** Copyable starter prompts, deliberately independent of live preset IDs. */
@@ -886,7 +998,45 @@ class MG_Custom_Fields_Page {
         echo '<p class="description">' . esc_html__('A {{ertek}} helyére a vevő rendelt értéke kerül. Nem kell megadni a képen szereplő példaértéket. Több mező módosítása egyetlen képszerkesztésben történik. A sablon aktuális utasítása a régebbi rendelések exportjára is érvényes.', 'mgcf') . '</p>';
         echo '<p class="description">' . esc_html__('Választható GPT Image modell · low · PNG · képarányhoz igazított felbontás, majd automatikus 3×-os felnagyítás. Egy exporton belül egy tételhez csak egy kép készül; új export új generálást indít.', 'mgcf') . ' <a href="' . esc_url(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo#mg-ai-print-settings')) . '">' . esc_html__('Nyomatmodell és OpenAI API-kulcs beállítása', 'mgcf') . '</a></p></td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Választólista értékek', 'mgcf') . '</label></th><td><textarea name="field_options" rows="3" class="large-text" placeholder="Érték1&#10;Érték2">' . esc_textarea($options_text) . '</textarea><p class="description">' . esc_html__('Választólista típusnál soronként egy opció.', 'mgcf') . '</p></td></tr>';
-        echo '<tr><th scope="row">' . esc_html__('Kapcsolt termékek', 'mgcf') . '</th><td><label><input type="checkbox" name="field_linked_product_variants" value="1"' . checked($linked_product_variants, true, false) . ' /> ' . esc_html__('Külön termék létrehozása minden választóértékhez, ha a terméknél minden PNG meg van adva', 'mgcf') . '</label><p class="description">' . esc_html__('PNG nélkül a mező továbbra is hagyományos választóként működik. Csak választólista típusnál érvényes.', 'mgcf') . '</p></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('Minta variációk', 'mgcf') . '</th><td><label><input type="checkbox" name="field_linked_product_variants" value="1"' . checked($linked_product_variants, true, false) . ' /> ' . esc_html__('Külön termék a népszerű értékekre (pl. hónapok, 50 éves, 1966)', 'mgcf') . '</label>';
+        echo '<p class="description">' . esc_html__('Választólista, szöveg és szám mezőnél használható; presetenként egy mezőnél. A termékenkénti PNG-ket és a generálást a preset terméklistájában, a „Minta variációk” gombbal kezeled.', 'mgcf') . '</p>';
+        $variation_values = isset($field['variation_values']) ? $field['variation_values'] : array();
+        $variation_text = is_array($variation_values) ? implode("\n", $variation_values) : (string) $variation_values;
+        echo '<p><label><strong>' . esc_html__('Variációk listája', 'mgcf') . '</strong><br /><textarea name="field_variation_values" rows="4" class="large-text" placeholder="30&#10;40&#10;50&#10;60&#10;70">' . esc_textarea($variation_text) . '</textarea></label></p>';
+        echo '<p class="description">' . esc_html__('Soronként egy érték, mindegyikből külön termék lesz. Beírós (szöveg/szám) mezőnél kötelező; választólistánál üresen hagyva a lista értékei számítanak.', 'mgcf') . '</p>';
+        $variation_prompt = isset($field['variation_ai_prompt']) && trim($field['variation_ai_prompt']) !== '' ? $field['variation_ai_prompt'] : self::get_variation_prompt_templates()['general']['prompt'];
+        echo '<p><strong>' . esc_html__('Variáció AI-utasítás', 'mgcf') . '</strong><br /><select class="mgcf-variation-prompt-template" aria-label="' . esc_attr__('Kész variáció-utasítás', 'mgcf') . '"><option value="">' . esc_html__('Kész utasítás betöltése…', 'mgcf') . '</option>';
+        foreach (self::get_variation_prompt_templates() as $template_id => $template) {
+            echo '<option value="' . esc_attr($template_id) . '" data-prompt="' . esc_attr($template['prompt']) . '">' . esc_html($template['label']) . '</option>';
+        }
+        echo '</select> <button type="button" class="button mgcf-apply-variation-prompt">' . esc_html__('Betöltés', 'mgcf') . '</button></p>';
+        echo '<textarea name="field_variation_ai_prompt" rows="6" class="large-text">' . esc_textarea($variation_prompt) . '</textarea>';
+        echo '<p class="description">' . esc_html__('Ezzel az utasítással készíti az AI a variációk PNG-it a minta alapképéből. {{alap}} = ami most a mintán szerepel (pl. Február, 60), {{ertek}} = az új érték. A {{ertek}} kötelező.', 'mgcf') . '</p>';
+        if ($linked_product_variants && class_exists('MG_Custom_Field_Product_Variants')) {
+            $variations = MG_Custom_Field_Product_Variants::get_field_variations($field);
+            $categories = MG_Custom_Field_Product_Variants::get_option_categories($field);
+            if (!empty($variations)) {
+                echo '<p><strong>' . esc_html__('Alkategória értékenként', 'mgcf') . '</strong></p>';
+                echo '<table class="mgcf-variation-categories">';
+                foreach ($variations as $variation) {
+                    $dropdown = wp_dropdown_categories(array(
+                        'taxonomy' => 'product_cat',
+                        'hide_empty' => 0,
+                        'hierarchical' => 1,
+                        'name' => 'field_linked_categories[' . $variation['slug'] . ']',
+                        'id' => 'mgcf-cat-' . sanitize_key($field_id) . '-' . sanitize_key($variation['slug']),
+                        'selected' => isset($categories[$variation['slug']]) ? $categories[$variation['slug']] : 0,
+                        'show_option_none' => __('— nincs —', 'mgcf'),
+                        'option_none_value' => 0,
+                        'echo' => 0,
+                    ));
+                    echo '<tr><td>' . esc_html($variation['label']) . '</td><td>' . $dropdown . '</td></tr>';
+                }
+                echo '</table>';
+                echo '<p class="description">' . esc_html__('Generáláskor minden termék a saját értékének alkategóriájába kerül, a többi érték alkategóriájából kikerül. Új értékhez előbb mentsd a mezőt, utána választhatsz kategóriát.', 'mgcf') . '</p>';
+            }
+        }
+        echo '</td></tr>';
         echo '<tr><th scope="row"><label>' . esc_html__('Árpótdíj típusa', 'mgcf') . '</label></th><td><select name="field_surcharge_type">';
         $surcharge_types = array(
             'none' => __('Nincs', 'mgcf'),
@@ -922,7 +1072,7 @@ class MG_Custom_Fields_Page {
         $fields = isset($preset['fields']) && is_array($preset['fields']) ? $preset['fields'] : array();
         $eligible = array();
         foreach ($fields as $field) {
-            if (!is_array($field) || sanitize_key(isset($field['type']) ? $field['type'] : '') !== 'select' || empty($field['linked_product_variants'])) {
+            if (!is_array($field) || !in_array(sanitize_key(isset($field['type']) ? $field['type'] : ''), array('select', 'text', 'number'), true) || empty($field['linked_product_variants'])) {
                 continue;
             }
             $field_id = sanitize_key(isset($field['id']) ? $field['id'] : '');
@@ -963,7 +1113,20 @@ class MG_Custom_Fields_Page {
         if (!in_array($product_id, $assigned, true)) {
             return new WP_Error('variant_product_unassigned', __('A termék nincs ehhez a presethez rendelve.', 'mgcf'));
         }
+        $parent_id = self::get_group_parent_id($product_id);
+        if ($parent_id > 0 && $parent_id !== $product_id) {
+            return new WP_Error('variant_product_member', sprintf(__('Ez a termék egy variációs csoport tagja. A csoportot az eredeti terméknél kezeld: %s.', 'mgcf'), get_the_title($parent_id)));
+        }
         return array('preset' => $preset, 'field' => $field, 'product_id' => $product_id, 'field_id' => $field_id);
+    }
+
+    /** Source product of the variation group this product belongs to, or 0. */
+    protected static function get_group_parent_id($product_id) {
+        self::ensure_variant_service();
+        if (get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_GROUP, true) === '') {
+            return 0;
+        }
+        return absint(get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_PARENT, true));
     }
 
     protected static function ensure_variant_service() {
@@ -976,27 +1139,15 @@ class MG_Custom_Fields_Page {
         }
     }
 
-    /** Build a stable slug/label list from the preset field options. */
+    /** Build a stable slug/label list from the field's variation values. */
     protected static function get_variant_options($field) {
-        $raw = isset($field['options']) ? $field['options'] : array();
-        if (is_string($raw)) {
-            $raw = preg_split('/\r?\n|,/', $raw);
-        }
-        $result = array();
-        foreach ((array) $raw as $option) {
-            $label = is_array($option) ? (isset($option['label']) ? $option['label'] : (isset($option['name']) ? $option['name'] : '')) : $option;
-            $label = sanitize_text_field((string) $label);
-            $slug = is_array($option) && !empty($option['slug']) ? sanitize_title($option['slug']) : sanitize_title($label);
-            if ($label === '' || $slug === '' || isset($result[$slug])) {
-                continue;
-            }
-            $result[$slug] = array('slug' => $slug, 'label' => $label);
-        }
-        return array_values($result);
+        self::ensure_variant_service();
+        return MG_Custom_Field_Product_Variants::get_field_variations($field);
     }
 
-    protected static function read_variant_mapping_from_request($field) {
+    protected static function read_variant_mapping_from_request($field, $existing = array()) {
         $posted = isset($_POST['variant_mapping']) && is_array($_POST['variant_mapping']) ? wp_unslash($_POST['variant_mapping']) : array();
+        $approved = isset($_POST['variant_approved']) && is_array($_POST['variant_approved']) ? wp_unslash($_POST['variant_approved']) : array();
         $mapping = array();
         foreach (self::get_variant_options($field) as $option) {
             $slug = $option['slug'];
@@ -1004,7 +1155,18 @@ class MG_Custom_Fields_Page {
             if ($attachment_id > 0 && !self::is_png_attachment($attachment_id)) {
                 $attachment_id = 0;
             }
-            $mapping[$slug] = array('slug' => $slug, 'label' => $option['label'], 'attachment_id' => $attachment_id);
+            // Only the stored AI image keeps its AI status; a PNG picked by
+            // hand is the admin's own choice and needs no approval.
+            $ai_generated = $attachment_id > 0
+                && !empty($existing[$slug]['ai_generated'])
+                && absint($existing[$slug]['attachment_id'] ?? 0) === $attachment_id;
+            $mapping[$slug] = array(
+                'slug' => $slug,
+                'label' => $option['label'],
+                'attachment_id' => $attachment_id,
+                'ai_generated' => $ai_generated,
+                'approved' => !$ai_generated || !empty($approved[$slug]),
+            );
         }
         return $mapping;
     }
@@ -1466,7 +1628,7 @@ class MG_Custom_Fields_Page {
         echo '<th>' . esc_html__('Állapot', 'mgcf') . '</th>';
         echo '<th>' . esc_html__('Más preset', 'mgcf') . '</th>';
         if ($has_variant_mapping) {
-            echo '<th>' . esc_html__('PNG minták', 'mgcf') . '</th>';
+            echo '<th>' . esc_html__('Minta variációk', 'mgcf') . '</th>';
         }
         echo '</tr></thead>';
         echo '<tbody>';
@@ -1499,9 +1661,13 @@ class MG_Custom_Fields_Page {
             echo '</td>';
             if ($has_variant_mapping) {
                 echo '<td>';
-                if ($is_assigned) {
+                $group_parent = $is_assigned ? self::get_group_parent_id($product->ID) : 0;
+                if ($is_assigned && $group_parent > 0 && $group_parent !== (int) $product->ID) {
+                    $parent_url = self::get_variant_mapping_url($preset_id, $group_parent, $variant_field['id']);
+                    echo '<a href="' . esc_url($parent_url) . '" class="button button-small">' . esc_html__('Csoport: eredeti termék', 'mgcf') . '</a>';
+                } elseif ($is_assigned) {
                     $mapping_url = self::get_variant_mapping_url($preset_id, $product->ID, $variant_field['id']);
-                    echo '<a href="' . esc_url($mapping_url) . '" class="button button-small">' . esc_html__('PNG konfigurálása', 'mgcf') . '</a>';
+                    echo '<a href="' . esc_url($mapping_url) . '" class="button button-small">' . esc_html__('Minta variációk', 'mgcf') . '</a>';
                 } else {
                     echo '<span style="color:#aaa;">—</span>';
                 }
@@ -1575,6 +1741,169 @@ class MG_Custom_Fields_Page {
             wp_send_json_success(array('message' => __('Preset frissítve.', 'mgcf')));
         } else {
             wp_send_json_error(array('message' => __('Hiba történt a mentés során.', 'mgcf')));
+        }
+    }
+
+    /** Admin-only AI request for one variation PNG, run in the open tab's request. */
+    public static function ajax_variant_ai_generate() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgcf')), 403);
+        }
+        $target = self::read_variant_ai_target();
+        if (is_wp_error($target)) {
+            wp_send_json_error(array('message' => $target->get_error_message()));
+        }
+        $state_key = self::variant_ai_state_key($target['product_id'], $target['field_id'], $target['slug']);
+        $lock = $state_key . '_lock';
+        $locked_at = (int) get_option($lock, 0);
+        if ($locked_at > 0 && time() - $locked_at > 360) {
+            delete_option($lock);
+        }
+        if (!add_option($lock, time(), '', false)) {
+            wp_send_json_success(array('status' => 'running'));
+        }
+
+        // The browser may give up on a slow request (proxy timeout); the work
+        // continues and the page reads the outcome from the status endpoint.
+        ignore_user_abort(true);
+        @set_time_limit(300);
+        @ini_set('memory_limit', '512M');
+        set_transient($state_key, array('status' => 'running', 'started' => time()), HOUR_IN_SECONDS);
+        $tmp = '';
+        try {
+            $prompt = MG_AI_Print_Generator::build_prompt(self::variation_instructions($target['field'], $target['base_label'], $target['label']));
+            $tmp = MG_AI_Print_Generator::edit_variation_image($target['base_path'], $prompt, hash('sha256', $state_key . '|' . microtime(true)));
+            $product_slug = (string) get_post_field('post_name', $target['product_id']);
+            $filename = ($product_slug !== '' ? $product_slug : 'minta') . '-' . $target['slug'] . '-ai.png';
+            $attachment_id = MG_Custom_Field_Product_Variants::create_png_attachment($tmp, $filename, $target['name']);
+            if (is_wp_error($attachment_id)) {
+                throw new RuntimeException($attachment_id->get_error_message());
+            }
+            self::store_variant_ai_png($target['product_id'], $target['field_id'], $target['slug'], $target['label'], $attachment_id);
+            $state = array(
+                'status' => 'done',
+                'attachment_id' => $attachment_id,
+                'preview' => (string) wp_get_attachment_image_url($attachment_id, 'medium'),
+                'full' => (string) wp_get_attachment_url($attachment_id),
+            );
+        } catch (Throwable $e) {
+            $state = array('status' => 'error', 'message' => $e->getMessage());
+        } finally {
+            if ($tmp !== '' && is_file($tmp)) {
+                @unlink($tmp);
+            }
+            delete_option($lock);
+        }
+        set_transient($state_key, $state, HOUR_IN_SECONDS);
+        if ($state['status'] === 'error') {
+            wp_send_json_error($state);
+        }
+        wp_send_json_success($state);
+    }
+
+    public static function ajax_variant_ai_status() {
+        check_ajax_referer(self::NONCE_ACTION, 'nonce');
+        if (!current_user_can('edit_products')) {
+            wp_send_json_error(array('message' => __('Nincs jogosultság.', 'mgcf')), 403);
+        }
+        $target = self::read_variant_ai_target();
+        if (is_wp_error($target)) {
+            wp_send_json_error(array('message' => $target->get_error_message()));
+        }
+        $state = get_transient(self::variant_ai_state_key($target['product_id'], $target['field_id'], $target['slug']));
+        if (!is_array($state)) {
+            wp_send_json_success(array('status' => 'none'));
+        }
+        if ($state['status'] === 'running' && time() - (int) $state['started'] > 360) {
+            wp_send_json_success(array('status' => 'error', 'message' => __('Az AI-kép 6 percen belül nem készült el. Próbáld újra.', 'mgcf')));
+        }
+        wp_send_json_success($state);
+    }
+
+    /** Validate an AI request against the preset, the saved base value and its PNG. */
+    protected static function read_variant_ai_target() {
+        $preset_id = isset($_POST['preset_id']) ? sanitize_key(wp_unslash($_POST['preset_id'])) : '';
+        $product_id = isset($_POST['product_id']) ? absint($_POST['product_id']) : 0;
+        $field_id = isset($_POST['field_id']) ? sanitize_key(wp_unslash($_POST['field_id'])) : '';
+        $slug = isset($_POST['slug']) ? sanitize_title(wp_unslash($_POST['slug'])) : '';
+        $context = self::get_variant_context($preset_id, $product_id, $field_id);
+        if (is_wp_error($context)) {
+            return $context;
+        }
+        $options = self::get_variant_options($context['field']);
+        $config = MG_Custom_Field_Product_Variants::get_config($product_id, $field_id);
+        if (empty($config['base_slug']) && get_post_meta($product_id, MG_Custom_Field_Product_Variants::META_GROUP, true) === '') {
+            return new WP_Error('base_missing', __('Előbb válaszd ki és mentsd az alapbeállítást.', 'mgcf'));
+        }
+        $base_slug = MG_Custom_Field_Product_Variants::get_base_slug($product_id, $field_id, $options);
+        $labels = wp_list_pluck($options, 'label', 'slug');
+        if (!isset($labels[$slug]) || $slug === $base_slug) {
+            return new WP_Error('slug_invalid', __('Ehhez az értékhez nem készíthető AI-kép.', 'mgcf'));
+        }
+        $mapping = MG_Custom_Field_Product_Variants::get_mapping($product_id, $field_id);
+        $base_attachment = !empty($mapping[$base_slug]['attachment_id']) ? absint($mapping[$base_slug]['attachment_id']) : 0;
+        $base_path = $base_attachment > 0 ? (string) get_attached_file($base_attachment) : '';
+        if ($base_path === '' || !is_file($base_path) || !self::is_png_attachment($base_attachment)) {
+            return new WP_Error('base_png_missing', __('Az alapérték PNG-je hiányzik. Mentsd újra az alapbeállítást, vagy válaszd ki kézzel a PNG-t.', 'mgcf'));
+        }
+        $names = MG_Custom_Field_Product_Variants::preview_names($product_id, $field_id, $options, $base_slug);
+        return array(
+            'product_id' => $product_id,
+            'field_id' => $field_id,
+            'field' => $context['field'],
+            'slug' => $slug,
+            'label' => $labels[$slug],
+            'base_label' => $labels[$base_slug],
+            'base_path' => $base_path,
+            'name' => isset($names[$slug]) ? $names[$slug] : $labels[$slug],
+        );
+    }
+
+    protected static function variant_ai_state_key($product_id, $field_id, $slug) {
+        return 'mgcf_vai_' . md5(absint($product_id) . '|' . sanitize_key($field_id) . '|' . sanitize_title($slug));
+    }
+
+    /** The preset's variation prompt with the base and new value filled in. */
+    protected static function variation_instructions($field, $base_label, $label) {
+        $template = isset($field['variation_ai_prompt']) ? trim((string) $field['variation_ai_prompt']) : '';
+        if ($template === '' || strpos($template, '{{ertek}}') === false) {
+            $template = self::get_variation_prompt_templates()['general']['prompt'];
+        }
+        return str_replace(array('{{alap}}', '{{ertek}}'), array($base_label, $label), $template);
+    }
+
+    /**
+     * Put a new AI PNG into the mapping as unapproved. Requests for several
+     * values run in parallel, so the read-modify-write is serialised.
+     */
+    protected static function store_variant_ai_png($product_id, $field_id, $slug, $label, $attachment_id) {
+        $lock = 'mgcf_variant_map_lock_' . absint($product_id);
+        for ($i = 0; $i < 100 && !add_option($lock, time(), '', false); $i++) {
+            if (time() - (int) get_option($lock, 0) > 30) {
+                delete_option($lock);
+            }
+            usleep(200000);
+        }
+        try {
+            wp_cache_delete($product_id, 'post_meta');
+            $mapping = MG_Custom_Field_Product_Variants::get_mapping($product_id, $field_id);
+            $previous = isset($mapping[$slug]) ? $mapping[$slug] : array();
+            $mapping[$slug] = array_merge($previous, array(
+                'slug' => $slug,
+                'label' => $label,
+                'attachment_id' => absint($attachment_id),
+                'ai_generated' => true,
+                'approved' => false,
+            ));
+            MG_Custom_Field_Product_Variants::save_mapping($product_id, $field_id, $mapping);
+        } finally {
+            delete_option($lock);
+        }
+        // A rejected AI image is replaced, so it should not pile up in the media library.
+        $old_id = !empty($previous['attachment_id']) ? absint($previous['attachment_id']) : 0;
+        if ($old_id > 0 && $old_id !== absint($attachment_id) && !empty($previous['ai_generated']) && empty($previous['approved'])) {
+            wp_delete_attachment($old_id, true);
         }
     }
 

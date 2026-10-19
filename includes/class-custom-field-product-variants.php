@@ -156,9 +156,10 @@ class MG_Custom_Field_Product_Variants {
      * @param int         $product_id Product ID.
      * @param string      $field_id   Select field ID.
      * @param array|null  $mapping    Optional unsaved mapping to validate.
+     * @param array|null  $field      Current preset field; the product's copied field is used otherwise.
      * @return array|WP_Error Normalised validation payload.
      */
-    public static function validate_completeness($product_id, $field_id, $mapping = null) {
+    public static function validate_completeness($product_id, $field_id, $mapping = null, $field = null) {
         $product_id = absint($product_id);
         $field_id = sanitize_key($field_id);
         if ($product_id <= 0 || $field_id === '') {
@@ -166,18 +167,17 @@ class MG_Custom_Field_Product_Variants {
         }
 
         $config = self::get_config($product_id, $field_id);
-        if (empty($config['linked_product_variants'])) {
+        if (!is_array($field) || empty($field)) {
             $field = self::get_field_definition($product_id, $field_id);
-            if (empty($field['linked_product_variants'])) {
-                return new WP_Error('linked_variants_disabled', __('A mezőhöz nincs bekapcsolva a kapcsolt termék mód.', 'mgcf'));
-            }
+        }
+        if (empty($config['linked_product_variants']) && empty($field['linked_product_variants'])) {
+            return new WP_Error('linked_variants_disabled', __('A mezőhöz nincs bekapcsolva a kapcsolt termék mód.', 'mgcf'));
         }
 
-        $field = self::get_field_definition($product_id, $field_id);
-        $options = self::normalise_options(
-            !empty($field['options']) && is_array($field['options']) ? $field['options'] :
-                (!empty($config['options']) && is_array($config['options']) ? $config['options'] : array())
-        );
+        $options = self::get_field_variations($field);
+        if (empty($options) && !empty($config['options']) && is_array($config['options'])) {
+            $options = self::normalise_options($config['options']);
+        }
         if (empty($options)) {
             return new WP_Error('options_missing', __('A kapcsolt mezőnek nincsenek választási értékei.', 'mgcf'));
         }
@@ -187,6 +187,7 @@ class MG_Custom_Field_Product_Variants {
             : $mapping;
         $mapping = self::normalise_mapping($raw_mapping, $options);
         $missing = array();
+        $unapproved = array();
         foreach ($options as $option) {
             $slug = $option['slug'];
             $entry = isset($mapping[$slug]) ? $mapping[$slug] : array();
@@ -197,7 +198,23 @@ class MG_Custom_Field_Product_Variants {
                     'label' => $option['label'],
                     'attachment_id' => $attachment_id,
                 );
+            } elseif (isset($entry['approved']) && !$entry['approved']) {
+                $unapproved[] = array(
+                    'slug'  => $slug,
+                    'label' => $option['label'],
+                    'attachment_id' => $attachment_id,
+                );
             }
+        }
+        if (empty($missing) && !empty($unapproved)) {
+            return new WP_Error(
+                'unapproved_mapping',
+                sprintf(
+                    __('Az AI-val készült PNG-ket jóvá kell hagyni: %s.', 'mgcf'),
+                    implode(', ', wp_list_pluck($unapproved, 'label'))
+                ),
+                array('product_id' => $product_id, 'field_id' => $field_id, 'unapproved' => $unapproved, 'mapping' => $mapping)
+            );
         }
         if (!empty($missing)) {
             return new WP_Error(
@@ -220,6 +237,7 @@ class MG_Custom_Field_Product_Variants {
             'options'    => $options,
             'mapping'    => $mapping,
             'group_id'   => !empty($config['group_id']) ? sanitize_key($config['group_id']) : '',
+            'base_slug'  => self::get_base_slug($product_id, $field_id, $options),
             'complete'   => true,
         );
     }
@@ -232,14 +250,16 @@ class MG_Custom_Field_Product_Variants {
     /**
      * Create or update all products in a linked group.
      *
-     * The source/original product is always assigned to the first field
+     * The source/original product keeps the base value (the value its PNG
+     * already shows); legacy groups without a saved base use the first
      * option. Existing mapped products are reused; no product is deleted.
      * New products are copied from the source and receive fresh SKUs and
      * design metadata. The relation is written only after all options finish.
      *
      * @param int    $product_id Source product ID.
-     * @param string $field_id   Select field ID.
-     * @param array  $args       Optional base_name, mapping and group_id.
+     * @param string $field_id   Linked field ID.
+     * @param array  $args       Optional base_name, mapping, group_id, field
+     *                           (current preset field) and preset_id.
      * @return array|WP_Error Result with group and product rows.
      */
     public static function generate_or_update($product_id, $field_id, $args = array()) {
@@ -261,7 +281,8 @@ class MG_Custom_Field_Product_Variants {
 
         $args = is_array($args) ? $args : array();
         $mapping = isset($args['mapping']) && is_array($args['mapping']) ? $args['mapping'] : null;
-        $validated = self::validate_completeness($product_id, $field_id, $mapping);
+        $field = isset($args['field']) && is_array($args['field']) ? $args['field'] : self::get_field_definition($product_id, $field_id);
+        $validated = self::validate_completeness($product_id, $field_id, $mapping, $field);
         if (is_wp_error($validated)) {
             return $validated;
         }
@@ -289,28 +310,52 @@ class MG_Custom_Field_Product_Variants {
             $group_id = get_post_meta($product_id, self::META_GROUP, true);
             $group_id = sanitize_key($group_id);
         }
+        $existing_group = $group_id !== '';
         if ($group_id === '') {
             $group_id = 'mgcfpv_' . (function_exists('wp_generate_uuid4') ? wp_generate_uuid4() : uniqid());
             $group_id = sanitize_key($group_id);
         }
 
+        $options = $validated['options'];
+        $base_slug = $validated['base_slug'];
+        $base_label = '';
+        foreach ($options as $option) {
+            if ($option['slug'] === $base_slug) {
+                $base_label = $option['label'];
+            }
+        }
+        // The source product keeps its option for the group's lifetime; moving
+        // it would swap the PNG and URL of an already indexed product.
+        $source_slug = sanitize_title(get_post_meta($product_id, self::META_OPTION_SLUG, true));
+        if ($existing_group && $source_slug !== '' && $source_slug !== $base_slug) {
+            return new WP_Error('base_changed', __('A csoport már létezik, az alapbeállítása nem módosítható.', 'mgcf'));
+        }
+
+        $option_categories = self::get_option_categories($field);
+        $source_categories = array();
+        if (!empty($option_categories)) {
+            $terms = wp_get_object_terms($product_id, 'product_cat', array('fields' => 'ids'));
+            $source_categories = is_wp_error($terms) ? array() : array_map('absint', (array) $terms);
+        }
+
         $rows = array();
         $created_ids = array();
-        $options = $validated['options'];
-        foreach ($options as $index => $option) {
+        foreach ($options as $option) {
             $slug = $option['slug'];
+            $is_source = ($slug === $base_slug);
+            $name = self::option_product_name($base_name, $base_label, $option['label']);
             $entry = isset($validated['mapping'][$slug]) ? $validated['mapping'][$slug] : array();
-            $target_id = $index === 0 ? $product_id : (!empty($entry['product_id']) ? absint($entry['product_id']) : 0);
+            $target_id = $is_source ? $product_id : (!empty($entry['product_id']) ? absint($entry['product_id']) : 0);
             $target = $target_id > 0 ? wc_get_product($target_id) : false;
 
             // Never reuse an unrelated product accidentally supplied in a
             // mapping. It must already belong to this exact linked group.
-            if ($index > 0 && $target && !self::belongs_to_group($target_id, $group_id, $field_id, $slug)) {
+            if (!$is_source && $target && !self::belongs_to_group($target_id, $group_id, $field_id, $slug)) {
                 $target = false;
                 $target_id = 0;
             }
-            if ($index > 0 && !$target) {
-                $target_id = self::duplicate_product($product_id, $base_name . ' – ' . $option['label']);
+            if (!$is_source && !$target) {
+                $target_id = self::duplicate_product($product_id, $name);
                 if (is_wp_error($target_id)) {
                     return new WP_Error(
                         'product_generation_failed',
@@ -331,14 +376,14 @@ class MG_Custom_Field_Product_Variants {
 
             $updated = self::prepare_target_product(
                 $target,
-                $base_name,
+                $name,
                 array_merge($option, array(
                     'attachment_id' => !empty($entry['attachment_id']) ? absint($entry['attachment_id']) : 0,
                 )),
                 $product_id,
                 $group_id,
                 $field_id,
-                $index === 0
+                $is_source
             );
             if (is_wp_error($updated)) {
                 return new WP_Error(
@@ -346,6 +391,9 @@ class MG_Custom_Field_Product_Variants {
                     $updated->get_error_message(),
                     array('created_product_ids' => $created_ids, 'option' => $option)
                 );
+            }
+            if (!empty($option_categories)) {
+                self::apply_option_categories($updated['product_id'], $slug, $option_categories, $source_categories);
             }
             $rows[] = $updated;
         }
@@ -356,18 +404,33 @@ class MG_Custom_Field_Product_Variants {
             self::write_relation_meta($row['product_id'], $group_id, $product_id, $field_id, $row['slug'], $row['label']);
         }
 
+        // Members join the source's preset so AI exports and the product page
+        // follow later preset edits instead of a copy made at generation time.
+        $preset_id = !empty($args['preset_id']) ? sanitize_key($args['preset_id']) : '';
+        if ($preset_id !== '' && class_exists('MG_Custom_Fields_Manager')) {
+            foreach ($rows as $row) {
+                if (empty($row['is_source'])) {
+                    MG_Custom_Fields_Manager::apply_preset_to_product($row['product_id'], $preset_id);
+                }
+            }
+        }
+
         $config['field_id'] = $field_id;
         $config['linked_product_variants'] = true;
         $config['base_name'] = $base_name;
         $config['group_id'] = $group_id;
-        $config['mapping'] = array();
+        $config['base_slug'] = $base_slug;
         $config['options'] = $options;
+        $previous_mapping = $validated['mapping'];
+        $config['mapping'] = array();
         foreach ($rows as $row) {
             $config['mapping'][$row['slug']] = array(
                 'slug' => $row['slug'],
                 'label' => $row['label'],
                 'attachment_id' => $row['attachment_id'],
                 'product_id' => $row['product_id'],
+                'ai_generated' => !empty($previous_mapping[$row['slug']]['ai_generated']),
+                'approved' => true,
             );
         }
         $all_configs = self::get_config($product_id);
@@ -383,6 +446,153 @@ class MG_Custom_Field_Product_Variants {
             'products'   => $rows,
             'mapping'    => $all_configs[$field_id]['mapping'],
         );
+    }
+
+    /**
+     * Values a field is split into. A dedicated variation list wins, so
+     * free-text fields (age, year) can be split too; a select falls back to
+     * its own options.
+     *
+     * @return array List of slug/label pairs.
+     */
+    public static function get_field_variations($field) {
+        $field = is_array($field) ? $field : array();
+        $raw = !empty($field['variation_values']) ? $field['variation_values'] : array();
+        if (empty($raw) && sanitize_key($field['type'] ?? '') === 'select' && !empty($field['options'])) {
+            $raw = $field['options'];
+        }
+        if (is_string($raw)) {
+            $raw = preg_split('/\r?\n|,/', $raw);
+        }
+        return self::normalise_options(is_array($raw) ? $raw : array());
+    }
+
+    /** Option slug the source product's PNG shows. Defaults to the first option. */
+    public static function get_base_slug($product_id, $field_id, $options = null) {
+        $config = self::get_config($product_id, $field_id);
+        if ($options === null) {
+            $options = self::get_field_variations(self::get_field_definition($product_id, $field_id));
+        }
+        $slugs = wp_list_pluck((array) $options, 'slug');
+        $base = !empty($config['base_slug']) ? sanitize_title($config['base_slug']) : '';
+        if ($base !== '' && in_array($base, $slugs, true)) {
+            return $base;
+        }
+        return !empty($slugs) ? (string) reset($slugs) : '';
+    }
+
+    /**
+     * Name of the product for one value. When the base value appears in the
+     * name it is swapped in place ("Februári póló" → "Márciusi póló"); legacy
+     * names without it get the value appended.
+     */
+    public static function option_product_name($base_name, $base_label, $option_label) {
+        if (!class_exists('MG_Variant_Name_Inflector')) {
+            require_once __DIR__ . '/class-variant-name-inflector.php';
+        }
+        $replaced = MG_Variant_Name_Inflector::replace($base_name, $base_label, $option_label);
+        return $replaced !== '' ? $replaced : $base_name . ' – ' . $option_label;
+    }
+
+    /** Planned product names per option slug, for the admin preview. */
+    public static function preview_names($product_id, $field_id, $options, $base_slug) {
+        $base_name = self::resolve_base_name($product_id, self::get_config($product_id, $field_id));
+        if ($base_name === '') {
+            $base_name = get_the_title($product_id);
+        }
+        $base_label = '';
+        foreach ((array) $options as $option) {
+            if ($option['slug'] === $base_slug) {
+                $base_label = $option['label'];
+            }
+        }
+        $names = array();
+        foreach ((array) $options as $option) {
+            $names[$option['slug']] = self::option_product_name($base_name, $base_label, $option['label']);
+        }
+        return $names;
+    }
+
+    /** Subcategory per option slug, as set on the preset field. */
+    public static function get_option_categories($field) {
+        $raw = is_array($field) && !empty($field['linked_option_categories']) && is_array($field['linked_option_categories'])
+            ? $field['linked_option_categories']
+            : array();
+        $result = array();
+        foreach ($raw as $slug => $term_id) {
+            $slug = sanitize_title($slug);
+            $term_id = absint($term_id);
+            if ($slug !== '' && $term_id > 0) {
+                $result[$slug] = $term_id;
+            }
+        }
+        return $result;
+    }
+
+    /**
+     * Put a product into its option's subcategory: the source's categories,
+     * minus every option subcategory, plus this option's own.
+     */
+    protected static function apply_option_categories($product_id, $slug, $option_categories, $source_categories) {
+        $all_option_terms = array_values($option_categories);
+        $terms = array_values(array_diff(array_map('absint', (array) $source_categories), $all_option_terms));
+        if (!empty($option_categories[$slug])) {
+            $terms[] = absint($option_categories[$slug]);
+        }
+        if (empty($terms)) {
+            return;
+        }
+        wp_set_object_terms(absint($product_id), array_values(array_unique($terms)), 'product_cat', false);
+    }
+
+    /**
+     * Make sure the base option points at the source product's current PNG,
+     * registering the design file as an attachment when only a path exists.
+     *
+     * @return int Attachment ID or 0.
+     */
+    public static function ensure_base_attachment($product_id, $field_id, $base_slug, $base_label) {
+        $product_id = absint($product_id);
+        $mapping = self::get_mapping($product_id, $field_id);
+        if (!empty($mapping[$base_slug]['attachment_id']) && self::is_valid_png_attachment($mapping[$base_slug]['attachment_id'])) {
+            return absint($mapping[$base_slug]['attachment_id']);
+        }
+        $attachment_id = absint(get_post_meta($product_id, '_mg_last_design_attachment', true));
+        if ($attachment_id <= 0 || !self::is_valid_png_attachment($attachment_id)) {
+            $path = get_post_meta($product_id, '_mg_last_design_path', true);
+            $attachment_id = (is_string($path) && preg_match('/\.png$/i', $path)) ? self::attach_generated_image($path, get_the_title($product_id)) : 0;
+        }
+        if ($attachment_id <= 0 || !self::is_valid_png_attachment($attachment_id)) {
+            return 0;
+        }
+        $entry = isset($mapping[$base_slug]) ? $mapping[$base_slug] : array();
+        $mapping[$base_slug] = array_merge($entry, array(
+            'slug' => $base_slug,
+            'label' => $base_label,
+            'attachment_id' => $attachment_id,
+            'ai_generated' => false,
+            'approved' => true,
+        ));
+        self::save_mapping($product_id, $field_id, $mapping);
+        return $attachment_id;
+    }
+
+    /** Copy a generated PNG into the uploads folder as a media library item. */
+    public static function create_png_attachment($tmp_path, $filename, $title) {
+        $bytes = is_string($tmp_path) && is_file($tmp_path) ? file_get_contents($tmp_path) : false;
+        if ($bytes === false || $bytes === '') {
+            return new WP_Error('png_missing', __('Az elkészült PNG nem olvasható.', 'mgcf'));
+        }
+        $upload = wp_upload_bits(sanitize_file_name($filename), null, $bytes);
+        if (!empty($upload['error']) || empty($upload['file'])) {
+            return new WP_Error('png_upload_failed', !empty($upload['error']) ? $upload['error'] : __('A PNG mentése sikertelen.', 'mgcf'));
+        }
+        $attachment_id = self::attach_generated_image($upload['file'], $title);
+        if ($attachment_id <= 0) {
+            @unlink($upload['file']);
+            return new WP_Error('png_attach_failed', __('A PNG nem került be a médiatárba.', 'mgcf'));
+        }
+        return $attachment_id;
     }
 
     /** Aliases for callers that use create/update terminology. */
@@ -650,6 +860,7 @@ class MG_Custom_Field_Product_Variants {
             'options' => $options,
             'mapping' => $mapping,
             'group_id' => !empty($config['group_id']) ? sanitize_key($config['group_id']) : '',
+            'base_slug' => !empty($config['base_slug']) ? sanitize_title($config['base_slug']) : '',
             'updated_at' => current_time('mysql'),
         );
     }
@@ -711,6 +922,9 @@ class MG_Custom_Field_Product_Variants {
                 'label' => $label !== '' ? $label : $slug,
                 'attachment_id' => !empty($entry['attachment_id']) ? absint($entry['attachment_id']) : 0,
                 'product_id' => !empty($entry['product_id']) ? absint($entry['product_id']) : 0,
+                'ai_generated' => !empty($entry['ai_generated']),
+                // Entries saved before the approval step existed count as approved.
+                'approved' => !array_key_exists('approved', $entry) || !empty($entry['approved']),
             );
         }
         return $result;
@@ -961,20 +1175,22 @@ class MG_Custom_Field_Product_Variants {
         return strpos($key, 'custom_field_product_variant') !== false || strpos($key, 'cfpv') !== false;
     }
 
-    protected static function prepare_target_product($product, $base_name, $option, $source_id, $group_id, $field_id, $is_source) {
+    protected static function prepare_target_product($product, $name, $option, $source_id, $group_id, $field_id, $is_source) {
         if (!is_object($product) || !method_exists($product, 'get_id')) {
             return new WP_Error('product_invalid', __('A cél termék objektuma hibás.', 'mgcf'));
         }
         $target_id = absint($product->get_id());
-        $name = $base_name . ' – ' . $option['label'];
-        if (method_exists($product, 'set_name')) {
+        // A product whose name stays the same keeps its slug, so the source
+        // product's indexed URL never changes.
+        $renamed = !method_exists($product, 'get_name') || $product->get_name() !== $name;
+        if ($renamed && method_exists($product, 'set_name')) {
             $product->set_name($name);
         }
         $source = function_exists('wc_get_product') ? wc_get_product(absint($source_id)) : null;
         if (!$is_source && $source && method_exists($source, 'get_status') && method_exists($product, 'set_status')) {
             $product->set_status($source->get_status());
         }
-        if (method_exists($product, 'set_slug')) {
+        if ($renamed && method_exists($product, 'set_slug')) {
             $slug_base = sanitize_title($name);
             $status = method_exists($product, 'get_status') ? $product->get_status() : 'publish';
             $slug = wp_unique_post_slug($slug_base, $target_id, $status, 'product', 0);
