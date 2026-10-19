@@ -831,6 +831,16 @@ class MG_SEO_Meta {
         return trim(preg_replace('/[\s,;:–—-]+$/u', '', $cut));
     }
 
+    /** A név végi általános „póló pulcsi” utótag levágása. */
+    protected static function strip_generic_postfix($name) {
+        foreach (array(' póló pulcsi', ' polo pulcsi') as $postfix) {
+            if (strlen($name) > strlen($postfix) && substr($name, -strlen($postfix)) === $postfix) {
+                $name = trim(substr($name, 0, -strlen($postfix)));
+            }
+        }
+        return $name;
+    }
+
     /**
      * Kulcsszó elöl, a minta neve hátul:
      * „Születésnapi férfi póló – Az élet 50 felett kezdődik”.
@@ -841,11 +851,7 @@ class MG_SEO_Meta {
         $name = self::plain($name);
         $type = self::plain($type);
         $keyword = self::plain($keyword);
-        foreach (array(' póló pulcsi', ' polo pulcsi') as $postfix) {
-            if (strlen($name) > strlen($postfix) && substr($name, -strlen($postfix)) === $postfix) {
-                $name = trim(substr($name, 0, -strlen($postfix)));
-            }
-        }
+        $name = self::strip_generic_postfix($name);
         $type_words = self::words($type);
         // A névről csak a termékfajta szava vágható („póló”, „pulcsi”), a
         // típus többi szava nem: az „Igazi férfi” felirat egészben marad.
@@ -880,6 +886,86 @@ class MG_SEO_Meta {
         return $visible === '' ? $lead : $lead . $separator . $visible;
     }
 
+    /**
+     * A cím közepére kerülő kulcsszó kisbetűvel kezdődik, kivéve a
+     * tulajdonnév-szerűt („Harry Potter”) és a rövidítést („PS5”).
+     */
+    protected static function inline_keyword($keyword) {
+        $tokens = preg_split('/\s+/u', trim((string) $keyword));
+        foreach ($tokens as $index => $token) {
+            $letters = mb_substr($token, $index === 0 ? 1 : 0, 1, 'UTF-8');
+            if ($letters !== '' && $letters !== mb_strtolower($letters, 'UTF-8')) {
+                return $keyword;
+            }
+        }
+        return self::lower_first($keyword);
+    }
+
+    /**
+     * Feedcím, a minta neve elöl, a nem/fazon a végén:
+     * „Az élet 50 felett kezdődik születésnapi póló – férfi”.
+     * A típus utolsó szava a termékfajta („póló”), ez a kulcsszóval együtt
+     * a név után áll; a típus többi szava („férfi”, „prémium kerek nyakú
+     * férfi”) a végére kerül, és kimarad, ha a névben már szerepel. Hosszú
+     * címnél előbb a vége esik ki, utána rövidül a minta neve.
+     */
+    public static function compose_name_first_title($name, $type, $keyword, $category = '', $max = 150) {
+        $name = self::strip_generic_postfix(self::plain($name));
+        $type = self::plain($type);
+        $keyword = self::plain($keyword);
+        $type_words = self::words($type);
+        $type_tokens = $type === '' ? array() : preg_split('/\s+/u', $type);
+        $noun = $type_tokens ? self::lower_first(array_pop($type_tokens)) : '';
+        $type_noun = $type_words ? array(end($type_words)) : array();
+        $name = self::strip_glued_tail($name, array_merge(self::words($keyword), self::words($category)), $type_noun);
+        if ($keyword !== '') {
+            $keyword = self::drop_known_words($keyword, $type_words);
+        }
+        $tail_for = function ($visible) use ($keyword, $noun) {
+            $inline = $keyword !== '' ? self::drop_known_words($keyword, self::words($visible)) : '';
+            return trim(($inline !== '' ? self::inline_keyword($inline) : '') . ' ' . $noun);
+        };
+        $tail = $tail_for($name);
+        $core = trim($name . ' ' . $tail);
+        $known = self::words($core);
+        $qualifier = array();
+        foreach ($type_tokens as $token) {
+            $repeated = false;
+            foreach (self::words($token) as $word) {
+                if (in_array($word, $known, true) || (self::is_stem_word($word) && self::has_stem($word, $known))) {
+                    $repeated = true;
+                }
+            }
+            if (!$repeated) {
+                $qualifier[] = $token;
+            }
+        }
+        $qualifier = implode(' ', $qualifier);
+        $full = $qualifier !== '' ? $core . ' – ' . self::lower_first($qualifier) : $core;
+        if (self::length($full) <= $max) {
+            return self::upper_first($full);
+        }
+        if (self::length($core) <= $max || $name === '') {
+            return self::upper_first(self::fit_words($core, $max));
+        }
+        // A kulcsszót a ténylegesen látszó névvel vetjük össze: ha a rövidítés
+        // levágja a névből a kulcsszót, a kulcsszó visszakerül a termékfajta elé.
+        $visible = $name;
+        for ($round = 0; $round < 3; $round++) {
+            $budget = $max - self::length(' ' . $tail);
+            if ($budget <= 0) {
+                return self::upper_first(self::fit_words($tail, $max));
+            }
+            $visible = self::fit_words($name, $budget);
+            $next = $tail_for($visible);
+            if ($next === $tail) {
+                break;
+            }
+            $tail = $next;
+        }
+        return self::upper_first(self::fit_words(trim($visible . ' ' . $tail), $max));
+    }
+
     /** <title> az új formátumban; az oldalnév csak akkor kerül a végére, ha belefér. */
     protected static function build_keyword_product_title(array $ctx, $include_site) {
         $category = $ctx['term'] ? self::plain($ctx['term']->name) : '';
@@ -897,13 +983,14 @@ class MG_SEO_Meta {
 
     /**
      * A termékfeedek (Google, Facebook, egyedi/ChatGPT) g:title mezője az új
-     * formátumban. Legacy módban a feedek a saját régi címüket használják.
+     * formátumban, a minta nevével kezdve. Legacy módban a feedek a saját
+     * régi címüket használják.
      */
     public static function build_feed_title($product, $type_label, $max = 150) {
         $term = self::get_primary_category($product->get_id());
         $keyword = $term ? self::get_term_keyword($term) : '';
         $category = $term ? self::plain($term->name) : '';
-        return self::compose_keyword_title((string) $product->get_name(), (string) $type_label, $keyword, $category, $max);
+        return self::compose_name_first_title((string) $product->get_name(), (string) $type_label, $keyword, $category, $max);
     }
 
     /**

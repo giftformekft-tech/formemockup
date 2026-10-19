@@ -208,7 +208,7 @@ class MG_Facebook_Catalog_Feed {
             }
             self::$seen_ids[$g_id] = true;
 
-            // Title: „Kulcsszó típus – Név”, legacy módban terméknév levágva +
+            // Title: „Név kulcsszó póló – férfi”, legacy módban terméknév levágva +
             // típus label teljes egészben (max 150 karakter)
             $keyword_titles = class_exists('MG_SEO_Meta') && !MG_SEO_Meta::use_legacy_titles();
             $g_title = $keyword_titles

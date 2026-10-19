@@ -173,7 +173,7 @@ class MG_Google_Merchant_Feed {
             // Unique ID for this Variant Type
             $g_id = $base_sku . '_' . $type_slug;
             
-            // Title: „Kulcsszó típus – Név”, legacy módban „Név - Típus”
+            // Title: „Név kulcsszó póló – férfi”, legacy módban „Név - Típus”
             $keyword_titles = class_exists('MG_SEO_Meta') && !MG_SEO_Meta::use_legacy_titles();
             $g_title = $keyword_titles
                 ? MG_SEO_Meta::build_feed_title($product, $type_label)

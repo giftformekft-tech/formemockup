@@ -628,7 +628,7 @@ class MG_Custom_Feed_Manager {
 
             $type_label = isset($type_data['label']) ? $type_data['label'] : $type_slug;
             $g_id = $base_sku . '_' . $type_slug;
-            // „Kulcsszó típus – Név”, legacy módban „Név - Típus”
+            // „Név kulcsszó póló – férfi”, legacy módban „Név - Típus”
             $keyword_titles = class_exists('MG_SEO_Meta') && !MG_SEO_Meta::use_legacy_titles();
             $g_title = $keyword_titles
                 ? MG_SEO_Meta::build_feed_title($product, $type_label)
