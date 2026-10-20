@@ -1000,7 +1000,7 @@
             image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
             save: 'Mentés a médiatárba…',
         };
-        const intensityLabels = { strong: 'új stílus', medium: 'átdolgozás' };
+        const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', full: 'teljesen új' };
         const upscaleLabels = {
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
             lanczos3x: '3× sima nagyítás',

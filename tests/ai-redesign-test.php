@@ -119,7 +119,7 @@ check($body['model'] === 'claude-opus-5-5' && $body['output_config']['effort'] =
 check($body['output_config']['format']['type'] === 'json_schema' && $body['output_config']['format']['schema']['additionalProperties'] === false, 'Claude structured output');
 check(!isset($body['thinking']), 'no thinking config sent (adaptive by default)');
 check($body['messages'][0]['content'][0]['source'] === array('type' => 'base64', 'media_type' => 'image/jpeg', 'data' => 'QUJD'), 'Claude image block');
-check(strpos($body['system'], 'ugyanaz az ötlet') !== false && strpos($body['system'], '(4) a színek') !== false, 'strong rules keep the idea, change the four aspects');
+check(strpos($body['system'], 'ugyanannak a mintának új változata') !== false && strpos($body['system'], 'mérsékelten') !== false && strpos($body['system'], '(4) a színek') !== false, 'new style: a moderate new version, four aspects change');
 check($analysis['text_lines'] === array('Legjobb Apa', 'a világon'), 'analysis text lines parsed');
 
 $http_calls = array();
@@ -127,7 +127,9 @@ $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reaso
 MG_AI_Redesign::analyze('anthropic:claude-haiku-5-5', 'QUJD', 'medium', 'x');
 $body = json_decode($http_calls[0][1]['body'], true);
 check(!isset($http_calls[0][1]['headers']['anthropic-beta']) && !isset($body['fallbacks']), 'Haiku has no server-side fallback');
-check(strpos($body['system'], 'Átdolgozás') !== false, 'medium rules in system prompt');
+check(strpos($body['system'], 'Finom átdolgozás') !== false && strpos($body['system'], 'elrendezés') !== false, 'light rework keeps the layout');
+check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'full'), 'new style is the default, full redesign last');
+check(MG_AI_Redesign::uses_reference('strong') && MG_AI_Redesign::uses_reference('medium') && !MG_AI_Redesign::uses_reference('full'), 'only the full redesign withholds the original');
 
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'refusal', 'content' => array())));
 throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'strong', 'x'); }, 'elutasította', 'refusal is reported');
@@ -153,9 +155,11 @@ check(MG_AI_Redesign::parse_analysis("```json\n" . analysis_json() . "\n```")['n
 throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}'); }, 'képpromptot', 'empty prompt rejected');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, true, false);
 check(strpos($prompt, 'exactly this text, line by line, and no other text: "Legjobb Apa" / "a világon"') !== false, 'exact text with accents enforced');
-check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'Redraw the attached') === false, 'transparent, no reference wording');
+check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false, true);
-check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Redraw the attached design') === 0, 'opaque + reference wording');
+check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Create a new version of the attached design') === 0 && strpos($prompt, 'sibling') !== false, 'opaque + new-version wording');
+$prompt = MG_AI_Redesign::build_image_prompt($analysis, true, 'medium');
+check(strpos($prompt, 'Rework the attached design. Keep its composition, layout') === 0, 'light rework wording');
 check(strpos(MG_AI_Redesign::analysis_request_text('Név', "Sor 1\nSor 2", 'retro'), '"Sor 1\nSor 2"') !== false, 'user text passed as quoted data');
 
 // Strongest setting: the image model gets the prompt only, never the original PNG.

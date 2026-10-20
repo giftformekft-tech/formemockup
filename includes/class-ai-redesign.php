@@ -89,25 +89,43 @@ class MG_AI_Redesign {
         return $analyzers;
     }
 
+    /** Ordered as shown; the first one is the default. */
     public static function get_intensities() {
         return array(
-            'strong' => __('Új stílus – ugyanaz az ötlet, új illusztráció, betűk, elrendezés és színek (ajánlott)', 'mockup-generator'),
-            'medium' => __('Átdolgozás – az eredeti kép alapján, új betűkkel és színekkel', 'mockup-generator'),
+            'strong' => __('Új stílus – a minta új változata: más illusztráció-, betű-, elrendezés- és színvilág (ajánlott)', 'mockup-generator'),
+            'medium' => __('Finom átdolgozás – az elrendezés marad, új betűk, színek és részletek', 'mockup-generator'),
+            'full' => __('Teljesen új – csak a szöveg és a téma marad (az AI nem látja az eredeti képet)', 'mockup-generator'),
         );
+    }
+
+    /** Only "Teljesen új" withholds the original from the image model. */
+    public static function uses_reference($intensity) {
+        return $intensity !== 'full';
     }
 
     protected static function intensity_rules($intensity) {
         if ($intensity === 'medium') {
-            return "Átdolgozás: a fő kompozíció hasonló maradhat, de a betűtípusok, a színek és a díszítőelemek legyenek újak, "
-                . "az illusztrációt pedig újrarajzolt, eltérő stílusban képzeld el. Csak távolról emlékeztessen az eredetire.";
+            return "Finom átdolgozás: a kompozíció, az elrendezés, az elemek mérete és az illusztráció tárgya és pózza maradjon. "
+                . "Változzon: a betűtípus (hasonló hangulatú, de másik betűtípus), a színpaletta, és az illusztráció részletei "
+                . "(kontúrvastagság, árnyékolás, díszítő apróságok). Ránézésre ugyanaz a minta legyen, felújított kivitelben.";
         }
-        return "Új stílus, ugyanaz az ötlet: a minta mondanivalója, témája, humora és hangulata maradjon, és az illusztráció "
-            . "ugyanazt ábrázolja (ugyanaz a tárgy, figura vagy jelenet). Ez a négy dolog változzon egyértelműen:\n"
-            . "  (1) az illusztráció: ugyanaz a tárgy újrarajzolva, más rajzstílusban, más formákkal, nézőponttal vagy pózzal;\n"
-            . "  (2) a szövegek stílusa: más betűtípus-kategória, vastagság és betűeffekt (például kézírásos helyett groteszk, vagy fordítva);\n"
-            . "  (3) az elrendezés: más kompozíció, a szöveg és az illusztráció más egymáshoz viszonyított helye (a szöveg sorai ugyanazok maradnak);\n"
-            . "  (4) a színek: új színpaletta.\n"
-            . "  Ne találj ki új témát vagy új fő motívumot, és ne hagyd el az illusztrációt.";
+        if ($intensity === 'full') {
+            return "Teljesen új vizuális változat, ugyanaz az ötlet: a minta mondanivalója, témája, humora és hangulata maradjon, és az "
+                . "illusztráció ugyanazt ábrázolja (ugyanaz a tárgy, figura vagy jelenet). Ez a négy dolog változzon egyértelműen:\n"
+                . "  (1) az illusztráció: ugyanaz a tárgy újrarajzolva, más rajzstílusban, más formákkal, nézőponttal vagy pózzal;\n"
+                . "  (2) a szövegek stílusa: más betűtípus-kategória, vastagság és betűeffekt (például kézírásos helyett groteszk, vagy fordítva);\n"
+                . "  (3) az elrendezés: más kompozíció, a szöveg és az illusztráció más egymáshoz viszonyított helye (a szöveg sorai ugyanazok maradnak);\n"
+                . "  (4) a színek: új színpaletta.\n"
+                . "  Ne találj ki új témát vagy új fő motívumot, és ne hagyd el az illusztrációt.";
+        }
+        return "Új stílus, ugyanannak a mintának új változata: a mondanivaló, a téma, a hangulat, az illusztráció tárgya és nagyjából "
+            . "a minta felépítése maradjon, hogy rokon változatnak hasson, ne egy teljesen más mintának. Ez a négy dolog változzon "
+            . "mérsékelten, de jól láthatóan:\n"
+            . "  (1) az illusztráció: ugyanaz a tárgy hasonló pózban, de más rajzstílusban újrarajzolva (más vonalvastagság, formák, árnyékolás, egyszerűsítés);\n"
+            . "  (2) a szövegek stílusa: másik betűtípus, hasonló hangulattal és súllyal (más betűforma, más betűeffekt);\n"
+            . "  (3) az elrendezés: mérsékelt átrendezés (az elemek kicsit máshol, más méretben vagy ívben), a fő felépítés felismerhető maradjon;\n"
+            . "  (4) a színek: új színpaletta, hasonló világossággal.\n"
+            . "  Ne találj ki új témát vagy új fő motívumot, ne hagyd el az illusztrációt, és ne másold az eredetit formára pontosan.";
     }
 
     public static function analysis_instructions($intensity) {
@@ -157,6 +175,7 @@ class MG_AI_Redesign {
      * Our fixed rules go last so the analyzer's wording cannot drop them: the
      * exact text, the print format and the background.
      */
+    /** $use_reference: false (prompt only), true (new version) or 'medium' (light rework). */
     public static function build_image_prompt($analysis, $transparent, $use_reference) {
         $lines = array();
         foreach ((array) $analysis['text_lines'] as $line) {
@@ -166,9 +185,14 @@ class MG_AI_Redesign {
             }
         }
         $prompt = '';
-        if ($use_reference) {
-            $prompt .= "Redraw the attached design as a new, original design. Use the attached image only for its text and rough idea; "
-                . "replace its typography, colors, illustration and decorative elements as described below.\n\n";
+        if ($use_reference === 'medium') {
+            $prompt .= "Rework the attached design. Keep its composition, layout, element sizes and the illustration's subject and pose; "
+                . "change the typeface, the color palette and the illustration's details as described below.\n\n";
+        } elseif ($use_reference) {
+            $prompt .= "Create a new version of the attached design. Keep its idea, its main motif and roughly its structure, so it reads "
+                . "as a sibling of the original, not a different design. Redraw the illustration in a different drawing style, use a "
+                . "different typeface, moderately rearrange the layout and use a new color palette, as described below. "
+                . "Do not copy shapes, outlines or lettering one-to-one.\n\n";
         }
         $prompt .= trim((string) $analysis['image_prompt']) . "\n\nRequirements:\n"
             . "- Flat, print-ready graphic for a T-shirt print, "
@@ -446,7 +470,7 @@ class MG_AI_Redesign {
         }
         MG_AI_Print_Generator::assert_available();
         $intensity = array_key_exists($opts['intensity'] ?? '', self::get_intensities()) ? $opts['intensity'] : 'strong';
-        $use_reference = $intensity === 'medium';
+        $use_reference = self::uses_reference($intensity);
         $quality = in_array($opts['quality'] ?? '', array('low', 'medium', 'high'), true) ? $opts['quality'] : self::get_settings()['quality'];
         $design_text = trim((string) ($opts['design_text'] ?? ''));
         list($png, $temp, $transparent) = self::prepare_png(self::design_source($product_id));
@@ -464,7 +488,7 @@ class MG_AI_Redesign {
                 if ($design_text !== '') {
                     $analysis['text_lines'] = preg_split('/\R/u', $design_text);
                 }
-                $prompt = self::build_image_prompt($analysis, $transparent, $use_reference);
+                $prompt = self::build_image_prompt($analysis, $transparent, $intensity === 'medium' ? 'medium' : $use_reference);
             }
             self::set_stage($product_id, 'image');
             $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality, $use_reference);
