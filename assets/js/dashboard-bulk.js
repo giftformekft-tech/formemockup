@@ -145,6 +145,11 @@
             .prop('disabled', locked || ['done', 'error', 'skipped'].indexOf(item.status) === -1)
             .text(item.status === 'skipped' ? 'Generálás' : 'Újragenerálás');
         $card.find('.mg-ai-bulk-remove').prop('disabled', locked || item.status === 'running');
+        const canEdit = !locked && item.candidate && item.candidate.prompt && ['done', 'error'].indexOf(item.status) !== -1;
+        $card.find('.mg-ai-bulk-edit').prop('disabled', !canEdit);
+        if (!canEdit) {
+            $card.find('.mg-ai-bulk__editor').prop('hidden', true);
+        }
         summary();
     }
 
@@ -166,7 +171,17 @@
             .append(' ')
             .append($('<button type="button" class="button mg-ai-bulk-regen">Újragenerálás</button>'))
             .append(' ')
+            .append($('<button type="button" class="button mg-ai-bulk-edit">Prompt javítása</button>'))
+            .append(' ')
             .append($('<button type="button" class="button button-link-delete mg-ai-bulk-remove">Törlés</button>')));
+        // Fix a typo (e.g. in the exact text line) and regenerate with this prompt only.
+        $card.append($('<div class="mg-ai-bulk__editor" hidden></div>')
+            .append($('<p class="description"></p>').text('Javítsd ki a hibát a promptban (az elírt szöveg a „The design must contain exactly this text” sorban van), majd generáld újra. Az elemzés ilyenkor kimarad.'))
+            .append($('<textarea class="large-text code mg-ai-bulk__prompt" rows="8"></textarea>'))
+            .append($('<p></p>')
+                .append($('<button type="button" class="button button-primary mg-ai-bulk-edit-run">Újragenerálás ezzel a prompttal</button>'))
+                .append(' ')
+                .append($('<button type="button" class="button mg-ai-bulk-edit-cancel">Mégse</button>'))));
         item.$card = $card;
         return $card;
     }
@@ -209,12 +224,15 @@
 
     function generate(item) {
         const previous = item.candidate;
+        // An edited prompt is used for this one run, without the analysis.
+        const customPrompt = item.customPrompt || '';
+        item.customPrompt = '';
         item.status = 'running';
         item.approved = false;
         item.error = '';
         item.note = '';
         render(item);
-        post('mg_ai_redesign_generate', $.extend({ product_id: item.id, design_text: '', custom_prompt: '' }, bulk.opts)).done(function (resp) {
+        post('mg_ai_redesign_generate', $.extend({}, bulk.opts, { product_id: item.id, design_text: '', custom_prompt: customPrompt })).done(function (resp) {
             const d = resp && resp.data;
             if (d && d.status === 'running') {
                 poll(item, previous, Date.now());
@@ -434,6 +452,33 @@
                 render(item);
                 pump();
             }
+        });
+        $(document).on('click', '.mg-ai-bulk-edit', function () {
+            const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));
+            if (!item || !item.candidate || !item.candidate.prompt) {
+                return;
+            }
+            const $editor = item.$card.find('.mg-ai-bulk__editor');
+            if ($editor.prop('hidden')) {
+                $editor.find('.mg-ai-bulk__prompt').val(item.candidate.prompt);
+            }
+            $editor.prop('hidden', !$editor.prop('hidden'));
+        });
+        $(document).on('click', '.mg-ai-bulk-edit-cancel', function () {
+            $(this).closest('.mg-ai-bulk__editor').prop('hidden', true);
+        });
+        $(document).on('click', '.mg-ai-bulk-edit-run', function () {
+            const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));
+            const prompt = String(item ? item.$card.find('.mg-ai-bulk__prompt').val() || '' : '').trim();
+            if (!item || bulk.finalizing || !prompt || ['done', 'error'].indexOf(item.status) === -1) {
+                return;
+            }
+            item.customPrompt = prompt;
+            item.status = 'queued';
+            item.approved = false;
+            item.$card.find('.mg-ai-bulk__editor').prop('hidden', true);
+            render(item);
+            pump();
         });
         $(document).on('click', '.mg-ai-bulk-remove', function () {
             const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));

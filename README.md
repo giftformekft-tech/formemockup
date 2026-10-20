@@ -12,8 +12,10 @@ mymockup
   egymás mellett. A generálás kettesével fut a nyitott lapról (ha egy proxy megszakítja a
   kérést, az állapotot lekérdezi). Ekkor még nincs felskálázás. Kártyánként: **Jóváhagyom**,
   **Újragenerálás** (az elkészült új változat lecseréli az előzőt, az előző törlődik),
-  **Törlés** (a minta kikerül a futásból, az új változata törlődik). **Mindet jóváhagyom**,
-  **Hátralévők leállítása**.
+  **Törlés** (a minta kikerül a futásból, az új változata törlődik), **Prompt javítása**
+  (a kártyán megnyílik a jelölt pontos promptja; egy elírt szöveg kijavítása után az
+  **Újragenerálás ezzel a prompttal** elemzés nélkül, pontosan ezzel a prompttal generál újra,
+  2.43.3). **Mindet jóváhagyom**, **Hátralévők leállítása**.
 - **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 4×-es AI felskálázást
   (böngésző, Real-ESRGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
   újragenerálása (mint az egyedi jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver

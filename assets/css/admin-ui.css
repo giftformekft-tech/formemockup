@@ -930,6 +930,14 @@ body.mg-modal-open {
     color: #475569;
 }
 
+.mg-ai-bulk__editor {
+    margin-top: 8px;
+}
+
+.mg-ai-bulk__editor textarea {
+    width: 100%;
+}
+
 .mg-ai-bulk__footer {
     position: sticky;
     bottom: -24px;
