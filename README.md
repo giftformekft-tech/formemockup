@@ -10,7 +10,10 @@ mymockup
 - **AI újratervezés a kijelöltekre:** előbb a módok (prompt mód, eltérés mértéke, elemző,
   képminőség, stílusötlet), utána mintánként egymás alatt az **eredeti** és az **új** minta
   egymás mellett. A generálás kettesével fut a nyitott lapról (ha egy proxy megszakítja a
-  kérést, az állapotot lekérdezi). Ekkor még nincs felskálázás. Kártyánként: **Jóváhagyom**,
+  kérést, az állapotot lekérdezi, és a kártyán a szakasz és az eltelt idő látszik). Az állapot
+  2.43.7 óta az adatbázisban van (option, nem transient), így külső objektum-gyorsítótár
+  (pl. LiteSpeed) mellett sem vész el; ha egy szakasz 5 percnél tovább nem halad (a szerver
+  leállította a PHP-folyamatot), hibát ír, és azonnal újragenerálható. Ekkor még nincs felskálázás. Kártyánként: **Jóváhagyom**,
   **Újragenerálás** (az elkészült új változat lecseréli az előzőt, az előző törlődik),
   **Törlés** (a minta kikerül a futásból, az új változata törlődik), **Prompt javítása**
   (a kártyán megnyílik a jelölt pontos promptja; egy elírt szöveg kijavítása után az

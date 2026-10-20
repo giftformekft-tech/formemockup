@@ -82,6 +82,12 @@
         finalizing: 'Véglegesítés…',
         finished: 'Kész – a mockupok újragenerálása sorba állítva',
     };
+    const STAGES = {
+        prepare: 'Előkészítés…',
+        analyze: 'Az elemző modell írja az új promptot…',
+        image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
+        save: 'Mentés a médiatárba…',
+    };
 
     function active() {
         return bulk.items.filter(function (item) { return item.status !== 'removed'; });
@@ -267,6 +273,9 @@
             post('mg_ai_redesign_status', { product_id: item.id }).done(function (resp) {
                 const d = resp && resp.data;
                 if (d && d.status === 'running') {
+                    const elapsed = d.started ? Math.max(0, Math.round(Date.now() / 1000 - d.started)) : 0;
+                    item.note = (STAGES[d.stage] || STATUS.running) + (elapsed ? ' (' + elapsed + ' mp)' : '');
+                    render(item);
                     if (Date.now() - started > POLL_LIMIT_MS) {
                         finish(item, { status: 'error', message: 'A generálás nem készült el időben.' }, previous);
                     } else {
@@ -274,7 +283,7 @@
                     }
                     return;
                 }
-                finish(item, d && d.status === 'done' ? d : { status: 'error', message: (d && d.message) || 'A generálás állapota nem ismert.' }, previous);
+                finish(item, d && d.status === 'done' ? d : { status: 'error', message: (d && d.message) || 'a szerver nem talál futó generálást ehhez a mintához. Generáld újra.' }, previous);
             }).fail(function () {
                 if (Date.now() - started > POLL_LIMIT_MS) {
                     finish(item, { status: 'error', message: 'Az állapot nem kérdezhető le.' }, previous);

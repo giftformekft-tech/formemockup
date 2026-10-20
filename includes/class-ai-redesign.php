@@ -837,12 +837,65 @@ class MG_AI_Redesign {
         }
     }
 
+    /**
+     * The run state is an option, so it is in the database: an external object
+     * cache (e.g. LiteSpeed's) may keep transients only in memory and drop them.
+     */
+    protected static function set_state($product_id, array $state) {
+        $state['updated'] = time();
+        update_option(self::STATE_PREFIX . $product_id, $state, false);
+    }
+
     protected static function set_stage($product_id, $stage) {
-        $state = get_transient(self::STATE_PREFIX . $product_id);
+        $state = get_option(self::STATE_PREFIX . $product_id, null);
         if (is_array($state) && $state['status'] === 'running') {
             $state['stage'] = $stage;
-            set_transient(self::STATE_PREFIX . $product_id, $state, HOUR_IN_SECONDS);
+            $state['stage_at'] = time();
+            self::set_state($product_id, $state);
         }
+    }
+
+    /**
+     * The run state for the page. A run that has not moved on for longer than
+     * one API call may take has lost its PHP worker (a host time limit, or a
+     * dropped connection on LiteSpeed): it becomes an error, and its lock is
+     * released so it can be started again.
+     */
+    protected static function current_state($product_id) {
+        $state = get_option(self::STATE_PREFIX . $product_id, null);
+        $now = time();
+        if (!is_array($state) || $now - (int) ($state['updated'] ?? 0) > HOUR_IN_SECONDS) {
+            // A lock without a state: a run that is just starting.
+            $locked_at = (int) get_option(self::LOCK_PREFIX . $product_id, 0);
+            return $locked_at > 0 && $now - $locked_at <= self::RUN_TIMEOUT
+                ? array('status' => 'running', 'stage' => 'prepare', 'started' => $locked_at)
+                : array('status' => 'none');
+        }
+        if ($state['status'] !== 'running') {
+            return $state;
+        }
+        $stages = array(
+            'prepare' => __('előkészítés', 'mockup-generator'),
+            'analyze' => __('elemzés', 'mockup-generator'),
+            'image' => __('képgenerálás', 'mockup-generator'),
+            'save' => __('mentés', 'mockup-generator'),
+        );
+        $idle = $now - (int) ($state['stage_at'] ?? $state['started']);
+        if ($now - (int) $state['started'] > self::RUN_TIMEOUT) {
+            $message = __('Az AI újratervezés 10 percen belül nem készült el. Próbáld újra.', 'mockup-generator');
+        } elseif ($idle > self::HTTP_TIMEOUT + 120) {
+            $message = sprintf(
+                __('A szerver menet közben leállította a generálást (%1$s, %2$d perce nincs előrelépés), valószínűleg a tárhely PHP-időkorlátja vagy a megszakadt kapcsolat miatt. Generáld újra.', 'mockup-generator'),
+                $stages[$state['stage']] ?? (string) $state['stage'],
+                (int) floor($idle / 60)
+            );
+        } else {
+            return $state;
+        }
+        $state = array('status' => 'error', 'message' => $message);
+        self::set_state($product_id, $state);
+        delete_option(self::LOCK_PREFIX . $product_id);
+        return $state;
     }
 
     /**
@@ -1161,7 +1214,7 @@ class MG_AI_Redesign {
             'analyzer' => $settings['analyzer'],
             'quality' => $settings['quality'],
             'candidates' => array_map(array(__CLASS__, 'candidate_for_ui'), self::get_candidates($product_id)),
-            'state' => get_transient(self::STATE_PREFIX . $product_id) ?: array('status' => 'none'),
+            'state' => self::current_state($product_id),
         ));
     }
 
@@ -1179,7 +1232,7 @@ class MG_AI_Redesign {
         ignore_user_abort(true);
         @set_time_limit(self::RUN_TIMEOUT);
         @ini_set('memory_limit', '512M');
-        set_transient(self::STATE_PREFIX . $product_id, array('status' => 'running', 'stage' => 'prepare', 'started' => time()), HOUR_IN_SECONDS);
+        self::set_state($product_id, array('status' => 'running', 'stage' => 'prepare', 'started' => time(), 'stage_at' => time()));
         try {
             $state = array('status' => 'done', 'candidate' => self::generate($product_id, array(
                 'analyzer' => self::post_text('analyzer'),
@@ -1195,7 +1248,7 @@ class MG_AI_Redesign {
         } finally {
             delete_option($lock);
         }
-        set_transient(self::STATE_PREFIX . $product_id, $state, HOUR_IN_SECONDS);
+        self::set_state($product_id, $state);
         if ($state['status'] === 'error') {
             wp_send_json_error($state);
         }
@@ -1204,14 +1257,7 @@ class MG_AI_Redesign {
 
     public static function ajax_status() {
         $product_id = self::check_request();
-        $state = get_transient(self::STATE_PREFIX . $product_id);
-        if (!is_array($state)) {
-            wp_send_json_success(array('status' => 'none'));
-        }
-        if ($state['status'] === 'running' && time() - (int) $state['started'] > self::RUN_TIMEOUT) {
-            wp_send_json_success(array('status' => 'error', 'message' => __('Az AI újratervezés 10 percen belül nem készült el. Próbáld újra.', 'mockup-generator')));
-        }
-        wp_send_json_success($state);
+        wp_send_json_success(self::current_state($product_id));
     }
 
     /**

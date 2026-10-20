@@ -28,6 +28,8 @@ function get_temp_dir() { return $GLOBALS['test_dir']; }
 function wp_generate_uuid4() { return bin2hex(random_bytes(8)); }
 function get_option($k, $d = false) { return $GLOBALS['options'][$k] ?? $d; }
 function update_option($k, $v, $autoload = null) { $GLOBALS['options'][$k] = $v; return true; }
+function delete_option($k) { unset($GLOBALS['options'][$k]); return true; }
+// The run state must not depend on transients (an object cache may drop them).
 function get_transient($k) { return false; }
 function set_transient($k, $v, $ttl) { return true; }
 function get_post_meta($id, $key, $single = false) { return $GLOBALS['meta'][$id][$key] ?? ''; }
@@ -444,6 +446,34 @@ MG_AI_Redesign::save_settings(array('describe_prompt' => 'My own analyzer prompt
 check(MG_AI_Redesign::get_settings()['describe_prompt'] === MG_AI_Redesign::default_describe_prompt(), 'reset to the default prompt');
 MG_AI_Redesign::save_settings(array('describe_prompt' => '   '));
 check(MG_AI_Redesign::get_settings()['describe_prompt'] === MG_AI_Redesign::default_describe_prompt(), 'empty prompt falls back to the default');
+
+// Run state: kept in an option, a lost PHP worker is detected and its lock released.
+$state_of = new ReflectionMethod('MG_AI_Redesign', 'current_state');
+$state_of->setAccessible(true);
+$stage = new ReflectionMethod('MG_AI_Redesign', 'set_stage');
+$stage->setAccessible(true);
+$skey = MG_AI_Redesign::STATE_PREFIX . 50;
+$lkey = MG_AI_Redesign::LOCK_PREFIX . 50;
+check($state_of->invoke(null, 50) === array('status' => 'none'), 'no run: none');
+$options[$lkey] = time() - 2;
+$st = $state_of->invoke(null, 50);
+check($st['status'] === 'running' && $st['started'] === $options[$lkey], 'lock without state yet: running');
+$options[$skey] = array('status' => 'running', 'stage' => 'prepare', 'started' => time() - 100, 'stage_at' => time() - 100, 'updated' => time() - 100);
+$stage->invoke(null, 50, 'image');
+$st = $state_of->invoke(null, 50);
+check($st['status'] === 'running' && $st['stage'] === 'image' && $st['stage_at'] >= time() - 1, 'stage change stored with its time');
+$options[$skey]['stage_at'] = time() - 200;
+check($state_of->invoke(null, 50)['status'] === 'running', 'a long API call (200 s) is still running');
+$options[$skey]['stage_at'] = time() - 320;
+$st = $state_of->invoke(null, 50);
+check($st['status'] === 'error' && strpos($st['message'], 'képgenerálás, 5 perce') !== false, 'no progress for 5+ min: the worker is gone: ' . $st['message']);
+check(!isset($options[$lkey]) && $options[$skey]['status'] === 'error', 'its lock released, the error stored');
+$options[$skey] = array('status' => 'running', 'stage' => 'analyze', 'started' => time() - 700, 'stage_at' => time() - 10, 'updated' => time() - 10);
+check(strpos($state_of->invoke(null, 50)['message'], '10 percen belül') !== false, 'whole run over 10 minutes: error');
+$options[$skey] = array('status' => 'done', 'candidate' => array('attachment_id' => 5), 'updated' => time() - 30);
+check($state_of->invoke(null, 50)['candidate']['attachment_id'] === 5, 'a finished run keeps its result');
+$options[$skey]['updated'] = time() - 4000;
+check($state_of->invoke(null, 50) === array('status' => 'none'), 'an hour-old result is forgotten');
 
 array_map('unlink', glob($test_dir . '/*'));
 rmdir($test_dir);
