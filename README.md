@@ -67,6 +67,11 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    részletek viszont nem kerülnek át:
    - **Finom átdolgozás**: műfaj, téma, hangulat, durva felépítés és hangsúly; a jellegzetes
      elemek a megadott cserékre változnak; minden részlet új.
+   - **Extra finom** (2.43.1): mint a Finom, de az elrendezés pontosabban marad, a betűstílus
+     jellege és a rajzstílus is átkerül (a briefben `lettering_style`, `art_style`), a színek
+     minden mintánál maradnak (legfeljebb 6, figurásnál is), csak a két legfeltűnőbb jellegzetes
+     elem cserélődik, és a betűtípus lesz más. A „légy kreatív” helyett „maradj közel, csak a
+     felsoroltakat változtasd” utasítás megy. Szabad leírás módban is választható.
    - **Új stílus** (ajánlott): műfaj, téma, hangulat és hangsúly; saját elrendezés; a
      jellegzetes elemek tiltva.
    - **Teljesen új**: csak a téma és a hangulat; a jellegzetes elemek tiltva.

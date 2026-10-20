@@ -1001,7 +1001,7 @@
             prepare_upscale: 'Az új minta széleinek tisztítása a felskálázáshoz…',
             save: 'Mentés a médiatárba…',
         };
-        const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', full: 'teljesen új' };
+        const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
         const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
         const upscaleLabels = {
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',

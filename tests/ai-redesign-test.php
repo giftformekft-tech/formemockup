@@ -155,7 +155,7 @@ $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reaso
 MG_AI_Redesign::analyze('anthropic:claude-haiku-5-5', 'QUJD', 'x');
 $body = json_decode($http_calls[0][1]['body'], true);
 check(!isset($http_calls[0][1]['headers']['anthropic-beta']) && !isset($body['fallbacks']), 'Haiku has no server-side fallback');
-check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'full'), 'new style is the default, full redesign last');
+check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'subtle', 'full'), 'new style is the default, then finom, extra finom, full');
 check(strpos(MG_AI_Redesign::analysis_instructions(), 'méretek, százalékok, pontos helyek') !== false, 'brief fields stay rough');
 
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'refusal', 'content' => array())));
@@ -212,6 +212,40 @@ check(strpos($prompt, 'Be creative') !== false && strpos($prompt, 'instead of il
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
 check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Design an original T-shirt print') === 0, 'opaque, brief first');
+// "Extra finom": layout, lettering and art style and every color kept; only the top two swaps.
+$subtle_analysis = array_merge($analysis, array(
+    'lettering_style' => 'bold rounded sans-serif, all caps', 'art_style' => 'flat vector badge shapes',
+    'has_illustration' => true, 'color_count' => 4, 'colors' => array('white', 'yellow', 'teal', 'red'),
+    'signature_elements' => array(
+        array('element' => 'laurel wreath', 'replacement' => 'a ring of stars'),
+        array('element' => 'teal ribbon banner', 'replacement' => 'a rounded label'),
+        array('element' => 'small sparkles', 'replacement' => 'tiny hearts'),
+    ),
+));
+$sub = MG_AI_Redesign::build_image_prompt($subtle_analysis, true, 'subtle');
+check(strpos($sub, 'Keep the same layout: the title in an arc above, the subtitle below.') !== false, 'extra finom: same layout');
+check(strpos($sub, 'Lettering style: bold rounded sans-serif, all caps (use a different typeface of the same kind).') !== false, 'extra finom: same lettering kind, other typeface');
+check(strpos($sub, 'Art style: flat vector badge shapes.') !== false, 'extra finom: same art style');
+check(strpos($sub, 'Change only these details: instead of laurel wreath, use a ring of stars; instead of teal ribbon banner, use a rounded label.') !== false
+    && strpos($sub, 'tiny hearts') === false, 'extra finom: only the two most distinctive elements swapped');
+check(strpos($sub, 'Use only these four ink colors for the whole design (text and illustration): white, yellow, teal, red, plus the black outline.') !== false, 'extra finom: colors of an illustrated design kept');
+check(strpos($sub, 'Stay close to this brief') !== false && strpos($sub, 'Be creative') === false && strpos($sub, 'design every detail yourself') === false, 'extra finom: stay close, no creative line');
+check(strpos($sub, 'Text emphasis:') !== false && strpos($sub, 'solid black outline (contour)') !== false, 'extra finom keeps the emphasis and fixed rules');
+check(strpos(MG_AI_Redesign::build_image_prompt($subtle_analysis, true, 'medium'), 'Lettering style:') === false, 'finom does not pass the lettering style');
+check(MG_AI_Redesign::palette_rule($subtle_analysis, 'medium') === '', 'finom keeps illustrated designs free');
+check(MG_AI_Redesign::palette_rule(array_merge($subtle_analysis, array('color_count' => 7)), 'subtle') === '', 'extra finom: no rule beyond six colors');
+check(strpos(MG_AI_Redesign::build_image_prompt(array_merge($subtle_analysis, array('signature_elements' => array())), true, 'subtle'), 'Change only') === false, 'extra finom without distinctive elements: only the typeface changes');
+check(strpos(MG_AI_Redesign::analysis_instructions(), 'a legfeltűnőbbel kezdve') !== false && strpos(MG_AI_Redesign::analysis_instructions(), 'lettering_style') !== false, 'brief asks for ordered elements and the styles');
+$schema = MG_AI_Redesign::analysis_schema();
+check(in_array('lettering_style', $schema['required'], true) && in_array('art_style', $schema['required'], true), 'schema requires the new fields');
+check(MG_AI_Redesign::parse_analysis(json_encode(array('topic' => 'x', 'lettering_style' => 'script', 'art_style' => 'flat')))['art_style'] === 'flat', 'new fields parsed');
+$free_subtle = MG_AI_Redesign::free_analysis_instructions('subtle');
+check(strpos($free_subtle, 'legfeljebb 5 mondat') !== false && strpos($free_subtle, 'NE írd le az eredeti részleteit') === false
+    && strpos($free_subtle, 'kreatív') === false && strpos($free_subtle, 'Extra finom: maradjon nagyon közel') !== false, 'free extra finom may describe layout, style and colors');
+check(strpos(MG_AI_Redesign::free_analysis_instructions('medium'), 'NE írd le az eredeti részleteit') !== false, 'free finom unchanged');
+$free_sub_prompt = MG_AI_Redesign::build_image_prompt(array_merge($subtle_analysis, array('image_prompt' => 'A badge.')), true, 'subtle', 'free');
+check(strpos($free_sub_prompt, 'Stay close to this description') !== false && strpos($free_sub_prompt, 'Be creative') === false, 'free extra finom: stay close');
+
 // Few-color text designs keep their palette: red and white must not become a rainbow.
 $redWhite = array_merge($analysis, array('has_illustration' => false, 'color_count' => 2, 'colors' => array('Red', 'white')));
 $prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'medium');
