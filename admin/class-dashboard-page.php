@@ -388,6 +388,11 @@ class MG_Dashboard_Page {
             echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
         }
         echo '</select><p class="description">Az elemző egy rövid tervezési briefet ír a mintáról (műfaj, téma, hangulat, melyik sor a legnagyobb, durva felépítés), és kigyűjti a jellegzetes elemeit (pl. babérkoszorú, szalag, írott betű). A képgeneráló csak ebből dolgozik, az eredeti képet nem kapja meg. Finom: hasonló felépítés, a jellegzetes elemek kicserélve. Új stílus: ugyanaz a műfaj és hangsúly, saját elrendezés, a jellegzetes elemek tiltva. Teljesen új: csak a téma és a hangulat.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-mode">Prompt mód</label></th><td><select id="mg-ai-redesign-mode">';
+        foreach (MG_AI_Redesign::get_prompt_modes() as $value => $label) {
+            echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
+        }
+        echo '</select><p class="description">Teszteléshez: a „brief” módban az elemző rövid mezőket tölt ki (műfaj, hangsúly, jellegzetes elemek és cseréik), és a promptot a rendszer rakja össze; a „szabad leírás” módban az elemző maga ír egy rövid, kreatív promptot. A kártyán látszik, melyik módban készült.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-analyzer">Elemző modell</label></th><td><select id="mg-ai-redesign-analyzer"></select><p class="description">Kiolvassa a szöveget és megírja az új stílus promptját. Claude modellekhez az Anthropic API-kulcsot az AI Minta SEO oldalon kell menteni.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-quality">Képminőség</label></th><td><select id="mg-ai-redesign-quality"><option value="low">Alacsony (olcsó, gyors)</option><option value="medium">Közepes</option><option value="high">Magas (drágább, lassabb)</option></select></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-text">Pontos szöveg</label></th><td><textarea id="mg-ai-redesign-text" rows="3" class="large-text" placeholder="Üresen az AI olvassa ki a képről"></textarea><p class="description">Ajánlott megadni: soronként egy sor a mintán. Így biztosan ugyanaz a szöveg kerül az új mintára.</p></td></tr>';

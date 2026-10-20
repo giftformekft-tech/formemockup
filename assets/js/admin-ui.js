@@ -1001,6 +1001,7 @@
             save: 'Mentés a médiatárba…',
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', full: 'teljesen új' };
+        const modeLabels = { brief: 'brief', free: 'szabad leírás' };
         const upscaleLabels = {
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
             lanczos3x: '3× sima nagyítás',
@@ -1048,7 +1049,7 @@
                 const $link = $('<a target="_blank" rel="noopener"></a>').attr('href', c.full || c.preview);
                 $link.append($('<img alt="" />').attr('src', c.preview || c.full));
                 $card.append($link);
-                const meta = [c.analyzer_label, intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality].filter(Boolean).join(' · ');
+                const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality].filter(Boolean).join(' · ');
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
                 $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaleLabels[c.upscale] ? upscaleLabels[c.upscale] + size : ''));
@@ -1184,6 +1185,7 @@
             post('mg_ai_redesign_generate', {
                 analyzer: $('#mg-ai-redesign-analyzer').val() || '',
                 intensity: $('#mg-ai-redesign-intensity').val() || 'strong',
+                prompt_mode: $('#mg-ai-redesign-mode').val() || 'brief',
                 quality: $('#mg-ai-redesign-quality').val() || 'medium',
                 design_text: $('#mg-ai-redesign-text').val() || '',
                 style_hint: $('#mg-ai-redesign-hint').val() || '',

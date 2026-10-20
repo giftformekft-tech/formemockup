@@ -21,6 +21,12 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
 2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
    az eredeti átlátszóságával. Utána a böngésző **AI-val 4×-esre felskálázza** (lásd lent).
+   **Prompt mód (2.42.9):** az ablakban generálásonként választható, hogy a prompt **brief**
+   módban (alább) vagy **szabad leírás** módban készüljön (az elemző maga ír egy rövid, kreatív,
+   legfeljebb 3 mondatos promptot, mint 2.42.4–2.42.7 között). A jelölt kártyáján látszik a mód,
+   így a kettő egymás mellett összevethető. A fix követelmények (szöveg, körvonal, színkorlát)
+   mindkettőben ugyanazok.
+
    **Tervezési brief (2.42.8):** az elemző nem prózát ír, hanem rövid mezőket tölt ki: téma,
    műfaj (pl. „egymás alá szedett tipográfiai idézet nagy számmal”), motívum, hangulat, durva
    felépítés, soronként a hangsúly (legnagyobb / nagy / kicsi), világos vagy sötét jelleg, és

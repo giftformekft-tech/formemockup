@@ -281,6 +281,28 @@ throws(function () { MG_AI_Redesign::discard(8, 32); }, 'nem található', 'alre
 check(MG_AI_Redesign::discard(8) === 2 && $deleted === array(32, 31, 33) && !isset($meta[8][MG_AI_Redesign::META_CANDIDATES]), 'all candidates deleted');
 throws(function () { MG_AI_Redesign::discard(8); }, 'nem található', 'nothing left to delete');
 
+// "Szabad leírás" mode: the analyzer writes the short prompt itself, as before 2.42.8.
+check(array_keys(MG_AI_Redesign::get_prompt_modes()) === array('brief', 'free'), 'brief is the default prompt mode');
+$free_json = json_encode(array('text_lines' => array('Legjobb Apa'), 'original_style' => 'x', 'new_style' => 'y', 'has_illustration' => false,
+    'color_count' => 2, 'colors' => array('red', 'white'), 'image_prompt' => 'A playful typographic badge about the best dad.'));
+$http_calls = array();
+$http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'end_turn', 'content' => array(array('type' => 'text', 'text' => $free_json)))));
+$free = MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'x', 'free', 'medium');
+$body = json_decode($http_calls[0][1]['body'], true);
+check(isset($body['output_config']['format']['schema']['properties']['image_prompt']) && !isset($body['output_config']['format']['schema']['properties']['signature_elements']), 'free mode sends its own schema');
+check(strpos($body['system'], 'RÖVID') !== false && strpos($body['system'], 'Finom átdolgozás: a promptban a fő motívum') !== false, 'free mode instructions with the level');
+$http_calls = array();
+$http_responses[] = array('code' => 200, 'body' => json_encode(array('status' => 'completed', 'output_text' => $free_json)));
+MG_AI_Redesign::analyze('openai', 'QUJD', 'x', 'free', 'full');
+$body = json_decode($http_calls[0][1]['body'], true);
+check(isset($body['text']['format']['schema']['properties']['image_prompt']) && strpos($body['instructions'], 'Teljesen új: a promptban csak a téma') !== false, 'free mode on OpenAI too');
+$prompt = MG_AI_Redesign::build_image_prompt($free, true, 'medium', 'free');
+check(strpos($prompt, 'A playful typographic badge about the best dad.') === 0 && strpos($prompt, 'interpret the description freely') !== false, 'free mode: analyzer prompt first, creative line');
+check(strpos($prompt, 'red, white, plus the black outline') !== false && strpos($prompt, 'solid black outline (contour)') !== false && strpos($prompt, '"Legjobb Apa"') !== false, 'free mode keeps the fixed rules');
+check(strpos($prompt, 'Design an original T-shirt print') === false, 'free mode has no brief');
+throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}', 'free'); }, 'képpromptot', 'free mode: empty prompt rejected');
+throws(function () use ($free_json) { MG_AI_Redesign::parse_analysis($free_json); }, 'tervezési briefet', 'a free reply is not a brief');
+
 array_map('unlink', glob($test_dir . '/*'));
 rmdir($test_dir);
 echo "AI redesign: $passed checks passed. HTTP and Imagick mocked, no API calls.\n";
