@@ -30,6 +30,10 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    - **Új stílus** (ajánlott): csak a fő motívum, elrendezés nélkül.
    - **Teljesen új**: csak a téma és a hangulat.
 
+   **Fekete körvonal (2.42.6):** minden képprompt fix követelménye, hogy minden felirat és
+   grafikai elem körül egyenletes, jól látható fekete körvonal legyen; a kézzel szerkesztett
+   promptba is bekerül. A színkorlát ezt nem számolja külön színnek.
+
    **Színek (2.42.5):** a kevés színű, főleg szöveges minták nem lesznek szivárványosak. Ha a
    minta 1–3 festékszínből áll és nincs rajta figura, jelenet vagy mintázat, a **Finom
    átdolgozás** ugyanezeket a színeket kapja (pl. piros-fehérből piros-fehér), az **Új stílus**

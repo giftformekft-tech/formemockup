@@ -158,6 +158,10 @@ check(MG_AI_Redesign::parse_analysis("```json\n" . analysis_json() . "\n```")['n
 throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}'); }, 'képpromptot', 'empty prompt rejected');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, true);
 check(strpos($prompt, 'exactly this text, line by line, and no other text: "Legjobb Apa" / "a világon"') !== false, 'exact text with accents enforced');
+foreach (array('medium', 'strong', 'full') as $level) {
+    check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, $level), 'solid black outline (contour) around it') !== false, "black outline required ($level)");
+}
+check(strpos(MG_AI_Redesign::analysis_instructions('medium'), 'fekete körvonal nem számítanak') !== false, 'outline not counted as a design color');
 check(strpos($prompt, 'Be creative') !== false && strpos($prompt, 'instead of illustrating it literally') !== false, 'image model asked to be creative');
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
@@ -165,7 +169,7 @@ check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'B
 // Few-color text designs keep their palette: red and white must not become a rainbow.
 $redWhite = array_merge($analysis, array('has_illustration' => false, 'color_count' => 2, 'colors' => array('Red', 'white')));
 $prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'medium');
-check(strpos($prompt, 'Use only these two ink colors for the whole design (text and illustration): red, white. No other colors') !== false, 'finom: same colors kept');
+check(strpos($prompt, 'Use only these two ink colors for the whole design (text and illustration): red, white, plus the black outline. No other colors') !== false, 'finom: same colors kept');
 check(strpos($prompt, 'color palette') === false, 'creative line does not invite a new palette');
 check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, 'medium'), 'lettering style, color palette and') !== false, 'free palette when no color rule');
 $prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'strong');
@@ -174,7 +178,7 @@ check(strpos($prompt, 'colors (within the color limit below)') !== false, 'new s
 check(MG_AI_Redesign::palette_rule($redWhite, 'full') === '', 'full redesign: colors free');
 check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('has_illustration' => true)), 'medium') === '', 'figure or pattern: colors free');
 check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 5)), 'medium') === '', 'many colors: no limit');
-check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 1, 'colors' => array('black'))), 'medium'), 'Use only this ink color for the whole design (text and illustration): black.') !== false, 'one-color design');
+check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 1, 'colors' => array('black'))), 'medium'), 'Use only this ink color for the whole design (text and illustration): black, plus the black outline.') !== false, 'one-color design');
 check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('colors' => array('red'))), 'medium'), 'Use exactly two solid ink colors') !== false, 'missing color names: count only');
 check(MG_AI_Redesign::parse_analysis(json_encode(array('image_prompt' => 'x', 'has_illustration' => false, 'color_count' => 2, 'colors' => array('red', 'white'))))['colors'] === array('red', 'white'), 'colors parsed');
 check(strpos(MG_AI_Redesign::analysis_request_text('Név', "Sor 1\nSor 2", 'retro'), '"Sor 1\nSor 2"') !== false, 'user text passed as quoted data');

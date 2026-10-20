@@ -31,6 +31,8 @@ class MG_AI_Redesign {
     const DEFAULT_ANTHROPIC_MODEL = 'claude-opus-5-5';
     const ANTHROPIC_ENDPOINT = 'https://api.anthropic.com/v1/messages';
     const OPENAI_ENDPOINT = 'https://api.openai.com/v1/responses';
+    // House style: every redesign has a black contour around text and graphics.
+    const OUTLINE_RULE = '- Every text element and every graphic element has a clean, even, clearly visible solid black outline (contour) around it.';
 
     public static function init() {
         add_action('wp_ajax_mg_ai_redesign_info', array(__CLASS__, 'ajax_info'));
@@ -124,7 +126,7 @@ class MG_AI_Redesign {
             . "3. new_style: 1 mondatban, magyarul, mit kér a prompt (milyen motívumot és hangulatot).\n"
             . "4. has_illustration: true, ha van a mintán figura, karakter, állat, tárgy-illusztráció, jelenet vagy mintázat; "
             . "false, ha főleg szöveg, legfeljebb egyszerű ikonnal, vonallal vagy kerettel. "
-            . "color_count: hány különböző festékszínből áll a minta a háttér nélkül (az élsimítás árnyalatai nem számítanak; 6 felett 6). "
+            . "color_count: hány különböző festékszínből áll a minta a háttér nélkül (az élsimítás árnyalatai és a feliratok, elemek körüli fekete körvonal nem számítanak; 6 felett 6). "
             . "colors: ezek a színek egyszerű angol nevekkel (pl. „red”, „white”, „navy blue”), legfeljebb 6.\n"
             . "5. image_prompt: RÖVID, angol nyelvű prompt egy képgeneráló modellnek, legfeljebb 3 mondat (kb. 60 szó). "
             . "Csak nagyjából írd le a fő elemeket a szabályok szerint (pl. „a bearded dad holding a fishing rod”, „a birthday cake”), "
@@ -192,10 +194,10 @@ class MG_AI_Redesign {
         $word = array(1 => 'one', 2 => 'two', 3 => 'three')[$count];
         if ($intensity === 'medium' && count($names) === $count) {
             return '- Use only ' . ($count === 1 ? 'this ink color' : 'these ' . $word . ' ink colors') . ' for the whole design (text and illustration): '
-                . implode(', ', $names) . '. No other colors, no gradients, no rainbow effects.' . "\n";
+                . implode(', ', $names) . ', plus the black outline. No other colors, no gradients, no rainbow effects.' . "\n";
         }
         return '- Use exactly ' . $word . ' solid ink ' . ($count === 1 ? 'color' : 'colors') . ' for the whole design (text and illustration), '
-            . 'no gradients, no rainbow effects.' . "\n";
+            . 'plus the black outline; no gradients, no rainbow effects.' . "\n";
     }
 
     /** The image model never sees the original: it gets only this prompt. */
@@ -215,7 +217,8 @@ class MG_AI_Redesign {
             . "instead of illustrating it literally.\n\nRequirements:\n"
             . "- Flat, print-ready graphic for a T-shirt print, "
             . ($transparent ? 'isolated on a fully transparent background.' : 'on a plain, solid background.') . "\n"
-            . "- No T-shirt, no mockup, no photo, no shadow, no frame, no checkerboard pattern.\n";
+            . "- No T-shirt, no mockup, no photo, no shadow, no frame, no checkerboard pattern.\n"
+            . self::OUTLINE_RULE . "\n";
         $prompt .= $palette;
         if (!empty($lines)) {
             $prompt .= "- The design must contain exactly this text, line by line, and no other text: " . implode(' / ', $lines) . ".\n"
@@ -501,6 +504,10 @@ class MG_AI_Redesign {
             if ($custom_prompt !== '') {
                 $analysis = array('text_lines' => $design_text !== '' ? preg_split('/\R/u', $design_text) : array(), 'original_style' => '', 'new_style' => '', 'image_prompt' => $custom_prompt);
                 $prompt = $custom_prompt;
+                // Edited prompts keep the house outline; a candidate's prompt already has it.
+                if (strpos($prompt, self::OUTLINE_RULE) === false) {
+                    $prompt .= "\n" . self::OUTLINE_RULE;
+                }
                 $analyzer = 'manual';
             } else {
                 $analyzer = (string) ($opts['analyzer'] ?? '');
