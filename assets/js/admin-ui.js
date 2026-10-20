@@ -1001,7 +1001,7 @@
             save: 'Mentés a médiatárba…',
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', full: 'teljesen új' };
-        const modeLabels = { brief: 'brief', free: 'szabad leírás' };
+        const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
         const upscaleLabels = {
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
             lanczos3x: '3× sima nagyítás',
@@ -1301,6 +1301,11 @@
                 loadInfo();
             });
         }
+
+        // A „részletes leírás” mód pontos leírást kér, ott a fokozat nem számít.
+        $(document).on('change', '#mg-ai-redesign-mode', function () {
+            $('#mg-ai-redesign-intensity').prop('disabled', $(this).val() === 'describe');
+        });
 
         $(document).on('click', '.mg-ai-redesign-discard', function () {
             discard({ attachment_id: $(this).attr('data-attachment-id') }, 'Törlöd ezt az AI mintát? A PNG a médiatárból is törlődik.');

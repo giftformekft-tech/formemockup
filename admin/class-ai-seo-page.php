@@ -60,7 +60,11 @@ class MG_AI_SEO_Page {
         foreach (array('low' => __('Alacsony (olcsó, gyors)', 'mockup-generator'), 'medium' => __('Közepes', 'mockup-generator'), 'high' => __('Magas (drágább, lassabb)', 'mockup-generator')) as $value => $label) {
             echo '<option value="' . esc_attr($value) . '"' . selected($settings['quality'], $value, false) . '>' . esc_html($label) . '</option>';
         }
-        echo '</select></td></tr></table>';
+        echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_describe_prompt">' . esc_html__('Részletes leírás mód – elemző prompt', 'mockup-generator') . '</label></th><td>';
+        echo '<textarea id="mg_ai_redesign_describe_prompt" name="mg_ai_redesign_settings[describe_prompt]" rows="12" class="large-text code">' . esc_textarea($settings['describe_prompt']) . '</textarea>';
+        echo '<p class="description">' . esc_html__('A „Részletes leírás” prompt módban ezt kapja az elemző modell a mintával együtt; ebből ír egy angol képpromptot. A JSON-formátum utasítását, a pontos szöveget és a fix képszabályokat (fekete körvonal, kitöltött vászon, nincs logó és webcím, nincs színes szegély vagy ragyogás) a rendszer mindig hozzáteszi.', 'mockup-generator') . '</p>';
+        echo '<label><input type="checkbox" name="mg_ai_redesign_settings[describe_prompt_reset]" value="1" /> ' . esc_html__('Visszaállítás az alapértelmezett promptra', 'mockup-generator') . '</label></td></tr></table>';
         echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('AI újratervezés beállításainak mentése', 'mockup-generator') . '</button></p></form>';
     }
 

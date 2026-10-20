@@ -27,6 +27,16 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    így a kettő egymás mellett összevethető. A fix követelmények (szöveg, körvonal, színkorlát)
    mindkettőben ugyanazok.
 
+   **Részletes leírás mód (2.42.11):** harmadik prompt mód. Az elemző a saját, szerkeszthető
+   promptodat kapja (**AI Minta SEO és tagelés → AI újratervezés → Részletes leírás mód –
+   elemző prompt**, alapból a saját elemző programodban használt szöveg), és pontosan leírja a
+   mintát egy angol képpromptban (szöveg `TEXT Hungarian: "..."` formában, helyzettel; fekete
+   szöveg és elem fehérként). A képgeneráló az eredeti képet ebben a módban sem kapja meg. A
+   rendszer mindig hozzáteszi a JSON-formátum utasítását, a pontos szöveget és a fix
+   képszabályokat (fekete vektoros körvonal, kitöltött vászon levágás nélkül, nincs logó és
+   webcím, nincs fekete kitöltés, nincs színes szegély, ragyogás vagy halo). A fokozat, a
+   színkorlát és a világos/sötét szabály itt nem érvényes.
+
    **Tervezési brief (2.42.8):** az elemző nem prózát ír, hanem rövid mezőket tölt ki: téma,
    műfaj (pl. „egymás alá szedett tipográfiai idézet nagy számmal”), motívum, hangulat, durva
    felépítés, soronként a hangsúly (legnagyobb / nagy / kicsi), világos vagy sötét jelleg, és

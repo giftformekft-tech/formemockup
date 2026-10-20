@@ -284,7 +284,7 @@ check(MG_AI_Redesign::discard(8) === 2 && $deleted === array(32, 31, 33) && !iss
 throws(function () { MG_AI_Redesign::discard(8); }, 'nem található', 'nothing left to delete');
 
 // "Szabad leírás" mode: the analyzer writes the short prompt itself, as before 2.42.8.
-check(array_keys(MG_AI_Redesign::get_prompt_modes()) === array('brief', 'free'), 'brief is the default prompt mode');
+check(array_keys(MG_AI_Redesign::get_prompt_modes())[0] === 'brief', 'brief is the default prompt mode');
 $free_json = json_encode(array('text_lines' => array('Legjobb Apa'), 'original_style' => 'x', 'new_style' => 'y', 'has_illustration' => false,
     'color_count' => 2, 'colors' => array('red', 'white'), 'image_prompt' => 'A playful typographic badge about the best dad.'));
 $http_calls = array();
@@ -304,6 +304,30 @@ check(strpos($prompt, 'red, white, plus the black outline') !== false && strpos(
 check(strpos($prompt, 'Design an original T-shirt print') === false, 'free mode has no brief');
 throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}', 'free'); }, 'képpromptot', 'free mode: empty prompt rejected');
 throws(function () use ($free_json) { MG_AI_Redesign::parse_analysis($free_json); }, 'tervezési briefet', 'a free reply is not a brief');
+
+// "Részletes leírás" mode: the admin's own analyzer prompt, editable in the settings.
+check(array_keys(MG_AI_Redesign::get_prompt_modes()) === array('brief', 'free', 'describe'), 'three prompt modes');
+check(MG_AI_Redesign::get_settings()['describe_prompt'] === MG_AI_Redesign::default_describe_prompt(), 'default describe prompt');
+check(strpos(MG_AI_Redesign::default_describe_prompt(), 'TEXT Hungarian: "..."') !== false && strpos(MG_AI_Redesign::default_describe_prompt(), 'webcím a képen nem lehet') !== false, 'default keeps the admin wording');
+MG_AI_Redesign::save_settings(array('describe_prompt' => 'My own analyzer prompt.', 'analyzer' => 'openai'));
+check(MG_AI_Redesign::get_settings()['describe_prompt'] === 'My own analyzer prompt.', 'edited prompt saved');
+check(MG_AI_Redesign::get_settings()['anthropic_api_key'] === 'sk-ant-test', 'saving the prompt keeps the Claude key');
+$describe_json = json_encode(array('text_lines' => array('60', 'Szép szerény'), 'image_prompt' => 'Bold typographic print, TEXT Hungarian: "60" centered above, TEXT Hungarian: "Szép szerény" below.'));
+$http_calls = array();
+$http_responses[] = array('code' => 200, 'body' => json_encode(array('status' => 'completed', 'output_text' => $describe_json)));
+$described = MG_AI_Redesign::analyze('openai', 'QUJD', 'x', 'describe', 'medium');
+$body = json_decode($http_calls[0][1]['body'], true);
+check(strpos($body['instructions'], 'My own analyzer prompt.') === 0 && strpos($body['instructions'], 'Return JSON with two fields') !== false, 'saved prompt + JSON contract sent');
+check(array_keys($body['text']['format']['schema']['properties']) === array('text_lines', 'image_prompt'), 'describe schema');
+$prompt = MG_AI_Redesign::build_image_prompt($described, true, 'medium', 'describe');
+check(strpos($prompt, 'Bold typographic print, TEXT Hungarian') === 0, 'describe: analyzer description first');
+check(strpos($prompt, 'no website address or URL anywhere in the image (e.g. no www.lolmarkt.hu)') !== false && strpos($prompt, 'none clipped or cut off by the edges') !== false && strpos($prompt, 'no chromatic aberration') !== false, 'describe: fixed image rules added');
+check(strpos($prompt, 'exactly this text and no other text: "60" / "Szép szerény"') !== false && strpos($prompt, 'line by line') === false, 'describe: exact text without line-break wording');
+check(strpos($prompt, 'Be creative') === false && strpos($prompt, 'ink color') === false && strpos($prompt, 'Design an original') === false, 'describe: no creative line, palette or brief');
+MG_AI_Redesign::save_settings(array('describe_prompt' => 'My own analyzer prompt.', 'describe_prompt_reset' => '1'));
+check(MG_AI_Redesign::get_settings()['describe_prompt'] === MG_AI_Redesign::default_describe_prompt(), 'reset to the default prompt');
+MG_AI_Redesign::save_settings(array('describe_prompt' => '   '));
+check(MG_AI_Redesign::get_settings()['describe_prompt'] === MG_AI_Redesign::default_describe_prompt(), 'empty prompt falls back to the default');
 
 array_map('unlink', glob($test_dir . '/*'));
 rmdir($test_dir);
