@@ -492,19 +492,17 @@ class MG_AI_Print_Generator {
     }
 
     /**
-     * AI redesign of a whole design (admin "AI újratervezés"). Without a
-     * reference the image model only gets the text prompt, so nothing of the
-     * original artwork can be copied; with one it reworks the original.
-     * The PNG is returned at the model's size: the admin's browser upscales
-     * it with Real-ESRGAN, upscale_file() is the fallback.
+     * AI redesign of a whole design (admin "AI újratervezés"). The image model
+     * gets only the text prompt (images/generations): sending the original
+     * would cost more and nothing of its artwork can be copied this way. The
+     * source only sets the size and the background. The PNG is returned at
+     * the model's size: the admin's browser upscales it with Real-ESRGAN,
+     * upscale_file() is the fallback.
      *
      * @return string Temporary PNG path; the caller moves or deletes it.
      */
-    public static function redesign_image($source_path, $prompt, $key, $quality = 'medium', $use_reference = false) {
+    public static function redesign_image($source_path, $prompt, $key, $quality = 'medium') {
         $quality = self::validate_quality($quality);
-        if ($use_reference) {
-            return self::edit_image($source_path, $prompt, $key, self::get_model(), false, $quality, false);
-        }
         $model = self::get_model();
         list(, $size, $transparent) = self::inspect_source($source_path);
         $body = wp_json_encode(array('model' => $model, 'quality' => $quality, 'size' => $size, 'n' => 1, 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt));
@@ -572,16 +570,15 @@ class MG_AI_Print_Generator {
         return array($source, $size, $transparent);
     }
 
-    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false, $quality = 'low', $upscale = true) {
+    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false) {
         $model = self::validate_model($model);
-        $quality = self::validate_quality($quality);
         list($source, $size, $transparent) = self::inspect_source($source_path);
         $bytes = file_get_contents($source);
         if ($bytes === false) {
             throw new RuntimeException(__('Nem olvasható az AI forrásminta.', 'mg'));
         }
         $boundary = 'mgimage' . str_replace('-', '', wp_generate_uuid4());
-        $params = array('model' => $model, 'quality' => $quality, 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
+        $params = array('model' => $model, 'quality' => 'low', 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
         $body = '';
         foreach ($params as $name => $value) {
             $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"" . $name . "\"\r\n\r\n" . $value . "\r\n";
@@ -596,7 +593,7 @@ class MG_AI_Print_Generator {
             'body' => $body,
         ));
         unset($body, $bytes);
-        return self::save_response_image($response, $size, $transparent, $key, $model, $defringe, $upscale);
+        return self::save_response_image($response, $size, $transparent, $key, $model, $defringe);
     }
 
     /** Shared by edits and generations: validate, upscale 3× (unless told not to) and save the returned PNG. */

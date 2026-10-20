@@ -129,7 +129,9 @@ $body = json_decode($http_calls[0][1]['body'], true);
 check(!isset($http_calls[0][1]['headers']['anthropic-beta']) && !isset($body['fallbacks']), 'Haiku has no server-side fallback');
 check(strpos($body['system'], 'Finom átdolgozás') !== false && strpos($body['system'], 'elrendezés') !== false, 'light rework keeps the layout');
 check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'full'), 'new style is the default, full redesign last');
-check(MG_AI_Redesign::uses_reference('strong') && MG_AI_Redesign::uses_reference('medium') && !MG_AI_Redesign::uses_reference('full'), 'only the full redesign withholds the original');
+foreach (array_keys(MG_AI_Redesign::get_intensities()) as $level) {
+    check(strpos(MG_AI_Redesign::analysis_instructions($level), 'az eredeti képet NEM látja') !== false, "analyzer told to describe what to keep ($level)");
+}
 
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'refusal', 'content' => array())));
 throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'strong', 'x'); }, 'elutasította', 'refusal is reported');
@@ -153,16 +155,14 @@ throws(function () { MG_AI_Redesign::analyze('openai', 'QUJD', 'strong', 'x'); }
 // Parsing and the fixed image prompt rules.
 check(MG_AI_Redesign::parse_analysis("```json\n" . analysis_json() . "\n```")['new_style'] === 'retro', 'fenced JSON tolerated');
 throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}'); }, 'képpromptot', 'empty prompt rejected');
-$prompt = MG_AI_Redesign::build_image_prompt($analysis, true, false);
+$prompt = MG_AI_Redesign::build_image_prompt($analysis, true);
 check(strpos($prompt, 'exactly this text, line by line, and no other text: "Legjobb Apa" / "a világon"') !== false, 'exact text with accents enforced');
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
-$prompt = MG_AI_Redesign::build_image_prompt($analysis, false, true);
-check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Create a new version of the attached design') === 0 && strpos($prompt, 'sibling') !== false, 'opaque + new-version wording');
-$prompt = MG_AI_Redesign::build_image_prompt($analysis, true, 'medium');
-check(strpos($prompt, 'Rework the attached design. Keep its composition, layout') === 0, 'light rework wording');
+$prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
+check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Bold retro badge') === 0, 'opaque, analyzer prompt first');
 check(strpos(MG_AI_Redesign::analysis_request_text('Név', "Sor 1\nSor 2", 'retro'), '"Sor 1\nSor 2"') !== false, 'user text passed as quoted data');
 
-// Strongest setting: the image model gets the prompt only, never the original PNG.
+// Every level: the image model gets the prompt only, never the original PNG (cost).
 function make_png($w, $h) {
     $chunk = function ($t, $d) { return pack('N', strlen($d)) . $t . $d . pack('N', crc32($t . $d)); };
     return "\x89PNG\r\n\x1a\n" . $chunk('IHDR', pack('NNCCCCC', $w, $h, 8, 6, 0, 0, 0)) . $chunk('IDAT', gzcompress(str_repeat("\x00" . str_repeat("\x00\x00\x00\x00", $w), $h))) . $chunk('IEND', '');
@@ -171,15 +171,11 @@ $source = $test_dir . '/design.png';
 file_put_contents($source, make_png(1000, 1000));
 $http_calls = array();
 $http_responses[] = new WP_Error('cURL error 28: timeout');
-try { MG_AI_Print_Generator::redesign_image($source, 'PROMPT', str_repeat('a', 64), 'high', false); } catch (RuntimeException $e) {}
+try { MG_AI_Print_Generator::redesign_image($source, 'PROMPT', str_repeat('a', 64), 'high'); } catch (RuntimeException $e) {}
 list($url, $request) = $http_calls[0];
 $body = json_decode($request['body'], true);
-check($url === 'https://api.openai.com/v1/images/generations', 'no reference: generations endpoint');
-check($body['prompt'] === 'PROMPT' && $body['quality'] === 'high' && $body['background'] === 'transparent' && !isset($body['image']), 'no reference: prompt only, quality and transparency');
-$http_calls = array();
-$http_responses[] = new WP_Error('cURL error 28: timeout');
-try { MG_AI_Print_Generator::redesign_image($source, 'PROMPT', str_repeat('b', 64), 'medium', true); } catch (RuntimeException $e) {}
-check($http_calls[0][0] === 'https://api.openai.com/v1/images/edits' && preg_match('/name="quality"\r\n\r\nmedium/', $http_calls[0][1]['body']) && strpos($http_calls[0][1]['body'], 'name="image[]"') !== false, 'reference: edits endpoint with the source PNG');
+check($url === 'https://api.openai.com/v1/images/generations', 'generations endpoint, not edits');
+check($body['prompt'] === 'PROMPT' && $body['quality'] === 'high' && $body['background'] === 'transparent' && !isset($body['image']) && strpos($request['body'], 'PNG') === false, 'prompt only: no image bytes sent');
 throws(function () use ($source) { MG_AI_Print_Generator::redesign_image($source, 'P', str_repeat('c', 64), 'ultra', false); }, 'minőség', 'invalid quality rejected');
 
 // Approval: queues the replacement, deletes the other candidates, keeps history.

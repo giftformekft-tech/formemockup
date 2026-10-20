@@ -94,13 +94,8 @@ class MG_AI_Redesign {
         return array(
             'strong' => __('Új stílus – a minta új változata: más illusztráció-, betű-, elrendezés- és színvilág (ajánlott)', 'mockup-generator'),
             'medium' => __('Finom átdolgozás – az elrendezés marad, új betűk, színek és részletek', 'mockup-generator'),
-            'full' => __('Teljesen új – csak a szöveg és a téma marad (az AI nem látja az eredeti képet)', 'mockup-generator'),
+            'full' => __('Teljesen új – csak a szöveg és a téma marad', 'mockup-generator'),
         );
-    }
-
-    /** Only "Teljesen új" withholds the original from the image model. */
-    public static function uses_reference($intensity) {
-        return $intensity !== 'full';
     }
 
     protected static function intensity_rules($intensity) {
@@ -139,7 +134,10 @@ class MG_AI_Redesign {
             . "3. new_style: 1–3 mondatban, magyarul, az új terv.\n"
             . "4. image_prompt: részletes, angol nyelvű prompt egy képgeneráló modellnek az új tervhez. A szövegeket idézőjelben, "
             . "betűhíven, magyar ékezetekkel írd bele, és add meg az elrendezésüket, a betűtípusok jellegét, a színeket és a grafikai elemeket. "
-            . "Írd le benne, mit ábrázol az illusztráció és hogyan néz ki az új változata.\n\n"
+            . "Írd le benne, mit ábrázol az illusztráció és hogyan néz ki az új változata. A képgenerátor az eredeti képet NEM látja, "
+            . "csak ezt a promptot: amit a szabályok szerint meg kell tartani (elrendezés, az elemek helye és mérete, a szövegsorok "
+            . "helye, mérete és íve, az illusztráció tárgya, póza és nézőpontja), azt konkrétan, mérhetően írd le "
+            . "(pl. „the illustration fills the upper 60%, the text sits in two centered lines below it, the first line twice as large”).\n\n"
             . "Az új terv szabályai:\n"
             . "- " . self::intensity_rules($intensity) . "\n"
             . "- Az eredeti illusztrációját, karaktereit, ikonjait és díszítőelemeit ne másold le formára pontosan, jellegzetes "
@@ -175,8 +173,8 @@ class MG_AI_Redesign {
      * Our fixed rules go last so the analyzer's wording cannot drop them: the
      * exact text, the print format and the background.
      */
-    /** $use_reference: false (prompt only), true (new version) or 'medium' (light rework). */
-    public static function build_image_prompt($analysis, $transparent, $use_reference) {
+    /** The image model never sees the original: it gets only this prompt. */
+    public static function build_image_prompt($analysis, $transparent) {
         $lines = array();
         foreach ((array) $analysis['text_lines'] as $line) {
             $line = trim((string) $line);
@@ -184,17 +182,7 @@ class MG_AI_Redesign {
                 $lines[] = wp_json_encode($line, JSON_UNESCAPED_UNICODE);
             }
         }
-        $prompt = '';
-        if ($use_reference === 'medium') {
-            $prompt .= "Rework the attached design. Keep its composition, layout, element sizes and the illustration's subject and pose; "
-                . "change the typeface, the color palette and the illustration's details as described below.\n\n";
-        } elseif ($use_reference) {
-            $prompt .= "Create a new version of the attached design. Keep its idea, its main motif and roughly its structure, so it reads "
-                . "as a sibling of the original, not a different design. Redraw the illustration in a different drawing style, use a "
-                . "different typeface, moderately rearrange the layout and use a new color palette, as described below. "
-                . "Do not copy shapes, outlines or lettering one-to-one.\n\n";
-        }
-        $prompt .= trim((string) $analysis['image_prompt']) . "\n\nRequirements:\n"
+        $prompt = trim((string) $analysis['image_prompt']) . "\n\nRequirements:\n"
             . "- Flat, print-ready graphic for a T-shirt print, "
             . ($transparent ? 'isolated on a fully transparent background.' : 'on a plain, solid background.') . "\n"
             . "- No T-shirt, no mockup, no photo, no shadow, no frame, no checkerboard pattern.\n";
@@ -470,7 +458,6 @@ class MG_AI_Redesign {
         }
         MG_AI_Print_Generator::assert_available();
         $intensity = array_key_exists($opts['intensity'] ?? '', self::get_intensities()) ? $opts['intensity'] : 'strong';
-        $use_reference = self::uses_reference($intensity);
         $quality = in_array($opts['quality'] ?? '', array('low', 'medium', 'high'), true) ? $opts['quality'] : self::get_settings()['quality'];
         $design_text = trim((string) ($opts['design_text'] ?? ''));
         list($png, $temp, $transparent) = self::prepare_png(self::design_source($product_id));
@@ -488,10 +475,10 @@ class MG_AI_Redesign {
                 if ($design_text !== '') {
                     $analysis['text_lines'] = preg_split('/\R/u', $design_text);
                 }
-                $prompt = self::build_image_prompt($analysis, $transparent, $intensity === 'medium' ? 'medium' : $use_reference);
+                $prompt = self::build_image_prompt($analysis, $transparent);
             }
             self::set_stage($product_id, 'image');
-            $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality, $use_reference);
+            $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);
             self::set_stage($product_id, 'save');
             $slug = (string) get_post_field('post_name', $product_id);
             $attachment_id = MG_Custom_Field_Product_Variants::create_png_attachment($tmp, ($slug !== '' ? $slug : 'minta') . '-ai-ujraterv.png', $product->get_name() . ' – AI újraterv');
