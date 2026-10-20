@@ -396,6 +396,7 @@ class MG_Dashboard_Page {
         echo '<details class="mg-ai-redesign__prompt"><summary>Saját képprompt (haladó)</summary><p class="description">Ha kitöltöd, az elemzés kimarad, és pontosan ez a prompt megy a képgenerálónak. Egy korábbi jelölt promptját a „Prompt szerkesztése” gombbal töltheted be ide.</p><textarea id="mg-ai-redesign-custom-prompt" rows="8" class="large-text code"></textarea></details>';
         echo '<p><button type="button" class="button button-primary" id="mg-ai-redesign-submit">Új minta generálása</button></p>';
         echo '<p class="description" id="mg-ai-redesign-status" aria-live="polite"></p>';
+        echo '<p class="mg-ai-redesign__bulk" hidden><button type="button" class="button button-link-delete" id="mg-ai-redesign-discard-all">Összes jelölt törlése</button></p>';
         echo '<div class="mg-ai-redesign__candidates" id="mg-ai-redesign-candidates"></div>';
         echo '</div>';
         echo '</div>';

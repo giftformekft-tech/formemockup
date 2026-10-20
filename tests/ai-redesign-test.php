@@ -240,6 +240,17 @@ MG_AI_Redesign::apply(6, 22);
 check(getimagesize(get_attached_file(22))[0] === 30, 'not upscaled candidate gets 3× on approval');
 check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
 
+// Discarding candidates: one, then all; the PNGs leave the media library.
+$deleted = array();
+$meta[8][MG_AI_Redesign::META_CANDIDATES] = array(
+    array('attachment_id' => 31), array('attachment_id' => 32), array('attachment_id' => 33),
+);
+check(MG_AI_Redesign::discard(8, 32) === 1 && $deleted === array(32), 'one candidate deleted');
+check(array_column($meta[8][MG_AI_Redesign::META_CANDIDATES], 'attachment_id') === array(31, 33), 'others kept in order');
+throws(function () { MG_AI_Redesign::discard(8, 32); }, 'nem található', 'already deleted candidate rejected');
+check(MG_AI_Redesign::discard(8) === 2 && $deleted === array(32, 31, 33) && !isset($meta[8][MG_AI_Redesign::META_CANDIDATES]), 'all candidates deleted');
+throws(function () { MG_AI_Redesign::discard(8); }, 'nem található', 'nothing left to delete');
+
 array_map('unlink', glob($test_dir . '/*'));
 rmdir($test_dir);
 echo "AI redesign: $passed checks passed. HTTP and Imagick mocked, no API calls.\n";

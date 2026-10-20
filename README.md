@@ -43,7 +43,9 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
 
    A képgeneráló az eredeti képet egyik fokozatnál sem kapja meg (a költség miatt), csak
    a szöveges promptot (`images/generations`); az elemző a mintát kicsinyített JPEG-ként látja.
-3. A kész PNG jelöltként a médiatárba kerül (legfeljebb 6 jelölt termékenként). A
+3. A kész PNG jelöltként a médiatárba kerül (legfeljebb 6 jelölt termékenként). A nem kellő
+   jelöltek a kártyán a **Törlés**, mind egyszerre az **Összes jelölt törlése** gombbal
+   törölhetők, a PNG-vel együtt (2.42.7). A
    **Jóváhagyás** a Minta cseréje sorával újragenerálja az összes mockupot, és a jóváhagyott
    PNG lesz a nyomtatási minta. A többi jelölt törlődik, az eredeti minta a médiatárban
    marad (az előzmény a `_mg_ai_redesign_history` metában).

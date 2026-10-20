@@ -40,6 +40,7 @@ class MG_AI_Redesign {
         add_action('wp_ajax_mg_ai_redesign_status', array(__CLASS__, 'ajax_status'));
         add_action('wp_ajax_mg_ai_redesign_apply', array(__CLASS__, 'ajax_apply'));
         add_action('wp_ajax_mg_ai_redesign_upscaled', array(__CLASS__, 'ajax_upscaled'));
+        add_action('wp_ajax_mg_ai_redesign_discard', array(__CLASS__, 'ajax_discard'));
     }
 
     public static function get_anthropic_models() {
@@ -778,6 +779,51 @@ class MG_AI_Redesign {
             wp_send_json_success(array('status' => 'error', 'message' => __('Az AI újratervezés 10 percen belül nem készült el. Próbáld újra.', 'mockup-generator')));
         }
         wp_send_json_success($state);
+    }
+
+    /**
+     * Delete one candidate, or all of them when $attachment_id is 0, with
+     * their PNGs. Only candidates: the approved and the original design are
+     * never in this list.
+     *
+     * @return int Number of deleted candidates.
+     */
+    public static function discard($product_id, $attachment_id = 0) {
+        $keep = $drop = array();
+        foreach (self::get_candidates($product_id) as $candidate) {
+            if ($attachment_id === 0 || (int) $candidate['attachment_id'] === (int) $attachment_id) {
+                $drop[] = $candidate;
+            } else {
+                $keep[] = $candidate;
+            }
+        }
+        if (empty($drop)) {
+            throw new RuntimeException(__('A törlendő AI minta nem található.', 'mockup-generator'));
+        }
+        foreach ($drop as $candidate) {
+            wp_delete_attachment((int) $candidate['attachment_id'], true);
+        }
+        if (empty($keep)) {
+            delete_post_meta($product_id, self::META_CANDIDATES);
+        } else {
+            update_post_meta($product_id, self::META_CANDIDATES, $keep);
+        }
+        return count($drop);
+    }
+
+    public static function ajax_discard() {
+        $product_id = self::check_request();
+        try {
+            $all = !empty($_POST['all']);
+            $attachment_id = isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0;
+            if (!$all && $attachment_id <= 0) {
+                throw new RuntimeException(__('Hiányzik, melyik AI mintát kell törölni.', 'mockup-generator'));
+            }
+            $count = self::discard($product_id, $all ? 0 : $attachment_id);
+            wp_send_json_success(array('deleted' => $count, 'message' => sprintf(__('%d AI minta törölve.', 'mockup-generator'), $count)));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
     }
 
     public static function ajax_apply() {
