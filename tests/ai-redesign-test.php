@@ -162,6 +162,21 @@ check(strpos($prompt, 'Be creative') !== false && strpos($prompt, 'instead of il
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
 check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Bold retro badge') === 0, 'opaque, analyzer prompt first');
+// Few-color text designs keep their palette: red and white must not become a rainbow.
+$redWhite = array_merge($analysis, array('has_illustration' => false, 'color_count' => 2, 'colors' => array('Red', 'white')));
+$prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'medium');
+check(strpos($prompt, 'Use only these two ink colors for the whole design (text and illustration): red, white. No other colors') !== false, 'finom: same colors kept');
+check(strpos($prompt, 'color palette') === false, 'creative line does not invite a new palette');
+check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, 'medium'), 'lettering style, color palette and') !== false, 'free palette when no color rule');
+$prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'strong');
+check(strpos($prompt, 'Use exactly two solid ink colors') !== false && strpos($prompt, 'red, white') === false, 'new style: same number of colors, new colors');
+check(strpos($prompt, 'colors (within the color limit below)') !== false, 'new style: new colors within the limit');
+check(MG_AI_Redesign::palette_rule($redWhite, 'full') === '', 'full redesign: colors free');
+check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('has_illustration' => true)), 'medium') === '', 'figure or pattern: colors free');
+check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 5)), 'medium') === '', 'many colors: no limit');
+check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 1, 'colors' => array('black'))), 'medium'), 'Use only this ink color for the whole design (text and illustration): black.') !== false, 'one-color design');
+check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('colors' => array('red'))), 'medium'), 'Use exactly two solid ink colors') !== false, 'missing color names: count only');
+check(MG_AI_Redesign::parse_analysis(json_encode(array('image_prompt' => 'x', 'has_illustration' => false, 'color_count' => 2, 'colors' => array('red', 'white'))))['colors'] === array('red', 'white'), 'colors parsed');
 check(strpos(MG_AI_Redesign::analysis_request_text('Név', "Sor 1\nSor 2", 'retro'), '"Sor 1\nSor 2"') !== false, 'user text passed as quoted data');
 
 // Every level: the image model gets the prompt only, never the original PNG (cost).

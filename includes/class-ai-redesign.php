@@ -122,7 +122,11 @@ class MG_AI_Redesign {
             . "a mintán látható sorrendben, soronként egy elem. Ha a felhasználó megadta a pontos szöveget, azt használd változtatás nélkül.\n"
             . "2. original_style: 1–3 mondatban az eredeti stílusa (betűtípusok jellege, elrendezés, színek, illusztráció, díszítés).\n"
             . "3. new_style: 1 mondatban, magyarul, mit kér a prompt (milyen motívumot és hangulatot).\n"
-            . "4. image_prompt: RÖVID, angol nyelvű prompt egy képgeneráló modellnek, legfeljebb 3 mondat (kb. 60 szó). "
+            . "4. has_illustration: true, ha van a mintán figura, karakter, állat, tárgy-illusztráció, jelenet vagy mintázat; "
+            . "false, ha főleg szöveg, legfeljebb egyszerű ikonnal, vonallal vagy kerettel. "
+            . "color_count: hány különböző festékszínből áll a minta a háttér nélkül (az élsimítás árnyalatai nem számítanak; 6 felett 6). "
+            . "colors: ezek a színek egyszerű angol nevekkel (pl. „red”, „white”, „navy blue”), legfeljebb 6.\n"
+            . "5. image_prompt: RÖVID, angol nyelvű prompt egy képgeneráló modellnek, legfeljebb 3 mondat (kb. 60 szó). "
             . "Csak nagyjából írd le a fő elemeket a szabályok szerint (pl. „a bearded dad holding a fishing rod”, „a birthday cake”), "
             . "és a hangulatot (pl. vicces, retro, elegáns). NE írd le az eredeti részleteit: pontos elrendezést, méreteket, pózt, "
             . "nézőpontot, betűtípust, színeket, kontúrokat vagy díszítőelemeket (csak azt, hogy világos vagy sötét a minta). "
@@ -149,11 +153,14 @@ class MG_AI_Redesign {
         return array(
             'type' => 'object',
             'additionalProperties' => false,
-            'required' => array('text_lines', 'original_style', 'new_style', 'image_prompt'),
+            'required' => array('text_lines', 'original_style', 'new_style', 'has_illustration', 'color_count', 'colors', 'image_prompt'),
             'properties' => array(
                 'text_lines' => array('type' => 'array', 'items' => array('type' => 'string')),
                 'original_style' => array('type' => 'string'),
                 'new_style' => array('type' => 'string'),
+                'has_illustration' => array('type' => 'boolean'),
+                'color_count' => array('type' => 'integer'),
+                'colors' => array('type' => 'array', 'items' => array('type' => 'string')),
                 'image_prompt' => array('type' => 'string'),
             ),
         );
@@ -163,8 +170,36 @@ class MG_AI_Redesign {
      * Our fixed rules go last so the analyzer's wording cannot drop them: the
      * exact text, the print format and the background.
      */
+    /**
+     * A mostly-text design of a few colors must not turn into a rainbow (e.g.
+     * red and white stays two colors): "Finom átdolgozás" keeps the colors
+     * themselves, "Új stílus" keeps only their number. Designs with a figure,
+     * scene or pattern and "Teljesen új" are free.
+     */
+    public static function palette_rule($analysis, $intensity) {
+        $count = (int) ($analysis['color_count'] ?? 0);
+        if ($count < 1 || $count > 3 || $intensity === 'full' || !empty($analysis['has_illustration'])) {
+            return '';
+        }
+        $names = array();
+        foreach ((array) ($analysis['colors'] ?? array()) as $name) {
+            $name = strtolower(trim(preg_replace('/[^\p{L} \-]/u', '', (string) $name)));
+            if ($name !== '' && strlen($name) <= 30) {
+                $names[] = $name;
+            }
+        }
+        $names = array_slice(array_values(array_unique($names)), 0, $count);
+        $word = array(1 => 'one', 2 => 'two', 3 => 'three')[$count];
+        if ($intensity === 'medium' && count($names) === $count) {
+            return '- Use only ' . ($count === 1 ? 'this ink color' : 'these ' . $word . ' ink colors') . ' for the whole design (text and illustration): '
+                . implode(', ', $names) . '. No other colors, no gradients, no rainbow effects.' . "\n";
+        }
+        return '- Use exactly ' . $word . ' solid ink ' . ($count === 1 ? 'color' : 'colors') . ' for the whole design (text and illustration), '
+            . 'no gradients, no rainbow effects.' . "\n";
+    }
+
     /** The image model never sees the original: it gets only this prompt. */
-    public static function build_image_prompt($analysis, $transparent) {
+    public static function build_image_prompt($analysis, $transparent, $intensity = 'strong') {
         $lines = array();
         foreach ((array) $analysis['text_lines'] as $line) {
             $line = trim((string) $line);
@@ -172,12 +207,16 @@ class MG_AI_Redesign {
                 $lines[] = wp_json_encode($line, JSON_UNESCAPED_UNICODE);
             }
         }
+        $palette = self::palette_rule($analysis, $intensity);
         $prompt = trim((string) $analysis['image_prompt']) . "\n\n"
-            . "Be creative: this is a new, original T-shirt design. Invent your own composition, lettering style, color palette and "
-            . "illustration details; interpret the description freely instead of illustrating it literally.\n\nRequirements:\n"
+            . "Be creative: this is a new, original T-shirt design. Invent your own composition, lettering style"
+            . ($palette === '' ? ', color palette' : ($intensity === 'medium' ? '' : ', colors (within the color limit below)'))
+            . " and illustration details; interpret the description freely "
+            . "instead of illustrating it literally.\n\nRequirements:\n"
             . "- Flat, print-ready graphic for a T-shirt print, "
             . ($transparent ? 'isolated on a fully transparent background.' : 'on a plain, solid background.') . "\n"
             . "- No T-shirt, no mockup, no photo, no shadow, no frame, no checkerboard pattern.\n";
+        $prompt .= $palette;
         if (!empty($lines)) {
             $prompt .= "- The design must contain exactly this text, line by line, and no other text: " . implode(' / ', $lines) . ".\n"
                 . "- Spell every word exactly as given, including the Hungarian accents (á, é, í, ó, ö, ő, ú, ü, ű). No signatures or watermarks.\n";
@@ -208,6 +247,9 @@ class MG_AI_Redesign {
             'text_lines' => $lines,
             'original_style' => trim((string) ($data['original_style'] ?? '')),
             'new_style' => trim((string) ($data['new_style'] ?? '')),
+            'has_illustration' => !empty($data['has_illustration']),
+            'color_count' => max(0, (int) ($data['color_count'] ?? 0)),
+            'colors' => array_values(array_filter(array_map('strval', (array) ($data['colors'] ?? array())), 'strlen')),
             'image_prompt' => trim((string) $data['image_prompt']),
         );
     }
@@ -467,7 +509,7 @@ class MG_AI_Redesign {
                 if ($design_text !== '') {
                     $analysis['text_lines'] = preg_split('/\R/u', $design_text);
                 }
-                $prompt = self::build_image_prompt($analysis, $transparent);
+                $prompt = self::build_image_prompt($analysis, $transparent, $intensity);
             }
             self::set_stage($product_id, 'image');
             $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);

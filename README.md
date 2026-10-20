@@ -30,6 +30,13 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    - **Új stílus** (ajánlott): csak a fő motívum, elrendezés nélkül.
    - **Teljesen új**: csak a téma és a hangulat.
 
+   **Színek (2.42.5):** a kevés színű, főleg szöveges minták nem lesznek szivárványosak. Ha a
+   minta 1–3 festékszínből áll és nincs rajta figura, jelenet vagy mintázat, a **Finom
+   átdolgozás** ugyanezeket a színeket kapja (pl. piros-fehérből piros-fehér), az **Új stílus**
+   ugyanennyi, de új színt. Figurás vagy mintázatos mintánál és a Teljesen újnál a színek
+   szabadok. A színeket és azok számát az elemző adja meg (`has_illustration`, `color_count`,
+   `colors`), a szabályt a rendszer teszi a képpromptba.
+
    A képgeneráló az eredeti képet egyik fokozatnál sem kapja meg (a költség miatt), csak
    a szöveges promptot (`images/generations`); az elemző a mintát kicsinyített JPEG-ként látja.
 3. A kész PNG jelöltként a médiatárba kerül (legfeljebb 6 jelölt termékenként). A
