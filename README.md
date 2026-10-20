@@ -1,6 +1,34 @@
 # formemockup
 mymockup
 
+## AI újratervezés (2.41.0)
+
+Ha egy minta túlságosan hasonlít egy másik webáruházéra, a **Dashboard** terméklistájában
+az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöveggel:
+
+1. Egy választható **elemző modell** megnézi a minta PNG-t, betűhíven kiolvassa a szöveget,
+   leírja a jelenlegi stílust, és megírja az új, eltérő stílus képpromptját. Választható:
+   OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
+2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
+   3×-os felnagyítással, az eredeti átlátszóságával.
+   - **Teljesen új stílus** (ajánlott): a képgeneráló csak a szöveges leírást kapja, az
+     eredeti képet nem, így annak grafikája nem kerülhet át.
+   - **Átdolgozás**: az eredeti kép alapján, új betűkkel, színekkel és díszítéssel.
+3. A kész PNG jelöltként a médiatárba kerül (legfeljebb 6 jelölt termékenként). A
+   **Jóváhagyás** a Minta cseréje sorával újragenerálja az összes mockupot, és a jóváhagyott
+   PNG lesz a nyomtatási minta. A többi jelölt törlődik, az eredeti minta a médiatárban
+   marad (az előzmény a `_mg_ai_redesign_history` metában).
+
+A **Pontos szöveg** mezőt érdemes kitölteni (soronként egy sor): így biztosan ugyanaz a
+szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi jelölt promptja
+átírható és újrafuttatható, ekkor az elemzés kimarad.
+
+Beállítások: **AI Minta SEO és tagelés → AI újratervezés**: alapértelmezett elemző, OpenAI
+elemző modell, Anthropic (Claude) API-kulcs, képminőség (alacsony / közepes / magas). A
+Claude modellek a kulcs mentése után jelennek meg. Claude-nál a hibásan elutasított kérést az
+API automatikusan egy másik modellel futtatja újra (server-side fallback; Haiku-nál nincs).
+Imagick és WooCommerce Action Scheduler szükséges, mint az AI nyomatnál.
+
 ## SEO és AI keresők (2.40.0)
 
 Az oldalon nincs SEO bővítmény, ezért a WordPress eddig csak „Név – www.forme.hu”

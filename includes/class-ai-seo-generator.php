@@ -128,7 +128,7 @@ class MG_AI_SEO_Generator {
         return $text;
     }
 
-    protected static function extract_output_text($data) {
+    public static function extract_output_text($data) {
         if (!is_array($data)) {
             return '';
         }

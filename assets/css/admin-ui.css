@@ -814,6 +814,46 @@ body.mg-modal-open {
     background: #cbd5e1;
 }
 
+.mg-modal__dialog.mg-ai-redesign {
+    width: min(860px, 100%);
+}
+
+.mg-ai-redesign__original {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 12px 0;
+}
+
+.mg-ai-redesign__original img,
+.mg-ai-redesign__candidate img {
+    max-width: 100%;
+    max-height: 260px;
+    object-fit: contain;
+    background: repeating-conic-gradient(#cbd5e1 0% 25%, #f1f5f9 0% 50%) 50% / 20px 20px;
+    border-radius: 8px;
+}
+
+.mg-ai-redesign__form th {
+    width: 140px;
+}
+
+.mg-ai-redesign__candidates {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+.mg-ai-redesign__candidate {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+.mg-ai-redesign__candidate p {
+    margin: 6px 0;
+}
+
 .mg-quick-add-form .form-table th {
     width: 200px;
 }

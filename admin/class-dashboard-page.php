@@ -238,17 +238,19 @@ class MG_Dashboard_Page {
             foreach($data['items'] as $r){
                 $id = intval($r['ID']); $edit = get_edit_post_link($id, ''); $view = get_permalink($id);
                 echo '<tr>';
+                echo '<td>'.get_the_post_thumbnail($id, array(48, 48)).'</td>';
                 echo '<td>'.$id.'</td>';
                 echo '<td><a href="'.esc_url($edit).'">'.esc_html($r['post_title']).'</a></td>';
                 echo '<td>'.esc_html($r['post_status']).'</td>';
                 echo '<td>'.esc_html(mysql2date('Y-m-d H:i', $r['post_date'])).'</td>';
                 echo '<td><a class="button button-small" href="'.esc_url($edit).'">Szerkesztés</a> ';
                 echo '<a class="button button-small" target="_blank" href="'.esc_url($view).'">Megnyitás</a> ';
-                echo '<button type="button" class="button button-small mg-replace-design-trigger" data-mg-open-modal="replace-design" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">Minta cseréje</button></td>';
+                echo '<button type="button" class="button button-small mg-replace-design-trigger" data-mg-open-modal="replace-design" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">Minta cseréje</button> ';
+                echo '<button type="button" class="button button-small mg-ai-redesign-trigger" data-mg-open-modal="ai-redesign" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">AI újratervezés</button></td>';
                 echo '</tr>';
             }
         } else {
-            echo '<tr><td colspan="5">Nincs találat a szűrőkre.</td></tr>';
+            echo '<tr><td colspan="6">Nincs találat a szűrőkre.</td></tr>';
         }
         echo '</tbody></table>';
 
@@ -264,6 +266,7 @@ class MG_Dashboard_Page {
         }
 
         self::render_replace_design_modal();
+        self::render_ai_redesign_modal();
 
         echo '</div>';
     }
@@ -285,6 +288,43 @@ class MG_Dashboard_Page {
         echo '<p><input type="file" id="mg-replace-design-file" accept=".png,.jpg,.jpeg,.webp" /></p>';
         echo '<p><button type="button" class="button button-primary" id="mg-replace-design-submit">Csere indítása</button></p>';
         echo '<p class="description" id="mg-replace-design-status" aria-live="polite"></p>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    /**
+     * "AI újratervezés" modal: the analyzer model (OpenAI or Claude) writes a
+     * new-style prompt with the same text, GPT Image draws the PNG, and an
+     * approved PNG regenerates the mockups (MG_AI_Redesign AJAX).
+     */
+    protected static function render_ai_redesign_modal(){
+        if (!class_exists('MG_AI_Redesign')) {
+            return;
+        }
+        echo '<div class="mg-modal" id="mg-ai-redesign-modal" aria-hidden="true">';
+        echo '<div class="mg-modal__backdrop" data-mg-close-modal></div>';
+        echo '<div class="mg-modal__dialog mg-ai-redesign" role="dialog" aria-modal="true" aria-labelledby="mg-ai-redesign-title">';
+        echo '<button type="button" class="mg-modal__close" aria-label="Bezárás" data-mg-close-modal>&times;</button>';
+        echo '<h2 id="mg-ai-redesign-title">AI újratervezés</h2>';
+        echo '<p class="description">Termék: <strong id="mg-ai-redesign-product-name"></strong></p>';
+        echo '<p class="description">Az AI új stílusban rajzolja újra a mintát ugyanazzal a szöveggel. A kész PNG-t itt nézed meg; csak a jóváhagyott minta kerül a termékre, ekkor az összes mockup újragenerálódik. Az eredeti minta a médiatárban marad.</p>';
+        echo '<input type="hidden" id="mg-ai-redesign-product-id" value="" />';
+        echo '<div class="mg-ai-redesign__original"><span>Jelenlegi minta</span><img id="mg-ai-redesign-original" alt="" /><p class="description" id="mg-ai-redesign-original-error"></p></div>';
+        echo '<table class="form-table mg-ai-redesign__form">';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-intensity">Eltérés mértéke</label></th><td><select id="mg-ai-redesign-intensity">';
+        foreach (MG_AI_Redesign::get_intensities() as $value => $label) {
+            echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
+        }
+        echo '</select><p class="description">A „teljesen új stílus” a képgenerálónak csak a szöveges leírást adja át, az eredeti képet nem, így annak grafikája nem kerülhet át.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-analyzer">Elemző modell</label></th><td><select id="mg-ai-redesign-analyzer"></select><p class="description">Kiolvassa a szöveget és megírja az új stílus promptját. Claude modellekhez az Anthropic API-kulcsot az AI Minta SEO oldalon kell menteni.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-quality">Képminőség</label></th><td><select id="mg-ai-redesign-quality"><option value="low">Alacsony (olcsó, gyors)</option><option value="medium">Közepes</option><option value="high">Magas (drágább, lassabb)</option></select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-text">Pontos szöveg</label></th><td><textarea id="mg-ai-redesign-text" rows="3" class="large-text" placeholder="Üresen az AI olvassa ki a képről"></textarea><p class="description">Ajánlott megadni: soronként egy sor a mintán. Így biztosan ugyanaz a szöveg kerül az új mintára.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-hint">Stílusötlet</label></th><td><input type="text" id="mg-ai-redesign-hint" class="large-text" placeholder="pl. retro, 70-es évek, vastag betűk, narancs-barna színek" /><p class="description">Nem kötelező. Üresen az AI választ az eredetitől eltérő stílust.</p></td></tr>';
+        echo '</table>';
+        echo '<details class="mg-ai-redesign__prompt"><summary>Saját képprompt (haladó)</summary><p class="description">Ha kitöltöd, az elemzés kimarad, és pontosan ez a prompt megy a képgenerálónak. Egy korábbi jelölt promptját a „Prompt szerkesztése” gombbal töltheted be ide.</p><textarea id="mg-ai-redesign-custom-prompt" rows="8" class="large-text code"></textarea></details>';
+        echo '<p><button type="button" class="button button-primary" id="mg-ai-redesign-submit">Új minta generálása</button></p>';
+        echo '<p class="description" id="mg-ai-redesign-status" aria-live="polite"></p>';
+        echo '<div class="mg-ai-redesign__candidates" id="mg-ai-redesign-candidates"></div>';
         echo '</div>';
         echo '</div>';
     }

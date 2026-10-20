@@ -38,19 +38,6 @@ class MG_Design_Replace {
                 wp_send_json_error(array('message' => 'A terméknek nincs SKU-ja, így nem mockup-generátoros termék – a csere nem értelmezhető.'), 400);
             }
 
-            $catalog = function_exists('mg_get_catalog_products') ? mg_get_catalog_products() : get_option('mg_products', array());
-            $catalog_keys = array();
-            foreach ((array) $catalog as $p) {
-                if (is_array($p) && !empty($p['key'])) {
-                    $catalog_keys[] = $p['key'];
-                }
-            }
-
-            $product_keys = self::detect_product_type_keys($product_id, $sku, $catalog_keys);
-            if (empty($product_keys)) {
-                wp_send_json_error(array('message' => 'Ehhez a termékhez nem található mockup-terméktípus (nincs generált mockup könyvtára), a minta csere nem lehetséges.'), 400);
-            }
-
             if (!isset($_FILES['design_file']) || empty($_FILES['design_file']['tmp_name'])) {
                 wp_send_json_error(array('message' => 'Hiányzó design fájl.'), 400);
             }
@@ -62,37 +49,72 @@ class MG_Design_Replace {
                 wp_send_json_error(array('message' => 'Feltöltési hiba: ' . $uploaded['error']), 400);
             }
 
-            if (!class_exists('MG_Bulk_Queue')) {
-                wp_send_json_error(array('message' => 'A feldolgozó sor nem érhető el.'), 500);
+            $queued = self::enqueue_replacement($product_id, $uploaded['file'], 'design_replace');
+            if (is_wp_error($queued)) {
+                @unlink($uploaded['file']);
+                wp_send_json_error(array('message' => $queued->get_error_message()), 400);
             }
 
-            $is_custom = class_exists('MG_Custom_Fields_Manager') ? (bool) MG_Custom_Fields_Manager::is_custom_product($product_id) : false;
-            $sample_seo = (string) get_post_meta($product_id, '_mg_sample_seo', true);
-
-            $payload = array(
-                'design_path'    => $uploaded['file'],
-                'product_keys'   => $product_keys,
-                'parent_id'      => $product_id,
-                'parent_name'    => $product->get_name(),
-                'categories'     => array('main' => 0, 'subs' => array()),
-                'defaults'       => array('type' => '', 'color' => '', 'size' => ''),
-                'tags'           => array(),
-                'custom_product' => $is_custom ? 1 : 0,
-                'preset_id'      => '',
-                'sample_seo'     => $sample_seo,
-                'trigger'        => 'design_replace',
-                'replace_design' => 1,
-            );
-
-            $job_id = MG_Bulk_Queue::enqueue($payload, true);
-
-            wp_send_json_success(array(
-                'job_id'  => $job_id,
-                'message' => sprintf('A csere sorba állítva (%d terméktípus). A mockupok a háttérben perceken belül frissülnek.', count($product_keys)),
-            ));
+            wp_send_json_success($queued);
         } catch (Throwable $e) {
             wp_send_json_error(array('message' => $e->getMessage()), 500);
         }
+    }
+
+    /**
+     * Queues the regeneration of every existing product type's mockups with
+     * a new base design. Also used by the AI redesign tool.
+     *
+     * @return array|WP_Error {job_id, message}
+     */
+    public static function enqueue_replacement($product_id, $design_path, $trigger) {
+        $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
+        if (!$product) {
+            return new WP_Error('mg_replace_no_product', 'A termék nem található.');
+        }
+        $sku = $product->get_sku();
+        if (!$sku) {
+            return new WP_Error('mg_replace_no_sku', 'A terméknek nincs SKU-ja, így nem mockup-generátoros termék – a csere nem értelmezhető.');
+        }
+        if (!class_exists('MG_Bulk_Queue')) {
+            return new WP_Error('mg_replace_no_queue', 'A feldolgozó sor nem érhető el.');
+        }
+
+        $catalog = function_exists('mg_get_catalog_products') ? mg_get_catalog_products() : get_option('mg_products', array());
+        $catalog_keys = array();
+        foreach ((array) $catalog as $p) {
+            if (is_array($p) && !empty($p['key'])) {
+                $catalog_keys[] = $p['key'];
+            }
+        }
+
+        $product_keys = self::detect_product_type_keys($product_id, $sku, $catalog_keys);
+        if (empty($product_keys)) {
+            return new WP_Error('mg_replace_no_types', 'Ehhez a termékhez nem található mockup-terméktípus (nincs generált mockup könyvtára), a minta csere nem lehetséges.');
+        }
+
+        $is_custom = class_exists('MG_Custom_Fields_Manager') ? (bool) MG_Custom_Fields_Manager::is_custom_product($product_id) : false;
+        $sample_seo = (string) get_post_meta($product_id, '_mg_sample_seo', true);
+
+        $payload = array(
+            'design_path'    => $design_path,
+            'product_keys'   => $product_keys,
+            'parent_id'      => $product_id,
+            'parent_name'    => $product->get_name(),
+            'categories'     => array('main' => 0, 'subs' => array()),
+            'defaults'       => array('type' => '', 'color' => '', 'size' => ''),
+            'tags'           => array(),
+            'custom_product' => $is_custom ? 1 : 0,
+            'preset_id'      => '',
+            'sample_seo'     => $sample_seo,
+            'trigger'        => $trigger,
+            'replace_design' => 1,
+        );
+
+        return array(
+            'job_id'  => MG_Bulk_Queue::enqueue($payload, true),
+            'message' => sprintf('A csere sorba állítva (%d terméktípus). A mockupok a háttérben perceken belül frissülnek.', count($product_keys)),
+        );
     }
 
     /**

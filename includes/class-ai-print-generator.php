@@ -481,7 +481,7 @@ class MG_AI_Print_Generator {
         delete_option(self::PREFIX . 'lock_' . $key);
     }
 
-    protected static function has_transparency($image) {
+    public static function has_transparency($image) {
         if (!$image->getImageAlphaChannel()) {
             return false;
         }
@@ -491,8 +491,41 @@ class MG_AI_Print_Generator {
         return $range['minima'] < $quantum['quantumRangeLong'];
     }
 
-    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false) {
-        $model = self::validate_model($model);
+    /**
+     * AI redesign of a whole design (admin "AI újratervezés"). Without a
+     * reference the image model only gets the text prompt, so nothing of the
+     * original artwork can be copied; with one it reworks the original.
+     *
+     * @return string Temporary PNG path; the caller moves or deletes it.
+     */
+    public static function redesign_image($source_path, $prompt, $key, $quality = 'medium', $use_reference = false) {
+        $quality = self::validate_quality($quality);
+        if ($use_reference) {
+            return self::edit_image($source_path, $prompt, $key, self::get_model(), false, $quality);
+        }
+        $model = self::get_model();
+        list(, $size, $transparent) = self::inspect_source($source_path);
+        $body = wp_json_encode(array('model' => $model, 'quality' => $quality, 'size' => $size, 'n' => 1, 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt));
+        $settings = MG_AI_SEO_Generator::get_settings();
+        self::set_stage($key, 'api');
+        $response = wp_remote_post('https://api.openai.com/v1/images/generations', array(
+            'timeout' => self::HTTP_TIMEOUT,
+            'redirection' => 0,
+            'headers' => array('Authorization' => 'Bearer ' . $settings['api_key'], 'Content-Type' => 'application/json'),
+            'body' => $body,
+        ));
+        return self::save_response_image($response, $size, $transparent, $key, $model, false);
+    }
+
+    protected static function validate_quality($quality) {
+        if (!in_array($quality, array('low', 'medium', 'high'), true)) {
+            throw new RuntimeException(__('Érvénytelen AI képminőség.', 'mg'));
+        }
+        return $quality;
+    }
+
+    /** @return array{0:string,1:string,2:bool} Real path, economical size, transparency. */
+    protected static function inspect_source($source_path) {
         self::assert_available();
         $uploads = wp_upload_dir();
         $source = realpath($source_path);
@@ -514,12 +547,19 @@ class MG_AI_Print_Generator {
         } finally {
             $image->clear();
         }
+        return array($source, $size, $transparent);
+    }
+
+    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false, $quality = 'low') {
+        $model = self::validate_model($model);
+        $quality = self::validate_quality($quality);
+        list($source, $size, $transparent) = self::inspect_source($source_path);
         $bytes = file_get_contents($source);
         if ($bytes === false) {
             throw new RuntimeException(__('Nem olvasható az AI forrásminta.', 'mg'));
         }
         $boundary = 'mgimage' . str_replace('-', '', wp_generate_uuid4());
-        $params = array('model' => $model, 'quality' => 'low', 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
+        $params = array('model' => $model, 'quality' => $quality, 'size' => $size, 'n' => '1', 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt);
         $body = '';
         foreach ($params as $name => $value) {
             $body .= '--' . $boundary . "\r\nContent-Disposition: form-data; name=\"" . $name . "\"\r\n\r\n" . $value . "\r\n";
@@ -534,6 +574,11 @@ class MG_AI_Print_Generator {
             'body' => $body,
         ));
         unset($body, $bytes);
+        return self::save_response_image($response, $size, $transparent, $key, $model, $defringe);
+    }
+
+    /** Shared by edits and generations: validate, upscale 3× and save the returned PNG. */
+    protected static function save_response_image($response, $size, $transparent, $key, $model, $defringe) {
         if (is_wp_error($response)) {
             $detail = method_exists($response, 'get_error_message') ? $response->get_error_message() : '';
             if (preg_match('/cURL error (\d+)/i', $detail, $match)) {

@@ -15,6 +15,53 @@ class MG_AI_SEO_Page {
         add_action('admin_post_mg_ai_seo_save', array(__CLASS__, 'handle_save'));
         add_action('admin_post_mg_ai_tag_save', array(__CLASS__, 'handle_tag_save'));
         add_action('admin_post_mg_ai_print_save', array(__CLASS__, 'handle_print_save'));
+        add_action('admin_post_mg_ai_redesign_save', array(__CLASS__, 'handle_redesign_save'));
+    }
+
+    public static function handle_redesign_save() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+        check_admin_referer('mg_ai_redesign_save_action');
+        $input = isset($_POST['mg_ai_redesign_settings']) ? wp_unslash($_POST['mg_ai_redesign_settings']) : array();
+        MG_AI_Redesign::save_settings(is_array($input) ? $input : array());
+        wp_safe_redirect(admin_url('admin.php?page=mockup-generator&mg_tab=ai_seo&redesign_updated=1#mg-ai-redesign-settings'));
+        exit;
+    }
+
+    public static function render_redesign_settings() {
+        if (!class_exists('MG_AI_Redesign')) {
+            return;
+        }
+        $settings = MG_AI_Redesign::get_settings();
+        echo '<h2 id="mg-ai-redesign-settings">' . esc_html__('AI újratervezés – hasonló minták új stílusban', 'mockup-generator') . '</h2>';
+        echo '<p class="description" style="max-width:760px;">' . esc_html__('A Dashboard termékeinél az „AI újratervezés” gomb a minta PNG-jét új stílusban rajzolja újra, ugyanazzal a szöveggel. Az elemző modell kiolvassa a szöveget és megírja az új képpromptot, a képet a fenti képszerkesztő modell (GPT Image) készíti. Jóváhagyás után a mockupok a Minta cseréjével újragenerálódnak.', 'mockup-generator') . '</p>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+        echo '<input type="hidden" name="action" value="mg_ai_redesign_save" />';
+        wp_nonce_field('mg_ai_redesign_save_action', '_wpnonce');
+        echo '<table class="form-table">';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_analyzer">' . esc_html__('Alapértelmezett elemző', 'mockup-generator') . '</label></th><td>';
+        echo '<select id="mg_ai_redesign_analyzer" name="mg_ai_redesign_settings[analyzer]">';
+        foreach (MG_AI_Redesign::get_analyzers($settings) as $value => $label) {
+            echo '<option value="' . esc_attr($value) . '"' . selected($settings['analyzer'], $value, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select><p class="description">' . esc_html__('Ez a modell nézi meg a mintát, olvassa ki a pontos szöveget és írja meg az új stílus promptját. A Claude modellek az Anthropic API-kulcs mentése után jelennek meg. Generáláskor mintánként is választható.', 'mockup-generator') . '</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_openai_model">' . esc_html__('OpenAI elemző modell', 'mockup-generator') . '</label></th><td>';
+        echo '<input type="text" class="regular-text" id="mg_ai_redesign_openai_model" name="mg_ai_redesign_settings[openai_model]" value="' . esc_attr($settings['openai_model']) . '" />';
+        echo '<p class="description">' . esc_html__('Képet értő modell, pl. gpt-5-mini vagy gpt-5. Az OpenAI API-kulcs a fenti SEO beállításokból jön.', 'mockup-generator') . '</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_anthropic_key">' . esc_html__('Anthropic (Claude) API-kulcs', 'mockup-generator') . '</label></th><td>';
+        echo '<input type="password" class="regular-text" id="mg_ai_redesign_anthropic_key" name="mg_ai_redesign_settings[anthropic_api_key]" value="" autocomplete="off" placeholder="' . esc_attr($settings['anthropic_api_key'] !== '' ? __('Mentve – üresen hagyva megmarad', 'mockup-generator') : 'sk-ant-...') . '" />';
+        if ($settings['anthropic_api_key'] !== '') {
+            echo ' <label><input type="checkbox" name="mg_ai_redesign_settings[anthropic_api_key_clear]" value="1" /> ' . esc_html__('Kulcs törlése', 'mockup-generator') . '</label>';
+        }
+        echo '<p class="description">' . esc_html__('Elérhető modellek: Claude Opus 5.5 (ajánlott), Sonnet 5.5, Haiku 5.5 (leggyorsabb, legolcsóbb), Fable 5.1 (legerősebb, legdrágább).', 'mockup-generator') . '</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_quality">' . esc_html__('Alapértelmezett képminőség', 'mockup-generator') . '</label></th><td>';
+        echo '<select id="mg_ai_redesign_quality" name="mg_ai_redesign_settings[quality]">';
+        foreach (array('low' => __('Alacsony (olcsó, gyors)', 'mockup-generator'), 'medium' => __('Közepes', 'mockup-generator'), 'high' => __('Magas (drágább, lassabb)', 'mockup-generator')) as $value => $label) {
+            echo '<option value="' . esc_attr($value) . '"' . selected($settings['quality'], $value, false) . '>' . esc_html($label) . '</option>';
+        }
+        echo '</select></td></tr></table>';
+        echo '<p class="submit"><button type="submit" class="button button-primary">' . esc_html__('AI újratervezés beállításainak mentése', 'mockup-generator') . '</button></p></form>';
     }
 
     public static function handle_print_save() {
@@ -128,6 +175,9 @@ class MG_AI_SEO_Page {
             <?php if (isset($_GET['print_error'])): ?>
             <div class="notice notice-error"><p><?php esc_html_e('A nyomatmodell mentése nem sikerült. Válassz a támogatott modellek közül.', 'mockup-generator'); ?></p></div>
             <?php endif; ?>
+            <?php if (isset($_GET['redesign_updated'])): ?>
+            <div class="notice notice-success is-dismissible"><p><?php esc_html_e('Az AI újratervezés beállításai elmentve.', 'mockup-generator'); ?></p></div>
+            <?php endif; ?>
             <?php if (isset($_GET['tag_dictionary_updated'])): ?>
             <div class="notice notice-success is-dismissible"><p><strong><?php esc_html_e('Az egyedi tagkönyvtár elmentve.', 'mockup-generator'); ?></strong></p></div>
             <?php endif; ?>
@@ -193,6 +243,7 @@ class MG_AI_SEO_Page {
 
             <hr />
             <?php self::render_print_settings(); ?>
+            <?php self::render_redesign_settings(); ?>
             <hr />
 
             <h2 class="title"><?php esc_html_e('Meglévő minták elemzése', 'mockup-generator'); ?></h2>

@@ -927,6 +927,7 @@
         initColorManagers(document);
         initProductEditorTabs();
         initDesignReplace();
+        initAiRedesign();
     });
 
     // "Minta cseréje" modal a Dashboard soraiból: feltölti a javított mintát
@@ -986,6 +987,223 @@
             }).always(function () {
                 $btn.prop('disabled', false);
             });
+        });
+    }
+
+    // "AI újratervezés" modal: az elemző modell új stílusú promptot ír a
+    // minta szövegével, a GPT Image megrajzolja, a jóváhagyott PNG pedig a
+    // Minta cseréje sorral újragenerálja a mockupokat (mg_ai_redesign_* AJAX).
+    function initAiRedesign() {
+        const stageLabels = {
+            prepare: 'Előkészítés…',
+            analyze: 'Az elemző modell vizsgálja a mintát és írja az új promptot…',
+            image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
+            save: 'Mentés a médiatárba…',
+        };
+        const intensityLabels = { strong: 'teljesen új stílus', medium: 'átdolgozás' };
+        let productId = '';
+        let pollTimer = null;
+        let running = false;
+        let pollFailures = 0;
+        const $status = function () { return $('#mg-ai-redesign-status'); };
+
+        function post(action, data) {
+            const cfg = window.MG_AJAX || {};
+            return $.ajax({
+                url: cfg.ajax_url,
+                method: 'POST',
+                dataType: 'json',
+                data: $.extend({ action: action, nonce: cfg.nonce, product_id: productId }, data || {}),
+            });
+        }
+
+        function responseMessage(resp) {
+            return (resp && resp.data && resp.data.message) || '';
+        }
+
+        function stopPolling() {
+            if (pollTimer) {
+                clearTimeout(pollTimer);
+                pollTimer = null;
+            }
+        }
+
+        function setRunning(value) {
+            running = value;
+            $('#mg-ai-redesign-submit').prop('disabled', value);
+        }
+
+        function renderCandidates(list) {
+            const $wrap = $('#mg-ai-redesign-candidates').empty();
+            (list || []).forEach(function (c) {
+                const $card = $('<div class="mg-ai-redesign__candidate"></div>');
+                const $link = $('<a target="_blank" rel="noopener"></a>').attr('href', c.full || c.preview);
+                $link.append($('<img alt="" />').attr('src', c.preview || c.full));
+                $card.append($link);
+                const meta = [c.analyzer_label, intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality].filter(Boolean).join(' · ');
+                $card.append($('<p class="description"></p>').text(meta));
+                if (c.text_lines && c.text_lines.length) {
+                    $card.append($('<p></p>').append($('<strong>Szöveg: </strong>')).append(document.createTextNode(c.text_lines.join(' / '))));
+                }
+                if (c.new_style) {
+                    $card.append($('<p></p>').append($('<strong>Új stílus: </strong>')).append(document.createTextNode(c.new_style)));
+                }
+                const $actions = $('<p></p>');
+                $actions.append($('<button type="button" class="button button-primary mg-ai-redesign-apply">Jóváhagyás és mockupok újragenerálása</button>').attr('data-attachment-id', c.attachment_id));
+                $actions.append(' ');
+                $actions.append($('<button type="button" class="button mg-ai-redesign-edit-prompt">Prompt szerkesztése</button>').data('prompt', c.prompt || ''));
+                $card.append($actions);
+                $wrap.append($card);
+            });
+        }
+
+        function loadInfo() {
+            return post('mg_ai_redesign_info').done(function (resp) {
+                if (!resp || !resp.success) {
+                    $status().text('Hiba: ' + (responseMessage(resp) || 'ismeretlen'));
+                    return;
+                }
+                const d = resp.data;
+                if (d.design_url) {
+                    $('#mg-ai-redesign-original').attr('src', d.design_url).show();
+                }
+                $('#mg-ai-redesign-original-error').text(d.design_error || '');
+                $('#mg-ai-redesign-submit').prop('disabled', !!d.design_error);
+                const $analyzer = $('#mg-ai-redesign-analyzer').empty();
+                $.each(d.analyzers || {}, function (value, label) {
+                    $analyzer.append($('<option></option>').val(value).text(label));
+                });
+                $analyzer.val(d.analyzer);
+                $('#mg-ai-redesign-quality').val(d.quality || 'medium');
+                renderCandidates(d.candidates);
+                if (d.state && d.state.status === 'running') {
+                    setRunning(true);
+                    poll();
+                }
+            }).fail(function () {
+                $status().text('Hiba: a minta adatai nem tölthetők be.');
+            });
+        }
+
+        function handleState(state) {
+            if (!state || state.status === 'none') {
+                setRunning(false);
+                $status().text('A generálás állapota nem ismert – frissítsd a listát vagy indítsd újra.');
+                return;
+            }
+            if (state.status === 'running') {
+                const elapsed = state.started ? Math.max(0, Math.round(Date.now() / 1000 - state.started)) : 0;
+                $status().text((stageLabels[state.stage] || 'Folyamatban…') + (elapsed ? ' (' + elapsed + ' mp)' : ''));
+                return;
+            }
+            stopPolling();
+            setRunning(false);
+            if (state.status === 'error') {
+                $status().text('Hiba: ' + (state.message || 'ismeretlen'));
+                return;
+            }
+            $status().text('Elkészült. Nézd meg a mintát (kattintásra teljes méretben nyílik), és ha jó, hagyd jóvá.');
+            loadInfo();
+        }
+
+        function poll() {
+            stopPolling();
+            if (!running) {
+                return;
+            }
+            pollTimer = setTimeout(function () {
+                const pid = productId;
+                post('mg_ai_redesign_status').done(function (resp) {
+                    if (pid !== productId) {
+                        return;
+                    }
+                    pollFailures = 0;
+                    handleState(resp && resp.data);
+                }).fail(function () {
+                    pollFailures++;
+                    if (pollFailures >= 10 && pid === productId) {
+                        handleState({ status: 'error', message: 'az állapot nem kérdezhető le. Frissítsd az oldalt.' });
+                    }
+                }).always(function () {
+                    if (running && pid === productId) {
+                        poll();
+                    }
+                });
+            }, 4000);
+        }
+
+        $(document).on('click', '.mg-ai-redesign-trigger', function () {
+            stopPolling();
+            setRunning(false);
+            productId = String($(this).data('productId') || '');
+            $('#mg-ai-redesign-product-id').val(productId);
+            $('#mg-ai-redesign-product-name').text($(this).data('productTitle') || '');
+            $('#mg-ai-redesign-original').attr('src', '').hide();
+            $('#mg-ai-redesign-original-error, #mg-ai-redesign-candidates').empty();
+            $('#mg-ai-redesign-text, #mg-ai-redesign-hint, #mg-ai-redesign-custom-prompt').val('');
+            $status().text('');
+            if (productId) {
+                loadInfo();
+            }
+        });
+
+        $(document).on('click', '#mg-ai-redesign-submit', function () {
+            if (!productId || running) {
+                return;
+            }
+            setRunning(true);
+            pollFailures = 0;
+            $status().text(stageLabels.prepare);
+            const pid = productId;
+            post('mg_ai_redesign_generate', {
+                analyzer: $('#mg-ai-redesign-analyzer').val() || '',
+                intensity: $('#mg-ai-redesign-intensity').val() || 'strong',
+                quality: $('#mg-ai-redesign-quality').val() || 'medium',
+                design_text: $('#mg-ai-redesign-text').val() || '',
+                style_hint: $('#mg-ai-redesign-hint').val() || '',
+                custom_prompt: $('#mg-ai-redesign-custom-prompt').val() || '',
+            }).done(function (resp) {
+                if (pid !== productId) {
+                    return;
+                }
+                if (resp && resp.data && resp.data.status === 'running') {
+                    return; // már fut egy generálás, a lekérdezés követi
+                }
+                handleState(resp && resp.data ? resp.data : { status: 'error', message: responseMessage(resp) });
+            }).fail(function (xhr) {
+                // Proxy / időkorlát (nem JSON válasz): a szerver tovább dolgozik,
+                // az állapotot a lekérdezés követi. JSON hiba esetén megállunk.
+                if (pid === productId && xhr && xhr.responseJSON && xhr.responseJSON.data) {
+                    handleState({ status: 'error', message: xhr.responseJSON.data.message || ('HTTP ' + xhr.status) });
+                }
+            });
+            poll();
+        });
+
+        $(document).on('click', '.mg-ai-redesign-apply', function () {
+            const $btn = $(this);
+            if (!window.confirm('Ez a minta kerül a termékre, és az összes mockup újragenerálódik. A többi jelölt törlődik. Folytatod?')) {
+                return;
+            }
+            $btn.prop('disabled', true);
+            post('mg_ai_redesign_apply', { attachment_id: $btn.attr('data-attachment-id') }).done(function (resp) {
+                if (resp && resp.success) {
+                    $('#mg-ai-redesign-candidates').empty();
+                    $status().text(responseMessage(resp) || 'Sorba állítva.');
+                } else {
+                    $btn.prop('disabled', false);
+                    $status().text('Hiba: ' + (responseMessage(resp) || 'ismeretlen'));
+                }
+            }).fail(function () {
+                $btn.prop('disabled', false);
+                $status().text('Hiba: a kérés nem sikerült.');
+            });
+        });
+
+        $(document).on('click', '.mg-ai-redesign-edit-prompt', function () {
+            $('#mg-ai-redesign-custom-prompt').val($(this).data('prompt') || '');
+            $('.mg-ai-redesign__prompt').prop('open', true);
+            document.getElementById('mg-ai-redesign-custom-prompt').focus();
         });
     }
 
