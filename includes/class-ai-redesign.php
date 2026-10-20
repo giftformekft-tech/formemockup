@@ -69,6 +69,7 @@ class MG_AI_Redesign {
             'anthropic_api_key' => '',
             'quality' => 'medium',
             'describe_prompt' => '',
+            'edge_cleanup' => true,
         ), is_array($stored) ? $stored : array());
         if (trim((string) $settings['describe_prompt']) === '') {
             $settings['describe_prompt'] = self::default_describe_prompt();
@@ -90,6 +91,7 @@ class MG_AI_Redesign {
             'quality' => isset($input['quality']) && in_array($input['quality'], array('low', 'medium', 'high'), true) ? $input['quality'] : 'medium',
             // Empty, unchanged or reset: follow the built-in default (and its later updates).
             'describe_prompt' => '',
+            'edge_cleanup' => array_key_exists('edge_cleanup', $input) ? !empty($input['edge_cleanup']) : !empty($current['edge_cleanup']),
         );
         $describe = isset($input['describe_prompt']) ? trim(sanitize_textarea_field($input['describe_prompt'])) : '';
         if (empty($input['describe_prompt_reset']) && $describe !== '' && $describe !== self::default_describe_prompt()) {
@@ -810,6 +812,10 @@ class MG_AI_Redesign {
             }
             self::set_stage($product_id, 'image');
             $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);
+            // Design-flow upscale input: edge cleanup, binary alpha, alpha crop,
+            // so the browser's 4× upscale does not enlarge colored fringes.
+            self::set_stage($product_id, 'prepare_upscale');
+            MG_Image_Utils::prepare_upscale_input($tmp, !empty(self::get_settings()['edge_cleanup']));
             self::set_stage($product_id, 'save');
             $slug = (string) get_post_field('post_name', $product_id);
             // A unique name per candidate: a deleted candidate's URL is never reused,

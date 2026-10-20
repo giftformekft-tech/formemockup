@@ -71,6 +71,14 @@ generálás után magától indul, közben az ablakot nyitva kell hagyni. Ha a b
 (nincs WebGL), jóváhagyáskor a szerver a régi 3×-os Lanczos-nagyítást alkalmazza. A modell
 átalakítása: `tools/convert-realesrgan.py`. Teszt: `node tests/ai-upscale-browser-test.js`.
 
+**Felskálázás előtti előkészítés (2.42.13):** a GPT Image képe mentéskor a Design-flow
+upscale-bemenetével azonos kezelést kap (`MG_Image_Utils::prepare_upscale_input`): peremjavítás
+(a félig átlátszó szélpixelek a legközelebbi fedő belső pixel színét kapják, legfeljebb 3 px),
+kétértékű átlátszóság 50%-nál, és az üres szél levágása csak az átlátszóság szerint. Így a 4×-es
+AI felskálázás nem nagyítja fel a színes vagy sötét szegélyt. Átlátszatlan képen nem fut. A
+peremjavítás kikapcsolható: **AI Minta SEO és tagelés → AI újratervezés → Peremjavítás a
+felskálázás előtt**; a rendelések AI nyomatánál továbbra is ki van kapcsolva.
+
 **Palettás PNG (2.42.12):** a felskálázott AI minta a Design-flow app upscale-jével azonos
 módon **255 színes palettás PNG** lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó
 pixelek RGB-je 0, kvantálás dithering nélkül, az élsimított szélek megtartják az átlátszóságukat

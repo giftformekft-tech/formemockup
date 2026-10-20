@@ -124,6 +124,12 @@ $settings = MG_AI_Redesign::get_settings();
 check($settings['anthropic_api_key'] === 'sk-ant-test', 'empty key field keeps the saved key');
 check($settings['quality'] === 'medium', 'invalid quality falls back to medium');
 check(count(MG_AI_Redesign::get_analyzers()) === 5, 'OpenAI + 4 Claude analyzers');
+check($settings['edge_cleanup'] === true, 'edge cleanup on by default for redesigns');
+MG_AI_Redesign::save_settings(array('edge_cleanup' => '0'));
+check(MG_AI_Redesign::get_settings()['edge_cleanup'] === false, 'edge cleanup can be turned off');
+MG_AI_Redesign::save_settings(array('quality' => 'low'));
+check(MG_AI_Redesign::get_settings()['edge_cleanup'] === false, 'a save without the field keeps it');
+MG_AI_Redesign::save_settings(array('edge_cleanup' => '1', 'quality' => 'medium'));
 
 // Claude request shape and parsing.
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'end_turn', 'content' => array(

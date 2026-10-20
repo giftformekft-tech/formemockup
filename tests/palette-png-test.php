@@ -149,6 +149,58 @@ try {
     check(strpos($e->getMessage(), 'teljesen átlátszó') !== false, 'fully transparent input refused');
 }
 
+// Upscale input preparation (Design-flow): edge cleanup, binary alpha, alpha crop.
+function px_at($path, $x, $y) {
+    $im = new Imagick($path);
+    $c = $im->getImagePixelColor($x, $y)->getColor(true);
+    $im->clear();
+    return array((int) round($c['r'] * 255), (int) round($c['g'] * 255), (int) round($c['b'] * 255), (int) round($c['a'] * 255));
+}
+// 80×60 transparent canvas, an opaque red 20×20 square at (30,20) with a
+// semi-transparent dark contaminated ring around it (the generated fringe).
+$fringe = new Imagick();
+$fringe->newImage(80, 60, new ImagickPixel('transparent'));
+$ring = new ImagickDraw();
+$ring->setFillColor(new ImagickPixel('rgba(40,10,10,0.6)'));
+$ring->rectangle(28, 18, 51, 41);
+$fringe->drawImage($ring);
+$core = new ImagickDraw();
+$core->setFillColor('#ff0000');
+$core->rectangle(30, 20, 49, 39);
+$fringe->drawImage($core);
+$fringe->setImageFormat('png');
+$fringe->writeImage("$dir/fringe.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/fringe.png", true);
+check($r['changed'] && array($r['width'], $r['height']) === array(24, 24), 'cropped to the alpha bounds of the ring: ' . $r['width'] . 'x' . $r['height']);
+$edge = px_at("$dir/fringe.png", 0, 0);
+check($edge[3] === 255 && $edge[0] > 240 && $edge[1] < 15, 'the 60% fringe became opaque with the interior red: ' . implode(',', $edge));
+check(px_at("$dir/fringe.png", 12, 12) === array(255, 0, 0, 255), 'interior untouched');
+$fringe->writeImage("$dir/fringe2.png");
+MG_Image_Utils::prepare_upscale_input("$dir/fringe2.png", false);
+$dark = px_at("$dir/fringe2.png", 0, 0);
+check($dark[3] === 255 && $dark[0] < 80, 'without edge cleanup the fringe keeps its own color: ' . implode(',', $dark));
+
+// A faint (below 50%) haze disappears instead of becoming a hard outline.
+$haze = new Imagick();
+$haze->newImage(50, 50, new ImagickPixel('transparent'));
+$h = new ImagickDraw();
+$h->setFillColor(new ImagickPixel('rgba(0,0,255,0.3)'));
+$h->rectangle(0, 0, 49, 49);
+$haze->drawImage($h);
+$c2 = new ImagickDraw();
+$c2->setFillColor('#00ff00');
+$c2->rectangle(20, 20, 29, 29);
+$haze->drawImage($c2);
+$haze->setImageFormat('png');
+$haze->writeImage("$dir/haze.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/haze.png", true);
+check(array($r['width'], $r['height']) === array(10, 10), 'faint haze removed, crop to the solid part');
+
+// Opaque artwork is left exactly as it is.
+$before = file_get_contents("$dir/white.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/white.png", true);
+check(!$r['changed'] && file_get_contents("$dir/white.png") === $before, 'opaque image untouched');
+
 array_map('unlink', glob("$dir/*"));
 rmdir($dir);
 echo "Palette PNG: $passed checks passed on real Imagick.\n";

@@ -998,6 +998,7 @@
             prepare: 'Előkészítés…',
             analyze: 'Az elemző modell vizsgálja a mintát és írja az új promptot…',
             image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
+            prepare_upscale: 'Az új minta széleinek tisztítása a felskálázáshoz…',
             save: 'Mentés a médiatárba…',
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', full: 'teljesen új' };

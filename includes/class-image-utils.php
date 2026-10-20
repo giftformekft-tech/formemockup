@@ -247,6 +247,89 @@ class MG_Image_Utils {
     }
 
     /**
+     * Prepares a generated PNG for the AI upscale, in place, the way the
+     * Design-flow app prepares its upscale input: edge cleanup (optional),
+     * binary alpha at 50% (128 and up opaque), then the transparent margins
+     * cropped by alpha only. Clean, hard edges keep the upscaler from
+     * enlarging colored fringes. Opaque images are left untouched.
+     *
+     * @return array{width:int,height:int,changed:bool}
+     * @throws RuntimeException If the image cannot be processed completely.
+     */
+    public static function prepare_upscale_input($path, $clean_edges = true) {
+        $image = new Imagick($path);
+        try {
+            $range = $image->getImageAlphaChannel() ? $image->getImageChannelRange(Imagick::CHANNEL_ALPHA) : null;
+            $quantum = Imagick::getQuantumRange();
+            if ($range === null || $range['minima'] >= $quantum['quantumRangeLong']) {
+                return array('width' => $image->getImageWidth(), 'height' => $image->getImageHeight(), 'changed' => false);
+            }
+            if ($clean_edges) {
+                self::clean_transparent_edges($image);
+            }
+            self::threshold_alpha_binary($image, 128);
+            list($x, $y, $width, $height) = self::alpha_bounds($image);
+            if ($x > 0 || $y > 0 || $width < $image->getImageWidth() || $height < $image->getImageHeight()) {
+                $image->cropImage($width, $height, $x, $y);
+                $image->setImagePage(0, 0, 0, 0);
+            }
+            $image->setImageFormat('png');
+            $image->setImageDepth(8);
+            $image->setOption('png:color-type', '6');
+            $image->setOption('png:bit-depth', '8');
+            $tmp = $path . '.prepared-tmp';
+            if (!$image->writeImage($tmp) || !@rename($tmp, $path)) {
+                @unlink($tmp);
+                throw new RuntimeException('Az előkészített PNG nem menthető.');
+            }
+            return array('width' => $width, 'height' => $height, 'changed' => true);
+        } finally {
+            $image->clear();
+        }
+    }
+
+    /**
+     * Bounding box of the non-transparent pixels, from the alpha channel only
+     * (trimImage() would trim by the corner color, also on opaque artwork).
+     *
+     * @return array{0:int,1:int,2:int,3:int} x, y, width, height
+     */
+    public static function alpha_bounds($image) {
+        $mask = clone $image;
+        try {
+            $mask->setImageAlphaChannel(Imagick::ALPHACHANNEL_EXTRACT);
+            $mask->setImageDepth(8);
+            $mask->setImageFormat('gray');
+            $raw = $mask->getImageBlob();
+            $width = $mask->getImageWidth();
+            $height = $mask->getImageHeight();
+        } finally {
+            $mask->clear();
+        }
+        if (strlen($raw) !== $width * $height) {
+            throw new RuntimeException('Nem olvasható a kép átlátszósága.');
+        }
+        $top = $bottom = null;
+        $left = $width;
+        $right = 0;
+        for ($y = 0; $y < $height; $y++) {
+            $line = substr($raw, $y * $width, $width);
+            $lead = strspn($line, "\0");
+            if ($lead === $width) {
+                continue;
+            }
+            $top = $top ?? $y;
+            $bottom = $y;
+            $left = min($left, $lead);
+            $right = max($right, $width - strspn(strrev($line), "\0"));
+        }
+        if ($top === null) {
+            throw new RuntimeException('A kép az átlátszóság küszöbölése után teljesen átlátszó lett.');
+        }
+        return array($left, $top, $right - $left, $bottom - $top + 1);
+    }
+
+    /**
      * Rewrites a PNG as an indexed (palette) PNG of at most $colors colors,
      * in place, the way the Design-flow app finishes its upscales: fully
      * transparent RGB is zeroed, colors are quantized without dithering,

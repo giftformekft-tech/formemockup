@@ -61,6 +61,10 @@ class MG_AI_SEO_Page {
             echo '<option value="' . esc_attr($value) . '"' . selected($settings['quality'], $value, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select></td></tr>';
+        echo '<tr><th scope="row">' . esc_html__('Peremjavítás a felskálázás előtt', 'mockup-generator') . '</th><td>';
+        echo '<input type="hidden" name="mg_ai_redesign_settings[edge_cleanup]" value="0" />';
+        echo '<label><input type="checkbox" name="mg_ai_redesign_settings[edge_cleanup]" value="1"' . checked(!empty($settings['edge_cleanup']), true, false) . ' /> ' . esc_html__('Design-flow peremjavítás az AI újratervezés képein', 'mockup-generator') . '</label>';
+        echo '<p class="description">' . esc_html__('A felskálázás előtt a félig átlátszó szélpixelek a legközelebbi fedő belső pixel színét kapják (legfeljebb 3 px), majd az átlátszóság 50%-nál kétértékű lesz és az üres szél levágódik, hogy a nagyítás ne erősítse fel a színes szegélyt. Csak az AI újratervezésre vonatkozik; a rendelések AI nyomatánál a peremjavítás továbbra is ki van kapcsolva.', 'mockup-generator') . '</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg_ai_redesign_describe_prompt">' . esc_html__('Részletes leírás mód – elemző prompt', 'mockup-generator') . '</label></th><td>';
         echo '<textarea id="mg_ai_redesign_describe_prompt" name="mg_ai_redesign_settings[describe_prompt]" rows="12" class="large-text code">' . esc_textarea($settings['describe_prompt']) . '</textarea>';
         echo '<p class="description">' . esc_html__('A „Részletes leírás” prompt módban ezt kapja az elemző modell a mintával együtt; ebből ír egy angol képpromptot. A JSON-formátum utasítását, a pontos szöveget és a fix képszabályokat (fekete körvonal, kitöltött vászon, nincs logó és webcím, nincs színes szegély vagy ragyogás) a rendszer mindig hozzáteszi.', 'mockup-generator') . '</p>';
