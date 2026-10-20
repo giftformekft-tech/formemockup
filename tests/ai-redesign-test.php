@@ -106,7 +106,7 @@ check($body['model'] === 'claude-opus-5-5' && $body['output_config']['effort'] =
 check($body['output_config']['format']['type'] === 'json_schema' && $body['output_config']['format']['schema']['additionalProperties'] === false, 'Claude structured output');
 check(!isset($body['thinking']), 'no thinking config sent (adaptive by default)');
 check($body['messages'][0]['content'][0]['source'] === array('type' => 'base64', 'media_type' => 'image/jpeg', 'data' => 'QUJD'), 'Claude image block');
-check(strpos($body['system'], 'Teljesen új vizuális koncepció') !== false, 'strong rules in system prompt');
+check(strpos($body['system'], 'ugyanaz az ötlet') !== false && strpos($body['system'], '(4) a színek') !== false, 'strong rules keep the idea, change the four aspects');
 check($analysis['text_lines'] === array('Legjobb Apa', 'a világon'), 'analysis text lines parsed');
 
 $http_calls = array();

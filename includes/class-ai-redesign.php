@@ -88,7 +88,7 @@ class MG_AI_Redesign {
 
     public static function get_intensities() {
         return array(
-            'strong' => __('Teljesen új stílus – csak a szöveg marad (ajánlott)', 'mockup-generator'),
+            'strong' => __('Új stílus – ugyanaz az ötlet, új illusztráció, betűk, elrendezés és színek (ajánlott)', 'mockup-generator'),
             'medium' => __('Átdolgozás – az eredeti kép alapján, új betűkkel és színekkel', 'mockup-generator'),
         );
     }
@@ -98,9 +98,13 @@ class MG_AI_Redesign {
             return "Átdolgozás: a fő kompozíció hasonló maradhat, de a betűtípusok, a színek és a díszítőelemek legyenek újak, "
                 . "az illusztrációt pedig újrarajzolt, eltérő stílusban képzeld el. Csak távolról emlékeztessen az eredetire.";
         }
-        return "Teljesen új vizuális koncepció: az eredetitől egyértelműen eltérő betűtípus-kategória (például kézírásos helyett "
-            . "geometrikus groteszk, vagy fordítva), más kompozíció és szövegelrendezés, más színpaletta és más illusztrációs megoldás. "
-            . "Első ránézésre ne lehessen összekeverni az eredetivel.";
+        return "Új stílus, ugyanaz az ötlet: a minta mondanivalója, témája, humora és hangulata maradjon, és az illusztráció "
+            . "ugyanazt ábrázolja (ugyanaz a tárgy, figura vagy jelenet). Ez a négy dolog változzon egyértelműen:\n"
+            . "  (1) az illusztráció: ugyanaz a tárgy újrarajzolva, más rajzstílusban, más formákkal, nézőponttal vagy pózzal;\n"
+            . "  (2) a szövegek stílusa: más betűtípus-kategória, vastagság és betűeffekt (például kézírásos helyett groteszk, vagy fordítva);\n"
+            . "  (3) az elrendezés: más kompozíció, a szöveg és az illusztráció más egymáshoz viszonyított helye (a szöveg sorai ugyanazok maradnak);\n"
+            . "  (4) a színek: új színpaletta.\n"
+            . "  Ne találj ki új témát vagy új fő motívumot, és ne hagyd el az illusztrációt.";
     }
 
     public static function analysis_instructions($intensity) {
@@ -113,11 +117,12 @@ class MG_AI_Redesign {
             . "2. original_style: 1–3 mondatban az eredeti stílusa (betűtípusok jellege, elrendezés, színek, illusztráció, díszítés).\n"
             . "3. new_style: 1–3 mondatban, magyarul, az új terv.\n"
             . "4. image_prompt: részletes, angol nyelvű prompt egy képgeneráló modellnek az új tervhez. A szövegeket idézőjelben, "
-            . "betűhíven, magyar ékezetekkel írd bele, és add meg az elrendezésüket, a betűtípusok jellegét, a színeket és a grafikai elemeket.\n\n"
+            . "betűhíven, magyar ékezetekkel írd bele, és add meg az elrendezésüket, a betűtípusok jellegét, a színeket és a grafikai elemeket. "
+            . "Írd le benne, mit ábrázol az illusztráció és hogyan néz ki az új változata.\n\n"
             . "Az új terv szabályai:\n"
             . "- " . self::intensity_rules($intensity) . "\n"
-            . "- A téma, a humor és a hangulat maradhat, de az eredeti illusztrációit, karaktereit, ikonjait, díszítőelemeit és "
-            . "jellegzetes betűtípusát ne vedd át, és ne úgy írd le őket, hogy a képgenerátor az eredetit másolja.\n"
+            . "- Az eredeti illusztrációját, karaktereit, ikonjait és díszítőelemeit ne másold le formára pontosan, jellegzetes "
+            . "betűtípusát ne vedd át: a képgenerátornak az új változatot írd le, ne az eredetit.\n"
             . "- Ne kérj más márkák logóit, védett karaktereit, és ne nevezz meg ismert művészt vagy stílust utánzásra.\n"
             . "- A világosság jellege maradjon az eredetihez hasonló (világos minta világos, sötét minta sötét), "
             . "hogy ugyanazokon a pólószíneken jól mutasson.\n"

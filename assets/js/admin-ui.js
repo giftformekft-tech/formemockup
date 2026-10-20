@@ -1000,7 +1000,7 @@
             image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
             save: 'Mentés a médiatárba…',
         };
-        const intensityLabels = { strong: 'teljesen új stílus', medium: 'átdolgozás' };
+        const intensityLabels = { strong: 'új stílus', medium: 'átdolgozás' };
         let productId = '';
         let pollTimer = null;
         let running = false;

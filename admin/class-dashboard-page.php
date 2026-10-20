@@ -315,7 +315,7 @@ class MG_Dashboard_Page {
         foreach (MG_AI_Redesign::get_intensities() as $value => $label) {
             echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
         }
-        echo '</select><p class="description">A „teljesen új stílus” a képgenerálónak csak a szöveges leírást adja át, az eredeti képet nem, így annak grafikája nem kerülhet át.</p></td></tr>';
+        echo '</select><p class="description">Az „új stílus” megtartja az ötletet és azt, amit az illusztráció ábrázol, de újrarajzolja az illusztrációt, és új betűstílust, elrendezést és színeket ad. A képgeneráló csak a szöveges leírást kapja, az eredeti képet nem, így annak grafikája nem kerülhet át egy az egyben.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-analyzer">Elemző modell</label></th><td><select id="mg-ai-redesign-analyzer"></select><p class="description">Kiolvassa a szöveget és megírja az új stílus promptját. Claude modellekhez az Anthropic API-kulcsot az AI Minta SEO oldalon kell menteni.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-quality">Képminőség</label></th><td><select id="mg-ai-redesign-quality"><option value="low">Alacsony (olcsó, gyors)</option><option value="medium">Közepes</option><option value="high">Magas (drágább, lassabb)</option></select></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-text">Pontos szöveg</label></th><td><textarea id="mg-ai-redesign-text" rows="3" class="large-text" placeholder="Üresen az AI olvassa ki a képről"></textarea><p class="description">Ajánlott megadni: soronként egy sor a mintán. Így biztosan ugyanaz a szöveg kerül az új mintára.</p></td></tr>';

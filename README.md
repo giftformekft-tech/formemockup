@@ -11,8 +11,10 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
 2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
    3×-os felnagyítással, az eredeti átlátszóságával.
-   - **Teljesen új stílus** (ajánlott): a képgeneráló csak a szöveges leírást kapja, az
-     eredeti képet nem, így annak grafikája nem kerülhet át.
+   - **Új stílus** (ajánlott): az ötlet, a téma és az, hogy az illusztráció mit ábrázol,
+     marad; az illusztráció újrarajzolva, a szövegek stílusa, az elrendezés és a színek
+     újak. A képgeneráló csak a szöveges leírást kapja, az eredeti képet nem, így annak
+     grafikája nem kerülhet át egy az egyben.
    - **Átdolgozás**: az eredeti kép alapján, új betűkkel, színekkel és díszítéssel.
 3. A kész PNG jelöltként a médiatárba kerül (legfeljebb 6 jelölt termékenként). A
    **Jóváhagyás** a Minta cseréje sorával újragenerálja az összes mockupot, és a jóváhagyott
