@@ -50,6 +50,7 @@ class MG_AI_Redesign {
         add_action('wp_ajax_mg_ai_redesign_apply', array(__CLASS__, 'ajax_apply'));
         add_action('wp_ajax_mg_ai_redesign_upscaled', array(__CLASS__, 'ajax_upscaled'));
         add_action('wp_ajax_mg_ai_redesign_discard', array(__CLASS__, 'ajax_discard'));
+        add_action('wp_ajax_mg_ai_redesign_prepare', array(__CLASS__, 'ajax_prepare'));
     }
 
     public static function get_anthropic_models() {
@@ -880,10 +881,6 @@ class MG_AI_Redesign {
             }
             self::set_stage($product_id, 'image');
             $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);
-            // Design-flow upscale input: edge cleanup, binary alpha, alpha crop,
-            // so the browser's 4× upscale does not enlarge colored fringes.
-            self::set_stage($product_id, 'prepare_upscale');
-            MG_Image_Utils::prepare_upscale_input($tmp, !empty(self::get_settings()['edge_cleanup']));
             self::set_stage($product_id, 'save');
             $slug = (string) get_post_field('post_name', $product_id);
             // A unique name per candidate: a deleted candidate's URL is never reused,
@@ -966,6 +963,31 @@ class MG_AI_Redesign {
     }
 
     /**
+     * Design-flow upscale input, right before the upscale (not at generation,
+     * so the preview keeps the antialiased GPT image): edge cleanup (if on),
+     * binary alpha at 50%, alpha crop. Runs once per candidate.
+     *
+     * @return array The candidate for the page, with the prepared file's URL.
+     */
+    public static function prepare_candidate($product_id, $attachment_id) {
+        $candidate = self::find_candidate($product_id, $attachment_id);
+        $path = $candidate ? get_attached_file($candidate['attachment_id']) : '';
+        if (!$candidate || !is_string($path) || !is_file($path)) {
+            throw new RuntimeException(__('A felskálázandó AI minta nem található.', 'mockup-generator'));
+        }
+        if (($candidate['upscale'] ?? '') === 'none' && empty($candidate['prepared'])) {
+            $prepared = MG_Image_Utils::prepare_upscale_input($path, !empty(self::get_settings()['edge_cleanup']));
+            self::refresh_attachment_metadata($candidate['attachment_id'], $path);
+            $candidate = self::update_candidate($product_id, $attachment_id, array(
+                'prepared' => true,
+                'width' => $prepared['width'],
+                'height' => $prepared['height'],
+            ));
+        }
+        return self::candidate_for_ui($candidate);
+    }
+
+    /**
      * Replace a candidate's PNG with the browser's Real-ESRGAN 4× version.
      * Only an exact 4× PNG of a not yet upscaled candidate is accepted.
      */
@@ -1039,7 +1061,11 @@ class MG_AI_Redesign {
             throw new RuntimeException(__('A kiválasztott AI minta nem található. Generálj újat.', 'mockup-generator'));
         }
         if (($chosen['upscale'] ?? '') === 'none') {
-            // The browser could not AI-upscale it: same 3× enlargement as the export.
+            // The browser could not AI-upscale it: same 3× enlargement as the export,
+            // from the same prepared input.
+            if (empty($chosen['prepared'])) {
+                MG_Image_Utils::prepare_upscale_input($path, !empty(self::get_settings()['edge_cleanup']));
+            }
             MG_AI_Print_Generator::upscale_file($path);
             $chosen['upscale'] = 'lanczos3x';
         }
@@ -1213,6 +1239,15 @@ class MG_AI_Redesign {
             }
             $count = self::discard($product_id, $all ? 0 : $attachment_id);
             wp_send_json_success(array('deleted' => $count, 'message' => sprintf(__('%d AI minta törölve.', 'mockup-generator'), $count)));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
+    }
+
+    public static function ajax_prepare() {
+        $product_id = self::check_request();
+        try {
+            wp_send_json_success(self::prepare_candidate($product_id, isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0));
         } catch (Throwable $e) {
             wp_send_json_error(array('message' => $e->getMessage()));
         }

@@ -81,7 +81,14 @@ class MG_Design_Replace {
 
 // The real palette encoder runs on real Imagick in tests/palette-png-test.php.
 $palette_calls = array();
+$prepare_calls = array();
 class MG_Image_Utils {
+    public static function prepare_upscale_input($path, $clean_edges) {
+        $GLOBALS['prepare_calls'][] = array(basename($path), $clean_edges);
+        // The crop: a 10×10 test PNG becomes 8×6.
+        file_put_contents($path, make_png(8, 6));
+        return array('width' => 8, 'height' => 6, 'changed' => true);
+    }
     public static function to_palette_png($path, $colors) {
         $GLOBALS['palette_calls'][] = array(basename($path), $colors);
         $info = getimagesize($path);
@@ -326,11 +333,38 @@ $meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upsc
 file_put_contents(get_attached_file(22), make_png(10, 10));
 $enqueued = array();
 $applied = MG_AI_Redesign::apply(6, 22);
-check(getimagesize(get_attached_file(22))[0] === 30, 'not upscaled candidate gets 3× on approval');
+check(getimagesize(get_attached_file(22))[0] === 24, 'not upscaled candidate gets prepared, then 3× on approval');
 check(end($palette_calls) === array('att-22.png', 255) && end($meta[6][MG_AI_Redesign::META_HISTORY])['palette'] === 42, 'the 3× fallback gets the palette finish too');
 check($applied['candidate']['attachment_id'] === 22 && $applied['candidate']['upscale'] === 'lanczos3x' && $applied['candidate']['palette'] === 42
     && strpos($applied['candidate']['full'], 'att-22.png?v=') !== false, 'approval returns the finished file for the page');
 check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
+
+// Upscale input is prepared right before the upscale (the preview stays the GPT image), once.
+$meta[9][MG_AI_Redesign::META_CANDIDATES] = array(
+    array('attachment_id' => 41, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'),
+);
+file_put_contents(get_attached_file(41), make_png(10, 10));
+$prepare_calls = array();
+$prepared = MG_AI_Redesign::prepare_candidate(9, 41);
+check($prepare_calls === array(array('att-41.png', true)), 'prepared with the edge cleanup setting');
+check($prepared['prepared'] === true && $prepared['width'] === 8 && $prepared['height'] === 6 && strpos($prepared['full'], 'att-41.png?v=') !== false, 'prepared candidate: new size, versioned URL');
+MG_AI_Redesign::prepare_candidate(9, 41);
+check(count($prepare_calls) === 1, 'prepared only once');
+file_put_contents($test_dir . '/up41.png', make_png(32, 24));
+check(MG_AI_Redesign::store_upscaled(9, 41, $test_dir . '/up41.png')['upscale'] === 'ai4x', 'the 4× check uses the prepared size');
+MG_AI_Redesign::save_settings(array('edge_cleanup' => '0'));
+$meta[9][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 42, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle');
+file_put_contents(get_attached_file(42), make_png(10, 10));
+MG_AI_Redesign::prepare_candidate(9, 42);
+check(end($prepare_calls) === array('att-42.png', false), 'edge cleanup off: still binary alpha and crop');
+MG_AI_Redesign::save_settings(array('edge_cleanup' => '1'));
+throws(function () { MG_AI_Redesign::prepare_candidate(9, 99); }, 'nem található', 'unknown candidate not prepared');
+// The 3× fallback prepares an unprepared candidate first.
+$meta[9][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 43, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(43), make_png(10, 10));
+$prepare_calls = array();
+MG_AI_Redesign::apply(9, 43);
+check($prepare_calls === array(array('att-43.png', true)) && getimagesize(get_attached_file(43))[0] === 24, 'fallback: prepared, then 3× (8 → 24 px)');
 
 // Discarding candidates: one, then all; the PNGs leave the media library.
 $deleted = array();

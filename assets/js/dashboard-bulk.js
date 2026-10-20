@@ -330,6 +330,14 @@
             let note = '';
             try {
                 if (item.candidate.upscale === 'none' && window.MGAIUpscale) {
+                    // Edge cleanup, binary alpha and crop on the server first (Design-flow input).
+                    item.note = 'A szélek előkészítése a felskálázáshoz…';
+                    render(item);
+                    const prepared = await post('mg_ai_redesign_prepare', { product_id: item.id, attachment_id: item.candidate.attachment_id });
+                    if (!prepared || !prepared.success || !prepared.data) {
+                        throw new Error(message(prepared) || 'az előkészítés nem sikerült');
+                    }
+                    item.candidate = prepared.data;
                     item.note = 'AI felskálázás indul…';
                     render(item);
                     const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {

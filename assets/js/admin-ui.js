@@ -998,7 +998,6 @@
             prepare: 'Előkészítés…',
             analyze: 'Az elemző modell vizsgálja a mintát és írja az új promptot…',
             image: 'A képgeneráló rajzolja az új mintát (1–3 perc)…',
-            prepare_upscale: 'Az új minta széleinek tisztítása a felskálázáshoz…',
             save: 'Mentés a médiatárba…',
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
@@ -1218,11 +1217,18 @@
             upscaling = true;
             const pid = productId;
             $('.mg-ai-redesign-upscale, .mg-ai-redesign-apply').prop('disabled', true);
-            $status().text('AI felskálázás indul (első alkalommal a modell betöltése is pár másodperc)…');
-            window.MGAIUpscale.upscale(url, function (p) {
-                if (pid === productId) {
-                    $status().text('AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
+            $status().text('A szélek előkészítése a felskálázáshoz…');
+            // Edge cleanup, binary alpha and crop on the server first (Design-flow input).
+            Promise.resolve(post('mg_ai_redesign_prepare', { attachment_id: attachmentId })).then(function (prepared) {
+                if (!prepared || !prepared.success || !prepared.data || !prepared.data.full) {
+                    throw new Error((prepared && prepared.data && prepared.data.message) || 'az előkészítés nem sikerült.');
                 }
+                $status().text('AI felskálázás indul (első alkalommal a modell betöltése is pár másodperc)…');
+                return window.MGAIUpscale.upscale(prepared.data.full, function (p) {
+                    if (pid === productId) {
+                        $status().text('AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
+                    }
+                });
             }).then(function (blob) {
                 const cfg = window.MG_AJAX || {};
                 const form = new FormData();
