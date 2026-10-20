@@ -83,8 +83,8 @@ class MG_Design_Replace {
 $palette_calls = array();
 $prepare_calls = array();
 class MG_Image_Utils {
-    public static function prepare_upscale_input($path, $clean_edges) {
-        $GLOBALS['prepare_calls'][] = array(basename($path), $clean_edges);
+    public static function prepare_upscale_input($path, $clean_edges, $alpha_threshold) {
+        $GLOBALS['prepare_calls'][] = array(basename($path), $clean_edges, $alpha_threshold);
         // The crop: a 10×10 test PNG becomes 8×6.
         file_put_contents($path, make_png(8, 6));
         return array('width' => 8, 'height' => 6, 'changed' => true);
@@ -137,6 +137,18 @@ check(MG_AI_Redesign::get_settings()['edge_cleanup'] === false, 'edge cleanup ca
 MG_AI_Redesign::save_settings(array('quality' => 'low'));
 check(MG_AI_Redesign::get_settings()['edge_cleanup'] === false, 'a save without the field keeps it');
 MG_AI_Redesign::save_settings(array('edge_cleanup' => '1', 'quality' => 'medium'));
+check($settings['alpha_binary'] === true && $settings['alpha_threshold'] === 50, 'binary alpha on at 50% by default');
+MG_AI_Redesign::save_settings(array('alpha_binary' => '0', 'alpha_threshold' => '30'));
+$s = MG_AI_Redesign::get_settings();
+check($s['alpha_binary'] === false && $s['alpha_threshold'] === 30, 'binary alpha can be turned off, threshold saved');
+MG_AI_Redesign::save_settings(array('quality' => 'medium'));
+$s = MG_AI_Redesign::get_settings();
+check($s['alpha_binary'] === false && $s['alpha_threshold'] === 30, 'a save without the fields keeps them');
+MG_AI_Redesign::save_settings(array('alpha_binary' => '1', 'alpha_threshold' => '150'));
+check(MG_AI_Redesign::get_settings()['alpha_threshold'] === 99, 'threshold clamped to 99%');
+MG_AI_Redesign::save_settings(array('alpha_threshold' => 'abc'));
+check(MG_AI_Redesign::get_settings()['alpha_threshold'] === 99, 'a non-number keeps the saved threshold');
+MG_AI_Redesign::save_settings(array('alpha_threshold' => '50', 'quality' => 'medium'));
 
 // Claude request shape and parsing.
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'end_turn', 'content' => array(
@@ -346,7 +358,7 @@ $meta[9][MG_AI_Redesign::META_CANDIDATES] = array(
 file_put_contents(get_attached_file(41), make_png(10, 10));
 $prepare_calls = array();
 $prepared = MG_AI_Redesign::prepare_candidate(9, 41);
-check($prepare_calls === array(array('att-41.png', true)), 'prepared with the edge cleanup setting');
+check($prepare_calls === array(array('att-41.png', true, 128)), 'prepared with the edge cleanup and 50% binary alpha settings');
 check($prepared['prepared'] === true && $prepared['width'] === 8 && $prepared['height'] === 6 && strpos($prepared['full'], 'att-41.png?v=') !== false, 'prepared candidate: new size, versioned URL');
 MG_AI_Redesign::prepare_candidate(9, 41);
 check(count($prepare_calls) === 1, 'prepared only once');
@@ -356,15 +368,25 @@ MG_AI_Redesign::save_settings(array('edge_cleanup' => '0'));
 $meta[9][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 42, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle');
 file_put_contents(get_attached_file(42), make_png(10, 10));
 MG_AI_Redesign::prepare_candidate(9, 42);
-check(end($prepare_calls) === array('att-42.png', false), 'edge cleanup off: still binary alpha and crop');
-MG_AI_Redesign::save_settings(array('edge_cleanup' => '1'));
+check(end($prepare_calls) === array('att-42.png', false, 128), 'edge cleanup off: still binary alpha and crop');
+MG_AI_Redesign::save_settings(array('edge_cleanup' => '1', 'alpha_threshold' => '30'));
+$meta[9][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 44, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle');
+file_put_contents(get_attached_file(44), make_png(10, 10));
+MG_AI_Redesign::prepare_candidate(9, 44);
+check(end($prepare_calls) === array('att-44.png', true, 77), '30% threshold passed as 77 of 255');
+MG_AI_Redesign::save_settings(array('alpha_binary' => '0'));
+$meta[9][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 45, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle');
+file_put_contents(get_attached_file(45), make_png(10, 10));
+MG_AI_Redesign::prepare_candidate(9, 45);
+check(end($prepare_calls) === array('att-45.png', true, 0), 'binary alpha off: threshold 0, partial alpha kept');
+MG_AI_Redesign::save_settings(array('alpha_binary' => '1', 'alpha_threshold' => '50'));
 throws(function () { MG_AI_Redesign::prepare_candidate(9, 99); }, 'nem található', 'unknown candidate not prepared');
 // The 3× fallback prepares an unprepared candidate first.
 $meta[9][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 43, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'));
 file_put_contents(get_attached_file(43), make_png(10, 10));
 $prepare_calls = array();
 MG_AI_Redesign::apply(9, 43);
-check($prepare_calls === array(array('att-43.png', true)) && getimagesize(get_attached_file(43))[0] === 24, 'fallback: prepared, then 3× (8 → 24 px)');
+check($prepare_calls === array(array('att-43.png', true, 128)) && getimagesize(get_attached_file(43))[0] === 24, 'fallback: prepared, then 3× (8 → 24 px)');
 
 // Discarding candidates: one, then all; the PNGs leave the media library.
 $deleted = array();

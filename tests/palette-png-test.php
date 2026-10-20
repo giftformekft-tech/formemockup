@@ -149,7 +149,7 @@ try {
     check(strpos($e->getMessage(), 'teljesen átlátszó') !== false, 'fully transparent input refused');
 }
 
-// Upscale input preparation (Design-flow): edge cleanup, binary alpha, alpha crop.
+// Upscale input preparation (Design-flow): edge cleanup, binary alpha (optional), alpha crop.
 function px_at($path, $x, $y) {
     $im = new Imagick($path);
     $c = $im->getImagePixelColor($x, $y)->getColor(true);
@@ -195,6 +195,25 @@ $haze->setImageFormat('png');
 $haze->writeImage("$dir/haze.png");
 $r = MG_Image_Utils::prepare_upscale_input("$dir/haze.png", true);
 check(array($r['width'], $r['height']) === array(10, 10), 'faint haze removed, crop to the solid part');
+
+// Binary alpha off: the antialiased edge goes to the upscaler as it is.
+$fringe->writeImage("$dir/fringe3.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/fringe3.png", true, 0);
+$soft = px_at("$dir/fringe3.png", 0, 0);
+check(array($r['width'], $r['height']) === array(24, 24) && abs($soft[3] - 153) <= 2, 'binary alpha off: the 60% fringe keeps its partial alpha: ' . implode(',', $soft));
+check($soft[0] > 240 && $soft[1] < 15, 'binary alpha off: the fringe still gets the interior red');
+// A higher threshold drops the 60% fringe, a lower one keeps the 30% haze.
+$fringe->writeImage("$dir/fringe4.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/fringe4.png", true, 191);
+check(array($r['width'], $r['height']) === array(20, 20), '75% threshold: the 60% fringe removed');
+$haze->writeImage("$dir/haze2.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/haze2.png", false, 64);
+check(array($r['width'], $r['height']) === array(50, 50) && px_at("$dir/haze2.png", 0, 0)[3] === 255, '25% threshold: the 30% haze becomes opaque');
+// Nothing to do (no cleanup, no binary alpha, no margin): the file is not rewritten.
+$haze->writeImage("$dir/haze3.png");
+$before = file_get_contents("$dir/haze3.png");
+$r = MG_Image_Utils::prepare_upscale_input("$dir/haze3.png", false, 0);
+check(!$r['changed'] && file_get_contents("$dir/haze3.png") === $before, 'both off and no margin: file untouched');
 
 // Opaque artwork is left exactly as it is.
 $before = file_get_contents("$dir/white.png");

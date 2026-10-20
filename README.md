@@ -109,7 +109,11 @@ upscale-bemenetével azonos kezelést kap; az előnézet addig az eredeti, élsi
 kétértékű átlátszóság 50%-nál, és az üres szél levágása csak az átlátszóság szerint. Így a 4×-es
 AI felskálázás nem nagyítja fel a színes vagy sötét szegélyt. Átlátszatlan képen nem fut. A
 peremjavítás kikapcsolható: **AI Minta SEO és tagelés → AI újratervezés → Peremjavítás a
-felskálázás előtt**; a rendelések AI nyomatánál továbbra is ki van kapcsolva.
+felskálázás előtt**; a rendelések AI nyomatánál továbbra is ki van kapcsolva. **2.43.6 óta** a
+kétértékű átlátszóság is kapcsolható, a küszöbe 1–99% között állítható (**Kétértékű átlátszóság
+a felskálázás előtt**, alapból be, 50%): kikapcsolva a GPT-kép élsimított széle változatlanul megy
+a felskálázóba (simább szél, de a félig átlátszó szegély is felnagyítódik; ezt a peremjavítás
+tompítja), kisebb küszöb vastagabb, nagyobb vékonyabb szélt hagy.
 
 **Palettás PNG (2.42.12):** a felskálázott AI minta a Design-flow app upscale-jével azonos
 módon **255 színes palettás PNG** lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó

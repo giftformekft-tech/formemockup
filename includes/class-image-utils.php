@@ -249,14 +249,16 @@ class MG_Image_Utils {
     /**
      * Prepares a generated PNG for the AI upscale, in place, the way the
      * Design-flow app prepares its upscale input: edge cleanup (optional),
-     * binary alpha at 50% (128 and up opaque), then the transparent margins
-     * cropped by alpha only. Clean, hard edges keep the upscaler from
-     * enlarging colored fringes. Opaque images are left untouched.
+     * binary alpha (optional, 128 and up opaque by default), then the
+     * transparent margins cropped by alpha only. Clean, hard edges keep the
+     * upscaler from enlarging colored fringes; without the binary alpha the
+     * antialiased edge goes in as it is. Opaque images are left untouched.
      *
+     * @param int $alpha_threshold 1-255 binary alpha threshold, 0 keeps the partial alpha.
      * @return array{width:int,height:int,changed:bool}
      * @throws RuntimeException If the image cannot be processed completely.
      */
-    public static function prepare_upscale_input($path, $clean_edges = true) {
+    public static function prepare_upscale_input($path, $clean_edges = true, $alpha_threshold = 128) {
         $image = new Imagick($path);
         try {
             $range = $image->getImageAlphaChannel() ? $image->getImageChannelRange(Imagick::CHANNEL_ALPHA) : null;
@@ -267,9 +269,16 @@ class MG_Image_Utils {
             if ($clean_edges) {
                 self::clean_transparent_edges($image);
             }
-            self::threshold_alpha_binary($image, 128);
+            $alpha_threshold = (int) $alpha_threshold;
+            if ($alpha_threshold > 0) {
+                self::threshold_alpha_binary($image, $alpha_threshold);
+            }
             list($x, $y, $width, $height) = self::alpha_bounds($image);
-            if ($x > 0 || $y > 0 || $width < $image->getImageWidth() || $height < $image->getImageHeight()) {
+            $crop = $x > 0 || $y > 0 || $width < $image->getImageWidth() || $height < $image->getImageHeight();
+            if (!$crop && !$clean_edges && $alpha_threshold <= 0) {
+                return array('width' => $width, 'height' => $height, 'changed' => false);
+            }
+            if ($crop) {
                 $image->cropImage($width, $height, $x, $y);
                 $image->setImagePage(0, 0, 0, 0);
             }

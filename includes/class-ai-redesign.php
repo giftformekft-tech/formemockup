@@ -71,6 +71,8 @@ class MG_AI_Redesign {
             'quality' => 'medium',
             'describe_prompt' => '',
             'edge_cleanup' => true,
+            'alpha_binary' => true,
+            'alpha_threshold' => 50,
         ), is_array($stored) ? $stored : array());
         if (trim((string) $settings['describe_prompt']) === '') {
             $settings['describe_prompt'] = self::default_describe_prompt();
@@ -93,6 +95,10 @@ class MG_AI_Redesign {
             // Empty, unchanged or reset: follow the built-in default (and its later updates).
             'describe_prompt' => '',
             'edge_cleanup' => array_key_exists('edge_cleanup', $input) ? !empty($input['edge_cleanup']) : !empty($current['edge_cleanup']),
+            'alpha_binary' => array_key_exists('alpha_binary', $input) ? !empty($input['alpha_binary']) : !empty($current['alpha_binary']),
+            'alpha_threshold' => array_key_exists('alpha_threshold', $input) && is_numeric($input['alpha_threshold'])
+                ? max(1, min(99, (int) round((float) $input['alpha_threshold'])))
+                : (int) $current['alpha_threshold'],
         );
         $describe = isset($input['describe_prompt']) ? trim(sanitize_textarea_field($input['describe_prompt'])) : '';
         if (empty($input['describe_prompt_reset']) && $describe !== '' && $describe !== self::default_describe_prompt()) {
@@ -962,10 +968,19 @@ class MG_AI_Redesign {
         wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $path));
     }
 
+    /** Design-flow upscale input with the saved edge cleanup and binary alpha settings. */
+    private static function prepare_upscale_file($path) {
+        $settings = self::get_settings();
+        $threshold = !empty($settings['alpha_binary'])
+            ? (int) round(max(1, min(99, (int) $settings['alpha_threshold'])) * 255 / 100)
+            : 0;
+        return MG_Image_Utils::prepare_upscale_input($path, !empty($settings['edge_cleanup']), $threshold);
+    }
+
     /**
      * Design-flow upscale input, right before the upscale (not at generation,
-     * so the preview keeps the antialiased GPT image): edge cleanup (if on),
-     * binary alpha at 50%, alpha crop. Runs once per candidate.
+     * so the preview keeps the antialiased GPT image): edge cleanup and binary
+     * alpha (each if on, 50% by default), alpha crop. Runs once per candidate.
      *
      * @return array The candidate for the page, with the prepared file's URL.
      */
@@ -976,7 +991,7 @@ class MG_AI_Redesign {
             throw new RuntimeException(__('A felskálázandó AI minta nem található.', 'mockup-generator'));
         }
         if (($candidate['upscale'] ?? '') === 'none' && empty($candidate['prepared'])) {
-            $prepared = MG_Image_Utils::prepare_upscale_input($path, !empty(self::get_settings()['edge_cleanup']));
+            $prepared = self::prepare_upscale_file($path);
             self::refresh_attachment_metadata($candidate['attachment_id'], $path);
             $candidate = self::update_candidate($product_id, $attachment_id, array(
                 'prepared' => true,
@@ -1064,7 +1079,7 @@ class MG_AI_Redesign {
             // The browser could not AI-upscale it: same 3× enlargement as the export,
             // from the same prepared input.
             if (empty($chosen['prepared'])) {
-                MG_Image_Utils::prepare_upscale_input($path, !empty(self::get_settings()['edge_cleanup']));
+                self::prepare_upscale_file($path);
             }
             MG_AI_Print_Generator::upscale_file($path);
             $chosen['upscale'] = 'lanczos3x';
