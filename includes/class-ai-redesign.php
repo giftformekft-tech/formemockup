@@ -23,6 +23,8 @@ class MG_AI_Redesign {
     const LOCK_PREFIX = 'mg_ai_redesign_lock_';
     const MAX_CANDIDATES = 6;
     const AI_SCALE = 4;
+    // Same finish as the Design-flow app's upscales: a 255-color palette PNG.
+    const PALETTE_COLORS = 255;
     const MAX_UPSCALED_BYTES = 83886080;
     const RUN_TIMEOUT = 600;
     const HTTP_TIMEOUT = 180;
@@ -912,11 +914,13 @@ class MG_AI_Redesign {
         if (!@copy($tmp_path, $path)) {
             throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
         }
+        $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
         self::refresh_attachment_metadata($candidate['attachment_id'], $path);
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array(
             'upscale' => 'ai4x',
-            'width' => (int) $info[0],
-            'height' => (int) $info[1],
+            'palette' => $palette['colors'],
+            'width' => $palette['width'],
+            'height' => $palette['height'],
         )));
     }
 
@@ -963,8 +967,12 @@ class MG_AI_Redesign {
         if (($chosen['upscale'] ?? '') === 'none') {
             // The browser could not AI-upscale it: same 3× enlargement as the export.
             MG_AI_Print_Generator::upscale_file($path);
-            self::refresh_attachment_metadata($chosen['attachment_id'], $path);
             $chosen['upscale'] = 'lanczos3x';
+        }
+        if (empty($chosen['palette'])) {
+            // Candidates from before 2.42.12 and the 3× fallback still need the palette finish.
+            $chosen['palette'] = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS)['colors'];
+            self::refresh_attachment_metadata($chosen['attachment_id'], $path);
         }
         $previous = array(
             'path' => (string) get_post_meta($product_id, '_mg_last_design_path', true),
@@ -989,6 +997,7 @@ class MG_AI_Redesign {
             'analyzer' => $chosen['analyzer'],
             'intensity' => $chosen['intensity'],
             'upscale' => $chosen['upscale'] ?? 'lanczos3x',
+            'palette' => (int) $chosen['palette'],
         );
         update_post_meta($product_id, self::META_HISTORY, array_slice($history, -20));
         return $queued;

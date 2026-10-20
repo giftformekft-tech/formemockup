@@ -71,6 +71,16 @@ generálás után magától indul, közben az ablakot nyitva kell hagyni. Ha a b
 (nincs WebGL), jóváhagyáskor a szerver a régi 3×-os Lanczos-nagyítást alkalmazza. A modell
 átalakítása: `tools/convert-realesrgan.py`. Teszt: `node tests/ai-upscale-browser-test.js`.
 
+**Palettás PNG (2.42.12):** a felskálázott AI minta a Design-flow app upscale-jével azonos
+módon **255 színes palettás PNG** lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó
+pixelek RGB-je 0, kvantálás dithering nélkül, az élsimított szélek megtartják az átlátszóságukat
+(teljes tRNS tábla, 6 alatti alfa teljesen átlátszó), és az átlátszó margó levágódik (csak az
+átlátszóság szerint, színre nem). Ez a böngészős AI felskálázás feltöltésekor fut, a 3×-os
+tartalék nagyítás és a korábbi jelöltek esetén jóváhagyáskor. Az Imagick kvantál, a palettás
+PNG-t a plugin írja soronként (3136×3392 px kb. 2 mp, ~60 MB). A rendelés-export ettől
+függetlenül, változatlanul 8 bites RGBA-t ír a nyomdának. Teszt: `php tests/palette-png-test.php`
+(valódi Imagick kell).
+
 A **Pontos szöveg** mezőt érdemes kitölteni (soronként egy sor): így biztosan ugyanaz a
 szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi jelölt promptja
 átírható és újrafuttatható, ekkor az elemzés kimarad.

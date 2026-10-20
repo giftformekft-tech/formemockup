@@ -53,6 +53,7 @@ function wp_remote_post($url, $request) {
 function wp_remote_retrieve_response_code($r) { return $r['code']; }
 function wp_remote_retrieve_body($r) { return $r['body']; }
 function as_enqueue_async_action() { return 1; }
+if (!class_exists('Imagick')) {
 class Imagick {
     const CHANNEL_ALPHA = 8;
     const FILTER_LANCZOS = 22;
@@ -70,6 +71,7 @@ class Imagick {
     public function readImageBlob($b) {}
     public function clear() {}
 }
+}
 class MG_Design_Replace {
     public static function enqueue_replacement($product_id, $path, $trigger) {
         $GLOBALS['enqueued'][] = array($product_id, $path, $trigger);
@@ -77,6 +79,15 @@ class MG_Design_Replace {
     }
 }
 
+// The real palette encoder runs on real Imagick in tests/palette-png-test.php.
+$palette_calls = array();
+class MG_Image_Utils {
+    public static function to_palette_png($path, $colors) {
+        $GLOBALS['palette_calls'][] = array(basename($path), $colors);
+        $info = getimagesize($path);
+        return array('width' => $info[0], 'height' => $info[1], 'colors' => 42);
+    }
+}
 require __DIR__ . '/../includes/class-ai-seo-generator.php';
 require __DIR__ . '/../includes/class-ai-print-generator.php';
 require __DIR__ . '/../includes/class-ai-redesign.php';
@@ -240,6 +251,7 @@ throws(function () { MG_AI_Redesign::apply(5, 99); }, 'nem található', 'unknow
 check(empty($enqueued), 'nothing queued for an unknown candidate');
 $result = MG_AI_Redesign::apply(5, 11);
 check($enqueued === array(array(5, get_attached_file(11), 'ai_redesign')), 'replacement queued with the AI PNG');
+check($palette_calls === array(array('att-11.png', 255)), 'an older candidate gets the palette finish on approval');
 check($deleted === array(12) && !isset($meta[5][MG_AI_Redesign::META_CANDIDATES]), 'other candidates deleted');
 check($meta[5][MG_AI_Redesign::META_HISTORY][0]['previous_path'] === $source && $result['job_id'] === 'job1', 'previous design kept in history');
 
@@ -259,7 +271,8 @@ $good = $test_dir . '/good.png';
 file_put_contents($good, make_png(40, 40));
 $stored = MG_AI_Redesign::store_upscaled(6, 21, $good);
 check(getimagesize(get_attached_file(21))[0] === 40 && $stored['upscale'] === 'ai4x' && $stored['width'] === 40, '4× PNG replaces the candidate file');
-check($metadata_refreshed === array(21), 'attachment metadata refreshed');
+check(end($palette_calls) === array('att-21.png', 255) && $stored['palette'] === 42, 'upscaled PNG finished as a 255-color palette PNG');
+check(end($metadata_refreshed) === 21, 'attachment metadata refreshed');
 $v = filemtime(get_attached_file(21));
 check($stored['preview'] === "https://example.test/att-21-medium.png?v=$v" && $stored['full'] === "https://example.test/att-21.png?v=$v", 'preview and full URLs versioned by the file time');
 throws(function () use ($good) { MG_AI_Redesign::store_upscaled(6, 21, $good); }, 'már fel van skálázva', 'second upload rejected');
@@ -270,6 +283,7 @@ file_put_contents(get_attached_file(22), make_png(10, 10));
 $enqueued = array();
 MG_AI_Redesign::apply(6, 22);
 check(getimagesize(get_attached_file(22))[0] === 30, 'not upscaled candidate gets 3× on approval');
+check(end($palette_calls) === array('att-22.png', 255) && end($meta[6][MG_AI_Redesign::META_HISTORY])['palette'] === 42, 'the 3× fallback gets the palette finish too');
 check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
 
 // Discarding candidates: one, then all; the PNGs leave the media library.

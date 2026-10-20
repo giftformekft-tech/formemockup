@@ -247,6 +247,125 @@ class MG_Image_Utils {
     }
 
     /**
+     * Rewrites a PNG as an indexed (palette) PNG of at most $colors colors,
+     * in place, the way the Design-flow app finishes its upscales: fully
+     * transparent RGB is zeroed, colors are quantized without dithering,
+     * antialiased edges keep their alpha (a full tRNS table; alpha below 6
+     * becomes fully transparent) and the transparent margins are cropped by
+     * alpha only, never by color, so an opaque background stays.
+     *
+     * Imagick quantizes (native code) but cannot write a palette PNG with
+     * per-entry alpha reliably across versions, so the file is encoded here,
+     * row by row to keep memory flat on large prints.
+     *
+     * @return array{width:int,height:int,colors:int}
+     * @throws RuntimeException If the image cannot be converted completely.
+     */
+    public static function to_palette_png($path, $colors = 255) {
+        $colors = max(2, min(255, (int) $colors));
+        try {
+            $image = new Imagick($path);
+            try {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
+                $image->setImageBackgroundColor(new ImagickPixel('rgba(0,0,0,0)'));
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_BACKGROUND);
+                $image->quantizeImage($colors, Imagick::COLORSPACE_SRGB, 0, false, false);
+                $width = $image->getImageWidth();
+                $height = $image->getImageHeight();
+                $image->setImageDepth(8);
+                $image->setImageFormat('rgba');
+                $raw = $image->getImageBlob();
+            } finally {
+                $image->clear();
+            }
+        } catch (Throwable $e) {
+            throw new RuntimeException('Nem sikerült a PNG-t palettás színekre bontani.', 0, $e);
+        }
+        $stride = $width * 4;
+        if ($width < 1 || $height < 1 || strlen($raw) !== $stride * $height) {
+            throw new RuntimeException('A palettás átalakítás hibás képadatot adott.');
+        }
+
+        // Palette index per RGBA value; near-invisible pixels share one fully
+        // transparent black entry (Design-flow's smooth alpha cutoff).
+        $transparent = "\0\0\0\0";
+        $index = array();
+        $entries = array();
+        for ($y = 0; $y < $height; $y++) {
+            foreach (array_keys(array_count_values(str_split(substr($raw, $y * $stride, $stride), 4))) as $rgba) {
+                if (isset($index[$rgba])) {
+                    continue;
+                }
+                $key = ord($rgba[3]) < 6 ? $transparent : $rgba;
+                if (!isset($entries[$key])) {
+                    $entries[$key] = count($entries);
+                }
+                $index[$rgba] = chr($entries[$key]);
+            }
+        }
+        if (count($entries) > 256) {
+            throw new RuntimeException('A kép több színt tartalmaz, mint amennyi egy palettába fér.');
+        }
+        $plte = $trns = '';
+        foreach (array_keys($entries) as $rgba) {
+            $plte .= substr($rgba, 0, 3);
+            $trns .= $rgba[3];
+        }
+        $trns = rtrim($trns, "\xFF");
+        $lines = array();
+        for ($y = 0; $y < $height; $y++) {
+            $lines[] = strtr(substr($raw, $y * $stride, $stride), $index);
+        }
+        unset($raw);
+        // Alpha bounding box from the index rows (native strspn scans).
+        if (isset($entries[$transparent])) {
+            $clear = chr($entries[$transparent]);
+            $top = $bottom = null;
+            $left = $width;
+            $right = 0;
+            foreach ($lines as $y => $line) {
+                $lead = strspn($line, $clear);
+                if ($lead === $width) {
+                    continue;
+                }
+                $top = $top ?? $y;
+                $bottom = $y;
+                $left = min($left, $lead);
+                $right = max($right, $width - strspn(strrev($line), $clear));
+            }
+            if ($top === null) {
+                throw new RuntimeException('A kép teljesen átlátszó, nincs mit palettásra alakítani.');
+            }
+            $lines = array_slice($lines, $top, $bottom - $top + 1);
+            if ($left > 0 || $right < $width) {
+                foreach ($lines as $y => $line) {
+                    $lines[$y] = substr($line, $left, $right - $left);
+                }
+            }
+            $width = $right - $left;
+            $height = $bottom - $top + 1;
+        }
+        $rows = "\0" . implode("\0", $lines);
+        unset($lines);
+        $chunk = function ($type, $data) {
+            return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+        };
+        $png = "\x89PNG\r\n\x1a\n"
+            . $chunk('IHDR', pack('NNCCCCC', $width, $height, 8, 3, 0, 0, 0))
+            . $chunk('PLTE', $plte)
+            . ($trns !== '' ? $chunk('tRNS', $trns) : '')
+            . $chunk('IDAT', gzcompress($rows, 9))
+            . $chunk('IEND', '');
+        unset($rows);
+        $tmp = $path . '.palette-tmp';
+        if (file_put_contents($tmp, $png, LOCK_EX) !== strlen($png) || !@rename($tmp, $path)) {
+            @unlink($tmp);
+            throw new RuntimeException('A palettás PNG nem menthető.');
+        }
+        return array('width' => $width, 'height' => $height, 'colors' => count($entries));
+    }
+
+    /**
      * Stamps an exact DPI into a PNG file's pHYs chunk by editing the raw
      * bytes directly, bypassing Imagick's setImageResolution()/setImageUnits()
      * entirely. Those calls don't reliably survive to the written file across

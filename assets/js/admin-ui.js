@@ -1005,7 +1005,7 @@
         const upscaleLabels = {
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
             lanczos3x: '3× sima nagyítás',
-            none: 'Még nincs felskálázva – jóváhagyáskor 3× sima nagyítás lesz',
+            none: 'Még nincs felskálázva – jóváhagyáskor 3× sima nagyítás és 255 színes paletta lesz',
         };
         let upscaling = false;
         let autoUpscaleId = '';
@@ -1052,7 +1052,8 @@
                 const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality].filter(Boolean).join(' · ');
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
-                $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaleLabels[c.upscale] ? upscaleLabels[c.upscale] + size : ''));
+                const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : '';
+                $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaleLabels[c.upscale] ? upscaleLabels[c.upscale] + palette + size : ''));
                 if (c.text_lines && c.text_lines.length) {
                     $card.append($('<p></p>').append($('<strong>Szöveg: </strong>')).append(document.createTextNode(c.text_lines.join(' / '))));
                 }
