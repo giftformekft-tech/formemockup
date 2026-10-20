@@ -119,7 +119,7 @@ check($body['model'] === 'claude-opus-5-5' && $body['output_config']['effort'] =
 check($body['output_config']['format']['type'] === 'json_schema' && $body['output_config']['format']['schema']['additionalProperties'] === false, 'Claude structured output');
 check(!isset($body['thinking']), 'no thinking config sent (adaptive by default)');
 check($body['messages'][0]['content'][0]['source'] === array('type' => 'base64', 'media_type' => 'image/jpeg', 'data' => 'QUJD'), 'Claude image block');
-check(strpos($body['system'], 'ugyanannak a mintának új változata') !== false && strpos($body['system'], 'mérsékelten') !== false && strpos($body['system'], '(4) a színek') !== false, 'new style: a moderate new version, four aspects change');
+check(strpos($body['system'], 'Új stílus: a promptban csak a fő motívum') !== false && strpos($body['system'], 'elrendezés nélkül') !== false, 'new style: only the main motif, no layout');
 check($analysis['text_lines'] === array('Legjobb Apa', 'a világon'), 'analysis text lines parsed');
 
 $http_calls = array();
@@ -127,10 +127,11 @@ $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reaso
 MG_AI_Redesign::analyze('anthropic:claude-haiku-5-5', 'QUJD', 'medium', 'x');
 $body = json_decode($http_calls[0][1]['body'], true);
 check(!isset($http_calls[0][1]['headers']['anthropic-beta']) && !isset($body['fallbacks']), 'Haiku has no server-side fallback');
-check(strpos($body['system'], 'Finom átdolgozás') !== false && strpos($body['system'], 'elrendezés') !== false, 'light rework keeps the layout');
+check(strpos($body['system'], 'Finom átdolgozás') !== false && strpos($body['system'], 'durva felépítés') !== false, 'light rework: motif and rough structure only');
 check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'full'), 'new style is the default, full redesign last');
 foreach (array_keys(MG_AI_Redesign::get_intensities()) as $level) {
-    check(strpos(MG_AI_Redesign::analysis_instructions($level), 'az eredeti képet NEM látja') !== false, "analyzer told to describe what to keep ($level)");
+    $rules = MG_AI_Redesign::analysis_instructions($level);
+    check(strpos($rules, 'RÖVID') !== false && strpos($rules, 'NE írd le az eredeti részleteit') !== false && strpos($rules, 'kreatív') !== false, "short, rough, creative prompt asked ($level)");
 }
 
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'refusal', 'content' => array())));
@@ -157,6 +158,7 @@ check(MG_AI_Redesign::parse_analysis("```json\n" . analysis_json() . "\n```")['n
 throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}'); }, 'képpromptot', 'empty prompt rejected');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, true);
 check(strpos($prompt, 'exactly this text, line by line, and no other text: "Legjobb Apa" / "a világon"') !== false, 'exact text with accents enforced');
+check(strpos($prompt, 'Be creative') !== false && strpos($prompt, 'instead of illustrating it literally') !== false, 'image model asked to be creative');
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
 check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Bold retro badge') === 0, 'opaque, analyzer prompt first');
