@@ -41,6 +41,7 @@ class MG_Dashboard_Page {
         $status    = isset($args['status']) ? sanitize_text_field($args['status']) : '';
         $date_from = isset($args['date_from']) ? sanitize_text_field($args['date_from']) : '';
         $date_to   = isset($args['date_to']) ? sanitize_text_field($args['date_to']) : '';
+        $cat       = isset($args['cat']) ? absint($args['cat']) : 0;
 
         $posts = $wpdb->posts; $pm = $wpdb->postmeta;
 
@@ -68,6 +69,20 @@ class MG_Dashboard_Page {
         if ($date_to) {
             $where_parts[] = 'p.post_date <= %s';
             $params[] = $date_to . ' 23:59:59';
+        }
+
+        // Main or subcategory: the term itself and everything below it.
+        if ($cat > 0) {
+            $term_ids = array($cat);
+            $children = function_exists('get_term_children') ? get_term_children($cat, 'product_cat') : array();
+            if (is_array($children)) {
+                $term_ids = array_merge($term_ids, array_map('intval', $children));
+            }
+            $term_ids = array_values(array_unique($term_ids));
+            $where_parts[] = "p.ID IN (SELECT tr.object_id FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt"
+                . " ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tt.taxonomy = 'product_cat' AND tt.term_id IN ("
+                . implode(',', array_fill(0, count($term_ids), '%d')) . '))';
+            $params = array_merge($params, $term_ids);
         }
 
         // Generátorral készült termék ismertetőjegyei: van mentett design
@@ -212,8 +227,11 @@ class MG_Dashboard_Page {
         $s = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
         $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
         $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
+        $cat_main = isset($_GET['cat_main']) ? absint($_GET['cat_main']) : 0;
+        $cat_sub = isset($_GET['cat_sub']) ? absint($_GET['cat_sub']) : 0;
+        $cat = $cat_sub > 0 ? $cat_sub : $cat_main;
 
-        $data = self::find_generated_products(compact('paged','per_page','status','s','date_from','date_to'));
+        $data = self::find_generated_products(compact('paged','per_page','status','s','date_from','date_to','cat'));
         $base_url = admin_url('admin.php?page=mockup-generator-dashboard');
 
         echo '<div class="wrap">';
@@ -231,13 +249,24 @@ class MG_Dashboard_Page {
         echo '</select> ';
         echo '<input type="date" name="date_from" value="'.esc_attr($date_from).'"> – ';
         echo '<input type="date" name="date_to" value="'.esc_attr($date_to).'"> ';
+        self::render_category_filters($cat_main, $cat_sub);
         echo '<select name="per_page">';
         foreach(array(10,20,50,100) as $pp){ echo '<option value="'.$pp.'"'.selected($per_page,$pp,false).'>'.$pp.'/oldal</option>'; }
         echo '</select> ';
         submit_button('Szűrés', 'secondary', '', false);
         echo '</form>';
 
-        echo '<table class="widefat fixed striped"><thead><tr>';
+        echo '<div class="mg-dash-bulkbar">';
+        echo '<button type="button" class="button" id="mg-dash-select-all">Mind kijelölése</button> ';
+        echo '<button type="button" class="button" id="mg-dash-select-none">Kijelölés törlése</button> ';
+        echo '<span class="mg-dash-bulkbar__count" id="mg-dash-selected-count">0 kijelölve</span> ';
+        if (class_exists('MG_AI_Redesign')) {
+            echo '<button type="button" class="button button-primary" id="mg-dash-bulk-redesign" data-mg-open-modal="ai-redesign-bulk" disabled>AI újratervezés a kijelöltekre</button>';
+        }
+        echo '</div>';
+
+        echo '<table class="widefat fixed striped mg-dash-table"><thead><tr>';
+        echo '<td class="manage-column check-column mg-dash-check-col"><input type="checkbox" id="mg-dash-check-page" aria-label="Az oldal összes mintájának kijelölése" /></td>';
         echo '<th class="mg-dash-design-col">Minta</th><th>ID</th><th>Cím</th><th>Státusz</th><th>Dátum</th><th>Műveletek</th>';
         echo '</tr></thead><tbody>';
 
@@ -245,6 +274,7 @@ class MG_Dashboard_Page {
             foreach($data['items'] as $r){
                 $id = intval($r['ID']); $edit = get_edit_post_link($id, ''); $view = get_permalink($id);
                 echo '<tr>';
+                echo '<th scope="row" class="check-column"><input type="checkbox" class="mg-dash-check" value="'.esc_attr($id).'" data-title="'.esc_attr($r['post_title']).'" aria-label="'.esc_attr($r['post_title']).' kijelölése" /></th>';
                 echo '<td class="mg-dash-design">'.self::design_thumbnail_html($id).'</td>';
                 echo '<td>'.$id.'</td>';
                 echo '<td><a href="'.esc_url($edit).'">'.esc_html($r['post_title']).'</a></td>';
@@ -257,7 +287,7 @@ class MG_Dashboard_Page {
                 echo '</tr>';
             }
         } else {
-            echo '<tr><td colspan="6">Nincs találat a szűrőkre.</td></tr>';
+            echo '<tr><td colspan="7">Nincs találat a szűrőkre.</td></tr>';
         }
         echo '</tbody></table>';
 
@@ -274,6 +304,7 @@ class MG_Dashboard_Page {
 
         self::render_replace_design_modal();
         self::render_ai_redesign_modal();
+        self::render_ai_redesign_bulk_modal();
 
         echo '</div>';
     }
@@ -287,7 +318,8 @@ class MG_Dashboard_Page {
      *
      * @return array|null {thumb: preview URL or '' if not made yet, full: design URL}
      */
-    public static function design_thumbnail($product_id){
+    public static function design_thumbnail($product_id, $size = self::DESIGN_THUMB_SIZE){
+        $size = max(32, min(1024, (int) $size));
         $uploads = wp_upload_dir();
         $basedir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
         if ($basedir === '') {
@@ -299,7 +331,7 @@ class MG_Dashboard_Page {
         $attachment_path = $attachment_id > 0 ? wp_normalize_path((string) get_attached_file($attachment_id)) : '';
         // The attachment can be stale after a replacement; the path wins, like in the export.
         if ($attachment_path !== '' && ($path === '' || $attachment_path === $path) && is_file($attachment_path)) {
-            $src = wp_get_attachment_image_src($attachment_id, 'thumbnail');
+            $src = wp_get_attachment_image_src($attachment_id, $size <= 150 ? 'thumbnail' : 'medium_large');
             if ($src && !empty($src[3])) {
                 return array('thumb' => $src[0], 'full' => (string) wp_get_attachment_url($attachment_id));
             }
@@ -309,7 +341,7 @@ class MG_Dashboard_Page {
             return null;
         }
         $full = trailingslashit($uploads['baseurl']) . ltrim(substr($path, strlen($basedir)), '/');
-        $rel = self::DESIGN_THUMB_DIR . '/' . md5($path . '|' . filemtime($path) . '|' . filesize($path)) . '.png';
+        $rel = self::DESIGN_THUMB_DIR . '/' . md5($path . '|' . filemtime($path) . '|' . filesize($path)) . ($size === self::DESIGN_THUMB_SIZE ? '' : '-' . $size) . '.png';
         $thumb = trailingslashit($basedir) . $rel;
         if (!is_file($thumb)) {
             if (self::$design_thumbs_made >= self::DESIGN_THUMB_BUDGET) {
@@ -320,7 +352,7 @@ class MG_Dashboard_Page {
             if (is_wp_error($editor) || !wp_mkdir_p(dirname($thumb))) {
                 return array('thumb' => '', 'full' => $full);
             }
-            $editor->resize(self::DESIGN_THUMB_SIZE, self::DESIGN_THUMB_SIZE, false);
+            $editor->resize($size, $size, false);
             if (is_wp_error($editor->save($thumb, 'image/png'))) {
                 return array('thumb' => '', 'full' => $full);
             }
@@ -403,6 +435,95 @@ class MG_Dashboard_Page {
         echo '<p class="description" id="mg-ai-redesign-status" aria-live="polite"></p>';
         echo '<p class="mg-ai-redesign__bulk" hidden><button type="button" class="button button-link-delete" id="mg-ai-redesign-discard-all">Összes jelölt törlése</button></p>';
         echo '<div class="mg-ai-redesign__candidates" id="mg-ai-redesign-candidates"></div>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    /**
+     * Main category and subcategory selects. The subcategory list holds the
+     * children of every main category; the page script shows only those of
+     * the chosen one. Either filter includes everything below the term.
+     */
+    protected static function render_category_filters($cat_main, $cat_sub){
+        if (!function_exists('get_terms')) {
+            return;
+        }
+        $mains = get_terms(array('taxonomy' => 'product_cat', 'parent' => 0, 'hide_empty' => false, 'orderby' => 'name'));
+        if (is_wp_error($mains) || empty($mains)) {
+            return;
+        }
+        echo '<select name="cat_main" id="mg-dash-cat-main"><option value="0">— összes főkategória —</option>';
+        foreach ($mains as $term) {
+            echo '<option value="'.esc_attr($term->term_id).'"'.selected($cat_main, $term->term_id, false).'>'.esc_html($term->name).'</option>';
+        }
+        echo '</select> ';
+        echo '<select name="cat_sub" id="mg-dash-cat-sub"><option value="0" data-main="0">— összes alkategória —</option>';
+        foreach ($mains as $main) {
+            $subs = get_terms(array('taxonomy' => 'product_cat', 'parent' => $main->term_id, 'hide_empty' => false, 'orderby' => 'name'));
+            if (is_wp_error($subs)) {
+                continue;
+            }
+            foreach ($subs as $term) {
+                echo '<option value="'.esc_attr($term->term_id).'" data-main="'.esc_attr($main->term_id).'"'.selected($cat_sub, $term->term_id, false).'>'.esc_html($term->name).'</option>';
+            }
+        }
+        echo '</select> ';
+    }
+
+    /**
+     * Bulk "AI újratervezés" for the selected rows (assets/js/dashboard-bulk.js):
+     * settings first, then one card per design with the original and the new
+     * design side by side. Approved cards are upscaled, finished and queued
+     * for mockup regeneration together at the end.
+     */
+    protected static function render_ai_redesign_bulk_modal(){
+        if (!class_exists('MG_AI_Redesign')) {
+            return;
+        }
+        $settings = MG_AI_Redesign::get_settings();
+        echo '<div class="mg-modal" id="mg-ai-redesign-bulk-modal" aria-hidden="true">';
+        echo '<div class="mg-modal__backdrop" data-mg-close-modal></div>';
+        echo '<div class="mg-modal__dialog mg-ai-bulk" role="dialog" aria-modal="true" aria-labelledby="mg-ai-bulk-title">';
+        echo '<button type="button" class="mg-modal__close" aria-label="Bezárás" data-mg-close-modal>&times;</button>';
+        echo '<h2 id="mg-ai-bulk-title">AI újratervezés – tömeges</h2>';
+        echo '<div class="mg-ai-bulk__setup" id="mg-ai-bulk-setup">';
+        echo '<p class="description"><strong id="mg-ai-bulk-count">0</strong> kijelölt minta. Válaszd ki az újratervezés módját; minden minta ugyanezekkel a beállításokkal készül. A felskálázás és a képjavítás csak a végén, a jóváhagyott mintákon fut.</p>';
+        echo '<table class="form-table">';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-mode">Prompt mód</label></th><td><select id="mg-ai-bulk-mode">';
+        foreach (MG_AI_Redesign::get_prompt_modes() as $value => $label) {
+            echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
+        }
+        echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-intensity">Eltérés mértéke</label></th><td><select id="mg-ai-bulk-intensity">';
+        foreach (MG_AI_Redesign::get_intensities() as $value => $label) {
+            echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
+        }
+        echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-analyzer">Elemző modell</label></th><td><select id="mg-ai-bulk-analyzer">';
+        foreach (MG_AI_Redesign::get_analyzers($settings) as $value => $label) {
+            echo '<option value="'.esc_attr($value).'"'.selected($settings['analyzer'], $value, false).'>'.esc_html($label).'</option>';
+        }
+        echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-quality">Képminőség</label></th><td><select id="mg-ai-bulk-quality">';
+        foreach (array('low' => 'Alacsony (olcsó, gyors)', 'medium' => 'Közepes', 'high' => 'Magas (drágább, lassabb)') as $value => $label) {
+            echo '<option value="'.esc_attr($value).'"'.selected($settings['quality'], $value, false).'>'.esc_html($label).'</option>';
+        }
+        echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-hint">Stílusötlet</label></th><td><input type="text" id="mg-ai-bulk-hint" class="large-text" placeholder="Nem kötelező, minden mintára érvényes" /></td></tr>';
+        echo '</table>';
+        echo '<p><button type="button" class="button button-primary" id="mg-ai-bulk-start">Generálás indítása</button></p>';
+        echo '</div>';
+        echo '<div class="mg-ai-bulk__run" id="mg-ai-bulk-run" hidden>';
+        echo '<p class="mg-ai-bulk__summary" id="mg-ai-bulk-summary" aria-live="polite"></p>';
+        echo '<div class="mg-ai-bulk__list" id="mg-ai-bulk-list"></div>';
+        echo '<div class="mg-ai-bulk__footer">';
+        echo '<button type="button" class="button" id="mg-ai-bulk-stop">Hátralévők leállítása</button> ';
+        echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
+        echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
+        echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást, 255 színes palettát kapnak, és sorba áll a mockupjaik újragenerálása. Ne zárd be az ablakot, amíg fut.</p>';
+        echo '</div>';
+        echo '</div>';
         echo '</div>';
         echo '</div>';
     }

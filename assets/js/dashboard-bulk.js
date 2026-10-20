@@ -1,0 +1,482 @@
+/**
+ * Dashboard: category filter, row selection and the bulk "AI újratervezés".
+ *
+ * The bulk run reuses the single redesign endpoints per product: generation
+ * runs two at a time from this tab (with status polling if a proxy cuts the
+ * request), every card shows the original and the new design side by side,
+ * and only the approved cards are upscaled 4× in the browser, finished as a
+ * palette PNG and queued for mockup regeneration at the end.
+ */
+(function ($) {
+    'use strict';
+
+    const MAX_PARALLEL = 2;
+    const POLL_MS = 5000;
+    const POLL_LIMIT_MS = 15 * 60 * 1000;
+
+    function cfg() {
+        return window.MG_AJAX || {};
+    }
+
+    function post(action, data) {
+        return $.ajax({
+            url: cfg().ajax_url,
+            method: 'POST',
+            dataType: 'json',
+            data: $.extend({ action: action, nonce: cfg().nonce }, data || {}),
+        });
+    }
+
+    function message(resp) {
+        return (resp && resp.data && resp.data.message) || '';
+    }
+
+    // ---- Filters: the subcategory list follows the main category. ----
+    function syncSubcategories() {
+        const main = String($('#mg-dash-cat-main').val() || '0');
+        const $sub = $('#mg-dash-cat-sub');
+        if (!$sub.length) {
+            return;
+        }
+        let keep = false;
+        $sub.find('option').each(function () {
+            const owner = String($(this).data('main'));
+            const show = owner === '0' || main === '0' || owner === main;
+            $(this).prop('hidden', !show).prop('disabled', !show);
+            if (show && this.selected) {
+                keep = true;
+            }
+        });
+        if (!keep) {
+            $sub.val('0');
+        }
+    }
+
+    // ---- Row selection. ----
+    function selectedRows() {
+        return $('.mg-dash-check:checked').map(function () {
+            return { id: String(this.value), title: String($(this).data('title') || '') };
+        }).get();
+    }
+
+    function refreshSelection() {
+        const total = $('.mg-dash-check').length;
+        const count = $('.mg-dash-check:checked').length;
+        $('#mg-dash-selected-count').text(count + ' kijelölve');
+        $('#mg-dash-bulk-redesign')
+            .prop('disabled', count === 0)
+            .text('AI újratervezés a kijelöltekre' + (count ? ' (' + count + ')' : ''));
+        $('#mg-dash-check-page').prop('checked', total > 0 && count === total).prop('indeterminate', count > 0 && count < total);
+    }
+
+    // ---- Bulk redesign. ----
+    const bulk = { items: [], opts: null, finalizing: false };
+
+    const STATUS = {
+        queued: 'Sorban áll',
+        running: 'Generálás folyamatban… (1–3 perc)',
+        done: 'Elkészült – hagyd jóvá, generáld újra vagy töröld',
+        approved: 'Jóváhagyva',
+        error: 'Hiba',
+        skipped: 'Kihagyva',
+        finalizing: 'Véglegesítés…',
+        finished: 'Kész – a mockupok újragenerálása sorba állítva',
+    };
+
+    function active() {
+        return bulk.items.filter(function (item) { return item.status !== 'removed'; });
+    }
+
+    function busy() {
+        return bulk.finalizing || active().some(function (item) { return item.status === 'running' || item.status === 'queued'; });
+    }
+
+    function summary() {
+        const items = active();
+        const count = function (fn) { return items.filter(fn).length; };
+        const done = count(function (i) { return i.candidate && ['done', 'error', 'finished', 'finalizing'].indexOf(i.status) !== -1; });
+        const approved = count(function (i) { return i.approved && i.status === 'done'; });
+        const parts = [
+            items.length + ' minta',
+            done + ' elkészült',
+            count(function (i) { return i.status === 'running'; }) + ' fut',
+            count(function (i) { return i.status === 'queued'; }) + ' vár',
+            approved + ' jóváhagyva',
+        ];
+        const errors = count(function (i) { return i.status === 'error'; });
+        const finished = count(function (i) { return i.status === 'finished'; });
+        if (errors) {
+            parts.push(errors + ' hiba');
+        }
+        if (finished) {
+            parts.push(finished + ' véglegesítve');
+        }
+        $('#mg-ai-bulk-summary').text(parts.join(' · '));
+        $('#mg-ai-bulk-finalize')
+            .prop('disabled', bulk.finalizing || approved === 0)
+            .text('Jóváhagyottak véglegesítése' + (approved ? ' (' + approved + ')' : ''));
+        $('#mg-ai-bulk-approve-all').prop('disabled', bulk.finalizing || !items.some(function (i) { return i.status === 'done' && !i.approved; }));
+        $('#mg-ai-bulk-stop').prop('disabled', !items.some(function (i) { return i.status === 'queued'; }));
+        $('#mg-ai-bulk-new').prop('disabled', busy());
+    }
+
+    // item.note overrides the status text until the next status change clears it.
+    function render(item) {
+        const $card = item.$card;
+        const note = item.note;
+        const label = item.status === 'done' && item.approved ? STATUS.approved : STATUS[item.status] || item.status;
+        $card.toggleClass('is-approved', item.approved && item.status === 'done')
+            .toggleClass('is-error', item.status === 'error')
+            .toggleClass('is-finished', item.status === 'finished');
+        $card.find('.mg-ai-bulk__status').text(note || (item.status === 'error' && item.error ? label + ': ' + item.error : label));
+        const $after = $card.find('.mg-ai-bulk__after').empty();
+        if (item.candidate && item.candidate.full) {
+            $after.append($('<a target="_blank" rel="noopener"></a>').attr('href', item.candidate.full)
+                .append($('<img alt="Új minta" />').attr('src', item.candidate.full)));
+        } else {
+            $after.append($('<span class="mg-ai-bulk__placeholder"></span>').text(item.status === 'running' ? 'Készül…' : '—'));
+        }
+        $card.find('.mg-ai-bulk__meta').text(item.candidate && item.candidate.new_style ? item.candidate.new_style : '');
+        const locked = bulk.finalizing || item.status === 'finished' || item.status === 'finalizing';
+        $card.find('.mg-ai-bulk-approve')
+            .prop('disabled', locked || item.status !== 'done')
+            .text(item.approved && item.status === 'done' ? 'Jóváhagyás visszavonása' : 'Jóváhagyom');
+        $card.find('.mg-ai-bulk-regen')
+            .prop('disabled', locked || ['done', 'error', 'skipped'].indexOf(item.status) === -1)
+            .text(item.status === 'skipped' ? 'Generálás' : 'Újragenerálás');
+        $card.find('.mg-ai-bulk-remove').prop('disabled', locked || item.status === 'running');
+        summary();
+    }
+
+    function card(item) {
+        const $card = $('<div class="mg-ai-bulk__item"></div>').attr('data-product-id', item.id);
+        $card.append($('<div class="mg-ai-bulk__head"></div>')
+            .append($('<strong></strong>').text(item.title || ('#' + item.id)))
+            .append(' ')
+            .append($('<span class="mg-ai-bulk__status"></span>')));
+        const $pair = $('<div class="mg-ai-bulk__pair"></div>');
+        $pair.append($('<figure></figure>').append($('<figcaption>Eredeti</figcaption>'))
+            .append($('<div class="mg-ai-bulk__before"><span class="mg-ai-bulk__placeholder">Betöltés…</span></div>')));
+        $pair.append($('<figure></figure>').append($('<figcaption>Új</figcaption>'))
+            .append($('<div class="mg-ai-bulk__after"></div>')));
+        $card.append($pair);
+        $card.append($('<p class="description mg-ai-bulk__meta"></p>'));
+        $card.append($('<p class="mg-ai-bulk__actions"></p>')
+            .append($('<button type="button" class="button button-primary mg-ai-bulk-approve">Jóváhagyom</button>'))
+            .append(' ')
+            .append($('<button type="button" class="button mg-ai-bulk-regen">Újragenerálás</button>'))
+            .append(' ')
+            .append($('<button type="button" class="button button-link-delete mg-ai-bulk-remove">Törlés</button>')));
+        item.$card = $card;
+        return $card;
+    }
+
+    function find(id) {
+        return bulk.items.find(function (item) { return item.id === String(id) && item.status !== 'removed'; });
+    }
+
+    // Original design previews, three requests at a time.
+    function loadBefore(queue) {
+        const next = queue.shift();
+        if (!next) {
+            return;
+        }
+        post('mg_ai_redesign_info', { product_id: next.id }).done(function (resp) {
+            const $before = next.$card.find('.mg-ai-bulk__before').empty();
+            const d = resp && resp.success ? resp.data : null;
+            if (d && d.design_preview) {
+                $before.append($('<img alt="Eredeti minta" />').attr('src', d.design_preview));
+            } else {
+                $before.append($('<span class="mg-ai-bulk__placeholder"></span>').text((d && d.design_error) || message(resp) || 'Nincs előnézet'));
+            }
+        }).fail(function () {
+            next.$card.find('.mg-ai-bulk__before').empty().append($('<span class="mg-ai-bulk__placeholder">Nincs előnézet</span>'));
+        }).always(function () {
+            loadBefore(queue);
+        });
+    }
+
+    function pump() {
+        let running = active().filter(function (item) { return item.status === 'running'; }).length;
+        active().forEach(function (item) {
+            if (running < MAX_PARALLEL && item.status === 'queued') {
+                running++;
+                generate(item);
+            }
+        });
+        summary();
+    }
+
+    function generate(item) {
+        const previous = item.candidate;
+        item.status = 'running';
+        item.approved = false;
+        item.error = '';
+        item.note = '';
+        render(item);
+        post('mg_ai_redesign_generate', $.extend({ product_id: item.id, design_text: '', custom_prompt: '' }, bulk.opts)).done(function (resp) {
+            const d = resp && resp.data;
+            if (d && d.status === 'running') {
+                poll(item, previous, Date.now());
+                return;
+            }
+            finish(item, resp && resp.success ? d : { status: 'error', message: message(resp) }, previous);
+        }).fail(function (xhr) {
+            if (xhr && xhr.responseJSON && xhr.responseJSON.data) {
+                finish(item, { status: 'error', message: xhr.responseJSON.data.message || ('HTTP ' + xhr.status) }, previous);
+            } else {
+                // Proxy or timeout: the server keeps working, read its state.
+                poll(item, previous, Date.now());
+            }
+        });
+    }
+
+    function poll(item, previous, started) {
+        setTimeout(function () {
+            if (item.status !== 'running') {
+                return;
+            }
+            post('mg_ai_redesign_status', { product_id: item.id }).done(function (resp) {
+                const d = resp && resp.data;
+                if (d && d.status === 'running') {
+                    if (Date.now() - started > POLL_LIMIT_MS) {
+                        finish(item, { status: 'error', message: 'A generálás nem készült el időben.' }, previous);
+                    } else {
+                        poll(item, previous, started);
+                    }
+                    return;
+                }
+                finish(item, d && d.status === 'done' ? d : { status: 'error', message: (d && d.message) || 'A generálás állapota nem ismert.' }, previous);
+            }).fail(function () {
+                if (Date.now() - started > POLL_LIMIT_MS) {
+                    finish(item, { status: 'error', message: 'Az állapot nem kérdezhető le.' }, previous);
+                } else {
+                    poll(item, previous, started);
+                }
+            });
+        }, POLL_MS);
+    }
+
+    function finish(item, state, previous) {
+        if (item.status !== 'running') {
+            return;
+        }
+        item.note = '';
+        if (state && state.status === 'done' && state.candidate) {
+            item.candidate = state.candidate;
+            item.status = 'done';
+            // A regeneration replaces the earlier candidate of this run.
+            if (previous && String(previous.attachment_id) !== String(state.candidate.attachment_id)) {
+                post('mg_ai_redesign_discard', { product_id: item.id, attachment_id: previous.attachment_id });
+            }
+        } else {
+            item.candidate = previous || null;
+            item.status = previous ? 'done' : 'error';
+            item.error = (state && state.message) || 'ismeretlen hiba';
+            if (previous) {
+                item.note = 'Az újragenerálás nem sikerült (' + item.error + '), az előző változat maradt.';
+            }
+        }
+        render(item);
+        pump();
+    }
+
+    function upload(item, blob) {
+        const form = new FormData();
+        form.append('action', 'mg_ai_redesign_upscaled');
+        form.append('nonce', cfg().nonce);
+        form.append('product_id', item.id);
+        form.append('attachment_id', item.candidate.attachment_id);
+        form.append('upscaled', blob, 'upscaled.png');
+        return $.ajax({ url: cfg().ajax_url, method: 'POST', data: form, processData: false, contentType: false, dataType: 'json' });
+    }
+
+    async function finalize() {
+        const queue = active().filter(function (item) { return item.approved && item.status === 'done' && item.candidate; });
+        if (!queue.length || !window.confirm(queue.length + ' jóváhagyott minta kerül a termékére: felskálázás, palettás PNG, majd az összes mockupjuk újragenerálása. A termékek többi AI jelöltje törlődik. Folytatod?')) {
+            return;
+        }
+        bulk.finalizing = true;
+        queue.forEach(function (item) { item.status = 'finalizing'; item.note = 'Véglegesítésre vár'; render(item); });
+        for (const item of queue) {
+            let note = '';
+            try {
+                if (item.candidate.upscale === 'none' && window.MGAIUpscale) {
+                    item.note = 'AI felskálázás indul…';
+                    render(item);
+                    const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
+                        item.note = 'AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.';
+                        render(item);
+                    });
+                    item.note = 'A felskálázott PNG feltöltése és palettázása…';
+                    render(item);
+                    const resp = await upload(item, blob);
+                    if (!resp || !resp.success) {
+                        note = ' (AI felskálázás: ' + (message(resp) || 'hiba') + ' – 3× sima nagyítás lett)';
+                    }
+                }
+            } catch (err) {
+                note = ' (AI felskálázás: ' + ((err && err.message) || (err && err.status === 413 ? 'a fájl túl nagy (HTTP 413)' : 'hiba')) + ' – 3× sima nagyítás lett)';
+            }
+            try {
+                item.note = 'Jóváhagyás, mockupok sorba állítása…';
+                render(item);
+                const resp = await post('mg_ai_redesign_apply', { product_id: item.id, attachment_id: item.candidate.attachment_id });
+                if (resp && resp.success) {
+                    item.status = 'finished';
+                    item.note = STATUS.finished + note;
+                } else {
+                    item.status = 'error';
+                    item.note = '';
+                    item.error = message(resp) || 'a jóváhagyás nem sikerült';
+                }
+            } catch (err) {
+                item.status = 'error';
+                item.note = '';
+                item.error = 'a jóváhagyás nem sikerült';
+            }
+            render(item);
+        }
+        bulk.finalizing = false;
+        active().forEach(render);
+    }
+
+    function startRun() {
+        bulk.opts = {
+            prompt_mode: $('#mg-ai-bulk-mode').val() || 'brief',
+            intensity: $('#mg-ai-bulk-intensity').val() || 'strong',
+            analyzer: $('#mg-ai-bulk-analyzer').val() || '',
+            quality: $('#mg-ai-bulk-quality').val() || 'medium',
+            style_hint: $('#mg-ai-bulk-hint').val() || '',
+        };
+        const $list = $('#mg-ai-bulk-list').empty();
+        bulk.items.forEach(function (item) {
+            item.status = 'queued';
+            $list.append(card(item));
+            render(item);
+        });
+        $('#mg-ai-bulk-setup').prop('hidden', true);
+        $('#mg-ai-bulk-run').prop('hidden', false);
+        const queue = bulk.items.slice();
+        for (let i = 0; i < 3; i++) {
+            loadBefore(queue);
+        }
+        pump();
+    }
+
+    $(function () {
+        syncSubcategories();
+        refreshSelection();
+
+        $(document).on('change', '#mg-dash-cat-main', syncSubcategories);
+        $(document).on('change', '.mg-dash-check', refreshSelection);
+        $(document).on('change', '#mg-dash-check-page', function () {
+            $('.mg-dash-check').prop('checked', this.checked);
+            refreshSelection();
+        });
+        $(document).on('click', '#mg-dash-select-all', function () {
+            $('.mg-dash-check').prop('checked', true);
+            refreshSelection();
+        });
+        $(document).on('click', '#mg-dash-select-none', function () {
+            $('.mg-dash-check').prop('checked', false);
+            refreshSelection();
+        });
+
+        function setup() {
+            bulk.items = selectedRows().map(function (row) {
+                return { id: row.id, title: row.title, status: 'new', candidate: null, approved: false, error: '' };
+            });
+            $('#mg-ai-bulk-count').text(bulk.items.length);
+            $('#mg-ai-bulk-setup').prop('hidden', false);
+            $('#mg-ai-bulk-run').prop('hidden', true);
+            $('#mg-ai-bulk-list').empty();
+        }
+
+        // Opening keeps an unfinished run (cards waiting for a decision);
+        // otherwise it starts over with the current selection.
+        $(document).on('click', '#mg-dash-bulk-redesign', function () {
+            if (bulk.items.length && (busy() || active().some(function (i) { return i.status === 'done'; }))) {
+                return;
+            }
+            setup();
+        });
+        $(document).on('click', '#mg-ai-bulk-new', function () {
+            if (busy()) {
+                return;
+            }
+            if (active().some(function (i) { return i.status === 'done'; })
+                && !window.confirm('Új futást indítasz a mostani kijelöléssel. A még el nem döntött új minták a termékek AI újratervezés ablakában megmaradnak. Folytatod?')) {
+                return;
+            }
+            setup();
+        });
+        $(document).on('change', '#mg-ai-bulk-mode', function () {
+            $('#mg-ai-bulk-intensity').prop('disabled', $(this).val() === 'describe');
+        });
+        $(document).on('click', '#mg-ai-bulk-start', function () {
+            if (bulk.items.length) {
+                startRun();
+            }
+        });
+        $(document).on('click', '.mg-ai-bulk-approve', function () {
+            const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));
+            if (item && item.status === 'done') {
+                item.approved = !item.approved;
+                render(item);
+            }
+        });
+        $(document).on('click', '.mg-ai-bulk-regen', function () {
+            const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));
+            if (item && !bulk.finalizing && ['done', 'error', 'skipped'].indexOf(item.status) !== -1) {
+                item.status = 'queued';
+                item.approved = false;
+                render(item);
+                pump();
+            }
+        });
+        $(document).on('click', '.mg-ai-bulk-remove', function () {
+            const item = find($(this).closest('.mg-ai-bulk__item').attr('data-product-id'));
+            if (!item || item.status === 'running' || bulk.finalizing) {
+                return;
+            }
+            if (!window.confirm('Kiveszed ezt a mintát a tömeges folyamatból? Az új változata a médiatárból is törlődik, az eredeti minta marad.')) {
+                return;
+            }
+            if (item.candidate) {
+                post('mg_ai_redesign_discard', { product_id: item.id, attachment_id: item.candidate.attachment_id });
+            }
+            item.status = 'removed';
+            // After this click: a target detached mid-click would read as a
+            // click outside the dialog and close the modal.
+            setTimeout(function () { item.$card.remove(); }, 0);
+            summary();
+        });
+        $(document).on('click', '#mg-ai-bulk-approve-all', function () {
+            active().forEach(function (item) {
+                if (item.status === 'done') {
+                    item.approved = true;
+                    render(item);
+                }
+            });
+        });
+        $(document).on('click', '#mg-ai-bulk-stop', function () {
+            active().forEach(function (item) {
+                if (item.status === 'queued') {
+                    item.status = 'skipped';
+                    render(item);
+                }
+            });
+        });
+        $(document).on('click', '#mg-ai-bulk-finalize', function () {
+            finalize();
+        });
+
+        window.addEventListener('beforeunload', function (e) {
+            if (busy()) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    });
+})(jQuery);

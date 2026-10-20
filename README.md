@@ -1,6 +1,27 @@
 # formemockup
 mymockup
 
+## Dashboard: kategóriaszűrő, kijelölés, tömeges AI újratervezés (2.43.0)
+
+- **Fő- és alkategória szűrő:** a főkategória az összes alkategóriáját is hozza; az
+  alkategória-lista a kiválasztott főkategória alkategóriáit mutatja.
+- **Kijelölés:** jelölőnégyzet minden minta előtt, a fejlécben az oldal összes mintájához,
+  **Mind kijelölése** és **Kijelölés törlése** gomb (az aktuális oldalra vonatkozik).
+- **AI újratervezés a kijelöltekre:** előbb a módok (prompt mód, eltérés mértéke, elemző,
+  képminőség, stílusötlet), utána mintánként egymás alatt az **eredeti** és az **új** minta
+  egymás mellett. A generálás kettesével fut a nyitott lapról (ha egy proxy megszakítja a
+  kérést, az állapotot lekérdezi). Ekkor még nincs felskálázás. Kártyánként: **Jóváhagyom**,
+  **Újragenerálás** (az elkészült új változat lecseréli az előzőt, az előző törlődik),
+  **Törlés** (a minta kikerül a futásból, az új változata törlődik). **Mindet jóváhagyom**,
+  **Hátralévők leállítása**.
+- **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 4×-es AI felskálázást
+  (böngésző, Real-ESRGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
+  újragenerálása (mint az egyedi jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver
+  3×-os nagyítással folytatja. A nem jóváhagyott új minták a termék AI újratervezés
+  ablakában megmaradnak.
+- Futás közben a lap bezárása előtt figyelmeztetés jön; az ablak bezárható és újranyitható.
+- Teszt: `php tests/dashboard-filter-test.php`.
+
 ## Dashboard: minta-előnézet (2.42.1)
 
 A **Dashboard** terméklistájának első oszlopa a termék **nyomtatási mintáját** mutatja

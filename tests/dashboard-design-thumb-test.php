@@ -89,5 +89,21 @@ check($made === 8 && $pending === 4, 'budget of 10 per load (2 already used abov
 $html = $m->invoke(null, 111);
 check(strpos($html, 'következő betöltéskor') !== false, 'pending preview explained');
 
+// 6. A 512 px preview for the bulk view: medium_large size or its own cached file.
+$attachments[12] = array('file' => "$dir/a.png", 'src' => array('https://shop.test/uploads/a-768x768.png', 768, 768, true));
+$meta[200] = array('_mg_last_design_attachment' => 12);
+$t = MG_Dashboard_Page::design_thumbnail(200, 512);
+check($t['thumb'] === 'https://shop.test/uploads/a-768x768.png', '512 preview uses the medium_large size');
+$budget = new ReflectionProperty('MG_Dashboard_Page', 'design_thumbs_made');
+$budget->setAccessible(true);
+$budget->setValue(null, 0); // a new page load
+file_put_contents("$dir/p.png", 'design p');
+$meta[201] = array('_mg_last_design_path' => "$dir/p.png");
+$small = MG_Dashboard_Page::design_thumbnail(201);
+$big = MG_Dashboard_Page::design_thumbnail(201, 512);
+check($small['thumb'] !== $big['thumb'] && substr($big['thumb'], -8) === '-512.png', 'separate cached file per size');
+$bigfile = $dir . '/' . substr($big['thumb'], strlen('https://shop.test/uploads/'));
+check(file_get_contents($bigfile) === 'thumb image/png 512x512', '512 px PNG saved');
+
 exec('rm -rf ' . escapeshellarg($dir));
 echo "Dashboard design thumbnails: $passed checks passed.\n";

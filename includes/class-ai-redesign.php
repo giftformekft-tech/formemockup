@@ -1039,8 +1039,11 @@ class MG_AI_Redesign {
         } catch (RuntimeException $e) {
             $design_error = $e->getMessage();
         }
+        // A 512 px preview for lists (the bulk view): print PNGs can be tens of MB.
+        $preview = $design_url !== '' && class_exists('MG_Dashboard_Page') ? MG_Dashboard_Page::design_thumbnail($product_id, 512) : null;
         wp_send_json_success(array(
             'design_url' => $design_url,
+            'design_preview' => $preview && $preview['thumb'] !== '' ? $preview['thumb'] : $design_url,
             'design_error' => $design_error,
             'analyzers' => self::get_analyzers($settings),
             'analyzer' => $settings['analyzer'],

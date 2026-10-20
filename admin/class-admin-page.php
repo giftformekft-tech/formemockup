@@ -84,6 +84,15 @@ class MG_Admin_Page {
             file_exists($upscale_path) ? filemtime($upscale_path) : '1.0.0',
             true
         );
+        // Dashboard: category filter, row selection, bulk AI redesign.
+        $bulk_path = plugin_dir_path(__FILE__) . '../assets/js/dashboard-bulk.js';
+        wp_enqueue_script(
+            'mg-dashboard-bulk',
+            plugins_url('../assets/js/dashboard-bulk.js', __FILE__),
+            array('jquery', 'mg-ai-upscale'),
+            file_exists($bulk_path) ? filemtime($bulk_path) : '1.0.0',
+            true
+        );
         wp_localize_script('mg-ai-upscale', 'MG_AI_UPSCALE', array(
             'tfUrl' => plugins_url('../assets/vendor/tfjs/tf.min.js', __FILE__) . '?ver=4.22.0',
             'modelUrl' => plugins_url('../assets/models/realesr-general-x4v3/', __FILE__),

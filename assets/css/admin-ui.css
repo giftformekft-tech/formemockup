@@ -827,6 +827,132 @@ body.mg-modal-open {
     background: repeating-conic-gradient(#cbd5e1 0% 25%, #f1f5f9 0% 50%) 50% / 12px 12px;
 }
 
+.mg-dash-bulkbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 8px;
+}
+
+.mg-dash-bulkbar__count {
+    color: #475569;
+}
+
+.mg-dash-table .check-column {
+    width: 32px;
+    vertical-align: middle;
+}
+
+.mg-modal__dialog.mg-ai-bulk {
+    width: min(1180px, 100%);
+}
+
+.mg-ai-bulk__summary {
+    font-weight: 600;
+}
+
+.mg-ai-bulk__list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin: 12px 0;
+}
+
+.mg-ai-bulk__item {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.mg-ai-bulk__item.is-approved {
+    border-color: #16a34a;
+    box-shadow: inset 0 0 0 1px #16a34a;
+}
+
+.mg-ai-bulk__item.is-error {
+    border-color: #dc2626;
+}
+
+.mg-ai-bulk__item.is-finished {
+    opacity: 0.75;
+}
+
+.mg-ai-bulk__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: baseline;
+}
+
+.mg-ai-bulk__status {
+    color: #475569;
+}
+
+.mg-ai-bulk__pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.mg-ai-bulk__pair figure {
+    margin: 0;
+}
+
+.mg-ai-bulk__pair figcaption {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.mg-ai-bulk__before,
+.mg-ai-bulk__after {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 220px;
+    border-radius: 8px;
+    background: repeating-conic-gradient(#cbd5e1 0% 25%, #f1f5f9 0% 50%) 50% / 20px 20px;
+}
+
+.mg-ai-bulk__before img,
+.mg-ai-bulk__after img {
+    display: block;
+    max-width: 100%;
+    max-height: 380px;
+    object-fit: contain;
+}
+
+.mg-ai-bulk__placeholder {
+    background: rgba(255, 255, 255, 0.85);
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: #475569;
+}
+
+.mg-ai-bulk__footer {
+    position: sticky;
+    bottom: -24px;
+    background: #ffffff;
+    padding: 12px 0 4px;
+    border-top: 1px solid #e2e8f0;
+}
+
+@media (max-width: 640px) {
+    .mg-ai-bulk__pair {
+        grid-template-columns: 1fr;
+    }
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk__footer {
+    background: #1f2937;
+    border-top-color: #374151;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk__item {
+    border-color: #374151;
+}
+
 .mg-modal__dialog.mg-ai-redesign {
     width: min(860px, 100%);
 }
