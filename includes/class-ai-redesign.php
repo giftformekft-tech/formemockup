@@ -734,7 +734,10 @@ class MG_AI_Redesign {
             $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);
             self::set_stage($product_id, 'save');
             $slug = (string) get_post_field('post_name', $product_id);
-            $attachment_id = MG_Custom_Field_Product_Variants::create_png_attachment($tmp, ($slug !== '' ? $slug : 'minta') . '-ai-ujraterv.png', $product->get_name() . ' – AI újraterv');
+            // A unique name per candidate: a deleted candidate's URL is never reused,
+            // so a browser or page cache cannot show its old preview for a new one.
+            $filename = ($slug !== '' ? $slug : 'minta') . '-ai-ujraterv-' . gmdate('YmdHis') . '-' . substr(md5(uniqid('', true)), 0, 6) . '.png';
+            $attachment_id = MG_Custom_Field_Product_Variants::create_png_attachment($tmp, $filename, $product->get_name() . ' – AI újraterv');
             if (is_wp_error($attachment_id)) {
                 throw new RuntimeException($attachment_id->get_error_message());
             }
@@ -841,6 +844,13 @@ class MG_AI_Redesign {
         )));
     }
 
+    protected static function versioned_url($url, $version) {
+        if ($url === '' || $version === '') {
+            return $url;
+        }
+        return $url . (strpos($url, '?') === false ? '?' : '&') . 'v=' . rawurlencode($version);
+    }
+
     protected static function candidate_for_ui(array $candidate) {
         $analyzers = self::get_analyzers();
         // Candidates from 2.41.x were enlarged 3× on the server.
@@ -848,8 +858,11 @@ class MG_AI_Redesign {
         $candidate['analyzer_label'] = $candidate['analyzer'] === 'manual'
             ? __('kézi prompt', 'mockup-generator')
             : ($analyzers[$candidate['analyzer']] ?? $candidate['analyzer']);
-        $candidate['preview'] = (string) wp_get_attachment_image_url($candidate['attachment_id'], 'medium');
-        $candidate['full'] = (string) wp_get_attachment_url($candidate['attachment_id']);
+        // The upscale replaces the file in place: version the URLs by its mtime.
+        $file = get_attached_file($candidate['attachment_id']);
+        $version = is_string($file) && is_file($file) ? (string) filemtime($file) : '';
+        $candidate['preview'] = self::versioned_url((string) wp_get_attachment_image_url($candidate['attachment_id'], 'medium'), $version);
+        $candidate['full'] = self::versioned_url((string) wp_get_attachment_url($candidate['attachment_id']), $version);
         return $candidate;
     }
 
@@ -930,7 +943,8 @@ class MG_AI_Redesign {
         $design_url = '';
         $design_error = '';
         try {
-            $design_url = self::path_to_url(self::design_source($product_id));
+            $design_path = self::design_source($product_id);
+            $design_url = self::versioned_url(self::path_to_url($design_path), (string) filemtime($design_path));
         } catch (RuntimeException $e) {
             $design_error = $e->getMessage();
         }

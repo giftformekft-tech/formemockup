@@ -260,6 +260,8 @@ file_put_contents($good, make_png(40, 40));
 $stored = MG_AI_Redesign::store_upscaled(6, 21, $good);
 check(getimagesize(get_attached_file(21))[0] === 40 && $stored['upscale'] === 'ai4x' && $stored['width'] === 40, '4× PNG replaces the candidate file');
 check($metadata_refreshed === array(21), 'attachment metadata refreshed');
+$v = filemtime(get_attached_file(21));
+check($stored['preview'] === "https://example.test/att-21-medium.png?v=$v" && $stored['full'] === "https://example.test/att-21.png?v=$v", 'preview and full URLs versioned by the file time');
 throws(function () use ($good) { MG_AI_Redesign::store_upscaled(6, 21, $good); }, 'már fel van skálázva', 'second upload rejected');
 
 // Approval of a candidate the browser could not upscale: 3× Lanczos fallback.
