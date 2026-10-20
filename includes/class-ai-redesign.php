@@ -22,6 +22,8 @@ class MG_AI_Redesign {
     const STATE_PREFIX = 'mg_ai_redesign_state_';
     const LOCK_PREFIX = 'mg_ai_redesign_lock_';
     const MAX_CANDIDATES = 6;
+    const AI_SCALE = 4;
+    const MAX_UPSCALED_BYTES = 83886080;
     const RUN_TIMEOUT = 600;
     const HTTP_TIMEOUT = 180;
     const ANALYSIS_MAX_SIDE = 1568;
@@ -35,6 +37,7 @@ class MG_AI_Redesign {
         add_action('wp_ajax_mg_ai_redesign_generate', array(__CLASS__, 'ajax_generate'));
         add_action('wp_ajax_mg_ai_redesign_status', array(__CLASS__, 'ajax_status'));
         add_action('wp_ajax_mg_ai_redesign_apply', array(__CLASS__, 'ajax_apply'));
+        add_action('wp_ajax_mg_ai_redesign_upscaled', array(__CLASS__, 'ajax_upscaled'));
     }
 
     public static function get_anthropic_models() {
@@ -479,8 +482,13 @@ class MG_AI_Redesign {
                 @unlink($png);
             }
         }
+        $info = @getimagesize((string) get_attached_file($attachment_id));
         $candidate = array(
             'attachment_id' => (int) $attachment_id,
+            // 'none' until the browser stores its Real-ESRGAN 4× version.
+            'upscale' => 'none',
+            'width' => $info ? (int) $info[0] : 0,
+            'height' => $info ? (int) $info[1] : 0,
             'created' => time(),
             'analyzer' => $analyzer,
             'intensity' => $intensity,
@@ -509,8 +517,69 @@ class MG_AI_Redesign {
         update_post_meta($product_id, self::META_CANDIDATES, array_slice($list, 0, self::MAX_CANDIDATES));
     }
 
+    protected static function update_candidate($product_id, $attachment_id, array $changes) {
+        $list = self::get_candidates($product_id);
+        foreach ($list as $i => $candidate) {
+            if ((int) $candidate['attachment_id'] === (int) $attachment_id) {
+                $list[$i] = array_merge($candidate, $changes);
+                update_post_meta($product_id, self::META_CANDIDATES, $list);
+                return $list[$i];
+            }
+        }
+        return null;
+    }
+
+    protected static function find_candidate($product_id, $attachment_id) {
+        foreach (self::get_candidates($product_id) as $candidate) {
+            if ((int) $candidate['attachment_id'] === (int) $attachment_id) {
+                return $candidate;
+            }
+        }
+        return null;
+    }
+
+    protected static function refresh_attachment_metadata($attachment_id, $path) {
+        if (!function_exists('wp_generate_attachment_metadata')) {
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+        }
+        wp_update_attachment_metadata($attachment_id, wp_generate_attachment_metadata($attachment_id, $path));
+    }
+
+    /**
+     * Replace a candidate's PNG with the browser's Real-ESRGAN 4× version.
+     * Only an exact 4× PNG of a not yet upscaled candidate is accepted.
+     */
+    public static function store_upscaled($product_id, $attachment_id, $tmp_path) {
+        $candidate = self::find_candidate($product_id, $attachment_id);
+        $path = $candidate ? get_attached_file($candidate['attachment_id']) : '';
+        if (!$candidate || !is_string($path) || !is_file($path)) {
+            throw new RuntimeException(__('A felskálázandó AI minta nem található.', 'mockup-generator'));
+        }
+        if (($candidate['upscale'] ?? '') !== 'none') {
+            throw new RuntimeException(__('Ez az AI minta már fel van skálázva.', 'mockup-generator'));
+        }
+        $info = @getimagesize($tmp_path);
+        if (!$info || $info[2] !== IMAGETYPE_PNG) {
+            throw new RuntimeException(__('A felskálázott fájl nem érvényes PNG.', 'mockup-generator'));
+        }
+        if ((int) $info[0] !== $candidate['width'] * self::AI_SCALE || (int) $info[1] !== $candidate['height'] * self::AI_SCALE) {
+            throw new RuntimeException(__('A felskálázott PNG mérete nem az eredeti négyszerese.', 'mockup-generator'));
+        }
+        if (!@copy($tmp_path, $path)) {
+            throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
+        }
+        self::refresh_attachment_metadata($candidate['attachment_id'], $path);
+        return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array(
+            'upscale' => 'ai4x',
+            'width' => (int) $info[0],
+            'height' => (int) $info[1],
+        )));
+    }
+
     protected static function candidate_for_ui(array $candidate) {
         $analyzers = self::get_analyzers();
+        // Candidates from 2.41.x were enlarged 3× on the server.
+        $candidate['upscale'] = $candidate['upscale'] ?? 'lanczos3x';
         $candidate['analyzer_label'] = $candidate['analyzer'] === 'manual'
             ? __('kézi prompt', 'mockup-generator')
             : ($analyzers[$candidate['analyzer']] ?? $candidate['analyzer']);
@@ -537,6 +606,12 @@ class MG_AI_Redesign {
         if (!$chosen || !is_string($path) || !is_file($path)) {
             throw new RuntimeException(__('A kiválasztott AI minta nem található. Generálj újat.', 'mockup-generator'));
         }
+        if (($chosen['upscale'] ?? '') === 'none') {
+            // The browser could not AI-upscale it: same 3× enlargement as the export.
+            MG_AI_Print_Generator::upscale_file($path);
+            self::refresh_attachment_metadata($chosen['attachment_id'], $path);
+            $chosen['upscale'] = 'lanczos3x';
+        }
         $previous = array(
             'path' => (string) get_post_meta($product_id, '_mg_last_design_path', true),
             'attachment_id' => absint(get_post_meta($product_id, '_mg_last_design_attachment', true)),
@@ -559,6 +634,7 @@ class MG_AI_Redesign {
             'attachment_id' => (int) $chosen['attachment_id'],
             'analyzer' => $chosen['analyzer'],
             'intensity' => $chosen['intensity'],
+            'upscale' => $chosen['upscale'] ?? 'lanczos3x',
         );
         update_post_meta($product_id, self::META_HISTORY, array_slice($history, -20));
         return $queued;
@@ -656,6 +732,22 @@ class MG_AI_Redesign {
         $product_id = self::check_request();
         try {
             wp_send_json_success(self::apply($product_id, isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0));
+        } catch (Throwable $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+        }
+    }
+
+    public static function ajax_upscaled() {
+        $product_id = self::check_request();
+        $file = isset($_FILES['upscaled']) && is_array($_FILES['upscaled']) ? $_FILES['upscaled'] : null;
+        if (!$file || !empty($file['error']) || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            wp_send_json_error(array('message' => __('A felskálázott PNG feltöltése sikertelen (lehet, hogy nagyobb a szerver feltöltési korlátjánál).', 'mockup-generator')));
+        }
+        if ((int) $file['size'] > self::MAX_UPSCALED_BYTES) {
+            wp_send_json_error(array('message' => __('A felskálázott PNG túl nagy.', 'mockup-generator')));
+        }
+        try {
+            wp_send_json_success(self::store_upscaled($product_id, isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0, $file['tmp_name']));
         } catch (Throwable $e) {
             wp_send_json_error(array('message' => $e->getMessage()));
         }

@@ -36,6 +36,11 @@ function delete_post_meta($id, $key) { unset($GLOBALS['meta'][$id][$key]); retur
 function get_attached_file($id) { return $GLOBALS['test_dir'] . '/att-' . $id . '.png'; }
 function wp_delete_attachment($id, $force) { $GLOBALS['deleted'][] = $id; return true; }
 function get_current_user_id() { return 7; }
+$metadata_refreshed = array();
+function wp_get_attachment_image_url($id, $size) { return "https://example.test/att-$id-medium.png"; }
+function wp_get_attachment_url($id) { return "https://example.test/att-$id.png"; }
+function wp_generate_attachment_metadata($id, $path) { return array('file' => basename($path)); }
+function wp_update_attachment_metadata($id, $data) { $GLOBALS['metadata_refreshed'][] = $id; return true; }
 function is_wp_error($v) { return $v instanceof WP_Error; }
 class WP_Error {
     public function __construct(private $message = '') {}
@@ -50,7 +55,15 @@ function wp_remote_retrieve_body($r) { return $r['body']; }
 function as_enqueue_async_action() { return 1; }
 class Imagick {
     const CHANNEL_ALPHA = 8;
-    public function __construct($path = null) {}
+    const FILTER_LANCZOS = 22;
+    private $w = 0, $h = 0;
+    public function __construct($path = null) { if ($path) { $i = getimagesize($path); $this->w = $i[0]; $this->h = $i[1]; } }
+    public function getImageWidth() { return $this->w; }
+    public function getImageHeight() { return $this->h; }
+    public function resizeImage($w, $h, $f, $b) { $this->w = $w; $this->h = $h; return true; }
+    public function setImagePage($a, $b, $c, $d) {}
+    public function setImageFormat($f) {}
+    public function getImageBlob() { return make_png($this->w, $this->h); }
     public function getImageAlphaChannel() { return true; }
     public function getImageChannelRange($channel) { return array('minima' => 0.0); }
     public static function getQuantumRange() { return array('quantumRangeLong' => 65535); }
@@ -178,6 +191,33 @@ $result = MG_AI_Redesign::apply(5, 11);
 check($enqueued === array(array(5, get_attached_file(11), 'ai_redesign')), 'replacement queued with the AI PNG');
 check($deleted === array(12) && !isset($meta[5][MG_AI_Redesign::META_CANDIDATES]), 'other candidates deleted');
 check($meta[5][MG_AI_Redesign::META_HISTORY][0]['previous_path'] === $source && $result['job_id'] === 'job1', 'previous design kept in history');
+
+// Browser Real-ESRGAN result: only an exact 4× PNG of a not yet upscaled candidate.
+$meta[6][MG_AI_Redesign::META_CANDIDATES] = array(
+    array('attachment_id' => 21, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong'),
+);
+file_put_contents(get_attached_file(21), make_png(10, 10));
+$wrong = $test_dir . '/wrong.png';
+file_put_contents($wrong, make_png(30, 30));
+throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 21, $wrong); }, 'négyszerese', 'non-4× upload rejected');
+$bad = $test_dir . '/bad.png';
+file_put_contents($bad, 'not a png');
+throws(function () use ($bad) { MG_AI_Redesign::store_upscaled(6, 21, $bad); }, 'PNG', 'non-PNG upload rejected');
+throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 99, $wrong); }, 'nem található', 'unknown candidate rejected for upload');
+$good = $test_dir . '/good.png';
+file_put_contents($good, make_png(40, 40));
+$stored = MG_AI_Redesign::store_upscaled(6, 21, $good);
+check(getimagesize(get_attached_file(21))[0] === 40 && $stored['upscale'] === 'ai4x' && $stored['width'] === 40, '4× PNG replaces the candidate file');
+check($metadata_refreshed === array(21), 'attachment metadata refreshed');
+throws(function () use ($good) { MG_AI_Redesign::store_upscaled(6, 21, $good); }, 'már fel van skálázva', 'second upload rejected');
+
+// Approval of a candidate the browser could not upscale: 3× Lanczos fallback.
+$meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong');
+file_put_contents(get_attached_file(22), make_png(10, 10));
+$enqueued = array();
+MG_AI_Redesign::apply(6, 22);
+check(getimagesize(get_attached_file(22))[0] === 30, 'not upscaled candidate gets 3× on approval');
+check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
 
 array_map('unlink', glob($test_dir . '/*'));
 rmdir($test_dir);

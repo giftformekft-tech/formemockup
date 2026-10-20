@@ -495,13 +495,15 @@ class MG_AI_Print_Generator {
      * AI redesign of a whole design (admin "AI újratervezés"). Without a
      * reference the image model only gets the text prompt, so nothing of the
      * original artwork can be copied; with one it reworks the original.
+     * The PNG is returned at the model's size: the admin's browser upscales
+     * it with Real-ESRGAN, upscale_file() is the fallback.
      *
      * @return string Temporary PNG path; the caller moves or deletes it.
      */
     public static function redesign_image($source_path, $prompt, $key, $quality = 'medium', $use_reference = false) {
         $quality = self::validate_quality($quality);
         if ($use_reference) {
-            return self::edit_image($source_path, $prompt, $key, self::get_model(), false, $quality);
+            return self::edit_image($source_path, $prompt, $key, self::get_model(), false, $quality, false);
         }
         $model = self::get_model();
         list(, $size, $transparent) = self::inspect_source($source_path);
@@ -514,7 +516,27 @@ class MG_AI_Print_Generator {
             'headers' => array('Authorization' => 'Bearer ' . $settings['api_key'], 'Content-Type' => 'application/json'),
             'body' => $body,
         ));
-        return self::save_response_image($response, $size, $transparent, $key, $model, false);
+        return self::save_response_image($response, $size, $transparent, $key, $model, false, false);
+    }
+
+    /** The same 3× Lanczos enlargement as the export, in place, for a PNG file. */
+    public static function upscale_file($path) {
+        $image = new Imagick($path);
+        try {
+            $width = $image->getImageWidth() * self::UPSCALE_FACTOR;
+            $height = $image->getImageHeight() * self::UPSCALE_FACTOR;
+            if (!$image->resizeImage($width, $height, Imagick::FILTER_LANCZOS, 1.0)) {
+                throw new RuntimeException(__('Nem sikerült az AI nyomat 3×-os felnagyítása.', 'mg'));
+            }
+            $image->setImagePage(0, 0, 0, 0);
+            $image->setImageFormat('png');
+            $png = $image->getImageBlob();
+        } finally {
+            $image->clear();
+        }
+        if (file_put_contents($path, $png, LOCK_EX) !== strlen($png)) {
+            throw new RuntimeException(__('Nem sikerült elmenteni az AI nyomatot.', 'mg'));
+        }
     }
 
     protected static function validate_quality($quality) {
@@ -550,7 +572,7 @@ class MG_AI_Print_Generator {
         return array($source, $size, $transparent);
     }
 
-    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false, $quality = 'low') {
+    protected static function edit_image($source_path, $prompt, $key, $model = self::DEFAULT_MODEL, $defringe = false, $quality = 'low', $upscale = true) {
         $model = self::validate_model($model);
         $quality = self::validate_quality($quality);
         list($source, $size, $transparent) = self::inspect_source($source_path);
@@ -574,11 +596,11 @@ class MG_AI_Print_Generator {
             'body' => $body,
         ));
         unset($body, $bytes);
-        return self::save_response_image($response, $size, $transparent, $key, $model, $defringe);
+        return self::save_response_image($response, $size, $transparent, $key, $model, $defringe, $upscale);
     }
 
-    /** Shared by edits and generations: validate, upscale 3× and save the returned PNG. */
-    protected static function save_response_image($response, $size, $transparent, $key, $model, $defringe) {
+    /** Shared by edits and generations: validate, upscale 3× (unless told not to) and save the returned PNG. */
+    protected static function save_response_image($response, $size, $transparent, $key, $model, $defringe, $upscale = true) {
         if (is_wp_error($response)) {
             $detail = method_exists($response, 'get_error_message') ? $response->get_error_message() : '';
             if (preg_match('/cURL error (\d+)/i', $detail, $match)) {
@@ -618,6 +640,13 @@ class MG_AI_Print_Generator {
             if ($defringe && self::get_defringe_enabled()) {
                 MG_Image_Utils::clean_transparent_edges($result);
             }
+            if (!$upscale) {
+                // Kept at the model's size (the redesign's browser AI-upscales it).
+                if ($defringe && self::get_defringe_enabled()) {
+                    $result->setImageFormat('png');
+                    $png = $result->getImageBlob();
+                }
+            } else {
             // Upscale only the generated PNG, once per item, before print-size processing.
             self::set_stage($key, 'upscale');
             $width = $result_info[0] * self::UPSCALE_FACTOR;
@@ -634,6 +663,7 @@ class MG_AI_Print_Generator {
             }
             if ($transparent && !self::has_transparency($result)) {
                 throw new RuntimeException(__('Az AI nyomat elveszítette az átlátszó hátteret. Az export leállt.', 'mg'));
+            }
             }
         } finally {
             $result->clear();

@@ -74,6 +74,21 @@ class MG_Admin_Page {
             true
         );
 
+        // AI redesign: in-browser Real-ESRGAN upscaling; TensorFlow.js and the
+        // model load only when an upscale actually starts.
+        $upscale_path = plugin_dir_path(__FILE__) . '../assets/js/ai-upscale.js';
+        wp_enqueue_script(
+            'mg-ai-upscale',
+            plugins_url('../assets/js/ai-upscale.js', __FILE__),
+            array(),
+            file_exists($upscale_path) ? filemtime($upscale_path) : '1.0.0',
+            true
+        );
+        wp_localize_script('mg-ai-upscale', 'MG_AI_UPSCALE', array(
+            'tfUrl' => plugins_url('../assets/vendor/tfjs/tf.min.js', __FILE__) . '?ver=4.22.0',
+            'modelUrl' => plugins_url('../assets/models/realesr-general-x4v3/', __FILE__),
+        ));
+
         $tabs = self::get_accessible_tabs();
         $active = self::determine_active_tab($tabs);
         $data = array(

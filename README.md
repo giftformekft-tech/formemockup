@@ -10,7 +10,7 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    leírja a jelenlegi stílust, és megírja az új, eltérő stílus képpromptját. Választható:
    OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
 2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
-   3×-os felnagyítással, az eredeti átlátszóságával.
+   az eredeti átlátszóságával. Utána a böngésző **AI-val 4×-esre felskálázza** (lásd lent).
    - **Új stílus** (ajánlott): az ötlet, a téma és az, hogy az illusztráció mit ábrázol,
      marad; az illusztráció újrarajzolva, a szövegek stílusa, az elrendezés és a színek
      újak. A képgeneráló csak a szöveges leírást kapja, az eredeti képet nem, így annak
@@ -20,6 +20,16 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    **Jóváhagyás** a Minta cseréje sorával újragenerálja az összes mockupot, és a jóváhagyott
    PNG lesz a nyomtatási minta. A többi jelölt törlődik, az eredeti minta a médiatárban
    marad (az előzmény a `_mg_ai_redesign_history` metában).
+
+**AI felskálázás (2.42.0):** a kész PNG-t az admin böngészője a **Real-ESRGAN**
+(`realesr-general-x4v3`, BSD-3) modellel 4×-esre nagyítja (pl. 816 → 3264 px), TensorFlow.js-szel,
+WebGL-en. A modell (4,9 MB) és a könyvtár (1,4 MB) a pluginban van (`assets/models/`,
+`assets/vendor/tfjs/`), külső szolgáltatás és API-költség nincs. Egy visszavetítéses
+színkorrekció megtartja az eredeti színeket; átlátszó mintánál a szín és az átlátszóság külön
+skálázódik, sötét szegély nélkül; az üres vagy egyszínű csempék kimaradnak. A felskálázás a
+generálás után magától indul, közben az ablakot nyitva kell hagyni. Ha a böngésző nem tudja
+(nincs WebGL), jóváhagyáskor a szerver a régi 3×-os Lanczos-nagyítást alkalmazza. A modell
+átalakítása: `tools/convert-realesrgan.py`. Teszt: `node tests/ai-upscale-browser-test.js`.
 
 A **Pontos szöveg** mezőt érdemes kitölteni (soronként egy sor): így biztosan ugyanaz a
 szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi jelölt promptja
