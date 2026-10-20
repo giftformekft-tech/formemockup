@@ -814,6 +814,19 @@ body.mg-modal-open {
     background: #cbd5e1;
 }
 
+.mg-dash-design-col {
+    width: 72px;
+}
+
+.mg-dash-design img {
+    display: block;
+    width: 56px;
+    height: 56px;
+    object-fit: contain;
+    border-radius: 6px;
+    background: repeating-conic-gradient(#cbd5e1 0% 25%, #f1f5f9 0% 50%) 50% / 12px 12px;
+}
+
 .mg-modal__dialog.mg-ai-redesign {
     width: min(860px, 100%);
 }

@@ -1,6 +1,16 @@
 # formemockup
 mymockup
 
+## Dashboard: minta-előnézet (2.42.1)
+
+A **Dashboard** terméklistájának első oszlopa a termék **nyomtatási mintáját** mutatja
+(nem a mockupot), átlátszó részeknél sakktábla-háttéren; kattintásra a teljes minta nyílik.
+A lista sosem tölti be az eredeti PNG-t (az akár több tíz MB is lehet): a médiatár
+bélyegképét használja, vagy egyszer készít egy 128 px-es PNG-t az
+`uploads/mg_design_thumbs/` mappába. Ha a minta lecserélődik (Minta cseréje, AI
+újratervezés), új előnézet készül. Oldalbetöltésenként legfeljebb 10 új előnézet készül, a
+többinél addig a termék képe látszik. Ha nincs mentett mintafájl, a termék képe marad.
+
 ## AI újratervezés (2.41.0)
 
 Ha egy minta túlságosan hasonlít egy másik webáruházéra, a **Dashboard** terméklistájában

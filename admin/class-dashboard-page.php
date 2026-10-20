@@ -2,6 +2,13 @@
 if (!defined('ABSPATH')) exit;
 
 class MG_Dashboard_Page {
+    const DESIGN_THUMB_SIZE = 128;
+    const DESIGN_THUMB_DIR = 'mg_design_thumbs';
+    // New previews made per page load; the rest follow on the next load.
+    const DESIGN_THUMB_BUDGET = 10;
+
+    protected static $design_thumbs_made = 0;
+
     public static function add_menu_page(){
         add_submenu_page(
             'mockup-generator',
@@ -231,14 +238,14 @@ class MG_Dashboard_Page {
         echo '</form>';
 
         echo '<table class="widefat fixed striped"><thead><tr>';
-        echo '<th>Kép</th><th>ID</th><th>Cím</th><th>Státusz</th><th>Dátum</th><th>Műveletek</th>';
+        echo '<th class="mg-dash-design-col">Minta</th><th>ID</th><th>Cím</th><th>Státusz</th><th>Dátum</th><th>Műveletek</th>';
         echo '</tr></thead><tbody>';
 
         if (!empty($data['items'])){
             foreach($data['items'] as $r){
                 $id = intval($r['ID']); $edit = get_edit_post_link($id, ''); $view = get_permalink($id);
                 echo '<tr>';
-                echo '<td>'.get_the_post_thumbnail($id, array(48, 48)).'</td>';
+                echo '<td class="mg-dash-design">'.self::design_thumbnail_html($id).'</td>';
                 echo '<td>'.$id.'</td>';
                 echo '<td><a href="'.esc_url($edit).'">'.esc_html($r['post_title']).'</a></td>';
                 echo '<td>'.esc_html($r['post_status']).'</td>';
@@ -269,6 +276,71 @@ class MG_Dashboard_Page {
         self::render_ai_redesign_modal();
 
         echo '</div>';
+    }
+
+    /**
+     * Small preview of the product's print design (not its mockup). Print
+     * PNGs can be tens of MB, so the list never loads the file itself: it
+     * uses the attachment's thumbnail size, or a 128 px PNG made once into
+     * uploads/mg_design_thumbs/ (keyed by path, mtime and size, so a replaced
+     * design gets a new preview).
+     *
+     * @return array|null {thumb: preview URL or '' if not made yet, full: design URL}
+     */
+    public static function design_thumbnail($product_id){
+        $uploads = wp_upload_dir();
+        $basedir = isset($uploads['basedir']) ? wp_normalize_path($uploads['basedir']) : '';
+        if ($basedir === '') {
+            return null;
+        }
+        $path = get_post_meta($product_id, '_mg_last_design_path', true);
+        $path = is_string($path) && $path !== '' ? wp_normalize_path($path) : '';
+        $attachment_id = absint(get_post_meta($product_id, '_mg_last_design_attachment', true));
+        $attachment_path = $attachment_id > 0 ? wp_normalize_path((string) get_attached_file($attachment_id)) : '';
+        // The attachment can be stale after a replacement; the path wins, like in the export.
+        if ($attachment_path !== '' && ($path === '' || $attachment_path === $path) && is_file($attachment_path)) {
+            $src = wp_get_attachment_image_src($attachment_id, 'thumbnail');
+            if ($src && !empty($src[3])) {
+                return array('thumb' => $src[0], 'full' => (string) wp_get_attachment_url($attachment_id));
+            }
+            $path = $attachment_path;
+        }
+        if ($path === '' || !is_file($path) || strpos($path, trailingslashit($basedir)) !== 0) {
+            return null;
+        }
+        $full = trailingslashit($uploads['baseurl']) . ltrim(substr($path, strlen($basedir)), '/');
+        $rel = self::DESIGN_THUMB_DIR . '/' . md5($path . '|' . filemtime($path) . '|' . filesize($path)) . '.png';
+        $thumb = trailingslashit($basedir) . $rel;
+        if (!is_file($thumb)) {
+            if (self::$design_thumbs_made >= self::DESIGN_THUMB_BUDGET) {
+                return array('thumb' => '', 'full' => $full);
+            }
+            self::$design_thumbs_made++;
+            $editor = wp_get_image_editor($path);
+            if (is_wp_error($editor) || !wp_mkdir_p(dirname($thumb))) {
+                return array('thumb' => '', 'full' => $full);
+            }
+            $editor->resize(self::DESIGN_THUMB_SIZE, self::DESIGN_THUMB_SIZE, false);
+            if (is_wp_error($editor->save($thumb, 'image/png'))) {
+                return array('thumb' => '', 'full' => $full);
+            }
+        }
+        return array('thumb' => trailingslashit($uploads['baseurl']) . $rel, 'full' => $full);
+    }
+
+    protected static function design_thumbnail_html($product_id){
+        $design = self::design_thumbnail($product_id);
+        if ($design && $design['thumb'] !== '') {
+            return '<a href="'.esc_url($design['full']).'" target="_blank" rel="noopener" title="Minta megnyitása teljes méretben">'
+                . '<img src="'.esc_url($design['thumb']).'" alt="Minta" width="56" height="56" loading="lazy" /></a>';
+        }
+        // No design file, or its preview is made on the next load: show the mockup.
+        $note = $design ? 'A minta előnézete a következő betöltéskor készül el.' : 'Nincs mentett mintafájl – a termék képe látható.';
+        $mockup = get_the_post_thumbnail($product_id, array(48, 48), array('title' => $note));
+        if ($design) {
+            return '<a href="'.esc_url($design['full']).'" target="_blank" rel="noopener" title="'.esc_attr($note).'">'.$mockup.'</a>';
+        }
+        return $mockup !== '' ? $mockup : '<span class="description">–</span>';
     }
 
     /**
