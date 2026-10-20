@@ -21,25 +21,18 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
 2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
    az eredeti átlátszóságával. Utána a böngésző **AI-val 4×-esre felskálázza** (lásd lent).
-   Az elemző modell csak egy **rövid, nagyvonalú** promptot ír (legfeljebb 3 mondat): a fő
-   motívumot egy-két szóval és a hangulatot, a részletek (pontos elrendezés, méretek, póz,
-   betűtípus, színek, díszítés) nélkül. A szöveget a rendszer teszi hozzá betűhíven, és a
-   képgeneráló kifejezetten **kreatív, szabad értelmezést** kér (2.42.4).
-   - **Finom átdolgozás**: a fő motívum és a durva felépítés (pl. „illusztráció felül,
-     szöveg alatta”) kerül a promptba.
-   - **Új stílus** (ajánlott): csak a fő motívum, elrendezés nélkül.
-   - **Teljesen új**: csak a téma és a hangulat.
-
-   **Fekete körvonal (2.42.6):** minden képprompt fix követelménye, hogy minden felirat és
-   grafikai elem körül egyenletes, jól látható fekete körvonal legyen; a kézzel szerkesztett
-   promptba is bekerül. A színkorlát ezt nem számolja külön színnek.
-
-   **Színek (2.42.5):** a kevés színű, főleg szöveges minták nem lesznek szivárványosak. Ha a
-   minta 1–3 festékszínből áll és nincs rajta figura, jelenet vagy mintázat, a **Finom
-   átdolgozás** ugyanezeket a színeket kapja (pl. piros-fehérből piros-fehér), az **Új stílus**
-   ugyanennyi, de új színt. Figurás vagy mintázatos mintánál és a Teljesen újnál a színek
-   szabadok. A színeket és azok számát az elemző adja meg (`has_illustration`, `color_count`,
-   `colors`), a szabályt a rendszer teszi a képpromptba.
+   **Tervezési brief (2.42.8):** az elemző nem prózát ír, hanem rövid mezőket tölt ki: téma,
+   műfaj (pl. „egymás alá szedett tipográfiai idézet nagy számmal”), motívum, hangulat, durva
+   felépítés, soronként a hangsúly (legnagyobb / nagy / kicsi), világos vagy sötét jelleg, és
+   2–4 **jellegzetes elem**, amelyről az eredeti felismerhető (pl. babérkoszorú, türkiz szalag,
+   sárga írott betű), mindegyikhez egy ugyanolyan szerepű cserével. A képpromptot ebből a kód
+   rakja össze, így a nagyvonalú hasonlóság (műfaj, téma, hangsúly) megmarad, a felismerhető
+   részletek viszont nem kerülnek át:
+   - **Finom átdolgozás**: műfaj, téma, hangulat, durva felépítés és hangsúly; a jellegzetes
+     elemek a megadott cserékre változnak; minden részlet új.
+   - **Új stílus** (ajánlott): műfaj, téma, hangulat és hangsúly; saját elrendezés; a
+     jellegzetes elemek tiltva.
+   - **Teljesen új**: csak a téma és a hangulat; a jellegzetes elemek tiltva.
 
    A képgeneráló az eredeti képet egyik fokozatnál sem kapja meg (a költség miatt), csak
    a szöveges promptot (`images/generations`); az elemző a mintát kicsinyített JPEG-ként látja.

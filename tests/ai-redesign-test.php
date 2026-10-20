@@ -91,7 +91,17 @@ function throws($fn, $needle, $label) {
     check(false, $label . ' (no exception)');
 }
 function analysis_json() {
-    return json_encode(array('text_lines' => array('Legjobb Apa', 'a világon'), 'original_style' => 'kézírás', 'new_style' => 'retro', 'image_prompt' => 'Bold retro badge with "Legjobb Apa" and "a világon".'), JSON_UNESCAPED_UNICODE);
+    return json_encode(array(
+        'text_lines' => array('Legjobb Apa', 'a világon'), 'line_sizes' => array('dominant', 'small'),
+        'topic' => 'the best dad in the world', 'archetype' => 'a bold typographic badge',
+        'motif' => '', 'mood' => 'proud, warm', 'layout' => 'the title in an arc above, the subtitle below',
+        'signature_elements' => array(
+            array('element' => 'laurel wreath around the title', 'replacement' => 'a ring of small stars'),
+            array('element' => 'teal ribbon banner', 'replacement' => 'a rounded label'),
+        ),
+        'tone' => 'light', 'has_illustration' => false, 'color_count' => 4, 'colors' => array('white', 'yellow', 'teal', 'red'),
+        'original_style' => 'kézírás', 'new_style' => 'retro',
+    ), JSON_UNESCAPED_UNICODE);
 }
 
 // Settings: Claude models appear only with a saved key, the key survives an empty save.
@@ -109,7 +119,7 @@ $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reaso
     array('type' => 'thinking', 'thinking' => ''),
     array('type' => 'text', 'text' => analysis_json()),
 ))));
-$analysis = MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'strong', MG_AI_Redesign::analysis_request_text('Legjobb apa póló', '', ''));
+$analysis = MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', MG_AI_Redesign::analysis_request_text('Legjobb apa póló', '', ''));
 list($url, $request) = $http_calls[0];
 $body = json_decode($request['body'], true);
 check($url === 'https://api.anthropic.com/v1/messages', 'Claude endpoint');
@@ -119,59 +129,79 @@ check($body['model'] === 'claude-opus-5-5' && $body['output_config']['effort'] =
 check($body['output_config']['format']['type'] === 'json_schema' && $body['output_config']['format']['schema']['additionalProperties'] === false, 'Claude structured output');
 check(!isset($body['thinking']), 'no thinking config sent (adaptive by default)');
 check($body['messages'][0]['content'][0]['source'] === array('type' => 'base64', 'media_type' => 'image/jpeg', 'data' => 'QUJD'), 'Claude image block');
-check(strpos($body['system'], 'Új stílus: a promptban csak a fő motívum') !== false && strpos($body['system'], 'elrendezés nélkül') !== false, 'new style: only the main motif, no layout');
+check(strpos($body['system'], 'tervezési briefet') !== false && strpos($body['system'], 'signature_elements') !== false, 'analyzer fills a design brief');
+check($body['output_config']['format']['schema']['properties']['signature_elements']['items']['additionalProperties'] === false, 'nested schema is strict too');
 check($analysis['text_lines'] === array('Legjobb Apa', 'a világon'), 'analysis text lines parsed');
 
 $http_calls = array();
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'end_turn', 'content' => array(array('type' => 'text', 'text' => analysis_json())))));
-MG_AI_Redesign::analyze('anthropic:claude-haiku-5-5', 'QUJD', 'medium', 'x');
+MG_AI_Redesign::analyze('anthropic:claude-haiku-5-5', 'QUJD', 'x');
 $body = json_decode($http_calls[0][1]['body'], true);
 check(!isset($http_calls[0][1]['headers']['anthropic-beta']) && !isset($body['fallbacks']), 'Haiku has no server-side fallback');
-check(strpos($body['system'], 'Finom átdolgozás') !== false && strpos($body['system'], 'durva felépítés') !== false, 'light rework: motif and rough structure only');
 check(array_keys(MG_AI_Redesign::get_intensities()) === array('strong', 'medium', 'full'), 'new style is the default, full redesign last');
-foreach (array_keys(MG_AI_Redesign::get_intensities()) as $level) {
-    $rules = MG_AI_Redesign::analysis_instructions($level);
-    check(strpos($rules, 'RÖVID') !== false && strpos($rules, 'NE írd le az eredeti részleteit') !== false && strpos($rules, 'kreatív') !== false, "short, rough, creative prompt asked ($level)");
-}
+check(strpos(MG_AI_Redesign::analysis_instructions(), 'méretek, százalékok, pontos helyek') !== false, 'brief fields stay rough');
 
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'refusal', 'content' => array())));
-throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'strong', 'x'); }, 'elutasította', 'refusal is reported');
+throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'x'); }, 'elutasította', 'refusal is reported');
 $http_responses[] = array('code' => 401, 'body' => 'secret provider body');
-throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'strong', 'x'); }, 'HTTP 401', '401 is reported without the body');
-throws(function () { MG_AI_Redesign::analyze('anthropic:claude-unknown', 'QUJD', 'strong', 'x'); }, 'nem elérhető', 'unknown analyzer rejected');
+throws(function () { MG_AI_Redesign::analyze('anthropic:claude-opus-5-5', 'QUJD', 'x'); }, 'HTTP 401', '401 is reported without the body');
+throws(function () { MG_AI_Redesign::analyze('anthropic:claude-unknown', 'QUJD', 'x'); }, 'nem elérhető', 'unknown analyzer rejected');
 
 // OpenAI request shape.
 $options['mg_ai_seo_settings'] = array('api_key' => 'sk-openai');
 $http_calls = array();
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('status' => 'completed', 'output_text' => analysis_json())));
-MG_AI_Redesign::analyze('openai', 'QUJD', 'strong', 'x');
+MG_AI_Redesign::analyze('openai', 'QUJD', 'x');
 list($url, $request) = $http_calls[0];
 $body = json_decode($request['body'], true);
 check($url === 'https://api.openai.com/v1/responses' && $request['headers']['Authorization'] === 'Bearer sk-openai', 'OpenAI endpoint and key');
 check($body['text']['format']['type'] === 'json_schema' && $body['text']['format']['strict'] === true, 'OpenAI structured output');
 check($body['input'][0]['content'][1]['image_url'] === 'data:image/jpeg;base64,QUJD', 'OpenAI image as data URL');
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('status' => 'incomplete')));
-throws(function () { MG_AI_Redesign::analyze('openai', 'QUJD', 'strong', 'x'); }, 'hiányos', 'incomplete OpenAI response reported');
+throws(function () { MG_AI_Redesign::analyze('openai', 'QUJD', 'x'); }, 'hiányos', 'incomplete OpenAI response reported');
 
 // Parsing and the fixed image prompt rules.
 check(MG_AI_Redesign::parse_analysis("```json\n" . analysis_json() . "\n```")['new_style'] === 'retro', 'fenced JSON tolerated');
-throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"image_prompt":""}'); }, 'képpromptot', 'empty prompt rejected');
+throws(function () { MG_AI_Redesign::parse_analysis('{"text_lines":[],"topic":"","archetype":""}'); }, 'tervezési briefet', 'empty brief rejected');
+check($analysis['line_sizes'] === array('dominant', 'small') && $analysis['tone'] === 'light' && count($analysis['signature_elements']) === 2, 'brief parsed');
+
+// Levels decide what of the brief reaches the image model.
+$fin = MG_AI_Redesign::build_image_prompt($analysis, true, 'medium');
+$new = MG_AI_Redesign::build_image_prompt($analysis, true, 'strong');
+$full = MG_AI_Redesign::build_image_prompt($analysis, true, 'full');
+check(strpos($fin, 'Design an original T-shirt print: a bold typographic badge, about the best dad in the world.') === 0, 'finom: genre and topic first');
+check(strpos($fin, 'Keep a similar overall structure: the title in an arc above, the subtitle below.') !== false, 'finom: rough layout kept');
+check(strpos($fin, 'instead of laurel wreath around the title, use a ring of small stars; instead of teal ribbon banner, use a rounded label') !== false, 'finom: signature elements swapped');
+check(strpos($fin, 'Text emphasis: "Legjobb Apa" is the dominant element; the other lines are small.') !== false, 'finom: text emphasis kept');
+check(strpos($fin, 'design every detail yourself') !== false, 'finom: details new');
+check(strpos($new, 'a bold typographic badge') !== false && strpos($new, 'Keep a similar overall structure') === false, 'new style: genre without layout');
+check(strpos($new, 'Do not use: laurel wreath around the title; teal ribbon banner.') !== false && strpos($new, 'ring of small stars') === false, 'new style: signature elements forbidden, no replacements');
+check(strpos($new, 'Text emphasis:') !== false && strpos($new, 'Be creative') !== false, 'new style: emphasis kept, creative');
+check(strpos($full, 'Design an original T-shirt print about the best dad in the world.') === 0 && strpos($full, 'badge') === false && strpos($full, 'Text emphasis') === false, 'full: topic and mood only');
+check(strpos($full, 'Do not use: laurel wreath') !== false, 'full: signature elements forbidden');
+check(strpos($new, 'predominantly light-colored, so it works on dark garments') !== false, 'tone kept for the garment colors');
+$hinted = MG_AI_Redesign::build_image_prompt(array_merge($analysis, array('style_hint' => 'retro 70s')), true, 'strong');
+check(strpos($hinted, 'Style direction: retro 70s.') !== false, 'style hint passed on');
+check(strpos(MG_AI_Redesign::build_image_prompt(array_merge($analysis, array('text_lines' => array('Más szöveg'))), true, 'strong'), 'Text emphasis') === false, 'emphasis dropped when the text changed');
+$long = MG_AI_Redesign::build_image_prompt(array_merge($analysis, array('archetype' => str_repeat('very long genre words ', 20))), true, 'strong');
+check(strlen(strtok($long, "\n")) < 200, 'over-long brief fields capped');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, true);
 check(strpos($prompt, 'exactly this text, line by line, and no other text: "Legjobb Apa" / "a világon"') !== false, 'exact text with accents enforced');
 foreach (array('medium', 'strong', 'full') as $level) {
     check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, $level), 'solid black outline (contour) around it') !== false, "black outline required ($level)");
 }
-check(strpos(MG_AI_Redesign::analysis_instructions('medium'), 'fekete körvonal nem számítanak') !== false, 'outline not counted as a design color');
+check(strpos(MG_AI_Redesign::analysis_instructions(), 'fekete körvonal nem számítanak') !== false, 'outline not counted as a design color');
 check(strpos($prompt, 'Be creative') !== false && strpos($prompt, 'instead of illustrating it literally') !== false, 'image model asked to be creative');
 check(strpos($prompt, 'fully transparent background') !== false && strpos($prompt, 'attached') === false, 'transparent, no reference wording');
 $prompt = MG_AI_Redesign::build_image_prompt($analysis, false);
-check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Bold retro badge') === 0, 'opaque, analyzer prompt first');
+check(strpos($prompt, 'plain, solid background') !== false && strpos($prompt, 'Design an original T-shirt print') === 0, 'opaque, brief first');
 // Few-color text designs keep their palette: red and white must not become a rainbow.
 $redWhite = array_merge($analysis, array('has_illustration' => false, 'color_count' => 2, 'colors' => array('Red', 'white')));
 $prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'medium');
 check(strpos($prompt, 'Use only these two ink colors for the whole design (text and illustration): red, white, plus the black outline. No other colors') !== false, 'finom: same colors kept');
 check(strpos($prompt, 'color palette') === false, 'creative line does not invite a new palette');
-check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, 'medium'), 'lettering style, color palette and') !== false, 'free palette when no color rule');
+check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, 'medium'), 'and so is the color palette') !== false, 'finom: free palette when no color rule');
+check(strpos(MG_AI_Redesign::build_image_prompt($analysis, true, 'strong'), 'lettering style, color palette and') !== false, 'new style: free palette when no color rule');
 $prompt = MG_AI_Redesign::build_image_prompt($redWhite, true, 'strong');
 check(strpos($prompt, 'Use exactly two solid ink colors') !== false && strpos($prompt, 'red, white') === false, 'new style: same number of colors, new colors');
 check(strpos($prompt, 'colors (within the color limit below)') !== false, 'new style: new colors within the limit');
@@ -180,7 +210,7 @@ check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('has_illustratio
 check(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 5)), 'medium') === '', 'many colors: no limit');
 check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('color_count' => 1, 'colors' => array('black'))), 'medium'), 'Use only this ink color for the whole design (text and illustration): black, plus the black outline.') !== false, 'one-color design');
 check(strpos(MG_AI_Redesign::palette_rule(array_merge($redWhite, array('colors' => array('red'))), 'medium'), 'Use exactly two solid ink colors') !== false, 'missing color names: count only');
-check(MG_AI_Redesign::parse_analysis(json_encode(array('image_prompt' => 'x', 'has_illustration' => false, 'color_count' => 2, 'colors' => array('red', 'white'))))['colors'] === array('red', 'white'), 'colors parsed');
+check(MG_AI_Redesign::parse_analysis(json_encode(array('topic' => 'x', 'has_illustration' => false, 'color_count' => 2, 'colors' => array('red', 'white'))))['colors'] === array('red', 'white'), 'colors parsed');
 check(strpos(MG_AI_Redesign::analysis_request_text('Név', "Sor 1\nSor 2", 'retro'), '"Sor 1\nSor 2"') !== false, 'user text passed as quoted data');
 
 // Every level: the image model gets the prompt only, never the original PNG (cost).
