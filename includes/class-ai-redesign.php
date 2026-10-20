@@ -1045,7 +1045,8 @@ class MG_AI_Redesign {
         }
         if (empty($chosen['palette'])) {
             // Candidates from before 2.42.12 and the 3× fallback still need the palette finish.
-            $chosen['palette'] = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS)['colors'];
+            $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
+            $chosen = array_merge($chosen, array('palette' => $palette['colors'], 'width' => $palette['width'], 'height' => $palette['height']));
             self::refresh_attachment_metadata($chosen['attachment_id'], $path);
         }
         $previous = array(
@@ -1074,6 +1075,8 @@ class MG_AI_Redesign {
             'palette' => (int) $chosen['palette'],
         );
         update_post_meta($product_id, self::META_HISTORY, array_slice($history, -20));
+        // The finished file, so the page can show what goes on the product.
+        $queued['candidate'] = self::candidate_for_ui($chosen);
         return $queued;
     }
 

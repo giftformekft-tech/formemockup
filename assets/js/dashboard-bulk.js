@@ -120,6 +120,16 @@
         $('#mg-ai-bulk-new').prop('disabled', busy());
     }
 
+    // "Végleges: 4× AI · 255 színes paletta · 3136×3392 px – " once the file is finished.
+    function finishLabel(c) {
+        if (!c.palette) {
+            return '';
+        }
+        const how = c.upscale === 'ai4x' ? '4× AI felskálázás' : (c.upscale === 'lanczos3x' ? '3× sima nagyítás' : '');
+        const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
+        return 'Végleges: ' + [how, c.palette + ' színes paletta', size].filter(Boolean).join(' · ') + ' – ';
+    }
+
     // item.note overrides the status text until the next status change clears it.
     function render(item) {
         const $card = item.$card;
@@ -136,7 +146,7 @@
         } else {
             $after.append($('<span class="mg-ai-bulk__placeholder"></span>').text(item.status === 'running' ? 'Készül…' : '—'));
         }
-        $card.find('.mg-ai-bulk__meta').text(item.candidate && item.candidate.new_style ? item.candidate.new_style : '');
+        $card.find('.mg-ai-bulk__meta').text(item.candidate ? finishLabel(item.candidate) + (item.candidate.new_style || '') : '');
         const locked = bulk.finalizing || item.status === 'finished' || item.status === 'finalizing';
         $card.find('.mg-ai-bulk-approve')
             .prop('disabled', locked || item.status !== 'done')
@@ -329,7 +339,10 @@
                     item.note = 'A felskálázott PNG feltöltése és palettázása…';
                     render(item);
                     const resp = await upload(item, blob);
-                    if (!resp || !resp.success) {
+                    if (resp && resp.success && resp.data) {
+                        item.candidate = resp.data; // the 4× palette PNG, with a new version in its URL
+                        render(item);
+                    } else {
                         note = ' (AI felskálázás: ' + (message(resp) || 'hiba') + ' – 3× sima nagyítás lett)';
                     }
                 }
@@ -341,6 +354,9 @@
                 render(item);
                 const resp = await post('mg_ai_redesign_apply', { product_id: item.id, attachment_id: item.candidate.attachment_id });
                 if (resp && resp.success) {
+                    if (resp.data && resp.data.candidate) {
+                        item.candidate = resp.data.candidate; // the finished file on the product
+                    }
                     item.status = 'finished';
                     item.note = STATUS.finished + note;
                 } else {

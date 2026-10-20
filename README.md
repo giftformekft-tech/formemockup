@@ -19,8 +19,9 @@ mymockup
 - **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 4×-es AI felskálázást
   (böngésző, Real-ESRGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
   újragenerálása (mint az egyedi jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver
-  3×-os nagyítással folytatja. A nem jóváhagyott új minták a termék AI újratervezés
-  ablakában megmaradnak.
+  3×-os nagyítással folytatja. A kész kártya a véglegesített fájlt mutatja („Végleges: 4× AI
+  felskálázás · 255 színes paletta · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
+  újratervezés ablakában megmaradnak.
 - Futás közben a lap bezárása előtt figyelmeztetés jön; az ablak bezárható és újranyitható.
 - Teszt: `php tests/dashboard-filter-test.php`.
 

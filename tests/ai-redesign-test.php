@@ -325,9 +325,11 @@ throws(function () use ($good) { MG_AI_Redesign::store_upscaled(6, 21, $good); }
 $meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong');
 file_put_contents(get_attached_file(22), make_png(10, 10));
 $enqueued = array();
-MG_AI_Redesign::apply(6, 22);
+$applied = MG_AI_Redesign::apply(6, 22);
 check(getimagesize(get_attached_file(22))[0] === 30, 'not upscaled candidate gets 3× on approval');
 check(end($palette_calls) === array('att-22.png', 255) && end($meta[6][MG_AI_Redesign::META_HISTORY])['palette'] === 42, 'the 3× fallback gets the palette finish too');
+check($applied['candidate']['attachment_id'] === 22 && $applied['candidate']['upscale'] === 'lanczos3x' && $applied['candidate']['palette'] === 42
+    && strpos($applied['candidate']['full'], 'att-22.png?v=') !== false, 'approval returns the finished file for the page');
 check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
 
 // Discarding candidates: one, then all; the PNGs leave the media library.
