@@ -222,8 +222,9 @@ class MG_AI_Redesign {
     protected static function free_intensity_rules($intensity) {
         if ($intensity === 'subtle') {
             return "Extra finom: maradjon nagyon közel az eredetihez. A promptban szerepeljen a fő motívum, a felépítés, a betűstílus "
-                . "jellege (betűtípusnév nélkül), a rajzstílus és a színek; csak az 1–2 legfeltűnőbb díszítő vagy jellegzetes részletet "
-                . "írd le másként, és a konkrét betűtípus legyen más.";
+                . "jellege (betűtípusnév nélkül), a rajzstílus és a színek. Az 1–2 legfeltűnőbb jellegzetes elem maradjon meg, de a "
+                . "képgenerátor a saját kreatív variációjaként rajzolja újra (ugyanaz a fajta elem, ugyanazzal a szereppel); ne írd elő, "
+                . "milyen legyen a variáció. A konkrét betűtípus legyen más.";
         }
         if ($intensity === 'medium') {
             return "Finom átdolgozás: a promptban a fő motívum (mit ábrázol az illusztráció, egy-két szóval) és a durva felépítés "
@@ -243,8 +244,8 @@ class MG_AI_Redesign {
         // "Extra finom" may describe what the other levels must leave out.
         $details = $intensity === 'subtle'
             ? "RÖVID, angol nyelvű prompt egy képgeneráló modellnek, legfeljebb 5 mondat (kb. 100 szó). Írd le a fő motívumot, a "
-                . "felépítést, a betűstílus jellegét, a rajzstílust és a színeket a szabályok szerint, és nevezd meg, melyik 1–2 részlet "
-                . "legyen más és mire cserélődjön. "
+                . "felépítést, a betűstílus jellegét, a rajzstílust és a színeket a szabályok szerint, és nevezd meg az 1–2 legfeltűnőbb "
+                . "jellegzetes elemet azzal, hogy a képgenerátor a saját kreatív variációjaként rajzolja újra, de ne írd elő, milyen legyen. "
             : "RÖVID, angol nyelvű prompt egy képgeneráló modellnek, legfeljebb 3 mondat (kb. 60 szó). "
                 . "Csak nagyjából írd le a fő elemeket a szabályok szerint (pl. „a bearded dad holding a fishing rod”, „a birthday cake”), "
                 . "és a hangulatot (pl. vicces, retro, elegáns). NE írd le az eredeti részleteit: pontos elrendezést, méreteket, pózt, "
@@ -420,8 +421,9 @@ class MG_AI_Redesign {
      * mood; "Új stílus" also the genre, motif and text emphasis; "Finom"
      * also the rough layout, with the signature elements swapped for given
      * replacements. "Új stílus" and "Teljesen új" just forbid them. "Extra
-     * finom" keeps the layout, lettering and art style too, and swaps only
-     * the two most distinctive elements.
+     * finom" keeps the layout, lettering and art style too, and keeps even
+     * the two most distinctive elements: the image model redraws them as its
+     * own creative variation, without being told how.
      */
     public static function design_brief($analysis, $intensity) {
         $topic = self::phrase($analysis['topic'] ?? '', 80);
@@ -476,8 +478,9 @@ class MG_AI_Redesign {
         if ($hierarchy !== '') {
             $out[] = 'Text emphasis: ' . $hierarchy . '.';
         }
-        if ($intensity === 'subtle' && !empty($swaps)) {
-            $out[] = 'Change only these details: ' . implode('; ', $swaps) . '.';
+        if ($intensity === 'subtle' && !empty($avoid)) {
+            $out[] = 'Keep these distinctive elements, but redraw each as your own creative variation of the same element '
+                . '(same kind and role, new details of your choice): ' . implode('; ', $avoid) . '.';
         } elseif ($intensity === 'subtle') {
             // Nothing distinctive found: the typeface is the only change.
         } elseif ($intensity === 'medium' && !empty($swaps)) {
@@ -511,8 +514,9 @@ class MG_AI_Redesign {
         $palette = self::palette_rule($analysis, $intensity);
         if ($mode === 'free' && $intensity === 'subtle') {
             $prompt = trim((string) ($analysis['image_prompt'] ?? '')) . "\n\n"
-                . "Stay close to this description: keep its layout, lettering style, art style and colors, and change only the details "
-                . "it asks to change. Redraw the artwork cleanly; do not add new elements.\n\nRequirements:\n";
+                . "Stay close to this description: keep its layout, lettering style, art style and colors. Only the typeface and the "
+                . "elements it marks for variation are yours to vary, creatively, as the same kind of element. Redraw the artwork "
+                . "cleanly; do not add new elements.\n\nRequirements:\n";
         } elseif ($mode === 'free') {
             $prompt = trim((string) ($analysis['image_prompt'] ?? '')) . "\n\n"
                 . "Be creative: this is a new, original T-shirt design. Invent your own composition, lettering style"
@@ -521,7 +525,8 @@ class MG_AI_Redesign {
         } elseif ($intensity === 'subtle') {
             $prompt = self::design_brief($analysis, $intensity) . "\n\n"
                 . "Stay close to this brief: keep the layout, lettering style, art style" . ($palette !== '' ? ' and colors' : '')
-                . " as described and change only the details listed above. Redraw the artwork cleanly; do not add new elements.\n\nRequirements:\n";
+                . " as described. Only the typeface and the elements marked for variation are yours to vary, creatively. "
+                . "Redraw the artwork cleanly; do not add new elements.\n\nRequirements:\n";
         } elseif ($intensity === 'medium') {
             $prompt = self::design_brief($analysis, $intensity) . "\n\n"
                 . "The overall impression may stay close to this brief, but design every detail yourself: lettering, ornaments, "
