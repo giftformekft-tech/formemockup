@@ -427,6 +427,7 @@ class MG_Dashboard_Page {
         echo '</select><p class="description">Teszteléshez: a „brief” módban az elemző rövid mezőket tölt ki (műfaj, hangsúly, jellegzetes elemek és cseréik), és a promptot a rendszer rakja össze; a „szabad leírás” módban az elemző maga ír egy rövid, kreatív promptot. A kártyán látszik, melyik módban készült.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-analyzer">Elemző modell</label></th><td><select id="mg-ai-redesign-analyzer"></select><p class="description">Kiolvassa a szöveget és megírja az új stílus promptját. Claude modellekhez az Anthropic API-kulcsot az AI Minta SEO oldalon kell menteni.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-quality">Képminőség</label></th><td><select id="mg-ai-redesign-quality"><option value="low">Alacsony (olcsó, gyors)</option><option value="medium">Közepes</option><option value="high">Magas (drágább, lassabb)</option></select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-redesign-resolution">Felbontás</label></th><td><select id="mg-ai-redesign-resolution"><option value="economy">Gazdaságos</option></select><p class="description">A minta képarányához illő összes méret, amit a GPT Image készíteni tud (2560×1440 képpont fölött kísérleti). Nagyobb felbontás drágább és lassabb; az AI felskálázás ehhez igazodik (3×, 2× vagy a nagyoknál nincs).</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-text">Pontos szöveg</label></th><td><textarea id="mg-ai-redesign-text" rows="3" class="large-text" placeholder="Üresen az AI olvassa ki a képről"></textarea><p class="description">Ajánlott megadni: soronként egy sor a mintán. Így biztosan ugyanaz a szöveg kerül az új mintára.</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-redesign-hint">Stílusötlet</label></th><td><input type="text" id="mg-ai-redesign-hint" class="large-text" placeholder="pl. retro, 70-es évek, vastag betűk, narancs-barna színek" /><p class="description">Nem kötelező. Üresen az AI választ az eredetitől eltérő stílust.</p></td></tr>';
         echo '</table>';
@@ -509,6 +510,7 @@ class MG_Dashboard_Page {
             echo '<option value="'.esc_attr($value).'"'.selected($settings['quality'], $value, false).'>'.esc_html($label).'</option>';
         }
         echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-bulk-resolution">Felbontás</label></th><td><select id="mg-ai-bulk-resolution">'.MG_AI_Redesign::resolution_options_html($settings['resolution']).'</select><p class="description">A hosszabbik oldal; a másik mintánként a képarányból jön (2560×1440 képpont fölött kísérleti, nagyobb felbontás drágább és lassabb).</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg-ai-bulk-hint">Stílusötlet</label></th><td><input type="text" id="mg-ai-bulk-hint" class="large-text" placeholder="Nem kötelező, minden mintára érvényes" /></td></tr>';
         echo '</table>';
         echo '<p><button type="button" class="button button-primary" id="mg-ai-bulk-start">Generálás indítása</button></p>';
@@ -522,7 +524,7 @@ class MG_Dashboard_Page {
         echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
         echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
         echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
-        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 3×-os AI felskálázást (a böngészőben, Real-CUGAN, mint a Design-flow-ban) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként AI felskálázást (a böngészőben, Real-CUGAN, mint a Design-flow-ban; a mérettől függően 3× vagy 2×, 2560 px fölött nincs) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
         echo '</div>';
         echo '</div>';
         echo '</div>';

@@ -1,10 +1,11 @@
 /**
- * 3× AI upscaling in the admin's browser with Real-CUGAN (up3x-conservative,
- * the models-se weights of realcugan-ncnn-vulkan, MIT), run by TensorFlow.js
- * on WebGL: the same model, scale and tiling as the Design-flow app. The model
- * and the library ship with the plugin, so no external service is called.
+ * 3× (or 2×) AI upscaling in the admin's browser with Real-CUGAN
+ * (up3x/up2x-conservative, the models-se weights of realcugan-ncnn-vulkan,
+ * MIT), run by TensorFlow.js on WebGL: the same models and tiling as the
+ * Design-flow app. The models and the library ship with the plugin, so no
+ * external service is called.
  *
- * window.MGAIUpscale.upscale(imageUrl, onProgress) -> Promise<Blob> (PNG)
+ * window.MGAIUpscale.upscale(imageUrl, onProgress, factor = 3) -> Promise<Blob> (PNG)
  *
  * Real-CUGAN is made for drawn art: flat areas stay flat (the faint grain of a
  * generated image would turn into blotches in the 255-color palette) and the
@@ -22,7 +23,7 @@
     const GAP_TILE = 32;
     const GAP_BATCH = 8;
     let tfPromise = null;
-    let modelPromise = null;
+    const modelPromises = {};
 
     function config() {
         return window.MG_AI_UPSCALE || {};
@@ -54,10 +55,13 @@
     }
 
     // model.json: the layer graph from tools/convert-realcugan.py; weights.bin: float32.
-    function ensureModel(tf) {
-        if (!modelPromise) {
-            const base = config().modelUrl;
-            modelPromise = Promise.all([
+    function ensureModel(tf, factor) {
+        const base = (config().models || {})[factor];
+        if (!base) {
+            return Promise.reject(new Error('Nincs ' + factor + '×-os felskálázó modell.'));
+        }
+        if (!modelPromises[factor]) {
+            const promise = modelPromises[factor] = Promise.all([
                 fetch(base + 'model.json').then(function (r) { if (!r.ok) { throw new Error('A modell leírója nem tölthető be.'); } return r.json(); }),
                 fetch(base + 'weights.bin').then(function (r) { if (!r.ok) { throw new Error('A modell súlyai nem tölthetők be.'); } return r.arrayBuffer(); }),
             ]).then(function (res) {
@@ -77,9 +81,9 @@
                 });
                 return model;
             });
-            modelPromise.catch(function () { modelPromise = null; });
+            promise.catch(function () { delete modelPromises[factor]; });
         }
-        return modelPromise;
+        return modelPromises[factor];
     }
 
     function activate(tf, x, act) {
@@ -328,9 +332,9 @@
         });
     }
 
-    async function upscale(url, onProgress) {
+    async function upscale(url, onProgress, factor) {
         const tf = await ensureTf();
-        const model = await ensureModel(tf);
+        const model = await ensureModel(tf, factor || 3);
         const SCALE = model.scale;
         const img = await loadImage(url);
         const w = img.naturalWidth, h = img.naturalHeight;
@@ -466,5 +470,5 @@
         });
     }
 
-    window.MGAIUpscale = { upscale: upscale, scale: 3 };
+    window.MGAIUpscale = { upscale: upscale, factors: [2, 3] };
 })();

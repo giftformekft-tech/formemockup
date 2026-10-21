@@ -35,16 +35,16 @@ async function main() {
         page.on('pageerror', error => errors.push(error.message));
         await page.goto(`http://localhost:${server.address().port}/`);
         await page.evaluate(() => {
-            window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', modelUrl: '/assets/models/realcugan-up3x-conservative/' };
+            window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', models: { 2: '/assets/models/realcugan-up2x-conservative/', 3: '/assets/models/realcugan-up3x-conservative/' } };
         });
         await page.addScriptTag({ url: '/assets/js/ai-upscale.js' });
         const result = await page.evaluate(async () => {
-            async function run(draw, size) {
+            async function run(draw, size, factor) {
                 const c = document.createElement('canvas');
                 c.width = c.height = size;
                 draw(c.getContext('2d'));
                 const progress = [];
-                const blob = await MGAIUpscale.upscale(c.toDataURL('image/png'), p => progress.push(p));
+                const blob = await MGAIUpscale.upscale(c.toDataURL('image/png'), p => progress.push(p), factor);
                 const bmp = await createImageBitmap(blob);
                 const o = document.createElement('canvas');
                 o.width = bmp.width;
@@ -101,7 +101,14 @@ async function main() {
                 g.lineWidth = 8;
                 g.strokeRect(12, 12, 136, 136);
             }, 160);
-            return { transparent, opaque, grain };
+            // The 2× model (large generations): same size handling, colors kept.
+            const twice = await run(g => {
+                g.fillStyle = '#ffffff';
+                g.fillRect(0, 0, 64, 64);
+                g.fillStyle = '#e8562a';
+                g.fillRect(12, 12, 40, 40);
+            }, 64, 2);
+            return { transparent, opaque, grain, twice };
         });
         const t = result.transparent;
         assert.equal(t.type, 'image/png');
@@ -118,8 +125,12 @@ async function main() {
         const gr = result.grain;
         assert.deepEqual([gr.w, gr.h], [480, 480]);
         assert.ok(gr.std < 0.6, 'the grain on white is smoothed (no palette blotches): std ' + gr.std.toFixed(2));
+        const tw = result.twice;
+        assert.deepEqual([tw.w, tw.h], [128, 128], '2× size');
+        assert.ok(tw.at.corner.every((v, k) => k === 3 ? v === 255 : v >= 253), '2×: white kept (the model may give 254): ' + tw.at.corner);
+        [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(tw.at.center[k] - v) <= 6, '2×: fill color kept: ' + tw.at.center));
         assert.deepEqual(errors, []);
-        console.log('AI upscale browser test passed (Real-CUGAN 3×, colors, alpha, grain, std ' + gr.std.toFixed(2) + ').');
+        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, colors, alpha, grain, std ' + gr.std.toFixed(2) + ').');
     } finally {
         await browser.close();
         server.close();

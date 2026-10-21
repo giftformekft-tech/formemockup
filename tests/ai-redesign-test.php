@@ -151,6 +151,37 @@ check(MG_AI_Redesign::get_settings()['alpha_threshold'] === 99, 'threshold clamp
 MG_AI_Redesign::save_settings(array('alpha_threshold' => 'abc'));
 check(MG_AI_Redesign::get_settings()['alpha_threshold'] === 99, 'a non-number keeps the saved threshold');
 MG_AI_Redesign::save_settings(array('alpha_threshold' => '50', 'quality' => 'medium'));
+check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'economical resolution by default');
+MG_AI_Redesign::save_settings(array('resolution' => '2048'));
+check(MG_AI_Redesign::get_settings()['resolution'] === 2048, 'a longest side is saved');
+MG_AI_Redesign::save_settings(array('quality' => 'medium'));
+check(MG_AI_Redesign::get_settings()['resolution'] === 2048, 'a save without the field keeps it');
+MG_AI_Redesign::save_settings(array('resolution' => '2050'));
+check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'not a multiple of 16: economical');
+MG_AI_Redesign::save_settings(array('resolution' => '4000'));
+check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'over 3840 px: economical');
+MG_AI_Redesign::save_settings(array('resolution' => 'economy', 'quality' => 'medium'));
+
+// Every allowed image size at the design's aspect ratio (GPT Image 2 / 2.5 rules).
+foreach (array(array(1000, 1000, 130, '816x816', '2880x2880'), array(1920, 1080, 172, '1088x608', '3840x2160'), array(3000, 1000, 112, '1440x480', '3840x1280')) as $case) {
+    list($w, $h, $count, $first, $last) = $case;
+    $sizes = MG_AI_Print_Generator::available_sizes($w, $h);
+    $ok = true;
+    foreach ($sizes as $z) {
+        $ok = $ok && $z['width'] % 16 === 0 && $z['height'] % 16 === 0 && max($z['width'], $z['height']) <= 3840
+            && $z['pixels'] >= 655360 && $z['pixels'] <= 8294400 && abs(($z['width'] / $z['height']) / ($w / $h) - 1) <= 0.01
+            && $z['experimental'] === ($z['pixels'] > 3686400 || max($z['width'], $z['height']) > 2560);
+    }
+    $ends = $sizes[0]['width'] . 'x' . $sizes[0]['height'] . ' ' . end($sizes)['width'] . 'x' . end($sizes)['height'];
+    check($ok && count($sizes) === $count && $ends === "$first $last", "all sizes valid at $w:$h ($ends, " . count($sizes) . ')');
+}
+check(MG_AI_Print_Generator::size_for_resolution(1000, 1000, 1024) === '1024x1024', 'a longest side gives that size');
+check(MG_AI_Print_Generator::size_for_resolution(1000, 1000, 3840) === '2880x2880', 'square: capped at 8.3 MP');
+check(MG_AI_Print_Generator::size_for_resolution(1920, 1080, 2560) === '2560x1440', '16:9 at 2560: the largest standard size');
+check(MG_AI_Print_Generator::size_for_resolution(3000, 1000, 832) === '1440x480', 'below what the ratio allows: the smallest size');
+check(MG_AI_Print_Generator::size_for_resolution(1000, 1000, 'economy') === MG_AI_Print_Generator::economical_size(1000, 1000), 'economy: the economical size');
+throws(function () { MG_AI_Print_Generator::size_for_resolution(1000, 1000, '1000'); }, 'felbontás', 'invalid longest side rejected');
+check(MG_AI_Print_Generator::is_experimental_size(2560, 1440) === false && MG_AI_Print_Generator::is_experimental_size(1936, 1936) === true, 'experimental above 2560x1440 pixels');
 
 // Claude request shape and parsing.
 $http_responses[] = array('code' => 200, 'body' => json_encode(array('stop_reason' => 'end_turn', 'content' => array(
@@ -304,6 +335,21 @@ $body = json_decode($request['body'], true);
 check($url === 'https://api.openai.com/v1/images/generations', 'generations endpoint, not edits');
 check($body['prompt'] === 'PROMPT' && $body['quality'] === 'high' && $body['background'] === 'transparent' && !isset($body['image']) && strpos($request['body'], 'PNG') === false, 'prompt only: no image bytes sent');
 throws(function () use ($source) { MG_AI_Print_Generator::redesign_image($source, 'P', str_repeat('c', 64), 'ultra', false); }, 'minőség', 'invalid quality rejected');
+check($body['size'] === '816x816' && $request['timeout'] === 180, 'economical size by default');
+foreach (array(array(1024, '1024x1024', 180), array(2880, '2880x2880', 300)) as $case) {
+    $http_calls = array();
+    $http_responses[] = new WP_Error('cURL error 28: timeout');
+    try { MG_AI_Print_Generator::redesign_image($source, 'P', str_repeat('d', 64), 'low', $case[0]); } catch (RuntimeException $e) { $last_error = $e->getMessage(); }
+    $sent = json_decode($http_calls[0][1]['body'], true);
+    check($sent['size'] === $case[1] && $http_calls[0][1]['timeout'] === $case[2], "longest side {$case[0]}: {$sent['size']}, {$http_calls[0][1]['timeout']} s");
+}
+check(strpos($last_error, '300 másodperces') !== false, 'the timeout message names the longer timeout');
+throws(function () use ($source) { MG_AI_Print_Generator::redesign_image($source, 'P', str_repeat('e', 64), 'low', 1000); }, 'felbontás', 'invalid resolution rejected');
+
+// The AI upscale follows the size: 3×, 2× when 3× would pass 5120 px, none above 2560 px.
+check(MG_AI_Redesign::upscale_factor(816, 816) === 3 && MG_AI_Redesign::upscale_factor(1706, 900) === 3, 'up to 1706 px: 3×');
+check(MG_AI_Redesign::upscale_factor(1707, 900) === 2 && MG_AI_Redesign::upscale_factor(2560, 1440) === 2, 'up to 2560 px: 2×');
+check(MG_AI_Redesign::upscale_factor(2576, 1440) === 1 && MG_AI_Redesign::upscale_factor(0, 0) === 1, 'larger: none');
 
 // Approval: queues the replacement, deletes the other candidates, keeps history.
 file_put_contents(get_attached_file(11), make_png(10, 10));
@@ -346,6 +392,11 @@ file_put_contents(get_attached_file(22), make_png(10, 10));
 $old_page = $test_dir . '/old4x.png';
 file_put_contents($old_page, make_png(40, 40));
 check(MG_AI_Redesign::store_upscaled(6, 22, $old_page)['upscale'] === 'ai4x', 'a 4× upload from a page opened before 2.43.9 is still accepted');
+$meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 23, 'upscale' => 'none', 'width' => 2000, 'height' => 1000, 'analyzer' => 'openai', 'intensity' => 'strong');
+file_put_contents(get_attached_file(23), make_png(2000, 1000));
+$two = $test_dir . '/two.png';
+file_put_contents($two, make_png(4000, 2000));
+check(MG_AI_Redesign::store_upscaled(6, 23, $two)['upscale'] === 'ai2x', 'a 2× upload of a large design is accepted');
 
 // Approval of a candidate the browser could not upscale: 3× Lanczos fallback.
 $meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong');
@@ -394,6 +445,14 @@ file_put_contents(get_attached_file(43), make_png(10, 10));
 $prepare_calls = array();
 MG_AI_Redesign::apply(9, 43);
 check($prepare_calls === array(array('att-43.png', true, 128)) && getimagesize(get_attached_file(43))[0] === 24, 'fallback: prepared, then 3× (8 → 24 px)');
+// A large prepared design: the fallback enlarges 2× or, above 2560 px, not at all.
+foreach (array(array(44, 2000, 'lanczos2x', 4000), array(45, 3000, 'native', 3000)) as $case) {
+    list($att, $width, $label, $final) = $case;
+    $meta[9][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => $att, 'upscale' => 'none', 'prepared' => true, 'width' => $width, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+    file_put_contents(get_attached_file($att), make_png($width, 10));
+    $result = MG_AI_Redesign::apply(9, $att);
+    check($result['candidate']['upscale'] === $label && getimagesize(get_attached_file($att))[0] === $final, "fallback for $width px: $label");
+}
 
 // Discarding candidates: one, then all; the PNGs leave the media library.
 $deleted = array();
@@ -470,9 +529,13 @@ check($st['status'] === 'running' && $st['stage'] === 'image' && $st['stage_at']
 $options[$skey]['stage_at'] = time() - 200;
 check($state_of->invoke(null, 50)['status'] === 'running', 'a long API call (200 s) is still running');
 $options[$skey]['stage_at'] = time() - 320;
+check($state_of->invoke(null, 50)['status'] === 'running', 'image stage: a large image may take 300 s, still running at 320 s');
+$options[$skey]['stage_at'] = time() - 440;
 $st = $state_of->invoke(null, 50);
-check($st['status'] === 'error' && strpos($st['message'], 'képgenerálás, 5 perce') !== false, 'no progress for 5+ min: the worker is gone: ' . $st['message']);
+check($st['status'] === 'error' && strpos($st['message'], 'képgenerálás, 7 perce') !== false, 'image stage: no progress for 7+ min, the worker is gone: ' . $st['message']);
 check(!isset($options[$lkey]) && $options[$skey]['status'] === 'error', 'its lock released, the error stored');
+$options[$skey] = array('status' => 'running', 'stage' => 'analyze', 'started' => time() - 330, 'stage_at' => time() - 320, 'updated' => time() - 10);
+check(strpos($state_of->invoke(null, 50)['message'] ?? '', 'elemzés, 5 perce') !== false, 'analysis stage: no progress for 5+ min, the worker is gone');
 $options[$skey] = array('status' => 'running', 'stage' => 'analyze', 'started' => time() - 700, 'stage_at' => time() - 10, 'updated' => time() - 10);
 check(strpos($state_of->invoke(null, 50)['message'], '10 percen belül') !== false, 'whole run over 10 minutes: error');
 $options[$skey] = array('status' => 'done', 'candidate' => array('attachment_id' => 5), 'updated' => time() - 30);

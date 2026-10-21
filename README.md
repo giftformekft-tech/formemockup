@@ -8,7 +8,7 @@ mymockup
 - **Kijelölés:** jelölőnégyzet minden minta előtt, a fejlécben az oldal összes mintájához,
   **Mind kijelölése** és **Kijelölés törlése** gomb (az aktuális oldalra vonatkozik).
 - **AI újratervezés a kijelöltekre:** előbb a módok (prompt mód, eltérés mértéke, elemző,
-  képminőség, stílusötlet), utána mintánként egymás alatt az **eredeti** és az **új** minta
+  képminőség, felbontás, stílusötlet), utána mintánként egymás alatt az **eredeti** és az **új** minta
   egymás mellett. A generálás kettesével fut a nyitott lapról (ha egy proxy megszakítja a
   kérést, az állapotot lekérdezi, és a kártyán a szakasz és az eltelt idő látszik). Az állapot
   2.43.7 óta az adatbázisban van (option, nem transient), így külső objektum-gyorsítótár
@@ -101,11 +101,26 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    PNG lesz a nyomtatási minta. A többi jelölt törlődik, az eredeti minta a médiatárban
    marad (az előzmény a `_mg_ai_redesign_history` metában).
 
+**Felbontás (2.44.0):** a GPT Image (2 és 2.5) a választott méretben rajzolja a mintát, a
+minta képarányával. Az OpenAI szabálya (API-referencia, `images.generate` `size`): mindkét oldal
+16-tal osztható, a képarány 1:3 és 3:1 között, legalább 655 360 képpont, legfeljebb 3840×2160;
+2560×1440 képpont fölött kísérleti. Az **egyedi ablakban** a minta képarányához illő **összes**
+ilyen méret választható (16 px-es lépésekben, pl. négyzetes mintánál 816×816-tól 2880×2880-ig,
+130 méret; a kísérletiek jelölve), a **tömeges ablakban** és az alapbeállításban a hosszabbik
+oldal (832–3840 px, 16 px-enként; a másik oldal mintánként a képarányból jön, és a legnagyobb
+megengedett méret készül, ami belefér). Alapból **Gazdaságos** (a legkisebb méret, mint eddig).
+Nagyobb felbontás drágább és lassabb; 2 MP fölött a képkérés időkorlátja 5 perc. A kártya mutatja,
+milyen méretben készült. Az AI felskálázás a mérethez igazodik (`MG_AI_Redesign::upscale_factor`):
+**3×**, ha a hosszabbik oldal így legfeljebb 5120 px (1706 px-ig), különben **2×** (a Real-CUGAN
+`up2x-conservative` modellel, 2560 px-ig), afölött nincs felskálázás (a 2K–4K kép már
+nyomtatható méretű), csak a 255 színes paletta. A WebGL nélküli tartalék Lanczos-nagyítás ugyanígy
+3×, 2× vagy semmi. A rendelések AI nyomatánál továbbra is a gazdaságos méret marad.
+
 **AI felskálázás (2.42.0, 2.43.9 óta Real-CUGAN 3×):** a kész PNG-t az admin böngészője a
 **Real-CUGAN** `up3x-conservative` modellel (MIT, a realcugan-ncnn-vulkan `models-se` súlyai)
 3×-osra nagyítja (pl. 816 → 2448 px), TensorFlow.js-szel, WebGL-en: ugyanaz a modell, nagyítás
 és csempézés, mint a Design-flow appban (a squeeze-excitation statisztikák minden harmadik 32 px-es
-csempéből, átlagolva, mint a realcugan-ncnn-vulkan alapbeállítása). A modell (5,1 MB) és a könyvtár
+csempéből, átlagolva, mint a realcugan-ncnn-vulkan alapbeállítása). A 3× és a 2× modell (egyenként 5,1 MB) és a könyvtár
 (1,4 MB) a pluginban van (`assets/models/`, `assets/vendor/tfjs/`), külső szolgáltatás és
 API-költség nincs. A Real-CUGAN rajzolt képekre készült: a sima felület sima marad, így a
 generált kép halvány szemcséjéből a 255 színes palettában nem lesznek foltok (a korábbi Real-ESRGAN
@@ -145,8 +160,8 @@ szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi je
 átírható és újrafuttatható, ekkor az elemzés kimarad.
 
 Beállítások: **AI Minta SEO és tagelés → AI újratervezés**: alapértelmezett elemző, OpenAI
-elemző modell, Anthropic (Claude) API-kulcs, képminőség (alacsony / közepes / magas). A
-Claude modellek a kulcs mentése után jelennek meg. Claude-nál a hibásan elutasított kérést az
+elemző modell, Anthropic (Claude) API-kulcs, képminőség (alacsony / közepes / magas),
+felbontás. A Claude modellek a kulcs mentése után jelennek meg. Claude-nál a hibásan elutasított kérést az
 API automatikusan egy másik modellel futtatja újra (server-side fallback; Haiku-nál nincs).
 Imagick és WooCommerce Action Scheduler szükséges, mint az AI nyomatnál.
 

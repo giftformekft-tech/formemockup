@@ -4,7 +4,8 @@
  * The bulk run reuses the single redesign endpoints per product: generation
  * runs two at a time from this tab (with status polling if a proxy cuts the
  * request), every card shows the original and the new design side by side,
- * and only the approved cards are upscaled 3× in the browser, finished as a
+ * and only the approved cards are upscaled in the browser (3×, 2× or, when
+ * large enough, not at all), finished as a
  * palette PNG and queued for mockup regeneration at the end.
  */
 (function ($) {
@@ -239,7 +240,7 @@
         if (!c.palette) {
             return '';
         }
-        const how = { ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos3x: '3× sima nagyítás' }[c.upscale] || '';
+        const how = { ai2x: '2× AI felskálázás', ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos2x: '2× sima nagyítás', lanczos3x: '3× sima nagyítás', native: 'eredeti felbontás' }[c.upscale] || '';
         const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
         return 'Végleges: ' + [how, c.palette + ' színes paletta', size].filter(Boolean).join(' · ') + ' – ';
     }
@@ -460,30 +461,34 @@
                         throw new Error(message(prepared) || 'az előkészítés nem sikerült');
                     }
                     item.candidate = prepared.data;
-                    item.note = 'AI felskálázás indul…';
-                    item.fin = 0.1;
-                    render(item);
-                    const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
-                        item.note = 'AI felskálázás 3×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
-                        item.fin = 0.1 + 0.7 * p;
+                    // 3× or 2× by its size; a large one (above 2560 px) needs none.
+                    const factor = item.candidate.upscale_factor || 0;
+                    if (factor >= 2) {
+                        item.note = 'AI felskálázás indul…';
+                        item.fin = 0.1;
                         render(item);
-                    });
-                    item.note = 'A felskálázott PNG feltöltése és palettázása…';
-                    item.fin = 0.85;
-                    render(item);
-                    const resp = await upload(item, blob);
-                    if (resp && resp.success && resp.data) {
-                        item.candidate = resp.data; // the 3× palette PNG, with a new version in its URL
+                        const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
+                            item.note = 'AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
+                            item.fin = 0.1 + 0.7 * p;
+                            render(item);
+                        }, factor);
+                        item.note = 'A felskálázott PNG feltöltése és palettázása…';
+                        item.fin = 0.85;
                         render(item);
-                    } else {
-                        note = ' (AI felskálázás: ' + (message(resp) || 'hiba') + ' – 3× sima nagyítás lett)';
+                        const resp = await upload(item, blob);
+                        if (resp && resp.success && resp.data) {
+                            item.candidate = resp.data; // the upscaled palette PNG, with a new version in its URL
+                            render(item);
+                        } else {
+                            note = ' (AI felskálázás: ' + (message(resp) || 'hiba') + ' – sima nagyítás lett)';
+                        }
                     }
                 }
             } catch (err) {
-                note = ' (AI felskálázás: ' + ((err && err.message) || (err && err.status === 413 ? 'a fájl túl nagy (HTTP 413)' : 'hiba')) + ' – 3× sima nagyítás lett)';
+                note = ' (AI felskálázás: ' + ((err && err.message) || (err && err.status === 413 ? 'a fájl túl nagy (HTTP 413)' : 'hiba')) + ' – sima nagyítás lett)';
             }
             try {
-                item.note = 'Jóváhagyás, mockupok sorba állítása…';
+                item.note = 'Palettázás, jóváhagyás, mockupok sorba állítása…';
                 item.fin = 0.95;
                 render(item);
                 const resp = await post('mg_ai_redesign_apply', { product_id: item.id, attachment_id: item.candidate.attachment_id });
@@ -517,6 +522,7 @@
             intensity: $('#mg-ai-bulk-intensity').val() || 'strong',
             analyzer: $('#mg-ai-bulk-analyzer').val() || '',
             quality: $('#mg-ai-bulk-quality').val() || 'medium',
+            resolution: $('#mg-ai-bulk-resolution').val() || 'economy',
             style_hint: $('#mg-ai-bulk-hint').val() || '',
         };
         const $list = $('#mg-ai-bulk-list').empty();

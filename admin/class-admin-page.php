@@ -95,7 +95,10 @@ class MG_Admin_Page {
         );
         wp_localize_script('mg-ai-upscale', 'MG_AI_UPSCALE', array(
             'tfUrl' => plugins_url('../assets/vendor/tfjs/tf.min.js', __FILE__) . '?ver=4.22.0',
-            'modelUrl' => plugins_url('../assets/models/realcugan-up3x-conservative/', __FILE__),
+            'models' => array(
+                2 => plugins_url('../assets/models/realcugan-up2x-conservative/', __FILE__),
+                3 => plugins_url('../assets/models/realcugan-up3x-conservative/', __FILE__),
+            ),
         ));
 
         $tabs = self::get_accessible_tabs();

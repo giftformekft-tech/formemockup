@@ -61,6 +61,9 @@ class MG_AI_SEO_Page {
             echo '<option value="' . esc_attr($value) . '"' . selected($settings['quality'], $value, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg_ai_redesign_resolution">' . esc_html__('Alapértelmezett felbontás', 'mockup-generator') . '</label></th><td>';
+        echo '<select id="mg_ai_redesign_resolution" name="mg_ai_redesign_settings[resolution]">' . MG_AI_Redesign::resolution_options_html($settings['resolution']) . '</select>';
+        echo '<p class="description">' . esc_html__('A GPT Image ebben a méretben rajzolja a mintát, a minta képarányával (mindkét oldal 16-tal osztható, legfeljebb 3:1, 0,66–8,3 MP, legfeljebb 3840×2160). 2560×1440 képpont fölött az OpenAI kísérletinek jelöli. Nagyobb felbontás drágább és lassabb (2 MP fölött 5 perc az időkorlát). Az AI felskálázás ehhez igazodik: 3×, ha a hosszabbik oldal így legfeljebb 5120 px, különben 2×, 2560 px fölött nincs felskálázás. Az egyedi ablakban a minta pontos méretei közül, a tömegesben a hosszabbik oldal szerint lehet választani.', 'mockup-generator') . '</p></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('Peremjavítás a felskálázás előtt', 'mockup-generator') . '</th><td>';
         echo '<input type="hidden" name="mg_ai_redesign_settings[edge_cleanup]" value="0" />';
         echo '<label><input type="checkbox" name="mg_ai_redesign_settings[edge_cleanup]" value="1"' . checked(!empty($settings['edge_cleanup']), true, false) . ' /> ' . esc_html__('Design-flow peremjavítás az AI újratervezés képein', 'mockup-generator') . '</label>';

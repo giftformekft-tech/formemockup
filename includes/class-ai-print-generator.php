@@ -14,6 +14,12 @@ class MG_AI_Print_Generator {
     const UPSCALE_FACTOR = 3;
     const WAIT_TIMEOUT = 600;
     const HTTP_TIMEOUT = 180;
+    // AI redesign above 2 MP: a larger image takes longer to generate.
+    const LARGE_IMAGE_TIMEOUT = 300;
+    const MIN_IMAGE_PIXELS = 655360;
+    const STANDARD_IMAGE_PIXELS = 3686400;
+    const MAX_IMAGE_PIXELS = 8294400;
+    const MAX_IMAGE_EDGE = 3840;
     const WORKER_TIMEOUT = 240;
     const STALLED_TIMEOUT = 300;
     // The browser worker starts first; the scheduler only covers a closed tab.
@@ -311,6 +317,89 @@ class MG_AI_Print_Generator {
         }
     }
 
+    /**
+     * Output resolutions for the AI redesign. GPT Image 2 and 2.5 take any
+     * WIDTHxHEIGHT with both sides divisible by 16 and an aspect ratio between
+     * 1:3 and 3:1, from 655 360 pixels up to 3840x2160; above 2560x1440 is
+     * experimental (OpenAI API reference, images.generate size). A resolution
+     * is "economy" (the smallest allowed size) or the longest side in pixels
+     * (a multiple of 16); the other side follows the design's aspect ratio.
+     */
+    public static function validate_resolution($resolution) {
+        if ($resolution === 'economy' || $resolution === '' || $resolution === null) {
+            return 'economy';
+        }
+        $edge = is_int($resolution) || (is_string($resolution) && preg_match('/^\d+$/', $resolution)) ? (int) $resolution : 0;
+        if ($edge < 16 || $edge > self::MAX_IMAGE_EDGE || $edge % 16) {
+            throw new RuntimeException(__('Érvénytelen AI képfelbontás.', 'mg'));
+        }
+        return $edge;
+    }
+
+    /** Above 2560x1440 pixels or a 2560 px side the API calls the size experimental. */
+    public static function is_experimental_size($width, $height) {
+        return $width * $height > self::STANDARD_IMAGE_PIXELS || max($width, $height) > 2560;
+    }
+
+    /**
+     * Every allowed size within 1% of the design's aspect ratio, smallest
+     * first: for each longest side the size with the most pixels.
+     *
+     * @return array<int, array{width:int,height:int,edge:int,pixels:int,experimental:bool}>
+     */
+    public static function available_sizes($width, $height) {
+        $ratio = $width / max(1, $height);
+        if ($ratio < 1 / 3 || $ratio > 3) {
+            return array();
+        }
+        $by_edge = array();
+        for ($w = 16; $w <= self::MAX_IMAGE_EDGE; $w += 16) {
+            $exact = $w / $ratio / 16;
+            foreach (array(floor($exact), ceil($exact)) as $units) {
+                $h = (int) $units * 16;
+                $pixels = $w * $h;
+                if ($h < 16 || $h > self::MAX_IMAGE_EDGE || $pixels < self::MIN_IMAGE_PIXELS || $pixels > self::MAX_IMAGE_PIXELS || max($w, $h) > 3 * min($w, $h)) {
+                    continue;
+                }
+                $error = abs(($w / $h) / $ratio - 1);
+                if ($error > 0.01) {
+                    continue;
+                }
+                $edge = max($w, $h);
+                $best = $by_edge[$edge] ?? null;
+                if ($best === null || $pixels > $best['pixels'] || ($pixels === $best['pixels'] && $error < $best['error'])) {
+                    $by_edge[$edge] = array('width' => $w, 'height' => $h, 'edge' => $edge, 'pixels' => $pixels, 'error' => $error, 'experimental' => self::is_experimental_size($w, $h));
+                }
+            }
+        }
+        ksort($by_edge);
+        $sizes = array();
+        foreach ($by_edge as $size) {
+            unset($size['error']);
+            $sizes[] = $size;
+        }
+        return $sizes;
+    }
+
+    /**
+     * The size for a resolution: the economical one is the smallest allowed,
+     * a longest side gives the largest allowed size within it (the smallest
+     * one if it is below what this aspect ratio allows).
+     */
+    public static function size_for_resolution($width, $height, $resolution) {
+        $resolution = self::validate_resolution($resolution);
+        if ($resolution === 'economy') {
+            return self::economical_size($width, $height);
+        }
+        $best = null;
+        foreach (self::available_sizes($width, $height) as $size) {
+            if ($size['edge'] <= $resolution) {
+                $best = $size;
+            }
+        }
+        return $best ? $best['width'] . 'x' . $best['height'] : self::economical_size($width, $height);
+    }
+
     /** Smallest pixel count within 1% of the source aspect ratio. No auto/high fallback. */
     public static function economical_size($width, $height) {
         $ratio = $width / max(1, $height);
@@ -496,35 +585,43 @@ class MG_AI_Print_Generator {
      * gets only the text prompt (images/generations): sending the original
      * would cost more and nothing of its artwork can be copied this way. The
      * source only sets the size and the background. The PNG is returned at
-     * the model's size: the admin's browser upscales it with Real-CUGAN,
-     * upscale_file() is the fallback.
+     * the chosen resolution: the admin's browser upscales it with Real-CUGAN,
+     * upscale_file() is the fallback. Above 2 MP the request gets a longer
+     * timeout.
      *
      * @return string Temporary PNG path; the caller moves or deletes it.
      */
-    public static function redesign_image($source_path, $prompt, $key, $quality = 'medium') {
+    public static function redesign_image($source_path, $prompt, $key, $quality = 'medium', $resolution = 'economy') {
         $quality = self::validate_quality($quality);
+        $resolution = self::validate_resolution($resolution);
         $model = self::get_model();
-        list(, $size, $transparent) = self::inspect_source($source_path);
+        list($source, $size, $transparent) = self::inspect_source($source_path);
+        if ($resolution !== 'economy') {
+            $info = getimagesize($source);
+            $size = self::size_for_resolution($info[0], $info[1], $resolution);
+        }
+        list($out_w, $out_h) = array_map('intval', explode('x', $size));
+        $timeout = $out_w * $out_h > 2073600 ? self::LARGE_IMAGE_TIMEOUT : self::HTTP_TIMEOUT;
         $body = wp_json_encode(array('model' => $model, 'quality' => $quality, 'size' => $size, 'n' => 1, 'output_format' => 'png', 'background' => $transparent ? 'transparent' : 'opaque', 'prompt' => $prompt));
         $settings = MG_AI_SEO_Generator::get_settings();
         self::set_stage($key, 'api');
         $response = wp_remote_post('https://api.openai.com/v1/images/generations', array(
-            'timeout' => self::HTTP_TIMEOUT,
+            'timeout' => $timeout,
             'redirection' => 0,
             'headers' => array('Authorization' => 'Bearer ' . $settings['api_key'], 'Content-Type' => 'application/json'),
             'body' => $body,
         ));
-        return self::save_response_image($response, $size, $transparent, $key, $model, false, false);
+        return self::save_response_image($response, $size, $transparent, $key, $model, false, false, $timeout);
     }
 
-    /** The same 3× Lanczos enlargement as the export, in place, for a PNG file. */
-    public static function upscale_file($path) {
+    /** The same Lanczos enlargement as the export (3× unless told), in place, for a PNG file. */
+    public static function upscale_file($path, $factor = self::UPSCALE_FACTOR) {
         $image = new Imagick($path);
         try {
-            $width = $image->getImageWidth() * self::UPSCALE_FACTOR;
-            $height = $image->getImageHeight() * self::UPSCALE_FACTOR;
+            $width = $image->getImageWidth() * $factor;
+            $height = $image->getImageHeight() * $factor;
             if (!$image->resizeImage($width, $height, Imagick::FILTER_LANCZOS, 1.0)) {
-                throw new RuntimeException(__('Nem sikerült az AI nyomat 3×-os felnagyítása.', 'mg'));
+                throw new RuntimeException(sprintf(__('Nem sikerült az AI nyomat %d×-os felnagyítása.', 'mg'), $factor));
             }
             $image->setImagePage(0, 0, 0, 0);
             $image->setImageFormat('png');
@@ -597,14 +694,14 @@ class MG_AI_Print_Generator {
     }
 
     /** Shared by edits and generations: validate, upscale 3× (unless told not to) and save the returned PNG. */
-    protected static function save_response_image($response, $size, $transparent, $key, $model, $defringe, $upscale = true) {
+    protected static function save_response_image($response, $size, $transparent, $key, $model, $defringe, $upscale = true, $timeout = self::HTTP_TIMEOUT) {
         if (is_wp_error($response)) {
             $detail = method_exists($response, 'get_error_message') ? $response->get_error_message() : '';
             if (preg_match('/cURL error (\d+)/i', $detail, $match)) {
                 $causes = array(
                     6 => __('A szerver nem tudta feloldani az OpenAI címét (DNS-hiba, cURL 6).', 'mg'),
                     7 => __('A szerver nem tudott kapcsolódni az OpenAI-hoz (cURL 7).', 'mg'),
-                    28 => sprintf(__('Az OpenAI-kérés túllépte a %d másodperces időkorlátot (cURL 28).', 'mg'), self::HTTP_TIMEOUT),
+                    28 => sprintf(__('Az OpenAI-kérés túllépte a %d másodperces időkorlátot (cURL 28).', 'mg'), $timeout),
                     35 => __('TLS-kapcsolati hiba történt az OpenAI elérésekor (cURL 35).', 'mg'),
                     60 => __('A szerver nem tudta ellenőrizni az OpenAI TLS-tanúsítványát (cURL 60).', 'mg'),
                 );

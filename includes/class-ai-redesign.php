@@ -22,8 +22,10 @@ class MG_AI_Redesign {
     const STATE_PREFIX = 'mg_ai_redesign_state_';
     const LOCK_PREFIX = 'mg_ai_redesign_lock_';
     const MAX_CANDIDATES = 6;
-    // Real-CUGAN 3× in the browser; 4× came from the Real-ESRGAN pages before 2.43.9.
-    const AI_SCALES = array(3, 4);
+    // Real-CUGAN 3× or 2× in the browser; 4× came from the Real-ESRGAN pages before 2.43.9.
+    const AI_SCALES = array(2, 3, 4);
+    // Longest side of the finished design: prints need about 3500–4700 px at 300 DPI.
+    const MAX_UPSCALED_EDGE = 5120;
     // Same finish as the Design-flow app's upscales: a 255-color palette PNG.
     const PALETTE_COLORS = 255;
     const MAX_UPSCALED_BYTES = 83886080;
@@ -70,6 +72,7 @@ class MG_AI_Redesign {
             'openai_model' => self::DEFAULT_OPENAI_MODEL,
             'anthropic_api_key' => '',
             'quality' => 'medium',
+            'resolution' => 'economy',
             'describe_prompt' => '',
             'edge_cleanup' => true,
             'alpha_binary' => true,
@@ -93,6 +96,7 @@ class MG_AI_Redesign {
             // An empty field keeps the saved key; the page never prints it back.
             'anthropic_api_key' => !empty($input['anthropic_api_key_clear']) ? '' : ($key !== '' ? $key : $current['anthropic_api_key']),
             'quality' => isset($input['quality']) && in_array($input['quality'], array('low', 'medium', 'high'), true) ? $input['quality'] : 'medium',
+            'resolution' => isset($input['resolution']) ? self::resolution_or_economy($input['resolution']) : $current['resolution'],
             // Empty, unchanged or reset: follow the built-in default (and its later updates).
             'describe_prompt' => '',
             'edge_cleanup' => array_key_exists('edge_cleanup', $input) ? !empty($input['edge_cleanup']) : !empty($current['edge_cleanup']),
@@ -110,6 +114,31 @@ class MG_AI_Redesign {
     }
 
     /** "openai" or "anthropic:<model>"; Claude only once its API key is saved. */
+    /**
+     * <option>s for a resolution valid for any design: the economical size,
+     * then every longest side the image model allows (16 px steps). The other
+     * side follows each design's aspect ratio, so the label shows a square one.
+     */
+    public static function resolution_options_html($selected) {
+        $html = '<option value="economy"' . selected((string) $selected, 'economy', false) . '>' . esc_html__('Gazdaságos – a legkisebb méret (négyzetes mintánál 816×816, 0,67 MP)', 'mockup-generator') . '</option>';
+        for ($edge = 832; $edge <= MG_AI_Print_Generator::MAX_IMAGE_EDGE; $edge += 16) {
+            $side = min($edge, 2880);
+            $square = $side . '×' . $side . ', ' . number_format($side * $side / 1e6, 2, ',', '') . ' MP';
+            $note = MG_AI_Print_Generator::is_experimental_size($side, $side) ? ' – ' . __('kísérleti', 'mockup-generator') : '';
+            $html .= '<option value="' . $edge . '"' . selected((string) $selected, (string) $edge, false) . '>' . esc_html(sprintf(__('Hosszabbik oldal %1$d px (négyzetes mintánál %2$s%3$s)', 'mockup-generator'), $edge, $square, $note)) . '</option>';
+        }
+        return $html;
+    }
+
+    /** "economy" or a longest side in px (see MG_AI_Print_Generator::validate_resolution()). */
+    protected static function resolution_or_economy($value) {
+        try {
+            return MG_AI_Print_Generator::validate_resolution(is_string($value) ? trim($value) : $value);
+        } catch (RuntimeException $e) {
+            return 'economy';
+        }
+    }
+
     public static function get_analyzers($settings = null) {
         $settings = $settings ?? self::get_settings();
         $analyzers = array('openai' => 'OpenAI – ' . $settings['openai_model']);
@@ -884,7 +913,7 @@ class MG_AI_Redesign {
         $idle = $now - (int) ($state['stage_at'] ?? $state['started']);
         if ($now - (int) $state['started'] > self::RUN_TIMEOUT) {
             $message = __('Az AI újratervezés 10 percen belül nem készült el. Próbáld újra.', 'mockup-generator');
-        } elseif ($idle > self::HTTP_TIMEOUT + 120) {
+        } elseif ($idle > ($state['stage'] === 'image' ? MG_AI_Print_Generator::LARGE_IMAGE_TIMEOUT : self::HTTP_TIMEOUT) + 120) {
             $message = sprintf(
                 __('A szerver menet közben leállította a generálást (%1$s, %2$d perce nincs előrelépés), valószínűleg a tárhely PHP-időkorlátja vagy a megszakadt kapcsolat miatt. Generáld újra.', 'mockup-generator'),
                 $stages[$state['stage']] ?? (string) $state['stage'],
@@ -914,6 +943,7 @@ class MG_AI_Redesign {
         $intensity = array_key_exists($opts['intensity'] ?? '', self::get_intensities()) ? $opts['intensity'] : 'strong';
         $mode = array_key_exists($opts['prompt_mode'] ?? '', self::get_prompt_modes()) ? $opts['prompt_mode'] : 'brief';
         $quality = in_array($opts['quality'] ?? '', array('low', 'medium', 'high'), true) ? $opts['quality'] : self::get_settings()['quality'];
+        $resolution = ($opts['resolution'] ?? '') !== '' ? self::resolution_or_economy($opts['resolution']) : self::get_settings()['resolution'];
         $design_text = trim((string) ($opts['design_text'] ?? ''));
         list($png, $temp, $transparent) = self::prepare_png(self::design_source($product_id));
         $tmp = '';
@@ -940,7 +970,7 @@ class MG_AI_Redesign {
                 $prompt = self::build_image_prompt($analysis, $transparent, $intensity, $mode);
             }
             self::set_stage($product_id, 'image');
-            $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality);
+            $tmp = MG_AI_Print_Generator::redesign_image($png, $prompt, hash('sha256', 'redesign|' . $product_id . '|' . microtime(true)), $quality, $resolution);
             self::set_stage($product_id, 'save');
             $slug = (string) get_post_field('post_name', $product_id);
             // A unique name per candidate: a deleted candidate's URL is never reused,
@@ -959,6 +989,7 @@ class MG_AI_Redesign {
             }
         }
         $info = @getimagesize((string) get_attached_file($attachment_id));
+        $generated = $info ? $info[0] . '×' . $info[1] : '';
         $candidate = array(
             'attachment_id' => (int) $attachment_id,
             // 'none' until the browser stores its Real-CUGAN 3× version.
@@ -970,6 +1001,8 @@ class MG_AI_Redesign {
             'intensity' => $mode === 'describe' && $custom_prompt === '' ? '' : $intensity,
             'prompt_mode' => $custom_prompt !== '' ? 'manual' : $mode,
             'quality' => $quality,
+            'resolution' => $resolution,
+            'generated_size' => $generated,
             'text_lines' => array_values(array_filter(array_map('trim', (array) $analysis['text_lines']), 'strlen')),
             'original_style' => $analysis['original_style'],
             'new_style' => $analysis['new_style'],
@@ -1057,9 +1090,9 @@ class MG_AI_Redesign {
     }
 
     /**
-     * Replace a candidate's PNG with the browser's Real-CUGAN 3× version.
-     * Only an exact 3× (or, from a page still open from before 2.43.9, 4×)
-     * PNG of a not yet upscaled candidate is accepted.
+     * Replace a candidate's PNG with the browser's Real-CUGAN version.
+     * Only an exact 2× or 3× (or, from a page still open from before 2.43.9,
+     * 4×) PNG of a not yet upscaled candidate is accepted.
      */
     public static function store_upscaled($product_id, $attachment_id, $tmp_path) {
         $candidate = self::find_candidate($product_id, $attachment_id);
@@ -1081,7 +1114,7 @@ class MG_AI_Redesign {
             }
         }
         if (!$scale) {
-            throw new RuntimeException(__('A felskálázott PNG mérete nem az eredeti háromszorosa.', 'mockup-generator'));
+            throw new RuntimeException(__('A felskálázott PNG mérete nem az eredeti két- vagy háromszorosa.', 'mockup-generator'));
         }
         if (!@copy($tmp_path, $path)) {
             throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
@@ -1094,6 +1127,21 @@ class MG_AI_Redesign {
             'width' => $palette['width'],
             'height' => $palette['height'],
         )));
+    }
+
+    /**
+     * The AI upscale for a design of this size: 3×, or 2× if 3× would make the
+     * long side longer than MAX_UPSCALED_EDGE, or none (1) for a large one
+     * (2K and 4K generations are print-sized already).
+     */
+    public static function upscale_factor($width, $height) {
+        $long = max((int) $width, (int) $height);
+        foreach (array(3, 2) as $factor) {
+            if ($long > 0 && $long * $factor <= self::MAX_UPSCALED_EDGE) {
+                return $factor;
+            }
+        }
+        return 1;
     }
 
     protected static function versioned_url($url, $version) {
@@ -1115,6 +1163,8 @@ class MG_AI_Redesign {
         $version = is_string($file) && is_file($file) ? (string) filemtime($file) : '';
         $candidate['preview'] = self::versioned_url((string) wp_get_attachment_image_url($candidate['attachment_id'], 'medium'), $version);
         $candidate['full'] = self::versioned_url((string) wp_get_attachment_url($candidate['attachment_id']), $version);
+        // What the browser's upscale will do with it (1: nothing, it is large enough).
+        $candidate['upscale_factor'] = $candidate['upscale'] === 'none' ? self::upscale_factor($candidate['width'] ?? 0, $candidate['height'] ?? 0) : 0;
         return $candidate;
     }
 
@@ -1137,13 +1187,17 @@ class MG_AI_Redesign {
             throw new RuntimeException(__('A kiválasztott AI minta nem található. Generálj újat.', 'mockup-generator'));
         }
         if (($chosen['upscale'] ?? '') === 'none') {
-            // The browser could not AI-upscale it: same 3× enlargement as the export,
-            // from the same prepared input.
+            // Not AI-upscaled in the browser: the export's Lanczos enlargement by the
+            // same factor, from the same prepared input; a large one stays as it is.
             if (empty($chosen['prepared'])) {
                 self::prepare_upscale_file($path);
             }
-            MG_AI_Print_Generator::upscale_file($path);
-            $chosen['upscale'] = 'lanczos3x';
+            $info = getimagesize($path);
+            $factor = self::upscale_factor($info[0], $info[1]);
+            if ($factor > 1) {
+                MG_AI_Print_Generator::upscale_file($path, $factor);
+            }
+            $chosen['upscale'] = $factor > 1 ? 'lanczos' . $factor . 'x' : 'native';
         }
         if (empty($chosen['palette'])) {
             // Candidates from before 2.42.12 and the 3× fallback still need the palette finish.
@@ -1206,9 +1260,13 @@ class MG_AI_Redesign {
         $settings = self::get_settings();
         $design_url = '';
         $design_error = '';
+        $sizes = array();
         try {
             $design_path = self::design_source($product_id);
             $design_url = self::versioned_url(self::path_to_url($design_path), (string) filemtime($design_path));
+            $dimensions = @getimagesize($design_path);
+            // Every size the image model can make at this design's aspect ratio.
+            $sizes = $dimensions ? MG_AI_Print_Generator::available_sizes($dimensions[0], $dimensions[1]) : array();
         } catch (RuntimeException $e) {
             $design_error = $e->getMessage();
         }
@@ -1221,6 +1279,8 @@ class MG_AI_Redesign {
             'analyzers' => self::get_analyzers($settings),
             'analyzer' => $settings['analyzer'],
             'quality' => $settings['quality'],
+            'resolution' => $settings['resolution'],
+            'sizes' => $sizes,
             'candidates' => array_map(array(__CLASS__, 'candidate_for_ui'), self::get_candidates($product_id)),
             'state' => self::current_state($product_id),
         ));
@@ -1246,6 +1306,7 @@ class MG_AI_Redesign {
                 'analyzer' => self::post_text('analyzer'),
                 'intensity' => self::post_text('intensity'),
                 'quality' => self::post_text('quality'),
+                'resolution' => self::post_text('resolution'),
                 'design_text' => self::post_text('design_text', true),
                 'style_hint' => self::post_text('style_hint', true),
                 'custom_prompt' => self::post_text('custom_prompt', true),
@@ -1324,6 +1385,8 @@ class MG_AI_Redesign {
 
     public static function ajax_apply() {
         $product_id = self::check_request();
+        // The palette finish of a large design needs the memory.
+        @ini_set('memory_limit', '1024M');
         try {
             wp_send_json_success(self::apply($product_id, isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0));
         } catch (Throwable $e) {
@@ -1340,6 +1403,7 @@ class MG_AI_Redesign {
         if ((int) $file['size'] > self::MAX_UPSCALED_BYTES) {
             wp_send_json_error(array('message' => __('A felskálázott PNG túl nagy.', 'mockup-generator')));
         }
+        @ini_set('memory_limit', '1024M');
         try {
             wp_send_json_success(self::store_upscaled($product_id, isset($_POST['attachment_id']) ? absint($_POST['attachment_id']) : 0, $file['tmp_name']));
         } catch (Throwable $e) {

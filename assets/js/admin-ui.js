@@ -1003,11 +1003,15 @@
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
         const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
         const upscaleLabels = {
+            ai2x: 'AI felskálázva 2× (Real-CUGAN)',
             ai3x: 'AI felskálázva 3× (Real-CUGAN)',
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
+            lanczos2x: '2× sima nagyítás',
             lanczos3x: '3× sima nagyítás',
-            none: 'Még nincs felskálázva – jóváhagyáskor 3× sima nagyítás és 255 színes paletta lesz',
+            native: 'Eredeti felbontás (elég nagy, nem kellett felskálázni)',
+            none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás (ha kell) és 255 színes paletta lesz',
         };
+        const megapixels = function (w, h) { return (w * h / 1e6).toFixed(2).replace('.', ','); };
         let upscaling = false;
         let autoUpscaleId = '';
         let productId = '';
@@ -1050,7 +1054,7 @@
                 const $link = $('<a target="_blank" rel="noopener"></a>').attr('href', c.full || c.preview);
                 $link.append($('<img alt="" />').attr('src', c.preview || c.full));
                 $card.append($link);
-                const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality].filter(Boolean).join(' · ');
+                const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality, c.generated_size ? 'generálva ' + c.generated_size + ' px' : ''].filter(Boolean).join(' · ');
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
                 const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : '';
@@ -1065,9 +1069,9 @@
                 $actions.append($('<button type="button" class="button button-primary mg-ai-redesign-apply">Jóváhagyás és mockupok újragenerálása</button>').attr('data-attachment-id', c.attachment_id));
                 $actions.append(' ');
                 $actions.append($('<button type="button" class="button mg-ai-redesign-edit-prompt">Prompt szerkesztése</button>').data('prompt', c.prompt || ''));
-                if (c.upscale === 'none') {
+                if (c.upscale === 'none' && c.upscale_factor > 1) {
                     $actions.append(' ');
-                    $actions.append($('<button type="button" class="button mg-ai-redesign-upscale">AI felskálázás (3×)</button>').attr('data-attachment-id', c.attachment_id).data('url', c.full));
+                    $actions.append($('<button type="button" class="button mg-ai-redesign-upscale"></button>').text('AI felskálázás (' + c.upscale_factor + '×)').attr('data-attachment-id', c.attachment_id).data('url', c.full));
                 }
                 $actions.append(' ');
                 $actions.append($('<button type="button" class="button button-link-delete mg-ai-redesign-discard">Törlés</button>').attr('data-attachment-id', c.attachment_id));
@@ -1095,6 +1099,20 @@
                 });
                 $analyzer.val(d.analyzer);
                 $('#mg-ai-redesign-quality').val(d.quality || 'medium');
+                // Every size the image model can make at this design's aspect ratio; the
+                // default is the largest one within the saved longest side.
+                const $res = $('#mg-ai-redesign-resolution').empty();
+                const sizes = d.sizes || [];
+                $res.append($('<option value="economy"></option>').text('Gazdaságos – a legkisebb' + (sizes[0] ? ' (' + sizes[0].width + '×' + sizes[0].height + ', ' + megapixels(sizes[0].width, sizes[0].height) + ' MP)' : '')));
+                let pick = 'economy';
+                sizes.forEach(function (z) {
+                    $res.append($('<option></option>').val(String(z.edge))
+                        .text(z.width + '×' + z.height + ' px · ' + megapixels(z.width, z.height) + ' MP' + (z.experimental ? ' · kísérleti' : '')));
+                    if (d.resolution !== 'economy' && z.edge <= Number(d.resolution)) {
+                        pick = String(z.edge);
+                    }
+                });
+                $res.val(pick);
                 renderCandidates(d.candidates);
                 const fresh = (d.candidates || [])[0];
                 if (fresh && fresh.upscale === 'none' && String(fresh.attachment_id) === autoUpscaleId) {
@@ -1189,6 +1207,7 @@
                 intensity: $('#mg-ai-redesign-intensity').val() || 'strong',
                 prompt_mode: $('#mg-ai-redesign-mode').val() || 'brief',
                 quality: $('#mg-ai-redesign-quality').val() || 'medium',
+                resolution: $('#mg-ai-redesign-resolution').val() || 'economy',
                 design_text: $('#mg-ai-redesign-text').val() || '',
                 style_hint: $('#mg-ai-redesign-hint').val() || '',
                 custom_prompt: $('#mg-ai-redesign-custom-prompt').val() || '',
@@ -1224,13 +1243,21 @@
                 if (!prepared || !prepared.success || !prepared.data || !prepared.data.full) {
                     throw new Error((prepared && prepared.data && prepared.data.message) || 'az előkészítés nem sikerült.');
                 }
+                // 3× or 2× by its size; a large one (above 2560 px) needs none.
+                const factor = prepared.data.upscale_factor || 0;
+                if (factor < 2) {
+                    return null;
+                }
                 $status().text('AI felskálázás indul (első alkalommal a modell betöltése is pár másodperc)…');
                 return window.MGAIUpscale.upscale(prepared.data.full, function (p) {
                     if (pid === productId) {
-                        $status().text('AI felskálázás 3×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
+                        $status().text('AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
                     }
-                });
+                }, factor);
             }).then(function (blob) {
+                if (!blob) {
+                    return { success: true, native: true };
+                }
                 const cfg = window.MG_AJAX || {};
                 const form = new FormData();
                 form.append('action', 'mg_ai_redesign_upscaled');
@@ -1244,17 +1271,19 @@
                 if (pid !== productId) {
                     return;
                 }
-                if (resp && resp.success) {
+                if (resp && resp.native) {
+                    $status().text('A minta elég nagy, nem kell felskálázni. Nézd meg teljes méretben, és ha jó, hagyd jóvá: 255 színes palettát kap.');
+                } else if (resp && resp.success) {
                     $status().text('AI felskálázás kész. Nézd meg teljes méretben, és ha jó, hagyd jóvá.');
                 } else {
-                    $status().text('AI felskálázás hiba: ' + (responseMessage(resp) || 'ismeretlen') + ' Jóváhagyáskor 3× sima nagyítás lesz.');
+                    $status().text('AI felskálázás hiba: ' + (responseMessage(resp) || 'ismeretlen') + ' Jóváhagyáskor sima nagyítás lesz (ha kell).');
                 }
             }, function (err) {
                 if (pid !== productId) {
                     return;
                 }
                 const msg = (err && err.message) || (err && err.status === 413 ? 'a fájl nagyobb a szerver feltöltési korlátjánál (HTTP 413).' : 'a kérés nem sikerült.');
-                $status().text('AI felskálázás hiba: ' + msg + ' Jóváhagyáskor 3× sima nagyítás lesz.');
+                $status().text('AI felskálázás hiba: ' + msg + ' Jóváhagyáskor sima nagyítás lesz (ha kell).');
             }).finally(function () {
                 upscaling = false;
                 if (pid === productId) {
@@ -1274,7 +1303,7 @@
             }
             const notUpscaled = $btn.closest('.mg-ai-redesign__candidate').attr('data-upscale') === 'none';
             if (!window.confirm('Ez a minta kerül a termékre, és az összes mockup újragenerálódik. A többi jelölt törlődik.'
-                + (notUpscaled ? ' Ez a minta még nincs AI-val felskálázva, ezért 3× sima nagyítást kap.' : '') + ' Folytatod?')) {
+                + (notUpscaled ? ' Ez a minta még nincs AI-val felskálázva, ezért sima nagyítást kap (ha kell).' : '') + ' Folytatod?')) {
                 return;
             }
             $btn.prop('disabled', true);

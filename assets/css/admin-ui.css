@@ -1131,6 +1131,22 @@ body.wp-admin[data-theme="dark"] .mg-ai-bulk__item {
     width: 140px;
 }
 
+/* Long option texts (the resolution lists) must not widen the window on a phone. */
+.mg-ai-redesign__form,
+.mg-ai-bulk .form-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.mg-ai-redesign__form select,
+.mg-ai-redesign__form textarea,
+.mg-ai-redesign__form input,
+.mg-ai-bulk select,
+.mg-ai-bulk .form-table input {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
 .mg-ai-redesign__candidates {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
