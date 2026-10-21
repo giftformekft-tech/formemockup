@@ -4,7 +4,7 @@
  * The bulk run reuses the single redesign endpoints per product: generation
  * runs two at a time from this tab (with status polling if a proxy cuts the
  * request), every card shows the original and the new design side by side,
- * and only the approved cards are upscaled 4× in the browser, finished as a
+ * and only the approved cards are upscaled 3× in the browser, finished as a
  * palette PNG and queued for mockup regeneration at the end.
  */
 (function ($) {
@@ -234,12 +234,12 @@
         document.title = bulk.dismissed ? baseTitle : (m.complete ? '✓ Kész – ' : '[' + m.percent + '%] ') + baseTitle;
     }
 
-    // "Végleges: 4× AI · 255 színes paletta · 3136×3392 px – " once the file is finished.
+    // "Végleges: 3× AI · 255 színes paletta · 2352×2544 px – " once the file is finished.
     function finishLabel(c) {
         if (!c.palette) {
             return '';
         }
-        const how = c.upscale === 'ai4x' ? '4× AI felskálázás' : (c.upscale === 'lanczos3x' ? '3× sima nagyítás' : '');
+        const how = { ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos3x: '3× sima nagyítás' }[c.upscale] || '';
         const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
         return 'Végleges: ' + [how, c.palette + ' színes paletta', size].filter(Boolean).join(' · ') + ' – ';
     }
@@ -464,7 +464,7 @@
                     item.fin = 0.1;
                     render(item);
                     const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
-                        item.note = 'AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
+                        item.note = 'AI felskálázás 3×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
                         item.fin = 0.1 + 0.7 * p;
                         render(item);
                     });
@@ -473,7 +473,7 @@
                     render(item);
                     const resp = await upload(item, blob);
                     if (resp && resp.success && resp.data) {
-                        item.candidate = resp.data; // the 4× palette PNG, with a new version in its URL
+                        item.candidate = resp.data; // the 3× palette PNG, with a new version in its URL
                         render(item);
                     } else {
                         note = ' (AI felskálázás: ' + (message(resp) || 'hiba') + ' – 3× sima nagyítás lett)';

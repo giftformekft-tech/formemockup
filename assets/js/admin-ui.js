@@ -1003,6 +1003,7 @@
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
         const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
         const upscaleLabels = {
+            ai3x: 'AI felskálázva 3× (Real-CUGAN)',
             ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
             lanczos3x: '3× sima nagyítás',
             none: 'Még nincs felskálázva – jóváhagyáskor 3× sima nagyítás és 255 színes paletta lesz',
@@ -1066,7 +1067,7 @@
                 $actions.append($('<button type="button" class="button mg-ai-redesign-edit-prompt">Prompt szerkesztése</button>').data('prompt', c.prompt || ''));
                 if (c.upscale === 'none') {
                     $actions.append(' ');
-                    $actions.append($('<button type="button" class="button mg-ai-redesign-upscale">AI felskálázás (4×)</button>').attr('data-attachment-id', c.attachment_id).data('url', c.full));
+                    $actions.append($('<button type="button" class="button mg-ai-redesign-upscale">AI felskálázás (3×)</button>').attr('data-attachment-id', c.attachment_id).data('url', c.full));
                 }
                 $actions.append(' ');
                 $actions.append($('<button type="button" class="button button-link-delete mg-ai-redesign-discard">Törlés</button>').attr('data-attachment-id', c.attachment_id));
@@ -1209,7 +1210,7 @@
             poll();
         });
 
-        // Real-ESRGAN 4× a böngészőben (assets/js/ai-upscale.js), majd feltöltés.
+        // Real-CUGAN 3× a böngészőben (assets/js/ai-upscale.js), majd feltöltés.
         function runUpscale(attachmentId, url) {
             if (upscaling || !window.MGAIUpscale || !url) {
                 return;
@@ -1226,7 +1227,7 @@
                 $status().text('AI felskálázás indul (első alkalommal a modell betöltése is pár másodperc)…');
                 return window.MGAIUpscale.upscale(prepared.data.full, function (p) {
                     if (pid === productId) {
-                        $status().text('AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
+                        $status().text('AI felskálázás 3×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
                     }
                 });
             }).then(function (blob) {

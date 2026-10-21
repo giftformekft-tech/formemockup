@@ -1,23 +1,28 @@
 /**
- * 4× AI upscaling in the admin's browser with Real-ESRGAN (realesr-general-x4v3,
- * BSD-3-Clause), run by TensorFlow.js on WebGL. The model and the library ship
- * with the plugin, so no external service is called.
+ * 3× AI upscaling in the admin's browser with Real-CUGAN (up3x-conservative,
+ * the models-se weights of realcugan-ncnn-vulkan, MIT), run by TensorFlow.js
+ * on WebGL: the same model, scale and tiling as the Design-flow app. The model
+ * and the library ship with the plugin, so no external service is called.
  *
  * window.MGAIUpscale.upscale(imageUrl, onProgress) -> Promise<Blob> (PNG)
  *
- * A back-projection step keeps the original colors. Transparent designs:
- * colors are bled into the fully transparent area first
- * (no dark fringes), then RGB and alpha are upscaled separately, as Real-ESRGAN
- * itself does.
+ * Real-CUGAN is made for drawn art: flat areas stay flat (the faint grain of a
+ * generated image would turn into blotches in the 255-color palette) and the
+ * colors are kept without correction. Transparent designs: colors are bled
+ * into the fully transparent area first (no dark fringes), the alpha channel
+ * is enlarged bicubically, as realcugan-ncnn-vulkan does.
  */
 (function () {
     'use strict';
 
-    const SCALE = 4;
-    const TILE = 128;
-    const PAD = 10;
+    const TILE = 96;
+    // Squeeze-excitation statistics for the whole image: every third 32 px
+    // tile with its own means, averaged (realcugan-ncnn-vulkan's default
+    // "very rough" sync), so the tiles do not differ in tone.
+    const GAP_TILE = 32;
+    const GAP_BATCH = 8;
     let tfPromise = null;
-    let weightsPromise = null;
+    let modelPromise = null;
 
     function config() {
         return window.MG_AI_UPSCALE || {};
@@ -48,45 +53,93 @@
         return tfPromise;
     }
 
-    function ensureWeights(tf) {
-        if (!weightsPromise) {
+    // model.json: the layer graph from tools/convert-realcugan.py; weights.bin: float32.
+    function ensureModel(tf) {
+        if (!modelPromise) {
             const base = config().modelUrl;
-            weightsPromise = Promise.all([
+            modelPromise = Promise.all([
                 fetch(base + 'model.json').then(function (r) { if (!r.ok) { throw new Error('A modell leírója nem tölthető be.'); } return r.json(); }),
                 fetch(base + 'weights.bin').then(function (r) { if (!r.ok) { throw new Error('A modell súlyai nem tölthetők be.'); } return r.arrayBuffer(); }),
             ]).then(function (res) {
+                const model = res[0];
                 const floats = new Float32Array(res[1]);
-                return res[0].layers.map(function (l) {
-                    const size = l.shape.reduce(function (a, b) { return a * b; }, 1);
-                    return tf.tensor(floats.subarray(l.offset, l.offset + size), l.shape);
+                const tensor = function (t) {
+                    const size = t.shape.reduce(function (a, b) { return a * b; }, 1);
+                    return tf.tensor(floats.subarray(t.offset, t.offset + size), t.shape);
+                };
+                model.layers.forEach(function (l) {
+                    if (l.w) {
+                        l.w = tensor(l.w);
+                    }
+                    if (l.b) {
+                        l.b = tensor(l.b);
+                    }
                 });
+                return model;
             });
-            weightsPromise.catch(function () { weightsPromise = null; });
+            modelPromise.catch(function () { modelPromise = null; });
         }
-        return weightsPromise;
+        return modelPromise;
     }
 
-    // SRVGGNetCompact: conv + PReLU blocks, pixel shuffle, plus a nearest-neighbor skip.
-    function runModel(tf, W, x) {
-        return tf.tidy(function () {
-            let h = x;
-            let i = 0;
-            while (i < W.length) {
-                h = tf.add(tf.conv2d(h, W[i], 1, 'same'), W[i + 1]);
-                i += 2;
-                if (i < W.length && W[i].rank === 1) {
-                    h = tf.prelu(h, W[i]);
-                    i += 1;
+    function activate(tf, x, act) {
+        if (!act) {
+            return x;
+        }
+        if (act.type === 'leaky') {
+            return tf.leakyRelu(x, act.slope);
+        }
+        return act.type === 'relu' ? tf.relu(x) : tf.sigmoid(x);
+    }
+
+    /**
+     * One pass of the graph on x [n, h, w, 3]. gaps: fixed SE inputs by name
+     * ([1, C] tensors), or null for the tile's own means. record: collects the
+     * means at each SE input ([n, C]); the pass ends once all are recorded.
+     */
+    function runGraph(tf, model, x, gaps, record) {
+        const blobs = { in0: x };
+        const pools = model.layers.filter(function (l) { return l.type === 'Pooling'; }).length;
+        for (const l of model.layers) {
+            const a = blobs[l.ins[0]];
+            let y;
+            if (l.type === 'Split') {
+                l.outs.forEach(function (name) { blobs[name] = a; });
+                continue;
+            } else if (l.type === 'Convolution') {
+                y = tf.conv2d(a, l.w, l.stride, 'valid');
+            } else if (l.type === 'Deconvolution') {
+                const n = a.shape[0], h = (a.shape[1] - 1) * l.stride + l.kernel, w = (a.shape[2] - 1) * l.stride + l.kernel;
+                y = tf.conv2dTranspose(a, l.w, [n, h, w, l.out], l.stride, 'valid');
+                if (l.pad) {
+                    y = y.slice([0, l.pad, l.pad, 0], [n, h - 2 * l.pad, w - 2 * l.pad, l.out]);
                 }
+            } else if (l.type === 'Pooling') {
+                const mean = tf.mean(a, [1, 2]);
+                if (record) {
+                    record[l.outs[0]] = mean;
+                }
+                y = gaps ? gaps[l.outs[0]] : mean;
+            } else if (l.type === 'InnerProduct') {
+                y = tf.matMul(a, l.w);
+            } else if (l.type === 'BinaryOp') {
+                const b = blobs[l.ins[1]];
+                y = l.op === 'mul' ? tf.mul(a, b.reshape([b.shape[0], 1, 1, b.shape[1]])) : tf.add(a, b);
+            } else if (l.type === 'Crop') {
+                const s = a.shape;
+                y = a.slice([0, l.start[0], l.start[1], 0], [s[0], s[1] - l.start[0] + l.end[0], s[2] - l.start[1] + l.end[1], s[3]]);
+            } else {
+                throw new Error('Ismeretlen modellréteg: ' + l.type);
             }
-            h = tf.depthToSpace(h, SCALE, 'NHWC');
-            const size = [x.shape[1] * SCALE, x.shape[2] * SCALE];
-            const out = tf.add(h, tf.image.resizeNearestNeighbor(x, size));
-            // Back-projection: shrunk back, the result must give the input's colors
-            // (the model alone darkens dark tones by ~5%, which shows in print).
-            const diff = tf.sub(x, tf.avgPool(out, SCALE, SCALE, 'valid'));
-            return tf.add(out, tf.image.resizeBilinear(diff, size, true));
-        });
+            if (l.b) {
+                y = tf.add(y, l.b);
+            }
+            blobs[l.outs[0]] = activate(tf, y, l.act);
+            if (record && Object.keys(record).length === pools) {
+                return null;
+            }
+        }
+        return blobs.out0;
     }
 
     /** Fill RGB of fully transparent pixels from their visible neighbors. */
@@ -139,65 +192,127 @@
         }
     }
 
-    /**
-     * Upscale one 3-channel float image [h, w, 3] (0..1) tile by tile into out
-     * (RGBA bytes). constantFill(x0, y0, x1, y1) may return the value of a tile
-     * that needs no model run (empty or single-colored), which saves most of
-     * the time on designs with large transparent areas.
-     */
-    async function upscalePlane(tf, W, src, w, h, out, channels, constantFill, done, total, onProgress) {
-        const ow = w * SCALE;
-        for (let y = 0; y < h; y += TILE) {
-            for (let x = 0; x < w; x += TILE) {
-                const x0 = Math.max(0, x - PAD), y0 = Math.max(0, y - PAD);
-                const x1 = Math.min(w, x + TILE + PAD), y1 = Math.min(h, y + TILE + PAD);
-                const cw = Math.min(TILE, w - x) * SCALE, ch = Math.min(TILE, h - y) * SCALE;
-                const fill = constantFill(x0, y0, x1, y1);
-                if (fill) {
-                    for (let yy = 0; yy < ch; yy++) {
-                        let di = (((y * SCALE) + yy) * ow + x * SCALE) * 4;
-                        for (let xx = 0; xx < cw; xx++, di += 4) {
-                            if (channels === 'rgb') {
-                                out[di] = fill[0];
-                                out[di + 1] = fill[1];
-                                out[di + 2] = fill[2];
-                            } else {
-                                out[di + 3] = fill[0];
-                            }
-                        }
-                    }
-                    done.count++;
-                    if (onProgress) {
-                        onProgress(done.count / total);
-                    }
-                    continue;
-                }
-                const t = tf.tidy(function () {
-                    const tile = src.slice([y0, x0, 0], [y1 - y0, x1 - x0, 3]).expandDims(0);
-                    return runModel(tf, W, tile).squeeze().mul(255).clipByValue(0, 255);
+    // Mirror at the image border without repeating the edge (PyTorch "reflect").
+    function reflect(i, n) {
+        if (n === 1) {
+            return 0;
+        }
+        const period = 2 * (n - 1);
+        i = ((i % period) + period) % period;
+        return i < n ? i : period - i;
+    }
+
+    /** The network input for a tile: its pixels, the model's context around them, the size alignment. */
+    function tileInput(src, w, h, model, x0, y0, tw, th, dst, at) {
+        const pad = model.prepadding;
+        const iw = Math.ceil(tw / model.align) * model.align + 2 * pad;
+        const ih = Math.ceil(th / model.align) * model.align + 2 * pad;
+        let o = at || 0;
+        for (let y = 0; y < ih; y++) {
+            const row = reflect(y0 - pad + y, h) * w;
+            for (let x = 0; x < iw; x++) {
+                const s = (row + reflect(x0 - pad + x, w)) * 3;
+                dst[o++] = src[s];
+                dst[o++] = src[s + 1];
+                dst[o++] = src[s + 2];
+            }
+        }
+        return [ih, iw];
+    }
+
+    function inputSize(model, n) {
+        return Math.ceil(n / model.align) * model.align + 2 * model.prepadding;
+    }
+
+    async function syncGaps(tf, model, src, w, h, onStep) {
+        const pick = function (n) {
+            const out = [];
+            for (let i = 0; n >= 3 ? i + 2 < n : i < n; i += n >= 3 ? 3 : 1) {
+                out.push(i);
+            }
+            return out;
+        };
+        const groups = {};
+        pick(Math.ceil(h / GAP_TILE)).forEach(function (yi) {
+            pick(Math.ceil(w / GAP_TILE)).forEach(function (xi) {
+                const tw = Math.min(GAP_TILE, w - xi * GAP_TILE), th = Math.min(GAP_TILE, h - yi * GAP_TILE);
+                (groups[tw + 'x' + th] = groups[tw + 'x' + th] || []).push([xi * GAP_TILE, yi * GAP_TILE, tw, th]);
+            });
+        });
+        const sums = {};
+        let count = 0;
+        for (const key of Object.keys(groups)) {
+            const tiles = groups[key];
+            for (let i = 0; i < tiles.length; i += GAP_BATCH) {
+                const batch = tiles.slice(i, i + GAP_BATCH);
+                const ih = inputSize(model, batch[0][3]), iw = inputSize(model, batch[0][2]);
+                const data = new Float32Array(batch.length * ih * iw * 3);
+                batch.forEach(function (t, k) {
+                    tileInput(src, w, h, model, t[0], t[1], t[2], t[3], data, k * ih * iw * 3);
                 });
-                const d = await t.data();
-                t.dispose();
-                const tw = (x1 - x0) * SCALE;
-                const cx0 = (x - x0) * SCALE, cy0 = (y - y0) * SCALE;
-                for (let yy = 0; yy < ch; yy++) {
-                    let si = ((cy0 + yy) * tw + cx0) * 3;
-                    let di = (((y * SCALE) + yy) * ow + x * SCALE) * 4;
-                    for (let xx = 0; xx < cw; xx++, si += 3, di += 4) {
-                        if (channels === 'rgb') {
-                            out[di] = d[si];
-                            out[di + 1] = d[si + 1];
-                            out[di + 2] = d[si + 2];
-                        } else {
-                            out[di + 3] = (d[si] + d[si + 1] + d[si + 2]) / 3;
-                        }
+                const totals = tf.tidy(function () {
+                    const record = {};
+                    runGraph(tf, model, tf.tensor4d(data, [batch.length, ih, iw, 3]), null, record);
+                    const out = {};
+                    Object.keys(record).forEach(function (name) { out[name] = tf.sum(record[name], 0); });
+                    return out;
+                });
+                for (const name of Object.keys(totals)) {
+                    const v = await totals[name].data();
+                    totals[name].dispose();
+                    const acc = sums[name] = sums[name] || new Float64Array(v.length);
+                    for (let c = 0; c < v.length; c++) {
+                        acc[c] += v[c];
                     }
                 }
-                done.count++;
-                if (onProgress) {
-                    onProgress(done.count / total);
-                }
+                count += batch.length;
+                onStep(batch.length);
                 await tf.nextFrame();
+            }
+        }
+        const gaps = {};
+        Object.keys(sums).forEach(function (name) {
+            gaps[name] = tf.tensor2d(Float32Array.from(sums[name], function (v) { return v / count; }), [1, sums[name].length]);
+        });
+        return gaps;
+    }
+
+    // Keys cubic (a = -0.75, as ncnn's bicubic Interp).
+    function cubic(x) {
+        const a = -0.75;
+        x = Math.abs(x);
+        if (x <= 1) {
+            return ((a + 2) * x - (a + 3)) * x * x + 1;
+        }
+        return x < 2 ? ((a * x - 5 * a) * x + 8 * a) * x - 4 * a : 0;
+    }
+
+    /** Bicubic enlargement of the alpha channel (RGBA bytes in, offset 3) into out. */
+    function bicubicAlpha(px, w, h, scale, out) {
+        const W = w * scale, H = h * scale;
+        // Output pixel X maps to (X + 0.5) / scale - 0.5 in the input.
+        const taps = [];
+        for (let r = 0; r < scale; r++) {
+            const f = (r + 0.5) / scale - 0.5, base = Math.floor(f), t = f - base;
+            taps.push({ base: base, k: [cubic(1 + t), cubic(t), cubic(1 - t), cubic(2 - t)] });
+        }
+        const clamp = function (i, n) { return i < 0 ? 0 : (i >= n ? n - 1 : i); };
+        const rows = new Float32Array(h * W);
+        for (let y = 0; y < h; y++) {
+            for (let X = 0; X < W; X++) {
+                const i = Math.floor(X / scale), t = taps[X - i * scale];
+                let v = 0;
+                for (let k = 0; k < 4; k++) {
+                    v += px[(y * w + clamp(i + t.base - 1 + k, w)) * 4 + 3] * t.k[k];
+                }
+                rows[y * W + X] = v;
+            }
+        }
+        for (let Y = 0; Y < H; Y++) {
+            const j = Math.floor(Y / scale), t = taps[Y - j * scale];
+            const r0 = clamp(j + t.base - 1, h) * W, r1 = clamp(j + t.base, h) * W, r2 = clamp(j + t.base + 1, h) * W, r3 = clamp(j + t.base + 2, h) * W;
+            for (let X = 0, o = Y * W * 4 + 3; X < W; X++, o += 4) {
+                out[o] = rows[r0 + X] * t.k[0] + rows[r1 + X] * t.k[1] + rows[r2 + X] * t.k[2] + rows[r3 + X] * t.k[3];
             }
         }
     }
@@ -215,7 +330,8 @@
 
     async function upscale(url, onProgress) {
         const tf = await ensureTf();
-        const W = await ensureWeights(tf);
+        const model = await ensureModel(tf);
+        const SCALE = model.scale;
         const img = await loadImage(url);
         const w = img.naturalWidth, h = img.naturalHeight;
         const canvas = document.createElement('canvas');
@@ -234,67 +350,111 @@
         if (transparent) {
             bleedColors(px, w, h);
         }
-        const rgb = new Float32Array(w * h * 3);
-        const alpha = transparent ? new Float32Array(w * h * 3) : null;
+        const src = new Float32Array(w * h * 3);
         for (let p = 0, j = 0; p < w * h; p++, j += 3) {
-            rgb[j] = px[p * 4] / 255;
-            rgb[j + 1] = px[p * 4 + 1] / 255;
-            rgb[j + 2] = px[p * 4 + 2] / 255;
-            if (alpha) {
-                alpha[j] = alpha[j + 1] = alpha[j + 2] = px[p * 4 + 3] / 255;
+            src[j] = px[p * 4] / 255;
+            src[j + 1] = px[p * 4 + 1] / 255;
+            src[j + 2] = px[p * 4 + 2] / 255;
+        }
+        const ow = w * SCALE, oh = h * SCALE;
+        const out = new Uint8ClampedArray(ow * oh * 4);
+
+        const pad = model.prepadding;
+        // Constant when every pixel of the tile and its context is the same
+        // (the model keeps a flat area flat), or when all of it is invisible.
+        function constant(x0, y0, x1, y1) {
+            x0 = Math.max(0, x0 - pad);
+            y0 = Math.max(0, y0 - pad);
+            x1 = Math.min(w, x1 + pad);
+            y1 = Math.min(h, y1 + pad);
+            const first = (y0 * w + x0) * 4;
+            let same = true, invisible = transparent;
+            for (let y = y0; y < y1 && (same || invisible); y++) {
+                for (let x = x0, i = (y * w + x0) * 4; x < x1; x++, i += 4) {
+                    if (px[i] !== px[first] || px[i + 1] !== px[first + 1] || px[i + 2] !== px[first + 2]) {
+                        same = false;
+                    }
+                    if (px[i + 3] !== 0) {
+                        invisible = false;
+                    }
+                }
+            }
+            return invisible ? [0, 0, 0] : (same ? [px[first], px[first + 1], px[first + 2]] : null);
+        }
+
+        const tiles = [];
+        for (let y = 0; y < h; y += TILE) {
+            for (let x = 0; x < w; x += TILE) {
+                tiles.push([x, y, Math.min(TILE, w - x), Math.min(TILE, h - y)]);
             }
         }
-        const out = new Uint8ClampedArray(w * SCALE * h * SCALE * 4);
-        if (!alpha) {
+        const work = tiles.filter(function (t) { return !constant(t[0], t[1], t[0] + t[2], t[1] + t[3]); });
+        // One tile: its own statistics are exact. A gap sample costs about a fifth of a tile.
+        const gapSamples = work.length > 1 ? Math.ceil(h / GAP_TILE / 3) * Math.ceil(w / GAP_TILE / 3) : 0;
+        const total = work.length + gapSamples / 5 || 1;
+        let done = 0;
+        const step = function (units) {
+            done += units;
+            if (onProgress) {
+                onProgress(Math.min(1, done / total));
+            }
+        };
+        const gaps = gapSamples ? await syncGaps(tf, model, src, w, h, function (n) { step(n / 5); }) : null;
+        try {
+            for (const t of tiles) {
+                const x = t[0], y = t[1], tw = t[2], th = t[3];
+                const fill = constant(x, y, x + tw, y + th);
+                let d = null, rowLen = 0;
+                if (!fill) {
+                    const ih = inputSize(model, th), iw = inputSize(model, tw);
+                    const data = new Float32Array(ih * iw * 3);
+                    tileInput(src, w, h, model, x, y, tw, th, data, 0);
+                    const result = tf.tidy(function () {
+                        return runGraph(tf, model, tf.tensor4d(data, [1, ih, iw, 3]), gaps, null).mul(255);
+                    });
+                    rowLen = result.shape[2];
+                    d = await result.data();
+                    result.dispose();
+                }
+                for (let yy = 0; yy < th * SCALE; yy++) {
+                    let di = ((y * SCALE + yy) * ow + x * SCALE) * 4;
+                    let si = yy * rowLen * 3;
+                    for (let xx = 0; xx < tw * SCALE; xx++, di += 4, si += 3) {
+                        if (fill) {
+                            out[di] = fill[0];
+                            out[di + 1] = fill[1];
+                            out[di + 2] = fill[2];
+                        } else {
+                            out[di] = d[si];
+                            out[di + 1] = d[si + 1];
+                            out[di + 2] = d[si + 2];
+                        }
+                    }
+                }
+                if (!fill) {
+                    step(1);
+                    await tf.nextFrame();
+                }
+            }
+        } finally {
+            if (gaps) {
+                Object.keys(gaps).forEach(function (name) { gaps[name].dispose(); });
+            }
+        }
+        if (transparent) {
+            bicubicAlpha(px, w, h, SCALE, out);
+        } else {
             for (let i = 3; i < out.length; i += 4) {
                 out[i] = 255;
             }
         }
-        const tilesPerPlane = Math.ceil(w / TILE) * Math.ceil(h / TILE);
-        const total = tilesPerPlane * (alpha ? 2 : 1);
-        const done = { count: 0 };
-        // A tile is constant when every pixel of it (with its padding) is the same.
-        function uniform(x0, y0, x1, y1, offset, count) {
-            const first = (y0 * w + x0) * 4 + offset;
-            for (let yy = y0; yy < y1; yy++) {
-                for (let xx = x0; xx < x1; xx++) {
-                    const i = (yy * w + xx) * 4 + offset;
-                    for (let k = 0; k < count; k++) {
-                        if (px[i + k] !== px[first + k]) {
-                            return null;
-                        }
-                    }
-                }
-            }
-            return Array.from(px.subarray(first, first + count));
-        }
-        const rgbFill = function (x0, y0, x1, y1) {
-            if (alpha && uniform(x0, y0, x1, y1, 3, 1)?.[0] === 0) {
-                return [0, 0, 0]; // invisible anyway
-            }
-            return uniform(x0, y0, x1, y1, 0, 3);
-        };
-        const alphaFill = function (x0, y0, x1, y1) {
-            return uniform(x0, y0, x1, y1, 3, 1);
-        };
-        const rgbTensor = tf.tensor3d(rgb, [h, w, 3]);
-        try {
-            await upscalePlane(tf, W, rgbTensor, w, h, out, 'rgb', rgbFill, done, total, onProgress);
-        } finally {
-            rgbTensor.dispose();
-        }
-        if (alpha) {
-            const alphaTensor = tf.tensor3d(alpha, [h, w, 3]);
-            try {
-                await upscalePlane(tf, W, alphaTensor, w, h, out, 'alpha', alphaFill, done, total, onProgress);
-            } finally {
-                alphaTensor.dispose();
-            }
+        if (onProgress) {
+            onProgress(1);
         }
         const result = document.createElement('canvas');
-        result.width = w * SCALE;
-        result.height = h * SCALE;
-        result.getContext('2d').putImageData(new ImageData(out, w * SCALE, h * SCALE), 0, 0);
+        result.width = ow;
+        result.height = oh;
+        result.getContext('2d').putImageData(new ImageData(out, ow, oh), 0, 0);
         return new Promise(function (resolve, reject) {
             result.toBlob(function (blob) {
                 if (blob) {
@@ -306,5 +466,5 @@
         });
     }
 
-    window.MGAIUpscale = { upscale: upscale, scale: SCALE };
+    window.MGAIUpscale = { upscale: upscale, scale: 3 };
 })();

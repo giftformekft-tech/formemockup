@@ -320,27 +320,32 @@ check($palette_calls === array(array('att-11.png', 255)), 'an older candidate ge
 check($deleted === array(12) && !isset($meta[5][MG_AI_Redesign::META_CANDIDATES]), 'other candidates deleted');
 check($meta[5][MG_AI_Redesign::META_HISTORY][0]['previous_path'] === $source && $result['job_id'] === 'job1', 'previous design kept in history');
 
-// Browser Real-ESRGAN result: only an exact 4× PNG of a not yet upscaled candidate.
+// Browser Real-CUGAN result: only an exact 3× PNG (4× from a pre-2.43.9 page) of a not yet upscaled candidate.
 $meta[6][MG_AI_Redesign::META_CANDIDATES] = array(
     array('attachment_id' => 21, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong'),
 );
 file_put_contents(get_attached_file(21), make_png(10, 10));
 $wrong = $test_dir . '/wrong.png';
-file_put_contents($wrong, make_png(30, 30));
-throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 21, $wrong); }, 'négyszerese', 'non-4× upload rejected');
+file_put_contents($wrong, make_png(25, 25));
+throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 21, $wrong); }, 'háromszorosa', 'non-3× upload rejected');
 $bad = $test_dir . '/bad.png';
 file_put_contents($bad, 'not a png');
 throws(function () use ($bad) { MG_AI_Redesign::store_upscaled(6, 21, $bad); }, 'PNG', 'non-PNG upload rejected');
 throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 99, $wrong); }, 'nem található', 'unknown candidate rejected for upload');
 $good = $test_dir . '/good.png';
-file_put_contents($good, make_png(40, 40));
+file_put_contents($good, make_png(30, 30));
 $stored = MG_AI_Redesign::store_upscaled(6, 21, $good);
-check(getimagesize(get_attached_file(21))[0] === 40 && $stored['upscale'] === 'ai4x' && $stored['width'] === 40, '4× PNG replaces the candidate file');
+check(getimagesize(get_attached_file(21))[0] === 30 && $stored['upscale'] === 'ai3x' && $stored['width'] === 30, '3× PNG replaces the candidate file');
 check(end($palette_calls) === array('att-21.png', 255) && $stored['palette'] === 42, 'upscaled PNG finished as a 255-color palette PNG');
 check(end($metadata_refreshed) === 21, 'attachment metadata refreshed');
 $v = filemtime(get_attached_file(21));
 check($stored['preview'] === "https://example.test/att-21-medium.png?v=$v" && $stored['full'] === "https://example.test/att-21.png?v=$v", 'preview and full URLs versioned by the file time');
 throws(function () use ($good) { MG_AI_Redesign::store_upscaled(6, 21, $good); }, 'már fel van skálázva', 'second upload rejected');
+$meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong');
+file_put_contents(get_attached_file(22), make_png(10, 10));
+$old_page = $test_dir . '/old4x.png';
+file_put_contents($old_page, make_png(40, 40));
+check(MG_AI_Redesign::store_upscaled(6, 22, $old_page)['upscale'] === 'ai4x', 'a 4× upload from a page opened before 2.43.9 is still accepted');
 
 // Approval of a candidate the browser could not upscale: 3× Lanczos fallback.
 $meta[6][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 22, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'strong');
@@ -364,8 +369,8 @@ check($prepare_calls === array(array('att-41.png', true, 128)), 'prepared with t
 check($prepared['prepared'] === true && $prepared['width'] === 8 && $prepared['height'] === 6 && strpos($prepared['full'], 'att-41.png?v=') !== false, 'prepared candidate: new size, versioned URL');
 MG_AI_Redesign::prepare_candidate(9, 41);
 check(count($prepare_calls) === 1, 'prepared only once');
-file_put_contents($test_dir . '/up41.png', make_png(32, 24));
-check(MG_AI_Redesign::store_upscaled(9, 41, $test_dir . '/up41.png')['upscale'] === 'ai4x', 'the 4× check uses the prepared size');
+file_put_contents($test_dir . '/up41.png', make_png(24, 18));
+check(MG_AI_Redesign::store_upscaled(9, 41, $test_dir . '/up41.png')['upscale'] === 'ai3x', 'the 3× check uses the prepared size');
 MG_AI_Redesign::save_settings(array('edge_cleanup' => '0'));
 $meta[9][MG_AI_Redesign::META_CANDIDATES][] = array('attachment_id' => 42, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle');
 file_put_contents(get_attached_file(42), make_png(10, 10));

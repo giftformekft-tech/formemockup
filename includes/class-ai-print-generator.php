@@ -496,7 +496,7 @@ class MG_AI_Print_Generator {
      * gets only the text prompt (images/generations): sending the original
      * would cost more and nothing of its artwork can be copied this way. The
      * source only sets the size and the background. The PNG is returned at
-     * the model's size: the admin's browser upscales it with Real-ESRGAN,
+     * the model's size: the admin's browser upscales it with Real-CUGAN,
      * upscale_file() is the fallback.
      *
      * @return string Temporary PNG path; the caller moves or deletes it.

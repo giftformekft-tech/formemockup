@@ -19,10 +19,10 @@ mymockup
   (a kártyán megnyílik a jelölt pontos promptja; egy elírt szöveg kijavítása után az
   **Újragenerálás ezzel a prompttal** elemzés nélkül, pontosan ezzel a prompttal generál újra,
   2.43.3). **Mindet jóváhagyom**, **Hátralévők leállítása**.
-- **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 4×-es AI felskálázást
-  (böngésző, Real-ESRGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
+- **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 3×-os AI felskálázást
+  (böngésző, Real-CUGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
   újragenerálása (mint az egyedi jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver
-  3×-os nagyítással folytatja. A kész kártya a véglegesített fájlt mutatja („Végleges: 4× AI
+  3×-os nagyítással folytatja. A kész kártya a véglegesített fájlt mutatja („Végleges: 3× AI
   felskálázás · 255 színes paletta · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
   újratervezés ablakában megmaradnak.
 - Futás közben a lap bezárása előtt figyelmeztetés jön; az ablak bezárható és újranyitható.
@@ -53,7 +53,7 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    leírja a jelenlegi stílust, és megírja az új, eltérő stílus képpromptját. Választható:
    OpenAI (alapból `gpt-5-mini`) vagy Claude Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1.
 2. A képet a GPT Image modell készíti (az „AI egyedi nyomat” beállításnál választott modell),
-   az eredeti átlátszóságával. Utána a böngésző **AI-val 4×-esre felskálázza** (lásd lent).
+   az eredeti átlátszóságával. Utána a böngésző **AI-val 3×-osra felskálázza** (lásd lent).
    **Prompt mód (2.42.9):** az ablakban generálásonként választható, hogy a prompt **brief**
    módban (alább) vagy **szabad leírás** módban készüljön (az elemző maga ír egy rövid, kreatív,
    legfeljebb 3 mondatos promptot, mint 2.42.4–2.42.7 között). A jelölt kártyáján látszik a mód,
@@ -101,21 +101,27 @@ az **AI újratervezés** gomb új stílusban rajzolja újra, ugyanazzal a szöve
    PNG lesz a nyomtatási minta. A többi jelölt törlődik, az eredeti minta a médiatárban
    marad (az előzmény a `_mg_ai_redesign_history` metában).
 
-**AI felskálázás (2.42.0):** a kész PNG-t az admin böngészője a **Real-ESRGAN**
-(`realesr-general-x4v3`, BSD-3) modellel 4×-esre nagyítja (pl. 816 → 3264 px), TensorFlow.js-szel,
-WebGL-en. A modell (4,9 MB) és a könyvtár (1,4 MB) a pluginban van (`assets/models/`,
-`assets/vendor/tfjs/`), külső szolgáltatás és API-költség nincs. Egy visszavetítéses
-színkorrekció megtartja az eredeti színeket; átlátszó mintánál a szín és az átlátszóság külön
-skálázódik, sötét szegély nélkül; az üres vagy egyszínű csempék kimaradnak. A felskálázás a
-generálás után magától indul, közben az ablakot nyitva kell hagyni. Ha a böngésző nem tudja
-(nincs WebGL), jóváhagyáskor a szerver a régi 3×-os Lanczos-nagyítást alkalmazza. A modell
-átalakítása: `tools/convert-realesrgan.py`. Teszt: `node tests/ai-upscale-browser-test.js`.
+**AI felskálázás (2.42.0, 2.43.9 óta Real-CUGAN 3×):** a kész PNG-t az admin böngészője a
+**Real-CUGAN** `up3x-conservative` modellel (MIT, a realcugan-ncnn-vulkan `models-se` súlyai)
+3×-osra nagyítja (pl. 816 → 2448 px), TensorFlow.js-szel, WebGL-en: ugyanaz a modell, nagyítás
+és csempézés, mint a Design-flow appban (a squeeze-excitation statisztikák minden harmadik 32 px-es
+csempéből, átlagolva, mint a realcugan-ncnn-vulkan alapbeállítása). A modell (5,1 MB) és a könyvtár
+(1,4 MB) a pluginban van (`assets/models/`, `assets/vendor/tfjs/`), külső szolgáltatás és
+API-költség nincs. A Real-CUGAN rajzolt képekre készült: a sima felület sima marad, így a
+generált kép halvány szemcséjéből a 255 színes palettában nem lesznek foltok (a korábbi Real-ESRGAN
+és a visszavetítéses színkorrekciója ezt a szemcsét megtartotta, és a fehérben foltos lett), a
+színeket pedig korrekció nélkül is megtartja. Átlátszó mintánál a színek előbb kitöltik az átlátszó
+részt (nincs sötét szegély), az átlátszóság bikubikusan nagyobbodik, mint a realcugan-ncnn-vulkanban;
+az üres vagy egyszínű csempék kimaradnak. A felskálázás a generálás után magától indul, közben a
+lapot nyitva kell hagyni. Ha a böngésző nem tudja (nincs WebGL), jóváhagyáskor a szerver a 3×-os
+Lanczos-nagyítást alkalmazza. A modell átalakítása: `tools/convert-realcugan.py`. Teszt:
+`node tests/ai-upscale-browser-test.js`.
 
 **Felskálázás előtti előkészítés (2.42.13, 2.43.5 óta közvetlenül a felskálázás előtt):** a
 GPT Image képe a felskálázás előtt (és a 3×-os tartalék nagyítás előtt) a Design-flow
 upscale-bemenetével azonos kezelést kap; az előnézet addig az eredeti, élsimított GPT-kép (`MG_Image_Utils::prepare_upscale_input`): peremjavítás
 (a félig átlátszó szélpixelek a legközelebbi fedő belső pixel színét kapják, legfeljebb 3 px),
-kétértékű átlátszóság 50%-nál, és az üres szél levágása csak az átlátszóság szerint. Így a 4×-es
+kétértékű átlátszóság 50%-nál, és az üres szél levágása csak az átlátszóság szerint. Így a 3×-os
 AI felskálázás nem nagyítja fel a színes vagy sötét szegélyt. Átlátszatlan képen nem fut. A
 peremjavítás kikapcsolható: **AI Minta SEO és tagelés → AI újratervezés → Peremjavítás a
 felskálázás előtt**; a rendelések AI nyomatánál továbbra is ki van kapcsolva. **2.43.6 óta** a

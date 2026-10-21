@@ -22,7 +22,8 @@ class MG_AI_Redesign {
     const STATE_PREFIX = 'mg_ai_redesign_state_';
     const LOCK_PREFIX = 'mg_ai_redesign_lock_';
     const MAX_CANDIDATES = 6;
-    const AI_SCALE = 4;
+    // Real-CUGAN 3× in the browser; 4× came from the Real-ESRGAN pages before 2.43.9.
+    const AI_SCALES = array(3, 4);
     // Same finish as the Design-flow app's upscales: a 255-color palette PNG.
     const PALETTE_COLORS = 255;
     const MAX_UPSCALED_BYTES = 83886080;
@@ -960,7 +961,7 @@ class MG_AI_Redesign {
         $info = @getimagesize((string) get_attached_file($attachment_id));
         $candidate = array(
             'attachment_id' => (int) $attachment_id,
-            // 'none' until the browser stores its Real-ESRGAN 4× version.
+            // 'none' until the browser stores its Real-CUGAN 3× version.
             'upscale' => 'none',
             'width' => $info ? (int) $info[0] : 0,
             'height' => $info ? (int) $info[1] : 0,
@@ -1056,8 +1057,9 @@ class MG_AI_Redesign {
     }
 
     /**
-     * Replace a candidate's PNG with the browser's Real-ESRGAN 4× version.
-     * Only an exact 4× PNG of a not yet upscaled candidate is accepted.
+     * Replace a candidate's PNG with the browser's Real-CUGAN 3× version.
+     * Only an exact 3× (or, from a page still open from before 2.43.9, 4×)
+     * PNG of a not yet upscaled candidate is accepted.
      */
     public static function store_upscaled($product_id, $attachment_id, $tmp_path) {
         $candidate = self::find_candidate($product_id, $attachment_id);
@@ -1072,8 +1074,14 @@ class MG_AI_Redesign {
         if (!$info || $info[2] !== IMAGETYPE_PNG) {
             throw new RuntimeException(__('A felskálázott fájl nem érvényes PNG.', 'mockup-generator'));
         }
-        if ((int) $info[0] !== $candidate['width'] * self::AI_SCALE || (int) $info[1] !== $candidate['height'] * self::AI_SCALE) {
-            throw new RuntimeException(__('A felskálázott PNG mérete nem az eredeti négyszerese.', 'mockup-generator'));
+        $scale = 0;
+        foreach (self::AI_SCALES as $s) {
+            if ((int) $info[0] === $candidate['width'] * $s && (int) $info[1] === $candidate['height'] * $s) {
+                $scale = $s;
+            }
+        }
+        if (!$scale) {
+            throw new RuntimeException(__('A felskálázott PNG mérete nem az eredeti háromszorosa.', 'mockup-generator'));
         }
         if (!@copy($tmp_path, $path)) {
             throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
@@ -1081,7 +1089,7 @@ class MG_AI_Redesign {
         $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
         self::refresh_attachment_metadata($candidate['attachment_id'], $path);
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array(
-            'upscale' => 'ai4x',
+            'upscale' => 'ai' . $scale . 'x',
             'palette' => $palette['colors'],
             'width' => $palette['width'],
             'height' => $palette['height'],

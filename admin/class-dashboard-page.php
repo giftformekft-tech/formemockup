@@ -522,7 +522,7 @@ class MG_Dashboard_Page {
         echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
         echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
         echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
-        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást (a böngészőben) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 3×-os AI felskálázást (a böngészőben, Real-CUGAN, mint a Design-flow-ban) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
