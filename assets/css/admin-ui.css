@@ -852,6 +852,126 @@ body.mg-modal-open {
     font-weight: 600;
 }
 
+/* Bulk redesign progress: sticky in the window, floating on the page while it is closed. */
+.mg-ai-bulk-progress {
+    background: #f6f9fc;
+    border: 1px solid #c9d8e8;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 0 0 10px;
+}
+
+.mg-ai-bulk-progress[hidden] {
+    display: none;
+}
+
+.mg-modal__dialog .mg-ai-bulk-progress {
+    position: sticky;
+    top: -24px;
+    z-index: 2;
+}
+
+.mg-ai-bulk-progress.is-float {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    width: min(760px, calc(100% - 32px));
+    box-sizing: border-box;
+    margin: 0;
+    z-index: 9990;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.2);
+}
+
+body.mg-modal-open .mg-ai-bulk-progress.is-float {
+    display: none;
+}
+
+.mg-ai-bulk-progress__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+}
+
+.mg-ai-bulk-progress__steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mg-ai-bulk-progress__steps li {
+    margin: 0;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.mg-ai-bulk-progress__steps li.is-done {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.mg-ai-bulk-progress__steps li.is-active {
+    background: #2271b1;
+    color: #ffffff;
+}
+
+.mg-ai-bulk-progress__pct {
+    margin-left: auto;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.mg-ai-bulk-progress__dismiss {
+    border: 0;
+    background: none;
+    color: inherit;
+    font-size: 20px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+}
+
+.mg-ai-bulk-progress__dismiss[hidden] {
+    display: none;
+}
+
+.mg-ai-bulk-progress__bar {
+    height: 8px;
+    margin: 8px 0 6px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.mg-ai-bulk-progress__bar span {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: #2271b1;
+    transition: width 0.4s ease;
+}
+
+.mg-ai-bulk-progress.is-complete {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.mg-ai-bulk-progress.is-complete .mg-ai-bulk-progress__bar span {
+    background: #16a34a;
+}
+
+.mg-ai-bulk-progress__text {
+    margin: 0;
+    font-size: 13px;
+}
+
 .mg-ai-bulk__list {
     display: flex;
     flex-direction: column;
@@ -955,6 +1075,32 @@ body.mg-modal-open {
 body.wp-admin[data-theme="dark"] .mg-ai-bulk__footer {
     background: #1f2937;
     border-top-color: #374151;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress {
+    background: #1f2937;
+    border-color: #374151;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress.is-complete {
+    background: #052e16;
+    border-color: #166534;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress__bar,
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress__steps li {
+    background: #374151;
+    color: #d1d5db;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress__steps li.is-done {
+    background: #064e3b;
+    color: #a7f3d0;
+}
+
+body.wp-admin[data-theme="dark"] .mg-ai-bulk-progress__steps li.is-active {
+    background: #2271b1;
+    color: #ffffff;
 }
 
 body.wp-admin[data-theme="dark"] .mg-ai-bulk__item {

@@ -514,6 +514,7 @@ class MG_Dashboard_Page {
         echo '<p><button type="button" class="button button-primary" id="mg-ai-bulk-start">Generálás indítása</button></p>';
         echo '</div>';
         echo '<div class="mg-ai-bulk__run" id="mg-ai-bulk-run" hidden>';
+        echo '<div class="mg-ai-bulk-progress" id="mg-ai-bulk-progress" hidden></div>';
         echo '<p class="mg-ai-bulk__summary" id="mg-ai-bulk-summary" aria-live="polite"></p>';
         echo '<div class="mg-ai-bulk__list" id="mg-ai-bulk-list"></div>';
         echo '<div class="mg-ai-bulk__footer">';
@@ -521,7 +522,7 @@ class MG_Dashboard_Page {
         echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
         echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
         echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
-        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást (a böngészőben) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. Az ablakot csak addig hagyd nyitva, amíg minden kártyán „Kész” áll; a mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást (a böngészőben) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
         echo '</div>';
         echo '</div>';
         echo '</div>';

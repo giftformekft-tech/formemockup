@@ -26,6 +26,12 @@ mymockup
   felskálázás · 255 színes paletta · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
   újratervezés ablakában megmaradnak.
 - Futás közben a lap bezárása előtt figyelmeztetés jön; az ablak bezárható és újranyitható.
+- **Folyamatcsík (2.43.8):** az ablak tetején (bezárt ablaknál a lap alján lebegve, **Megnyitás**
+  gombbal) mutatja, hol tart a teljes futás: Generálás → Jóváhagyás → Véglegesítés → Kész,
+  százalékkal és sávval. Véglegesítéskor a sorszámot, a mintát és a lépést is kiírja (szélek
+  előkészítése, AI felskálázás %, feltöltés és palettázás, jóváhagyás). A böngészőlap címe is
+  mutatja (`[61%] …`, a végén `✓ Kész – …`), ha másik lap van elöl. Ha minden kész, zöld lesz, és a
+  lebegő csík elrejthető. A háttérben futó mockup-generálást nem követi, azt nem kell megvárni.
 - Teszt: `php tests/dashboard-filter-test.php`.
 
 ## Dashboard: minta-előnézet (2.42.1)

@@ -70,7 +70,7 @@
     }
 
     // ---- Bulk redesign. ----
-    const bulk = { items: [], opts: null, finalizing: false };
+    const bulk = { items: [], opts: null, finalizing: false, finTotal: 0, finDone: 0, finItem: null, dismissed: false };
 
     const STATUS = {
         queued: 'Sorban áll',
@@ -124,6 +124,114 @@
         $('#mg-ai-bulk-approve-all').prop('disabled', bulk.finalizing || !items.some(function (i) { return i.status === 'done' && !i.approved; }));
         $('#mg-ai-bulk-stop').prop('disabled', !items.some(function (i) { return i.status === 'queued'; }));
         $('#mg-ai-bulk-new').prop('disabled', busy());
+        progress();
+    }
+
+    // ---- Progress bar: where the whole run is, from generation to the end of finalizing. ----
+    const STEPS = [['generate', 'Generálás'], ['decide', 'Jóváhagyás'], ['finalize', 'Véglegesítés'], ['complete', 'Kész']];
+    const baseTitle = document.title;
+
+    // Generation is the first half of a design's way, finalizing the second.
+    function itemProgress(item) {
+        switch (item.status) {
+            case 'running': return 0.2;
+            case 'done': return 0.5;
+            case 'finalizing': return 0.5 + 0.5 * (item.fin || 0);
+            case 'finished':
+            case 'error': return 1;
+            default: return 0;
+        }
+    }
+
+    function progressModel() {
+        const items = active().filter(function (i) { return i.status !== 'new' && i.status !== 'skipped'; });
+        if (!items.length) {
+            return null;
+        }
+        const count = function (fn) { return items.filter(fn).length; };
+        const generating = count(function (i) { return i.status === 'running' || i.status === 'queued'; });
+        const waiting = count(function (i) { return i.status === 'done'; });
+        const approved = count(function (i) { return i.status === 'done' && i.approved; });
+        const finished = count(function (i) { return i.status === 'finished'; });
+        const errors = count(function (i) { return i.status === 'error'; });
+        const complete = !generating && !waiting && !bulk.finalizing;
+        const lines = [];
+        if (generating) {
+            lines.push('Generálás: ' + (items.length - generating) + '/' + items.length + ' kész');
+        }
+        if (bulk.finalizing && bulk.finItem) {
+            lines.push('Véglegesítés ' + Math.min(bulk.finDone + 1, bulk.finTotal) + '/' + bulk.finTotal + ': '
+                + (bulk.finItem.title || '#' + bulk.finItem.id) + (bulk.finItem.note ? ' – ' + bulk.finItem.note : ''));
+        } else if (waiting) {
+            lines.push(approved
+                ? approved + '/' + waiting + ' jóváhagyva – a „Jóváhagyottak véglegesítése” gombbal indul a felskálázás'
+                : 'Jóváhagyásra vár: ' + waiting + ' minta');
+        }
+        if (finished) {
+            lines.push(finished + ' véglegesítve' + (complete ? ' – a mockupok a háttérben készülnek, a lap bezárható' : ''));
+        }
+        if (errors) {
+            lines.push(errors + ' hiba');
+        }
+        return {
+            percent: Math.round(items.reduce(function (sum, i) { return sum + itemProgress(i); }, 0) / items.length * 100),
+            title: complete ? (finished ? 'Kész' : 'Nincs több teendő') : (bulk.finalizing ? 'Véglegesítés folyamatban' : (generating ? 'Generálás folyamatban' : 'Döntésre vár')),
+            text: lines.join(' · '),
+            complete: complete,
+            steps: {
+                generate: generating ? 'active' : 'done',
+                decide: waiting && !bulk.finalizing ? 'active' : (generating ? '' : 'done'),
+                finalize: bulk.finalizing ? 'active' : (finished ? 'done' : ''),
+                complete: complete && finished ? 'done' : '',
+            },
+        };
+    }
+
+    function strip($el) {
+        if (!$el.children().length) {
+            const $steps = $('<ol class="mg-ai-bulk-progress__steps"></ol>');
+            STEPS.forEach(function (step) {
+                $steps.append($('<li></li>').attr('data-step', step[0]).text(step[1]));
+            });
+            $el.append($('<div class="mg-ai-bulk-progress__head"></div>')
+                .append($('<strong class="mg-ai-bulk-progress__title"></strong>'))
+                .append($steps)
+                .append($('<span class="mg-ai-bulk-progress__pct"></span>')))
+                .append($('<div class="mg-ai-bulk-progress__bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span></span></div>'))
+                .append($('<p class="mg-ai-bulk-progress__text" aria-live="polite"></p>'));
+        }
+        return $el;
+    }
+
+    function fillStrip($el, m) {
+        strip($el).toggleClass('is-complete', m.complete);
+        $el.find('.mg-ai-bulk-progress__title').text(m.title);
+        $el.find('.mg-ai-bulk-progress__pct').text(m.percent + '%');
+        $el.find('.mg-ai-bulk-progress__bar').attr('aria-valuenow', m.percent).find('span').css('width', m.percent + '%');
+        $el.find('.mg-ai-bulk-progress__text').text(m.text);
+        $el.find('.mg-ai-bulk-progress__steps li').each(function () {
+            const state = m.steps[$(this).attr('data-step')];
+            $(this).toggleClass('is-active', state === 'active').toggleClass('is-done', state === 'done');
+        });
+    }
+
+    // In the window, and floating on the page while the window is closed;
+    // the tab title shows it too, for when another tab is in front.
+    function progress() {
+        const m = progressModel();
+        const $inner = $('#mg-ai-bulk-progress');
+        const $float = $('#mg-ai-bulk-progress-float');
+        if (!m) {
+            $inner.prop('hidden', true);
+            $float.prop('hidden', true);
+            document.title = baseTitle;
+            return;
+        }
+        fillStrip($inner.prop('hidden', false), m);
+        fillStrip($float, m);
+        $float.prop('hidden', bulk.dismissed);
+        $float.find('.mg-ai-bulk-progress__dismiss').prop('hidden', !m.complete);
+        document.title = bulk.dismissed ? baseTitle : (m.complete ? '✓ Kész – ' : '[' + m.percent + '%] ') + baseTitle;
     }
 
     // "Végleges: 4× AI · 255 színes paletta · 3136×3392 px – " once the file is finished.
@@ -334,13 +442,18 @@
             return;
         }
         bulk.finalizing = true;
-        queue.forEach(function (item) { item.status = 'finalizing'; item.note = 'Véglegesítésre vár'; render(item); });
+        bulk.dismissed = false;
+        bulk.finTotal = queue.length;
+        bulk.finDone = 0;
+        queue.forEach(function (item) { item.status = 'finalizing'; item.fin = 0; item.note = 'Véglegesítésre vár'; render(item); });
         for (const item of queue) {
             let note = '';
+            bulk.finItem = item;
             try {
                 if (item.candidate.upscale === 'none' && window.MGAIUpscale) {
                     // Edge cleanup, binary alpha and crop on the server first (Design-flow input).
                     item.note = 'A szélek előkészítése a felskálázáshoz…';
+                    item.fin = 0.05;
                     render(item);
                     const prepared = await post('mg_ai_redesign_prepare', { product_id: item.id, attachment_id: item.candidate.attachment_id });
                     if (!prepared || !prepared.success || !prepared.data) {
@@ -348,12 +461,15 @@
                     }
                     item.candidate = prepared.data;
                     item.note = 'AI felskálázás indul…';
+                    item.fin = 0.1;
                     render(item);
                     const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
-                        item.note = 'AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.';
+                        item.note = 'AI felskálázás 4×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
+                        item.fin = 0.1 + 0.7 * p;
                         render(item);
                     });
                     item.note = 'A felskálázott PNG feltöltése és palettázása…';
+                    item.fin = 0.85;
                     render(item);
                     const resp = await upload(item, blob);
                     if (resp && resp.success && resp.data) {
@@ -368,6 +484,7 @@
             }
             try {
                 item.note = 'Jóváhagyás, mockupok sorba állítása…';
+                item.fin = 0.95;
                 render(item);
                 const resp = await post('mg_ai_redesign_apply', { product_id: item.id, attachment_id: item.candidate.attachment_id });
                 if (resp && resp.success) {
@@ -386,9 +503,11 @@
                 item.note = '';
                 item.error = 'a jóváhagyás nem sikerült';
             }
+            bulk.finDone++;
             render(item);
         }
         bulk.finalizing = false;
+        bulk.finItem = null;
         active().forEach(render);
     }
 
@@ -408,6 +527,7 @@
         });
         $('#mg-ai-bulk-setup').prop('hidden', true);
         $('#mg-ai-bulk-run').prop('hidden', false);
+        bulk.dismissed = false;
         const queue = bulk.items.slice();
         for (let i = 0; i < 3; i++) {
             loadBefore(queue);
@@ -418,6 +538,17 @@
     $(function () {
         syncSubcategories();
         refreshSelection();
+        if ($('#mg-ai-redesign-bulk-modal').length) {
+            const $float = strip($('<div class="mg-ai-bulk-progress is-float" id="mg-ai-bulk-progress-float" hidden></div>'));
+            $float.find('.mg-ai-bulk-progress__head')
+                .append($('<button type="button" class="button button-small" data-mg-open-modal="ai-redesign-bulk">Megnyitás</button>'))
+                .append($('<button type="button" class="mg-ai-bulk-progress__dismiss" aria-label="Elrejtés" hidden>&times;</button>'));
+            $('body').append($float);
+        }
+        $(document).on('click', '.mg-ai-bulk-progress__dismiss', function () {
+            bulk.dismissed = true;
+            progress();
+        });
 
         $(document).on('change', '#mg-dash-cat-main', syncSubcategories);
         $(document).on('change', '.mg-dash-check', refreshSelection);
