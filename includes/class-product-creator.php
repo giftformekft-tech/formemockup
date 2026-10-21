@@ -641,6 +641,9 @@ class MG_Product_Creator {
         }
 
         $this->assign_categories($parent_id,$cats);
+        if (class_exists('MG_Designer_Profiles')) {
+            MG_Designer_Profiles::maybe_assign_new_product($parent_id);
+        }
         if (isset($tags_map)) { $all_tags = array(); foreach ($selected_products as $p) if (!empty($tags_map[$p['key']])) $all_tags = array_merge($all_tags, $tags_map[$p['key']]); if (!empty($all_tags)) $this->assign_tags($parent_id, array_values(array_unique($all_tags))); }
         // REMOVED: MG_Mockup_Maintenance::register_generation(...)
         $this->maybe_set_default_featured_image($parent_id, $resolved_defaults, $selected_products, $cats, $generation_context);
