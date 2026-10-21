@@ -1,0 +1,126 @@
+/* Grafikus profilok – admin (Mockupok › Grafikusok) */
+
+.mg-designers__status {
+    border-radius: var(--mg-radius, 8px);
+    padding: 12px 16px;
+    border: 1px solid var(--mg-border, #e3e8ef);
+    background: var(--mg-warn-bg, #fff4d6);
+    color: var(--mg-text, #1d2327);
+}
+
+.mg-designers__status.is-on {
+    background: var(--mg-ok-bg, #e6f4ea);
+}
+
+.mg-designers__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.mg-designers__empty {
+    margin: 0;
+    color: var(--mg-text-muted, #68707c);
+}
+
+.mg-designers__table td,
+.mg-designers__table th {
+    vertical-align: middle;
+}
+
+.mg-designers__table .column-avatar {
+    width: 48px;
+}
+
+.mg-designers__table .num {
+    text-align: right;
+}
+
+.mg-designers .mg-designer-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--mg-accent-soft, #e8f1f8);
+    color: var(--mg-accent, #2271b1);
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.mg-designers__badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    background: var(--mg-muted, #d8dee6);
+}
+
+.mg-designers__badge.is-on {
+    background: var(--mg-ok-bg, #e6f4ea);
+    color: var(--mg-ok, #1a7f37);
+}
+
+.mg-designers__actions {
+    white-space: nowrap;
+}
+
+.mg-designers__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.mg-designers__progress-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--mg-muted, #d8dee6);
+    overflow: hidden;
+}
+
+.mg-designers__progress-bar span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--mg-accent, #2271b1);
+    transition: width 0.3s ease;
+}
+
+.mg-designers__progress-text {
+    margin: 8px 0 0;
+}
+
+.mg-designers__progress.is-error .mg-designers__progress-text {
+    color: #b32d2e;
+}
+
+.mg-designers__avatar-field {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mg-designers__avatar-preview img {
+    display: block;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.mg-designers__wide-number {
+    width: 7em;
+}
+
+.mg-designers__settings {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.mg-designers__settings > p {
+    margin: 0;
+}

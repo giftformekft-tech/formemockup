@@ -1,6 +1,37 @@
 # formemockup
 mymockup
 
+## Grafikus profilok (2.44.0)
+
+Minden minta (szülő termék) egy grafikus profilhoz tartozik: a neve a terméknév alatt jelenik
+meg („Tervezte: Kiss Anna”), és a profiloldalra visz (`/grafikus/{slug}/`), ahol a profil összes
+mintája látszik. Kezelés: **Mockupok › Grafikusok**.
+
+- **Profilok:** név, slug, profilkép (médiatár, kép nélkül monogram), szakterület/szlogen,
+  helyszín, „Velünk mióta” év, bemutatkozás, **Aktív** jelölő (csak az aktív profilok kapnak
+  mintát). Az adatok az `mg_designer` taxonómiában és term meta-ban vannak; a termékszerkesztő
+  jobb sávjában egy legördülővel kézzel is átírható a grafikus.
+- **Szétosztás:** *Grafikus nélküliek szétosztása* (a meglévő minták), *Összes újrasorsolása*,
+  *Összes besorolás törlése* – teljesen véletlen, egyenletes eloszlás az aktív profilok között,
+  200-as kötegekben, folyamatjelzővel.
+- **Új termékek:** feltöltéskor (egyedi és minden bulk út, `MG_Product_Creator`) a grafikus
+  nélküli új termék véletlen aktív profilt kap; kikapcsolható. A meglévő termékhez adott új
+  típus nem változtat rajta, az egyedi mezős variáns-másolatok öröklik.
+- **Megjelenés az oldalon: alapból KIKAPCSOLVA.** Kikapcsolva a látogató semmit nem lát, a
+  profiloldalak és a programoldal 404-et adnak; adminként előnézetben megnyílnak. Bekapcsolva
+  külön választható: termékoldal (a cím alatt, profilképpel), terméklisták (bolt, kategória,
+  keresés, kapcsolódó termékek; Astra alatt az `astra_woo_shop_title_after` hookon, más témánál
+  link nélkül), ajándékkereső kártyák (link nélkül). A „Tervezte:” felirat átírható.
+- **Grafikus program oldal:** tájékoztató oldal jelentkezési űrlap nélkül
+  (`[mg_designer_program]`; a *Programoldal létrehozása* gomb létrehozza `/grafikus-program/`
+  címen). Szerkeszthető: jutalék (alapból 3%), minimum kifizetés, kifizetés módja, bevezető,
+  GYIK (`Kérdés | Válasz` soronként), további tartalom; helyettesítők: `{jutalek}`, `{minimum}`,
+  `{kifizetes}`, `{oldal}`. A profiloldalak erre linkelnek.
+- **Ami sehova nem kerül:** Google Merchant / Facebook / egyedi feedek, Temu/Allegro export,
+  structured data (a brand marad a bolt neve), sitemap. A profiloldal `noindex, follow`;
+  kikapcsolva a programoldal a sitemapből és az llms.txt-ből is kimarad.
+- Teszt: `php tests/designer-profiles-test.php`.
+
 ## Dashboard: kategóriaszűrő, kijelölés, tömeges AI újratervezés (2.43.0)
 
 - **Fő- és alkategória szűrő:** a főkategória az összes alkategóriáját is hozza; az

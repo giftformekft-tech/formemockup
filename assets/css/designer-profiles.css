@@ -1,0 +1,203 @@
+/* Grafikus profilok – frontend */
+
+.mg-designer-byline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 2px 0 8px;
+    font-size: 0.875em;
+    line-height: 1.4;
+    color: #6b7280;
+}
+
+.mg-designer-byline--single {
+    margin: -4px 0 12px;
+    font-size: 0.95em;
+}
+
+.mg-designer-byline__link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: inherit;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.mg-designer-byline__link:hover .mg-designer-byline__name,
+.mg-designer-byline__link:focus .mg-designer-byline__name {
+    text-decoration: underline;
+}
+
+.mg-designer-byline--plain .mg-designer-byline__name {
+    font-weight: 600;
+}
+
+.mg-designer-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    object-fit: cover;
+    background: #eef2f7;
+    color: #374151;
+    font-weight: 700;
+}
+
+.mg-designer-byline .mg-designer-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+}
+
+/* Profiloldal fejléce */
+
+.mg-designer-profile {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+    margin: 8px 0 32px;
+}
+
+.mg-designer-profile__avatar .mg-designer-avatar {
+    width: 120px;
+    height: 120px;
+    font-size: 40px;
+}
+
+.mg-designer-profile__body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.mg-designer-profile__tagline {
+    margin: 0 0 4px;
+    font-weight: 600;
+}
+
+.mg-designer-profile__meta {
+    margin: 0 0 12px;
+    color: #6b7280;
+    font-size: 0.9em;
+}
+
+.mg-designer-profile__bio p {
+    margin: 0 0 8px;
+}
+
+.mg-designer-profile__program {
+    display: inline-block;
+    margin-top: 8px;
+    font-weight: 600;
+}
+
+.mg-designer-preview-note {
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fff4d6;
+    color: #6b4f00;
+    font-size: 0.9em;
+}
+
+@media (max-width: 600px) {
+    .mg-designer-profile {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 16px;
+    }
+
+    .mg-designer-profile__avatar .mg-designer-avatar {
+        width: 96px;
+        height: 96px;
+        font-size: 32px;
+    }
+}
+
+/* Programoldal */
+
+.mg-designer-program__intro {
+    font-size: 1.1em;
+}
+
+.mg-designer-program__steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin: 0 0 32px;
+    padding: 0;
+    list-style: none;
+    counter-reset: mg-designer-step;
+}
+
+.mg-designer-program__steps li {
+    counter-increment: mg-designer-step;
+    padding: 20px;
+    border-radius: 10px;
+    background: #f6f7f9;
+}
+
+.mg-designer-program__steps li::before {
+    content: counter(mg-designer-step);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 12px;
+    border-radius: 50%;
+    background: #111827;
+    color: #fff;
+    font-weight: 700;
+}
+
+.mg-designer-program__steps strong {
+    display: block;
+    margin-bottom: 6px;
+}
+
+.mg-designer-program__facts {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 8px 24px;
+    margin: 0 0 32px;
+}
+
+.mg-designer-program__facts dt {
+    font-weight: 700;
+}
+
+.mg-designer-program__facts dd {
+    margin: 0;
+}
+
+@media (max-width: 600px) {
+    .mg-designer-program__facts {
+        grid-template-columns: 1fr;
+        gap: 2px;
+    }
+
+    .mg-designer-program__facts dd {
+        margin-bottom: 10px;
+    }
+}
+
+.mg-designer-program__faq details {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 12px 0;
+}
+
+.mg-designer-program__faq summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.mg-designer-program__faq p {
+    margin: 8px 0 0;
+}
+
+.mg-designer-program__extra {
+    margin-top: 32px;
+}

@@ -2,7 +2,7 @@
 /*
 Plugin Name: Mockup Generator – FAST WebP SAFE
 Description: WebP kimenet (alfa megőrzés), 100× bulk, szín × nézet mockup, és biztonságos hibakezelés (nincs fatal).
-Version: 2.43.9
+Version: 2.44.0
 Author: Shannon
 */
 require_once __DIR__ . '/includes/type-description-applier.php';
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) exit;
 // Plugin version constant — used for asset cache-busting across all enqueue calls.
 // Increment this when deploying CSS/JS changes instead of relying on filemtime().
 if (!defined('MG_VERSION')) {
-    define('MG_VERSION', '2.43.9');
+    define('MG_VERSION', '2.44.0');
 }
 
 register_deactivation_hook(__FILE__, function () {
@@ -82,6 +82,8 @@ add_action('plugins_loaded', function(){
         'includes/class-virtual-variant-manager.php',
         'includes/class-design-gallery.php',
         'includes/class-designer-button.php',
+        'includes/class-designer-profiles.php',
+        'admin/class-designer-profiles-page.php',
         'includes/class-temu-xlsx-writer.php',
         'includes/class-temu-name-filter.php',
         'includes/class-allegro-exporter.php',
@@ -280,6 +282,12 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Designer_Button')) {
         MG_Designer_Button::init();
+    }
+    if (class_exists('MG_Designer_Profiles')) {
+        MG_Designer_Profiles::init();
+    }
+    if (class_exists('MG_Designer_Profiles_Page')) {
+        MG_Designer_Profiles_Page::init();
     }
     if (class_exists('MG_Bulk_Queue')) {
         MG_Bulk_Queue::init();

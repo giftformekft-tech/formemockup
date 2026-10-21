@@ -194,6 +194,12 @@ class MG_Admin_Page {
                 'group'      => 'mockups',
                 'capability' => 'edit_products',
             ),
+            'designers' => array(
+                'label'      => __('Grafikusok', 'mockup-generator'),
+                'type'       => 'designers',
+                'group'      => 'mockups',
+                'capability' => 'manage_woocommerce',
+            ),
             'dedup' => array(
                 'label'      => __('Duplikált termékek', 'mockup-generator'),
                 'type'       => 'legacy',
@@ -684,6 +690,11 @@ class MG_Admin_Page {
             case 'allegro_export':
                 if (class_exists('MG_Allegro_Export_Page')) {
                     MG_Allegro_Export_Page::render_page();
+                }
+                break;
+            case 'designers':
+                if (class_exists('MG_Designer_Profiles_Page')) {
+                    MG_Designer_Profiles_Page::render_page();
                 }
                 break;
             case 'local_stock':

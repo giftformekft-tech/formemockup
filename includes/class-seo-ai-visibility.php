@@ -139,6 +139,10 @@ class MG_SEO_AI_Visibility {
                 $ids[] = (int) wc_get_page_id($page);
             }
         }
+        if (class_exists('MG_Designer_Profiles')) {
+            // A kikapcsolt grafikus programoldal 404-et ad, ne kerüljön az llms.txt-be.
+            $ids = array_merge($ids, MG_Designer_Profiles::hidden_page_ids());
+        }
         return array_values(array_filter($ids, function ($id) {
             return $id > 0;
         }));
