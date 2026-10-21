@@ -1,7 +1,7 @@
 # formemockup
 mymockup
 
-## Grafikus profilok (2.44.0)
+## Grafikus profilok (2.44.0, maximum minta: 2.44.1)
 
 Minden minta (szülő termék) egy grafikus profilhoz tartozik: a neve a terméknév alatt jelenik
 meg („Tervezte: Kiss Anna”), és a profiloldalra visz (`/grafikus/{slug}/`), ahol a profil összes
@@ -14,6 +14,13 @@ mintája látszik. Kezelés: **Mockupok › Grafikusok**.
 - **Szétosztás:** *Grafikus nélküliek szétosztása* (a meglévő minták), *Összes újrasorsolása*,
   *Összes besorolás törlése* – teljesen véletlen, egyenletes eloszlás az aktív profilok között,
   200-as kötegekben, folyamatjelzővel.
+- **Maximum minta (2.44.1):** profilonként megadható, legfeljebb hány minta kerülhet alá (üresen
+  korlátlan). A véletlen kiosztás (szétosztás, újrasorsolás, bulk feltöltés) a betelt profilt
+  kihagyja; ha minden profil betelt, a minta grafikus nélkül marad, és a futás végén kiírja,
+  hány ilyen lett. A számlálásba minden nem kukás termék beleszámít (piszkozat is). A lista
+  „Minták / max” oszlopot és *Betelt* jelölést, a szétosztás „Szabad hely a profiloknál”
+  mutatót kapott. A maximum csökkentése nem vesz le meglévő mintát, és kézzel (termékszerkesztő)
+  betelt profil is választható.
 - **Új termékek:** feltöltéskor (egyedi és minden bulk út, `MG_Product_Creator`) a grafikus
   nélküli új termék véletlen aktív profilt kap; kikapcsolható. A meglévő termékhez adott új
   típus nem változtat rajta, az egyedi mezős variáns-másolatok öröklik.

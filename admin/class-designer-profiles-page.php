@@ -60,6 +60,8 @@ class MG_Designer_Profiles_Page {
                 'mediaButton'  => __('Kiválasztom', 'mockup-generator'),
                 'running'      => __('Folyamatban…', 'mockup-generator'),
                 'done'         => __('Kész: %d termék.', 'mockup-generator'),
+                'skipped'      => __('%d termék grafikus nélkül maradt, mert minden profil betelt.', 'mockup-generator'),
+                'unlimited'    => __('korlátlan', 'mockup-generator'),
                 'error'        => __('Hiba történt, a folyamat megállt.', 'mockup-generator'),
                 'confirmAll'   => __('Minden minta újrasorsolásra kerül, a mostani besorolások elvesznek. Mehet?', 'mockup-generator'),
                 'confirmClear' => __('Minden mintáról lekerül a grafikus. Mehet?', 'mockup-generator'),
@@ -147,11 +149,12 @@ class MG_Designer_Profiles_Page {
 
     private static function render_profiles_section() {
         $profiles = MG_Designer_Profiles::get_profiles();
+        $counts = MG_Designer_Profiles::get_assignment_counts();
 
         echo '<section class="mg-panel-section">';
         echo '<div class="mg-panel-section__header mg-designers__header">';
         echo '<div><h2>' . esc_html__('Grafikus profilok', 'mockup-generator') . '</h2>';
-        echo '<p>' . esc_html__('A profil neve a terméknév alatt jelenik meg, és a profiloldalra visz. Csak az aktív profilok kapnak mintát a véletlen kiosztásban.', 'mockup-generator') . '</p></div>';
+        echo '<p>' . esc_html__('A profil neve a terméknév alatt jelenik meg, és a profiloldalra visz. Csak az aktív profilok kapnak mintát a véletlen kiosztásban, és csak a beállított maximumig.', 'mockup-generator') . '</p></div>';
         echo '<a class="button button-primary" href="' . esc_url(self::tab_url(array('mg_designer_edit' => 'new'))) . '">' . esc_html__('Új profil', 'mockup-generator') . '</a>';
         echo '</div>';
 
@@ -166,7 +169,7 @@ class MG_Designer_Profiles_Page {
         echo '<th class="column-avatar"><span class="screen-reader-text">' . esc_html__('Profilkép', 'mockup-generator') . '</span></th>';
         echo '<th>' . esc_html__('Név', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Profiloldal', 'mockup-generator') . '</th>';
-        echo '<th class="num">' . esc_html__('Közzétett minták', 'mockup-generator') . '</th>';
+        echo '<th class="num">' . esc_html__('Minták / max', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Kiosztásban', 'mockup-generator') . '</th>';
         echo '<th>' . esc_html__('Műveletek', 'mockup-generator') . '</th>';
         echo '</tr></thead><tbody>';
@@ -188,7 +191,13 @@ class MG_Designer_Profiles_Page {
             }
             echo '</td>';
             echo '<td><code>/' . esc_html(MG_Designer_Profiles::REWRITE_SLUG . '/' . $term->slug) . '/</code></td>';
-            echo '<td class="num">' . esc_html(number_format_i18n((int) $term->count)) . '</td>';
+            $count = isset($counts[$term->term_id]) ? $counts[$term->term_id] : 0;
+            $max = MG_Designer_Profiles::get_profile_max($term->term_id);
+            echo '<td class="num">' . esc_html(number_format_i18n($count)) . ' / ' . ($max > 0 ? esc_html(number_format_i18n($max)) : '∞');
+            if ($max > 0 && $count >= $max) {
+                echo ' <span class="mg-designers__badge is-full">' . esc_html__('Betelt', 'mockup-generator') . '</span>';
+            }
+            echo '</td>';
             echo '<td>' . ($active
                 ? '<span class="mg-designers__badge is-on">' . esc_html__('Aktív', 'mockup-generator') . '</span>'
                 : '<span class="mg-designers__badge">' . esc_html__('Szünetel', 'mockup-generator') . '</span>') . '</td>';
@@ -212,11 +221,12 @@ class MG_Designer_Profiles_Page {
     private static function render_distribution_section() {
         $stats = MG_Designer_Profiles::get_assignment_stats();
         $active = count(MG_Designer_Profiles::get_active_profile_ids());
+        $free = MG_Designer_Profiles::get_free_capacity();
 
         echo '<section class="mg-panel-section mg-designers__distribute">';
         echo '<div class="mg-panel-section__header">';
         echo '<h2>' . esc_html__('Szétosztás', 'mockup-generator') . '</h2>';
-        echo '<p>' . esc_html__('A minták teljesen véletlenszerűen kerülnek az aktív profilokhoz. Az új termékek a bulk feltöltéskor automatikusan kapnak grafikust (a beállításoknál kikapcsolható).', 'mockup-generator') . '</p>';
+        echo '<p>' . esc_html__('A minták teljesen véletlenszerűen kerülnek az aktív profilokhoz; a betelt profil (elérte a maximumát) kimarad. Az új termékek a bulk feltöltéskor automatikusan kapnak grafikust (a beállításoknál kikapcsolható). Ha minden profil betelt, a minta grafikus nélkül marad.', 'mockup-generator') . '</p>';
         echo '</div>';
 
         echo '<div class="mg-stats-grid">';
@@ -224,6 +234,7 @@ class MG_Designer_Profiles_Page {
         self::render_stat('assigned', $stats['assigned'], __('Van grafikusa', 'mockup-generator'));
         self::render_stat('missing', $stats['missing'], __('Nincs grafikusa', 'mockup-generator'));
         self::render_stat('active', $active, __('Aktív profil', 'mockup-generator'));
+        self::render_stat('free', $free === null ? __('korlátlan', 'mockup-generator') : $free, __('Szabad hely a profiloknál', 'mockup-generator'));
         echo '</div>';
 
         $disabled = $active === 0 ? ' disabled' : '';
@@ -247,7 +258,7 @@ class MG_Designer_Profiles_Page {
         printf(
             '<div class="mg-stat" data-mg-designer-stat="%1$s"><strong>%2$s</strong><span>%3$s</span></div>',
             esc_attr($key),
-            esc_html(number_format_i18n((int) $value)),
+            esc_html(is_int($value) ? number_format_i18n($value) : $value),
             esc_html($label)
         );
     }
@@ -427,6 +438,20 @@ class MG_Designer_Profiles_Page {
         echo '<label><input type="checkbox" name="active" value="1"' . checked($active, true, false) . ' /> ' . esc_html__('Aktív – kaphat mintát a véletlen kiosztásban', 'mockup-generator') . '</label>';
         echo '</td></tr>';
 
+        $max = $term ? MG_Designer_Profiles::get_profile_max($term->term_id) : 0;
+        echo '<tr><th scope="row"><label for="mg-designer-max">' . esc_html__('Maximum minta', 'mockup-generator') . '</label></th><td>';
+        echo '<input type="number" class="small-text mg-designers__wide-number" min="0" step="1" id="mg-designer-max" name="max" value="' . esc_attr($max > 0 ? $max : '') . '" placeholder="' . esc_attr__('korlátlan', 'mockup-generator') . '" />';
+        if ($term) {
+            $counts = MG_Designer_Profiles::get_assignment_counts();
+            echo ' <span class="description">' . esc_html(sprintf(
+                /* translators: %s: number of designs */
+                __('Most %s minta tartozik hozzá.', 'mockup-generator'),
+                number_format_i18n(isset($counts[$term->term_id]) ? $counts[$term->term_id] : 0)
+            )) . '</span>';
+        }
+        echo '<p class="description">' . esc_html__('Ennél több mintát nem kap a véletlen kiosztásban (szétosztás, újrasorsolás, bulk feltöltés). Üresen vagy 0-val korlátlan. Ha kisebbre állítod, mint ahány mintája már van, a meglévők maradnak, csak újat nem kap; kézzel a termékszerkesztőben továbbra is hozzá lehet rendelni.', 'mockup-generator') . '</p>';
+        echo '</td></tr>';
+
         echo '</tbody></table>';
         echo '<p><button type="submit" class="button button-primary">' . esc_html__('Profil mentése', 'mockup-generator') . '</button></p>';
         echo '</section>';
@@ -479,6 +504,7 @@ class MG_Designer_Profiles_Page {
             MG_Designer_Profiles::META_SINCE    => $since ?: '',
             MG_Designer_Profiles::META_BIO      => isset($_POST['bio']) ? sanitize_textarea_field(wp_unslash($_POST['bio'])) : '',
             MG_Designer_Profiles::META_ACTIVE   => !empty($_POST['active']) ? '1' : '0',
+            MG_Designer_Profiles::META_MAX      => (isset($_POST['max']) && absint($_POST['max']) > 0) ? absint($_POST['max']) : '',
         );
         foreach ($meta as $key => $value) {
             if ($value === '') {
@@ -558,6 +584,7 @@ class MG_Designer_Profiles_Page {
         }
         if ($result['done']) {
             $result['stats'] = MG_Designer_Profiles::get_assignment_stats();
+            $result['stats']['free'] = MG_Designer_Profiles::get_free_capacity();
         }
         wp_send_json_success($result);
     }

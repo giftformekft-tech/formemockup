@@ -56,7 +56,9 @@
             return;
         }
         Object.keys(stats).forEach(function (key) {
-            $('[data-mg-designer-stat="' + key + '"] strong').text(Number(stats[key]).toLocaleString('hu-HU'));
+            // free: null = van korlátlan profil
+            const value = stats[key] === null ? i18n.unlimited : Number(stats[key]).toLocaleString('hu-HU');
+            $('[data-mg-designer-stat="' + key + '"] strong').text(value);
         });
     }
 
@@ -70,7 +72,7 @@
         const $bar = $progress.find('.mg-designers__progress-bar span');
         const $text = $progress.find('.mg-designers__progress-text');
 
-        function finish(processed, isError, message) {
+        function finish(processed, isError, message, skipped) {
             $buttons.each(function () {
                 $(this).prop('disabled', $(this).data('wasDisabled'));
             });
@@ -78,12 +80,17 @@
             if (!isError) {
                 $bar.css('width', '100%');
             }
-            $text.text(message || (i18n.done || '').replace('%d', processed.toLocaleString('hu-HU')));
+            let text = message || (i18n.done || '').replace('%d', processed.toLocaleString('hu-HU'));
+            if (!isError && skipped > 0) {
+                text += ' ' + (i18n.skipped || '').replace('%d', skipped.toLocaleString('hu-HU'));
+            }
+            $text.text(text);
         }
 
         function run(mode) {
             let total = 0;
             let processed = 0;
+            let skipped = 0;
 
             $buttons.each(function () {
                 $(this).data('wasDisabled', $(this).prop('disabled')).prop('disabled', true);
@@ -109,19 +116,20 @@
                         total = Number(data.total);
                     }
                     processed += Number(data.processed);
+                    skipped += Number(data.skipped || 0);
                     if (total > 0) {
                         $bar.css('width', Math.min(100, Math.round(processed / total * 100)) + '%');
                     }
                     $text.text(i18n.running + ' ' + processed.toLocaleString('hu-HU') + ' / ' + total.toLocaleString('hu-HU'));
                     if (data.done) {
                         updateStats(data.stats);
-                        finish(processed, false);
+                        finish(processed, false, '', skipped);
                         // A profilonkénti mintaszámok a táblázatban csak újratöltéssel frissülnek.
                         window.setTimeout(function () {
                             const url = new URL(window.location.href);
                             url.searchParams.delete('mg_designer_notice');
                             window.location.assign(url.toString());
-                        }, 1500);
+                        }, skipped > 0 ? 4000 : 1500);
                         return;
                     }
                     step(data.cursor);

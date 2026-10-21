@@ -35,6 +35,10 @@ class MG_Designer_Profiles {
     const META_SINCE = 'mg_designer_since';
     const META_BIO = 'mg_designer_bio';
     const META_ACTIVE = 'mg_designer_active';
+    const META_MAX = 'mg_designer_max';
+
+    /** A kiosztásban számító termékstátuszok (a kuka és az auto-draft nem). */
+    const PRODUCT_STATUSES = "'publish','draft','pending','private','future'";
 
     /** @var int[]|null */
     private static $active_ids = null;
@@ -228,12 +232,81 @@ class MG_Designer_Profiles {
         self::$active_ids = null;
     }
 
+    /** A profil alá kerülhető minták maximuma; 0 = korlátlan. */
+    public static function get_profile_max($term_id) {
+        return absint(get_term_meta((int) $term_id, self::META_MAX, true));
+    }
+
+    /** @return array<int,int> profil => maximum, csak a korlátos profilok */
+    public static function get_profile_limits($ids) {
+        $limits = array();
+        foreach ((array) $ids as $id) {
+            $max = self::get_profile_max($id);
+            if ($max > 0) {
+                $limits[(int) $id] = $max;
+            }
+        }
+        return $limits;
+    }
+
     /**
-     * @param int[]|null $ids
-     * @return int 0, ha nincs aktív profil
+     * Profilonként a besorolt minták száma (minden státusz, ami a kiosztásban
+     * is számít, nem csak a közzétettek).
+     *
+     * @param int|null $max_product_id csak az eddigi ID-ig (újrasorsolás közben)
+     * @return array<int,int>
      */
-    public static function pick_random_profile_id($ids = null) {
+    public static function get_assignment_counts($max_product_id = null) {
+        global $wpdb;
+        $sql = "SELECT tt.term_id, COUNT(*) FROM {$wpdb->term_relationships} tr"
+            . " INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id"
+            . " INNER JOIN {$wpdb->posts} p ON p.ID = tr.object_id"
+            . " WHERE tt.taxonomy = %s AND p.post_type = 'product' AND p.post_status IN (" . self::PRODUCT_STATUSES . ")";
+        $args = array(self::TAXONOMY);
+        if ($max_product_id !== null) {
+            $sql .= ' AND p.ID <= %d';
+            $args[] = (int) $max_product_id;
+        }
+        $rows = $wpdb->get_results($wpdb->prepare($sql . ' GROUP BY tt.term_id', $args), ARRAY_N);
+        $counts = array();
+        foreach ((array) $rows as $row) {
+            $counts[(int) $row[0]] = (int) $row[1];
+        }
+        return $counts;
+    }
+
+    /**
+     * Szabad hely az aktív profiloknál; null, ha van korlátlan aktív profil.
+     *
+     * @return int|null
+     */
+    public static function get_free_capacity() {
+        $ids = self::get_active_profile_ids();
+        $limits = self::get_profile_limits($ids);
+        if (count($limits) < count($ids)) {
+            return null;
+        }
+        $counts = self::get_assignment_counts();
+        $free = 0;
+        foreach ($limits as $id => $max) {
+            $free += max(0, $max - ($counts[$id] ?? 0));
+        }
+        return $free;
+    }
+
+    /**
+     * Véletlen profil a még nem betelt profilok közül, egyenletes eloszlással.
+     *
+     * @param int[]|null      $ids    jelöltek (alapból az aktív profilok)
+     * @param array<int,int>  $counts profilonként a mostani mintaszám
+     * @param array<int,int>  $limits profilonként a maximum (hiányzó = korlátlan)
+     * @return int 0, ha nincs (szabad helyű) profil
+     */
+    public static function pick_random_profile_id($ids = null, $counts = array(), $limits = array()) {
         $ids = $ids === null ? self::get_active_profile_ids() : array_values(array_map('intval', (array) $ids));
+        $ids = array_values(array_filter($ids, function ($id) use ($counts, $limits) {
+            return empty($limits[$id]) || ($counts[$id] ?? 0) < $limits[$id];
+        }));
         if (empty($ids)) {
             return 0;
         }
@@ -263,14 +336,18 @@ class MG_Designer_Profiles {
 
     /**
      * A termék-létrehozás hívja (egyedi feltöltés és minden bulk út): ha a
-     * terméknek még nincs grafikusa, kap egy véletlen aktív profilt.
+     * terméknek még nincs grafikusa, kap egy véletlen aktív, még nem betelt
+     * profilt. Ha minden profil betelt, grafikus nélkül marad.
      */
     public static function maybe_assign_new_product($product_id) {
         $settings = self::get_settings();
         if (empty($settings['auto_assign']) || self::get_product_profile($product_id)) {
             return 0;
         }
-        $term_id = self::pick_random_profile_id();
+        $ids = self::get_active_profile_ids();
+        $limits = self::get_profile_limits($ids);
+        $counts = $limits ? self::get_assignment_counts() : array();
+        $term_id = self::pick_random_profile_id($ids, $counts, $limits);
         if ($term_id <= 0 || !self::assign_profile($product_id, $term_id)) {
             return 0;
         }
@@ -279,8 +356,7 @@ class MG_Designer_Profiles {
 
     private static function batch_where_sql($mode) {
         global $wpdb;
-        $statuses = "'publish','draft','pending','private','future'";
-        $where = "p.post_type = 'product' AND p.post_status IN ($statuses)";
+        $where = "p.post_type = 'product' AND p.post_status IN (" . self::PRODUCT_STATUSES . ")";
         $has_profile = $wpdb->prepare(
             "SELECT 1 FROM {$wpdb->term_relationships} tr INNER JOIN {$wpdb->term_taxonomy} tt ON tt.term_taxonomy_id = tr.term_taxonomy_id WHERE tr.object_id = p.ID AND tt.taxonomy = %s",
             self::TAXONOMY
@@ -308,6 +384,11 @@ class MG_Designer_Profiles {
     /**
      * Egy köteg kiosztás / törlés, ID szerint növekvő kurzorral.
      *
+     * A betelt profilok kimaradnak. Újrasorsoláskor a kurzorig már újra
+     * kiosztott termékek számítanak bele a profilok mintaszámába (a kurzor
+     * utániak úgyis új grafikust kapnak); akinek már nem jut hely, annál a
+     * régi besorolás is lekerül, különben túllépné a régi profil maximumát.
+     *
      * @param string $mode   missing: csak a grafikus nélküliek; all: mindenki újrasorsolva; clear: besorolás törlése
      * @param int    $cursor az előző köteg utolsó termék-ID-ja
      * @param int    $limit
@@ -327,6 +408,12 @@ class MG_Designer_Profiles {
         $limit = max(1, absint($limit));
         $where = self::batch_where_sql($mode);
 
+        $limits = $mode === 'clear' ? array() : self::get_profile_limits($profile_ids);
+        $counts = $limits ? self::get_assignment_counts($mode === 'all' ? $cursor : null) : array();
+        if ($mode === 'missing' && $cursor === 0 && self::pick_random_profile_id($profile_ids, $counts, $limits) === 0) {
+            return new WP_Error('all_full', __('Minden aktív profil betelt (elérte a maximum mintaszámát). Emeld valamelyik maximumát, vagy hozz létre új profilt.', 'mockup-generator'));
+        }
+
         $total = null;
         if ($cursor === 0) {
             $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} p WHERE $where");
@@ -339,18 +426,31 @@ class MG_Designer_Profiles {
         ));
         $ids = array_map('intval', (array) $ids);
 
+        $skipped = 0;
         wp_defer_term_counting(true);
         foreach ($ids as $product_id) {
             if ($mode === 'clear') {
                 wp_delete_object_term_relationships($product_id, self::TAXONOMY);
-            } else {
-                self::assign_profile($product_id, self::pick_random_profile_id($profile_ids));
+                continue;
+            }
+            $term_id = self::pick_random_profile_id($profile_ids, $counts, $limits);
+            if ($term_id <= 0) {
+                if ($mode === 'all') {
+                    wp_delete_object_term_relationships($product_id, self::TAXONOMY);
+                }
+                $skipped++;
+                continue;
+            }
+            self::assign_profile($product_id, $term_id);
+            if (isset($limits[$term_id])) {
+                $counts[$term_id] = ($counts[$term_id] ?? 0) + 1;
             }
         }
         wp_defer_term_counting(false);
 
         return array(
             'processed' => count($ids),
+            'skipped'   => $skipped,
             'cursor'    => $ids ? end($ids) : $cursor,
             'done'      => count($ids) < $limit,
             'total'     => $total,
@@ -365,13 +465,26 @@ class MG_Designer_Profiles {
         $current = wp_get_object_terms($post->ID, self::TAXONOMY, array('fields' => 'ids'));
         $current_id = (!is_wp_error($current) && !empty($current)) ? (int) $current[0] : 0;
 
+        $profiles = self::get_profiles();
+        $limits = self::get_profile_limits(wp_list_pluck($profiles, 'term_id'));
+        $counts = $limits ? self::get_assignment_counts() : array();
+
         wp_nonce_field('mg_designer_product', 'mg_designer_product_nonce');
         echo '<select name="mg_designer_term" class="widefat">';
         echo '<option value="0">' . esc_html__('— nincs —', 'mockup-generator') . '</option>';
-        foreach (self::get_profiles() as $term) {
-            echo '<option value="' . esc_attr($term->term_id) . '"' . selected($current_id, $term->term_id, false) . '>' . esc_html($term->name) . '</option>';
+        foreach ($profiles as $term) {
+            $label = $term->name;
+            $id = (int) $term->term_id;
+            if (isset($limits[$id]) && ($counts[$id] ?? 0) >= $limits[$id]) {
+                /* translators: %s: profile name */
+                $label = sprintf(__('%s (betelt)', 'mockup-generator'), $label);
+            }
+            echo '<option value="' . esc_attr($id) . '"' . selected($current_id, $id, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select>';
+        if ($limits) {
+            echo '<p class="description">' . esc_html__('Kézzel betelt profil is választható, a maximum csak a véletlen kiosztásra vonatkozik.', 'mockup-generator') . '</p>';
+        }
     }
 
     public static function save_product_meta_box($post_id, $post) {

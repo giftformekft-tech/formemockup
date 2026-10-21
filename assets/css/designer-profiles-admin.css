@@ -64,6 +64,11 @@
     color: var(--mg-ok, #1a7f37);
 }
 
+.mg-designers__badge.is-full {
+    background: var(--mg-warn-bg, #fff4d6);
+    color: var(--mg-warn, #9a6700);
+}
+
 .mg-designers__actions {
     white-space: nowrap;
 }

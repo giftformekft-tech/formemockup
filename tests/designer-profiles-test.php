@@ -2,6 +2,7 @@
 /** Grafikus profilok: kiosztás, kapcsoló, megjelenítés, kötegelt szétosztás – WordPress doubles, adatbázis nélkül. */
 define('ABSPATH', __DIR__ . '/');
 define('MG_VERSION', 'test');
+define('ARRAY_N', 'ARRAY_N');
 
 $checks = 0;
 function check($value, $message) { $GLOBALS['checks']++; if (!$value) throw new RuntimeException($message); }
@@ -72,6 +73,7 @@ class Fake_WPDB {
     public $term_relationships = 'wp_term_relationships';
     public $term_taxonomy = 'wp_term_taxonomy';
     public function prepare($sql, ...$args) {
+        if (count($args) === 1 && is_array($args[0])) $args = $args[0];
         foreach ($args as $arg) {
             $sql = preg_replace('/%[ds]/', is_int($arg) ? (string) $arg : "'" . $arg . "'", $sql, 1);
         }
@@ -90,6 +92,19 @@ class Fake_WPDB {
         return $ids;
     }
     public function get_var($sql) { return count($this->matching($sql)); }
+    /** get_assignment_counts(): profilonként, a kiosztásban számító státuszokkal, opcionálisan ID-ig */
+    public function get_results($sql, $output) {
+        $max = preg_match('/p\.ID <= (\d+)/', $sql, $m) ? (int) $m[1] : PHP_INT_MAX;
+        $counts = array();
+        foreach ($GLOBALS['relations'] as $pid => $tid) {
+            $status = $GLOBALS['products'][$pid] ?? '';
+            if ($pid > $max || !in_array($status, array('publish', 'draft', 'pending', 'private', 'future'), true)) continue;
+            $counts[$tid] = ($counts[$tid] ?? 0) + 1;
+        }
+        $rows = array();
+        foreach ($counts as $tid => $n) $rows[] = array((string) $tid, (string) $n);
+        return $rows;
+    }
     public function get_col($sql) {
         preg_match('/p\.ID > (\d+) ORDER BY p\.ID ASC LIMIT (\d+)/', $sql, $m);
         $ids = array_values(array_filter($this->matching($sql), function ($id) use ($m) { return $id > (int) $m[1]; }));
@@ -180,6 +195,61 @@ check(is_wp_error(MG_Designer_Profiles::process_batch('bogus', 0)), 'Ismeretlen 
 $saved_terms = $terms; $terms = array(); MG_Designer_Profiles::flush_cache();
 check(is_wp_error(MG_Designer_Profiles::process_batch('missing', 0)), 'Aktív profil nélkül hiba');
 $terms = $saved_terms; MG_Designer_Profiles::flush_cache();
+
+// --- Maximum minta profilonként ------------------------------------------------------------
+check(MG_Designer_Profiles::pick_random_profile_id(array(11, 12), array(11 => 5), array(11 => 5)) === 12, 'A betelt profil kimarad');
+check(MG_Designer_Profiles::pick_random_profile_id(array(11, 12), array(11 => 5, 12 => 2), array(11 => 5, 12 => 2)) === 0, 'Ha mind betelt: 0');
+check(MG_Designer_Profiles::pick_random_profile_id(array(11, 12), array(11 => 99, 12 => 1), array(12 => 1)) === 11, 'Hiányzó limit = korlátlan');
+check(MG_Designer_Profiles::get_free_capacity() === null, 'Korlátlan profil mellett a szabad hely korlátlan');
+
+$term_meta[11]['mg_designer_max'] = '100';
+$term_meta[12]['mg_designer_max'] = '50';
+check(MG_Designer_Profiles::get_profile_limits(array(11, 12, 13)) === array(11 => 100, 12 => 50), 'Limitek term meta-ból');
+
+// Szétosztás limittel: 450 grafikus nélküli termék, 150 hely
+$products = array();
+for ($id = 1000; $id < 1450; $id++) $products[$id] = 'publish';
+$relations = array();
+$cursor = 0; $skipped = 0; $assigned_total = 0;
+do { $r = MG_Designer_Profiles::process_batch('missing', $cursor, 200); $cursor = $r['cursor']; $skipped += $r['skipped']; } while (!$r['done']);
+$by_term = array_count_values($relations);
+check(($by_term[11] ?? 0) === 100 && ($by_term[12] ?? 0) === 50, 'Pont a maximumig tölt fel');
+check($skipped === 300 && count($relations) === 150, '300 termék grafikus nélkül marad');
+check(MG_Designer_Profiles::get_free_capacity() === 0, 'Nincs szabad hely');
+$r = MG_Designer_Profiles::process_batch('missing', 0, 200);
+check(is_wp_error($r) && $r->get_error_code() === 'all_full', 'Betelt profiloknál a szétosztás hibát ad');
+
+// Kuka nem számít bele a mintaszámba
+$products[1000] = 'trash';
+check(MG_Designer_Profiles::get_free_capacity() === 1, 'A kukás termék helye felszabadul');
+$products[1000] = 'publish';
+
+// Újrasorsolás limittel, több kötegben: a kurzor előttiek számítanak, a többi lekerül
+$term_meta[11]['mg_designer_max'] = '120';
+$term_meta[12]['mg_designer_max'] = '130';
+$cursor = 0; $skipped = 0;
+do { $r = MG_Designer_Profiles::process_batch('all', $cursor, 200); $cursor = $r['cursor']; $skipped += $r['skipped']; } while (!$r['done']);
+$by_term = array_count_values($relations);
+check(($by_term[11] ?? 0) === 120 && ($by_term[12] ?? 0) === 130, 'Újrasorsolás: mindkét profil pont a maximumáig');
+check(count($relations) === 250 && $skipped === 200, 'Újrasorsolás: a fölösleg grafikus nélkül marad');
+
+// Újrasorsolás, ha pont annyi termék van, amennyi hely, és a mostani besorolás túllépi a limitet:
+// a kurzor utáni (még újra nem sorsolt) régi besorolások nem foglalhatnak helyet
+$products = array(); $relations = array();
+for ($id = 3000; $id < 3250; $id++) { $products[$id] = 'publish'; $relations[$id] = $id < 3200 ? 11 : 12; }
+$cursor = 0; $skipped = 0;
+do { $r = MG_Designer_Profiles::process_batch('all', $cursor, 100); $cursor = $r['cursor']; $skipped += $r['skipped']; } while (!$r['done']);
+$by_term = array_count_values($relations);
+check($skipped === 0 && count($relations) === 250, 'Teltházas újrasorsolás: egy termék sem marad ki');
+check(($by_term[11] ?? 0) === 120 && ($by_term[12] ?? 0) === 130, 'Teltházas újrasorsolás: pont a maximumok');
+
+// Új termék (bulk) limittel
+$products[2000] = 'publish';
+check(MG_Designer_Profiles::maybe_assign_new_product(2000) === 0 && !isset($relations[2000]), 'Betelt profiloknál az új termék grafikus nélkül marad');
+$term_meta[12]['mg_designer_max'] = '131';
+check(MG_Designer_Profiles::maybe_assign_new_product(2000) === 12, 'Az egyetlen szabad helyű profilt kapja');
+check(MG_Designer_Profiles::get_free_capacity() === 0, 'Ezzel betelt');
+unset($term_meta[11]['mg_designer_max'], $term_meta[12]['mg_designer_max']);
 
 // --- Tervezősor HTML -------------------------------------------------------------------------
 $products = array(501 => 'publish');
