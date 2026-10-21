@@ -521,7 +521,7 @@ class MG_Dashboard_Page {
         echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
         echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
         echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
-        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást, 255 színes palettát kapnak, és sorba áll a mockupjaik újragenerálása. Ne zárd be az ablakot, amíg fut.</p>';
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként 4×-es AI felskálázást (a böngészőben) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. Az ablakot csak addig hagyd nyitva, amíg minden kártyán „Kész” áll; a mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
         echo '</div>';
         echo '</div>';
         echo '</div>';
