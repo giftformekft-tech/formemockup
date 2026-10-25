@@ -43,7 +43,8 @@ function get_query_var($name) { return ''; }
 function get_option($name, $default) { return $GLOBALS['settings']; }
 function wp_parse_args($values, $defaults) { return array_merge($defaults, $values); }
 function get_post_meta($id, $key, $single) { return ''; }
-function wp_upload_dir() { return array('baseurl' => 'https://example.test/uploads', 'basedir' => '/uploads'); }
+$upload_basedir = sys_get_temp_dir() . '/mg-vv-content-' . getmypid();
+function wp_upload_dir() { return array('baseurl' => 'https://example.test/uploads', 'basedir' => $GLOBALS['upload_basedir']); }
 function trailingslashit($text) { return rtrim($text, '/') . '/'; }
 function admin_url($path) { return 'https://example.test/' . $path; }
 function wp_create_nonce($action) { return $action; }
@@ -129,4 +130,21 @@ $protected = false;
 $settings['size_charts']['mug'] = '';
 check(request_content('size_chart', array('product_type' => 'mug'))->data['html'] === '', 'empty content handled');
 check(count($shortcodes) === $before, 'invalid and empty requests execute no shortcodes');
+$mockup_dir = $upload_basedir . '/mg_mockups/SKU42';
+mkdir($mockup_dir, 0777, true);
+touch($mockup_dir . '/SKU42_shirt_feher_front.webp', 1792908941);
+$mockup_url = 'https://example.test/uploads/mg_mockups/SKU42/SKU42_shirt_feher_front.webp';
+check(MG_Virtual_Variant_Manager::versioned_mockup_url($mockup_url) === $mockup_url . '?v=1792908941', 'feed mockup link carries the file time');
+touch($mockup_dir . '/SKU42_shirt_feher_front.webp', 1792999999);
+clearstatcache();
+check(MG_Virtual_Variant_Manager::versioned_mockup_url($mockup_url) === $mockup_url . '?v=1792999999', 'a regenerated mockup changes the feed link');
+$missing_url = 'https://example.test/uploads/mg_mockups/SKU42/SKU42_mug_feher_front.webp';
+check(MG_Virtual_Variant_Manager::versioned_mockup_url($missing_url) === $missing_url, 'missing mockup link stays as is');
+$other_url = 'https://example.test/uploads/2026/10/featured.webp';
+check(MG_Virtual_Variant_Manager::versioned_mockup_url($other_url) === $other_url, 'non-mockup link stays as is');
+check(MG_Virtual_Variant_Manager::versioned_mockup_url('https://example.test/uploads/mg_mockups/../secret.webp') === 'https://example.test/uploads/mg_mockups/../secret.webp', 'path traversal is not stat-ed');
+unlink($mockup_dir . '/SKU42_shirt_feher_front.webp');
+rmdir($mockup_dir);
+rmdir($upload_basedir . '/mg_mockups');
+rmdir($upload_basedir);
 echo "Virtual variant content: $checks assertions passed\n";

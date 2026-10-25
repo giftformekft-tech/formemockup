@@ -1310,6 +1310,28 @@ class MG_Virtual_Variant_Manager {
     }
 
     /**
+     * Feed image link of a mockup, with the file's modification time as ?v=.
+     * A replaced design rewrites the mockup under the same name, so without
+     * the version Google and Meta keep their cached copy of the old image.
+     *
+     * @return string The URL, versioned when it points at an existing mockup file.
+     */
+    public static function versioned_mockup_url($url) {
+        $url = (string) $url;
+        $uploads = self::get_upload_dir();
+        $base_url = isset($uploads['baseurl']) ? trailingslashit($uploads['baseurl']) . 'mg_mockups/' : '';
+        if ($url === '' || $base_url === 'mg_mockups/' || strpos($url, $base_url) !== 0 || strpos($url, '?') !== false) {
+            return $url;
+        }
+        $relative = rawurldecode(substr($url, strlen($base_url)));
+        if (strpos($relative, '..') !== false) {
+            return $url;
+        }
+        $mtime = @filemtime(trailingslashit($uploads['basedir']) . 'mg_mockups/' . $relative);
+        return $mtime ? $url . '?v=' . $mtime : $url;
+    }
+
+    /**
      * Preview URL of an order line item: the URL stored at checkout, or — for
      * older lines that predate that meta — one rebuilt from the naming pattern.
      *

@@ -91,6 +91,7 @@ class MG_Virtual_Variant_Manager {
             'shirt' => array('label' => 'Póló', 'preview_url' => 'https://example.test/shirt.png'),
             'mug' => array('label' => 'Bögre', 'preview_url' => 'https://example.test/mug.png')));
     }
+    public static function versioned_mockup_url($url) { return $url; }
 }
 function current_user_can($cap) { return $GLOBALS['authorized'] ?? true; }
 function check_ajax_referer($action, $key) { check($action === 'mg_custom_feed_progress' && $key === 'nonce', 'AJAX checks nonce'); }

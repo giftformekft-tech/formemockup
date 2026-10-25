@@ -206,7 +206,7 @@ class MG_Google_Merchant_Feed {
 
             // Image Link - Use the preview URL from config
             // Usually this is the default color for this type
-            $g_image_link = isset($type_data['preview_url']) ? $type_data['preview_url'] : '';
+            $g_image_link = isset($type_data['preview_url']) ? MG_Virtual_Variant_Manager::versioned_mockup_url($type_data['preview_url']) : '';
             if (!$g_image_link) {
                 $image_id = $product->get_image_id();
                 $g_image_link = wp_get_attachment_url($image_id);
