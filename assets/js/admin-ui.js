@@ -1002,7 +1002,6 @@
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
         const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
-        const withPalette = !!(window.MG_AI_UPSCALE || {}).palette;
         const upscaleLabels = {
             ai2x: 'AI felskálázva 2×',
             ai3x: 'AI felskálázva 3×',
@@ -1011,7 +1010,7 @@
             lanczos3x: '3× sima nagyítás',
             lanczos4x: '4× sima nagyítás',
             native: 'Eredeti felbontás (elég nagy, nem kellett felskálázni)',
-            none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás lesz (ha kell)' + (withPalette ? ' és 255 színes paletta' : ''),
+            none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás lesz (ha kell), paletta nélkül',
         };
         // ai3x was always Real-CUGAN, ai4x Real-ESRGAN; 2× tells by upscale_model.
         const upscaleLabel = function (c) {
@@ -1067,7 +1066,7 @@
                 const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality, c.generated_size ? 'generálva ' + c.generated_size + ' px' : ''].filter(Boolean).join(' · ');
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
-                const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : (c.palette_error ? ' · ' + c.palette_error : '');
+                const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : '';
                 const upscaled = upscaleLabel(c);
                 $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaled ? upscaled + palette + size : ''));
                 if (c.text_lines && c.text_lines.length) {
@@ -1283,7 +1282,7 @@
                     return;
                 }
                 if (resp && resp.native) {
-                    $status().text('A minta elég nagy, nem kell felskálázni. Nézd meg teljes méretben, és ha jó, hagyd jóvá' + (withPalette ? ': 255 színes palettát kap.' : '.'));
+                    $status().text('A minta elég nagy, nem kell felskálázni. Nézd meg teljes méretben, és ha jó, hagyd jóvá.');
                 } else if (resp && resp.success) {
                     $status().text('AI felskálázás kész. Nézd meg teljes méretben, és ha jó, hagyd jóvá.');
                 } else {

@@ -59,7 +59,7 @@ mintája látszik. Kezelés: **Mockupok › Grafikusok**.
   2.43.3). **Mindet jóváhagyom**, **Hátralévők leállítása**.
 - **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként AI felskálázást kapnak
   (böngésző, a beállított modellel: Real-CUGAN 3× vagy Real-ESRGAN 4×; ha be van kapcsolva,
-  255 színes palettát is), majd sorba áll a mockupjaik újragenerálása (mint az egyedi
+  a Design-flow 255 színes palettáját is), majd sorba áll a mockupjaik újragenerálása (mint az egyedi
   jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver ugyanekkora sima nagyítással folytatja.
   A kész kártya a véglegesített fájlt mutatja („Végleges: 3× AI felskálázás · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
   újratervezés ablakában megmaradnak.
@@ -198,21 +198,26 @@ a felskálázás előtt**, alapból be, 50%): kikapcsolva a GPT-kép élsimítot
 a felskálázóba (simább szél, de a félig átlátszó szegély is felnagyítódik; ezt a peremjavítás
 tompítja), kisebb küszöb vastagabb, nagyobb vékonyabb szélt hagy.
 
-**Palettás PNG (2.42.12, 2.44.7 óta kapcsolható, alapból ki):** a **255 színes
-palettás PNG** kapcsolóval a felskálázott AI minta a Design-flow app upscale-jével azonos
-módon 255 színes palettás PNG lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó
-pixelek RGB-je 0, kvantálás dithering nélkül, az élsimított szélek megtartják az átlátszóságukat
-(teljes tRNS tábla, 6 alatti alfa teljesen átlátszó), és az átlátszó margó levágódik (csak az
-átlátszóság szerint, színre nem). Ez a böngészős AI felskálázás feltöltésekor fut, a 3×-os
-tartalék nagyítás és a korábbi jelöltek esetén jóváhagyáskor. Az Imagick kvantál, a palettás
-PNG-t a plugin írja soronként (3136×3392 px kb. 2 mp, ~60 MB). A rendelés-export ettől
-függetlenül, változatlanul 8 bites RGBA-t ír a nyomdának. Teszt: `php tests/palette-png-test.php`
-(valódi Imagick kell). Alapból ki van kapcsolva: dithering nélkül az árnyalt, rajzolt minták (bőr,
-átmenetek) foltosak, lépcsősek lesznek, és az ImageMagick 7.1.2 Q16-HDRI a mintákat be is
-feketítette. **2.44.6 óta** az előkészítés és a palettázás is ellenőrzi a színeket (a fedő pixelek
-ugyanott, ill. a látható átlag): ha egy lépés elveszíti őket, az eredménye eldobódik (az
-előkészítés nélkül a GPT-kép megy tovább, a paletta nélkül az RGBA PNG marad), és a kártya kiírja,
-miért.
+**Palettás PNG (2.42.12; 2.44.8 óta a böngészőben, a Design-flow eljárásával):** a **255 színes
+palettás PNG** kapcsolóval (alapból be) a felskálázott AI minta a Design-flow app upscale-jével
+azonos 255 színes palettás PNG lesz. Az `assets/js/palette-png.js` a böngészőben, közvetlenül a
+felskálázás után a Design-flow `_postprocess` lépéseit futtatja: szélkorrekció (`clean_transparent_edges`,
+3 px), 6 alatti alfa teljesen átlátszó, az átlátszó pixelek RGB-je 0, majd a Pillow
+`Image.quantize(255, FASTOCTREE, dither NONE)` (a `QuantOctree.c` átirata) és az átlátszó
+palettaszínek nullázása; a palettás PNG-t is a böngésző írja (csak a használt színekkel). A margó
+nem vágódik le (a szerver a pontos 2×/3×/4× méretet ellenőrzi; a felskálázás előtt már levágódott).
+A szerver nem kvantál, csak kiolvassa a paletta méretét (`MG_Image_Utils::png_palette_size`).
+Teszt: `python3 tests/palette-png-reference-test.py` (Node, Pillow, NumPy): árnyalt bőr szemcsével,
+szivárvány, zaj véletlen alfával és élsimított logó, mindegyik pixelre azonos a Pillow-val
+(egyforma gyakoriságú vödrök sorrendje Windowson, MSVC-vel eltérhet). A sima nagyítás (ha a
+böngészős felskálázás nem sikerül) és a 2560 px fölötti, nem felskálázott minták RGBA-k maradnak.
+A rendelés-export ettől függetlenül, változatlanul 8 bites RGBA-t ír a nyomdának.
+
+Korábban (2.42.12–2.44.7) a szerver az ImageMagickkel kvantált: más algoritmus, mint a Design-flow
+Pillow-ja, és az ImageMagick 7.1.2 Q16-HDRI a mintákat befeketítette, az árnyalt részeken rossz
+színű foltokat adott. **2.44.6 óta** a felskálázás előtti előkészítés ellenőrzi a színeket (az eredetileg
+fedő pixelek ugyanott): ha elveszíti őket, az eredménye eldobódik, és a GPT-kép megy tovább.
+Teszt: `php tests/palette-png-test.php` (valódi Imagick kell).
 
 A **Pontos szöveg** mezőt érdemes kitölteni (soronként egy sor): így biztosan ugyanaz a
 szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi jelölt promptja

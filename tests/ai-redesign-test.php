@@ -81,8 +81,9 @@ class MG_Design_Replace {
     }
 }
 
-// The real palette encoder runs on real Imagick in tests/palette-png-test.php.
-$palette_calls = array();
+// The palette PNG is made in the browser (tests/palette-png-reference-test.py);
+// the server only reads its size back (tests/palette-png-test.php on real Imagick).
+$palette_sizes = array();
 $prepare_calls = array();
 $color_loss = array();
 class MG_Image_Utils {
@@ -96,16 +97,8 @@ class MG_Image_Utils {
         file_put_contents($path, make_png(8, 6));
         return array('width' => 8, 'height' => 6, 'changed' => true);
     }
-    public static function to_palette_png($path, $colors) {
-        $GLOBALS['palette_calls'][] = array(basename($path), $colors);
-        if (in_array('palette', $GLOBALS['color_loss'], true)) {
-            throw new RuntimeException('A szerver ImageMagickje (ImageMagick 7.1.2-34 Q16-HDRI) elrontotta a minta színeit: a 255 színes palettás átalakítás.', self::COLOR_LOSS);
-        }
-        if (in_array('broken', $GLOBALS['color_loss'], true)) {
-            throw new RuntimeException('A kép teljesen átlátszó, nincs mit palettásra alakítani.');
-        }
-        $info = getimagesize($path);
-        return array('width' => $info[0], 'height' => $info[1], 'colors' => 42);
+    public static function png_palette_size($path) {
+        return $GLOBALS['palette_sizes'][basename($path)] ?? 0;
     }
 }
 require __DIR__ . '/../includes/class-ai-seo-generator.php';
@@ -173,14 +166,14 @@ MG_AI_Redesign::save_settings(array('resolution' => '4000'));
 check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'over 3840 px: economical');
 MG_AI_Redesign::save_settings(array('resolution' => 'economy', 'quality' => 'medium'));
 $s = MG_AI_Redesign::get_settings();
-check($s['upscaler'] === 'cugan' && $s['palette'] === false, 'Real-CUGAN, no palette finish by default');
-MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan', 'palette' => '1'));
+check($s['upscaler'] === 'cugan' && $s['palette'] === true, 'Real-CUGAN and the Design-flow palette by default');
+MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan', 'palette' => '0'));
 $s = MG_AI_Redesign::get_settings();
-check($s['upscaler'] === 'esrgan' && $s['palette'] === true, 'Real-ESRGAN and the palette can be chosen');
+check($s['upscaler'] === 'esrgan' && $s['palette'] === false, 'Real-ESRGAN can be chosen, the palette turned off');
 MG_AI_Redesign::save_settings(array('upscaler' => 'bogus', 'quality' => 'medium'));
 $s = MG_AI_Redesign::get_settings();
-check($s['upscaler'] === 'esrgan' && $s['palette'] === true, 'an unknown upscaler or a save without the fields keeps them');
-MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '0'));
+check($s['upscaler'] === 'esrgan' && $s['palette'] === false, 'an unknown upscaler or a save without the fields keeps them');
+MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '1'));
 
 // Every allowed image size at the design's aspect ratio (GPT Image 2 / 2.5 rules).
 foreach (array(array(1000, 1000, 130, '816x816', '2880x2880'), array(1920, 1080, 172, '1088x608', '3840x2160'), array(3000, 1000, 112, '1440x480', '3840x1280')) as $case) {
@@ -376,8 +369,6 @@ check(MG_AI_Redesign::upscale_factor(912, 736) === 4 && MG_AI_Redesign::upscale_
 check(MG_AI_Redesign::upscale_factor(1281, 900) === 2 && MG_AI_Redesign::upscale_factor(2576, 1440) === 1, 'Real-ESRGAN above: 2×, then none');
 MG_AI_Redesign::save_settings(array('upscaler' => 'cugan'));
 
-// The palette finish (an option since 2.44.7) for the approval and upload checks below.
-MG_AI_Redesign::save_settings(array('palette' => '1'));
 
 // Approval: queues the replacement, deletes the other candidates, keeps history.
 file_put_contents(get_attached_file(11), make_png(10, 10));
@@ -390,7 +381,7 @@ throws(function () { MG_AI_Redesign::apply(5, 99); }, 'nem található', 'unknow
 check(empty($enqueued), 'nothing queued for an unknown candidate');
 $result = MG_AI_Redesign::apply(5, 11);
 check($enqueued === array(array(5, get_attached_file(11), 'ai_redesign')), 'replacement queued with the AI PNG');
-check($palette_calls === array(array('att-11.png', 255)), 'an older candidate gets the palette finish on approval');
+check($meta[5][MG_AI_Redesign::META_HISTORY][0]['palette'] === 0, 'the server never quantizes: an older candidate is approved as it is');
 check($deleted === array(12) && !isset($meta[5][MG_AI_Redesign::META_CANDIDATES]), 'other candidates deleted');
 check($meta[5][MG_AI_Redesign::META_HISTORY][0]['previous_path'] === $source && $result['job_id'] === 'job1', 'previous design kept in history');
 
@@ -408,9 +399,10 @@ throws(function () use ($bad) { MG_AI_Redesign::store_upscaled(6, 21, $bad); }, 
 throws(function () use ($wrong) { MG_AI_Redesign::store_upscaled(6, 99, $wrong); }, 'nem található', 'unknown candidate rejected for upload');
 $good = $test_dir . '/good.png';
 file_put_contents($good, make_png(30, 30));
+$palette_sizes['att-21.png'] = 255;
 $stored = MG_AI_Redesign::store_upscaled(6, 21, $good);
 check(getimagesize(get_attached_file(21))[0] === 30 && $stored['upscale'] === 'ai3x' && $stored['width'] === 30, '3× PNG replaces the candidate file');
-check(end($palette_calls) === array('att-21.png', 255) && $stored['palette'] === 42, 'upscaled PNG finished as a 255-color palette PNG');
+check($stored['palette'] === 255, 'the browser\'s palette PNG: its colors recorded');
 check(end($metadata_refreshed) === 21, 'attachment metadata refreshed');
 $v = filemtime(get_attached_file(21));
 check($stored['preview'] === "https://example.test/att-21-medium.png?v=$v" && $stored['full'] === "https://example.test/att-21.png?v=$v", 'preview and full URLs versioned by the file time');
@@ -432,8 +424,8 @@ file_put_contents(get_attached_file(22), make_png(10, 10));
 $enqueued = array();
 $applied = MG_AI_Redesign::apply(6, 22);
 check(getimagesize(get_attached_file(22))[0] === 24, 'not upscaled candidate gets prepared, then 3× on approval');
-check(end($palette_calls) === array('att-22.png', 255) && end($meta[6][MG_AI_Redesign::META_HISTORY])['palette'] === 42, 'the 3× fallback gets the palette finish too');
-check($applied['candidate']['attachment_id'] === 22 && $applied['candidate']['upscale'] === 'lanczos3x' && $applied['candidate']['palette'] === 42
+check(end($meta[6][MG_AI_Redesign::META_HISTORY])['palette'] === 0 && $applied['candidate']['width'] === 24, 'the 3× fallback stays RGBA, its new size recorded');
+check($applied['candidate']['attachment_id'] === 22 && $applied['candidate']['upscale'] === 'lanczos3x'
     && strpos($applied['candidate']['full'], 'att-22.png?v=') !== false, 'approval returns the finished file for the page');
 check(end($meta[6][MG_AI_Redesign::META_HISTORY])['upscale'] === 'lanczos3x' && $enqueued[0][1] === get_attached_file(22), 'history records the fallback');
 
@@ -482,25 +474,23 @@ foreach (array(array(44, 2000, 'lanczos2x', 4000), array(45, 3000, 'native', 300
     check($result['candidate']['upscale'] === $label && getimagesize(get_attached_file($att))[0] === $final, "fallback for $width px: $label");
 }
 
-// Palette finish off (the default): neither the upload nor the approval
-// quantizes; the AI upscale stays the browser's RGBA PNG.
+// Palette off: the browser sends its RGBA PNG and it stays as it is.
 MG_AI_Redesign::save_settings(array('palette' => '0'));
-$palette_calls = array();
 $meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 61, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
 file_put_contents(get_attached_file(61), make_png(10, 10));
 file_put_contents($test_dir . '/up61.png', make_png(30, 30));
 $stored = MG_AI_Redesign::store_upscaled(11, 61, $test_dir . '/up61.png');
-check($stored['upscale'] === 'ai3x' && $stored['upscale_model'] === 'cugan' && $stored['palette'] === 0 && $stored['palette_error'] === '' && $stored['width'] === 30, 'palette off: the upload stays RGBA');
+check($stored['upscale'] === 'ai3x' && $stored['upscale_model'] === 'cugan' && $stored['palette'] === 0 && $stored['width'] === 30, 'palette off: the upload stays RGBA');
 $enqueued = array();
 $applied = MG_AI_Redesign::apply(11, 61);
-check($palette_calls === array() && $applied['candidate']['palette'] === 0 && $enqueued[0][1] === get_attached_file(61), 'palette off: approval queues it as it is');
+check($applied['candidate']['palette'] === 0 && $enqueued[0][1] === get_attached_file(61), 'palette off: approval queues it as it is');
 check(end($meta[11][MG_AI_Redesign::META_HISTORY])['upscale_model'] === 'cugan', 'history records the model');
-// The sharp-enlargement fallback without a palette: its new size is recorded.
+// The sharp-enlargement fallback with the Real-ESRGAN setting: 4×.
 MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan'));
 $meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 62, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
 file_put_contents(get_attached_file(62), make_png(10, 10));
 $applied = MG_AI_Redesign::apply(11, 62);
-check($palette_calls === array() && $applied['candidate']['upscale'] === 'lanczos4x' && $applied['candidate']['width'] === 40, 'palette off, Real-ESRGAN setting: 4× fallback, size recorded');
+check($applied['candidate']['upscale'] === 'lanczos4x' && $applied['candidate']['width'] === 40, 'Real-ESRGAN setting: 4× fallback, size recorded');
 // A Real-ESRGAN upload: 4× of the candidate, labeled with its model.
 $meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 63, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
 file_put_contents(get_attached_file(63), make_png(10, 10));
@@ -509,26 +499,13 @@ $stored = MG_AI_Redesign::store_upscaled(11, 63, $test_dir . '/up63.png');
 check($stored['upscale'] === 'ai4x' && $stored['upscale_model'] === 'esrgan', 'Real-ESRGAN 4× upload accepted and labeled');
 MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '1'));
 
-// ImageMagick 7.1.2 Q16-HDRI blackened the designs: a step that loses the
-// colors is dropped, the colored file goes on (prepare: uncropped; palette: RGBA).
+// ImageMagick 7.1.2 Q16-HDRI blackened the designs: a preparation that loses
+// the colors is dropped, the GPT image goes to the upscale uncropped.
 $color_loss = array('prepare');
 $meta[10][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 51, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'));
 file_put_contents(get_attached_file(51), make_png(10, 10));
 $prepared = MG_AI_Redesign::prepare_candidate(10, 51);
 check($prepared['prepared'] === true && $prepared['width'] === 10 && getimagesize(get_attached_file(51))[0] === 10, 'prepare color loss: the GPT image goes to the upscale as it is');
-$color_loss = array('palette');
-file_put_contents($test_dir . '/up51.png', make_png(30, 30));
-$stored = MG_AI_Redesign::store_upscaled(10, 51, $test_dir . '/up51.png');
-check($stored['upscale'] === 'ai3x' && $stored['palette'] === 0 && $stored['width'] === 30 && getimagesize(get_attached_file(51))[0] === 30, 'palette color loss: the AI upscale is kept unpaletted');
-check(strpos($stored['palette_error'], '7.1.2-34') !== false && strpos($stored['palette_error'], 'palettázás nélkül') !== false, 'palette color loss: the card says why');
-$enqueued = array();
-$applied = MG_AI_Redesign::apply(10, 51);
-check($applied['candidate']['palette'] === 0 && $enqueued[0][1] === get_attached_file(51) && end($meta[10][MG_AI_Redesign::META_HISTORY])['palette'] === 0, 'palette color loss: approval goes on with the RGBA PNG');
-$color_loss = array('broken');
-$meta[10][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 52, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle', 'prepared' => true));
-file_put_contents(get_attached_file(52), make_png(10, 10));
-file_put_contents($test_dir . '/up52.png', make_png(30, 30));
-throws(function () use ($test_dir) { MG_AI_Redesign::store_upscaled(10, 52, $test_dir . '/up52.png'); }, 'teljesen átlátszó', 'other palette errors still stop the upload');
 $color_loss = array();
 
 // Discarding candidates: one, then all; the PNGs leave the media library.

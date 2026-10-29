@@ -26,8 +26,6 @@ class MG_AI_Redesign {
     const AI_SCALES = array(2, 3, 4);
     // Longest side of the finished design: prints need about 3500–4700 px at 300 DPI.
     const MAX_UPSCALED_EDGE = 5120;
-    // Same finish as the Design-flow app's upscales: a 255-color palette PNG.
-    const PALETTE_COLORS = 255;
     const MAX_UPSCALED_BYTES = 83886080;
     const RUN_TIMEOUT = 600;
     const HTTP_TIMEOUT = 180;
@@ -79,9 +77,9 @@ class MG_AI_Redesign {
             'alpha_threshold' => 50,
             // 'cugan' (Real-CUGAN 3×, smoother, slower) or 'esrgan' (Real-ESRGAN 4×, fast).
             'upscaler' => 'cugan',
-            // The 255-color palette finish: off, a no-dither palette bands shaded
-            // art into blotches, and ImageMagick 7.1.2 HDRI blackened designs in it.
-            'palette' => false,
+            // The Design-flow 255-color palette finish, made in the browser
+            // (assets/js/palette-png.js; ImageMagick 7.1.2 HDRI broke the server's).
+            'palette' => true,
         ), is_array($stored) ? $stored : array());
         if (!in_array($settings['upscaler'], array('cugan', 'esrgan'), true)) {
             $settings['upscaler'] = 'cugan';
@@ -1090,28 +1088,12 @@ class MG_AI_Redesign {
         }
     }
 
-    /**
-     * Candidate fields after the 255-color palette finish (when it is on), or
-     * the RGBA PNG kept as it is: palette off, or this server's ImageMagick
-     * loses the colors in it.
-     */
-    private static function palette_or_keep($path) {
-        if (empty(self::get_settings()['palette'])) {
-            $info = getimagesize($path);
-            return array('palette' => 0, 'palette_error' => '', 'width' => (int) $info[0], 'height' => (int) $info[1]);
-        }
-        try {
-            $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
-            return array('palette' => $palette['colors'], 'palette_error' => '', 'width' => $palette['width'], 'height' => $palette['height']);
-        } catch (RuntimeException $e) {
-            if ($e->getCode() !== MG_Image_Utils::COLOR_LOSS) {
-                throw $e;
-            }
-            error_log('MG AI redesign: ' . $e->getMessage());
-            $info = getimagesize($path);
-            return array('palette' => 0, 'palette_error' => $e->getMessage() . ' Ezért a minta palettázás nélkül, színhelyes PNG-ként marad.', 'width' => (int) $info[0], 'height' => (int) $info[1]);
-        }
+    /** Size and palette (0: a truecolor PNG) of a finished candidate file. */
+    private static function file_fields($path) {
+        $info = getimagesize($path);
+        return array('palette' => MG_Image_Utils::png_palette_size($path), 'width' => (int) $info[0], 'height' => (int) $info[1]);
     }
+
 
     /**
      * Design-flow upscale input, right before the upscale (not at generation,
@@ -1168,13 +1150,13 @@ class MG_AI_Redesign {
         if (!@copy($tmp_path, $path)) {
             throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
         }
-        $palette = self::palette_or_keep($path);
         self::refresh_attachment_metadata($candidate['attachment_id'], $path);
+        // With the palette setting on, the browser sent the Design-flow palette PNG.
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array_merge(array(
             'upscale' => 'ai' . $scale . 'x',
             // The setting's model (the browser ran the one its page was opened with).
             'upscale_model' => self::get_settings()['upscaler'],
-        ), $palette)));
+        ), self::file_fields($path))));
     }
 
     /**
@@ -1250,10 +1232,10 @@ class MG_AI_Redesign {
             }
             $chosen['upscale'] = $factor > 1 ? 'lanczos' . $factor . 'x' : 'native';
         }
-        if ($fallback || (empty($chosen['palette']) && !empty(self::get_settings()['palette']))) {
-            // The palette finish (when on) for the fallback and for candidates from before
-            // 2.42.12; with it off, the fallback's new size.
-            $chosen = array_merge($chosen, self::palette_or_keep($path));
+        if ($fallback) {
+            // The palette finish runs in the browser (Design-flow's), so the sharp
+            // enlargement stays RGBA; this server's ImageMagick 7 broke the colors in it.
+            $chosen = array_merge($chosen, self::file_fields($path));
             self::refresh_attachment_metadata($chosen['attachment_id'], $path);
         }
         $previous = array(

@@ -40,6 +40,7 @@ async function main() {
         await page.evaluate(() => {
             window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', models: { 2: '/assets/models/realcugan-up2x-conservative/', 3: '/assets/models/realcugan-up3x-conservative/', esrgan: '/assets/models/realesr-general-x4v3/' } };
         });
+        await page.addScriptTag({ url: '/assets/js/palette-png.js' });
         await page.addScriptTag({ url: '/assets/js/ai-upscale.js' });
         const result = await page.evaluate(async () => {
             async function run(draw, size, factor, upscaler) {
@@ -48,6 +49,7 @@ async function main() {
                 draw(c.getContext('2d'));
                 const progress = [];
                 const blob = await MGAIUpscale.upscale(c.toDataURL('image/png'), p => progress.push(p), factor, upscaler);
+            const colorType = new Uint8Array(await blob.arrayBuffer())[25];
                 const bmp = await createImageBitmap(blob);
                 const o = document.createElement('canvas');
                 o.width = bmp.width;
@@ -72,7 +74,7 @@ async function main() {
                     }
                 }
                 const std = Math.sqrt(Math.max(0, sq / n - (sum / n) ** 2));
-                return { type: blob.type, w: o.width, h: o.height, progress, edge, dark, std, at: { corner: at(2, 2), center: at(o.width / 2, o.height * 0.375) } };
+                return { type: blob.type, colorType, w: o.width, h: o.height, progress, edge, dark, std, at: { corner: at(2, 2), center: at(o.width / 2, o.height * 0.375) } };
             }
             const transparent = await run(g => {
                 g.fillStyle = '#e8562a';
@@ -141,6 +143,10 @@ async function main() {
                 g.fillStyle = '#e8562a';
                 g.fillRect(12, 12, 40, 40);
             }, 64, 2, 'esrgan');
+            // The Design-flow palette finish (palette setting on): an indexed PNG, colors kept.
+            window.MG_AI_UPSCALE.palette = true;
+            const palette = await run(drawLogo, 96, 3);
+            window.MG_AI_UPSCALE.palette = false;
             // Freed textures go back to the GPU instead of a pool that grew to 2.6 GB.
             const gpuMB = tf.memory().numBytesInGPUAllocated / 1e6;
             // A lost WebGL context reads back zeros: the upscale fails instead of saving a black design.
@@ -164,7 +170,7 @@ async function main() {
             } catch (e) {
                 lost = e.message;
             }
-            return { transparent, opaque, grain, twice, esrgan, esrganGrain, esrgan2, gpuMB, lost };
+            return { transparent, opaque, grain, twice, esrgan, esrganGrain, esrgan2, palette, gpuMB, lost };
         });
         const t = result.transparent;
         assert.equal(t.type, 'image/png');
@@ -199,6 +205,12 @@ async function main() {
         assert.deepEqual([e2.w, e2.h], [128, 128], 'Real-ESRGAN 2× size');
         assert.ok(e2.at.corner.every((v, k) => k === 3 ? v === 255 : v >= 250), 'Real-ESRGAN 2×: white kept: ' + e2.at.corner);
         [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(e2.at.center[k] - v) <= 6, 'Real-ESRGAN 2×: fill color kept: ' + e2.at.center));
+        const pl = result.palette;
+        assert.equal(t.colorType, 6, 'palette off: an RGBA PNG');
+        assert.equal(pl.colorType, 3, 'palette on: an indexed PNG');
+        assert.deepEqual([pl.w, pl.h], [288, 288], 'palette PNG keeps the exact 3× size');
+        assert.equal(pl.at.corner[3], 0, 'palette: transparent area stays transparent');
+        [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(pl.at.center[k] - v) <= 6, 'palette: fill color kept: ' + pl.at.center));
         assert.ok(result.gpuMB < 100, 'GPU textures are freed: ' + result.gpuMB.toFixed(0) + ' MB allocated');
         assert.notEqual(result.lost, 'resolved', 'a lost WebGL context fails the upscale');
         assert.deepEqual(errors, []);

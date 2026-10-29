@@ -6,8 +6,8 @@
  * request), every card shows the original and the new design side by side,
  * and only the approved cards are upscaled in the browser (3× with
  * Real-CUGAN or 4× with Real-ESRGAN, 2× or, when large enough, not at all),
- * finished (a palette PNG when that is on) and queued for mockup
- * regeneration at the end.
+ * finished in the browser (the Design-flow palette PNG when that is on) and
+ * queued for mockup regeneration at the end.
  */
 (function ($) {
     'use strict';
@@ -243,9 +243,7 @@
             return '';
         }
         const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
-        // palette_error: this server's ImageMagick lost the colors, the PNG stayed unpaletted.
-        return 'Végleges: ' + [how, c.palette ? c.palette + ' színes paletta' : '', size].filter(Boolean).join(' · ') + ' – '
-            + (c.palette_error ? c.palette_error + ' ' : '');
+        return 'Végleges: ' + [how, c.palette ? c.palette + ' színes paletta' : '', size].filter(Boolean).join(' · ') + ' – ';
     }
 
     // item.note overrides the status text until the next status change clears it.
@@ -475,7 +473,7 @@
                             item.fin = 0.1 + 0.7 * p;
                             render(item);
                         }, factor);
-                        item.note = 'A felskálázott PNG feltöltése' + ((window.MG_AI_UPSCALE || {}).palette ? ' és palettázása' : '') + '…';
+                        item.note = 'A felskálázott PNG feltöltése…';
                         item.fin = 0.85;
                         render(item);
                         const resp = await upload(item, blob);

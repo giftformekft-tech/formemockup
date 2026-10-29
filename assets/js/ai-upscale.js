@@ -16,7 +16,8 @@
  *
  * Transparent designs: colors are bled into the fully transparent area first
  * (no dark fringes), the alpha channel is enlarged bicubically, as
- * realcugan-ncnn-vulkan does.
+ * realcugan-ncnn-vulkan does. With the palette setting on, the result is the
+ * Design-flow 255-color palette PNG (assets/js/palette-png.js).
  */
 (function () {
     'use strict';
@@ -594,6 +595,11 @@
         }
         if (onProgress) {
             onProgress(1);
+        }
+        if (config().palette && window.MGPalettePng) {
+            // The Design-flow palette finish (assets/js/palette-png.js): Pillow's FASTOCTREE, 255 colors.
+            const finished = await window.MGPalettePng.finish(out, ow, oh, 255);
+            return new Blob([finished.png], { type: 'image/png' });
         }
         const result = document.createElement('canvas');
         result.width = ow;

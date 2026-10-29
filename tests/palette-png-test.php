@@ -1,8 +1,9 @@
 <?php
 /**
  * php tests/palette-png-test.php
- * MG_Image_Utils::to_palette_png() on real Imagick: the AI redesign's
- * Design-flow style finish (255-color palette PNG, antialiased alpha kept).
+ * On real Imagick: the AI redesign's upscale input preparation, its color
+ * guard, and reading back the browser's palette PNG. The palette itself is
+ * made in the browser (assets/js/palette-png.js, tests/palette-png-reference-test.py).
  */
 define('ABSPATH', __DIR__);
 if (!class_exists('Imagick')) {
@@ -27,127 +28,31 @@ function chunks($path) {
     }
     return $out;
 }
-function pixels($path) {
-    $im = new Imagick($path);
-    $im->setImageFormat('rgba');
-    $im->setImageDepth(8);
-    $raw = $im->getImageBlob();
-    $size = array($im->getImageWidth(), $im->getImageHeight());
-    $im->clear();
-    return array($raw, $size);
-}
 
 $dir = sys_get_temp_dir() . '/mg-palette-' . bin2hex(random_bytes(4));
 mkdir($dir);
-// 600×600 transparent canvas: a gradient disc with antialiased edges, then outlined text.
-$disc = new Imagick();
-$disc->newImage(600, 600, new ImagickPixel('transparent'));
-$draw = new ImagickDraw();
-$draw->setFillColor('#ffffff');
-$draw->circle(300, 260, 300, 90);
-$disc->drawImage($draw);
-$src = new Imagick();
-$src->newPseudoImage(600, 600, 'gradient:#ffee00-#ff0000');
-$src->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
-$src->compositeImage($disc, Imagick::COMPOSITE_DSTIN, 0, 0);
-$text = new ImagickDraw();
-$text->setFillColor('#ffffff');
-$text->setStrokeColor('#000000');
-$text->setStrokeWidth(6);
-$text->setFontSize(80);
-$text->annotation(170, 520, 'SZEP');
-$src->drawImage($text);
-$src->setImageFormat('png');
-$path = "$dir/design.png";
-$src->writeImage($path);
-list($before, $size_before) = pixels($path);
 
-$result = MG_Image_Utils::to_palette_png($path, 255);
-$c = chunks($path);
-$ihdr = unpack('Nw/Nh/Cdepth/Ctype', $c['IHDR']);
-check($ihdr['type'] === 3 && $ihdr['depth'] === 8, 'indexed 8-bit PNG (color type 3)');
-check(strlen($c['PLTE']) / 3 <= 256 && $result['colors'] <= 256 && $result['colors'] > 20, 'at most 256 palette entries: ' . $result['colors']);
-check(isset($c['tRNS']) && strlen($c['tRNS']) > 1, 'full tRNS table, not a single transparent color');
-check($result['width'] < 600 && $result['height'] < 600 && array($ihdr['w'], $ihdr['h']) === array($result['width'], $result['height']), 'transparent margins trimmed');
-
-list($after) = pixels($path);
-$alphas = $transparent_rgb = 0;
-$levels = array();
-for ($i = 0; $i < strlen($after); $i += 4) {
-    $a = ord($after[$i + 3]);
-    $levels[$a] = 1;
-    if ($a === 0 && substr($after, $i, 3) !== "\0\0\0") {
-        $transparent_rgb++;
-    }
-    if ($a > 0 && $a < 6) {
-        $alphas++;
-    }
-}
-check(count($levels) > 10, 'antialiased edges keep partial alpha: ' . count($levels) . ' levels');
-check($transparent_rgb === 0, 'fully transparent pixels have RGB 0');
-check($alphas === 0, 'alpha below 6 became fully transparent');
-
-// Color fidelity over a solid background, inside the trimmed area.
-$orig = new Imagick();
-$orig->readImageBlob($src->getImageBlob());
-$orig->trimImage(0);
-$orig->setImagePage(0, 0, 0, 0);
-$conv = new Imagick($path);
-foreach (array($orig, $conv) as $im) {
-    $im->setImageBackgroundColor('#00aa00');
-}
-$a = $orig->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
-$b = $conv->mergeImageLayers(Imagick::LAYERMETHOD_FLATTEN);
-$psnr = $a->compareImages($b, Imagick::METRIC_PEAKSIGNALTONOISERATIO)[1];
-check($psnr > 35, sprintf('colors kept (PSNR %.1f dB)', $psnr));
-
-// A file that already is a palette PNG stays valid on a second pass.
-$again = MG_Image_Utils::to_palette_png($path, 255);
-check($again['width'] === $result['width'] && chunks($path)['IHDR'] === $c['IHDR'], 'idempotent on its own output');
-
-// A fully opaque design keeps working (no tRNS needed).
-$opaque = new Imagick();
-$opaque->newImage(40, 30, new ImagickPixel('#123456'));
-$opaque->setImageFormat('png');
-$opaque->writeImage("$dir/opaque.png");
-$r = MG_Image_Utils::to_palette_png("$dir/opaque.png", 255);
-check($r['colors'] === 1 && !isset(chunks("$dir/opaque.png")['tRNS']), 'opaque single-color design');
-
-// Opaque white background with a small mark: cropped by alpha only, so nothing is cut.
-$white = new Imagick();
-$white->newImage(200, 100, new ImagickPixel('#ffffff'));
+// The browser's palette PNG is read back by its PLTE; any other file counts 0.
 $mark = new ImagickDraw();
 $mark->setFillColor('#cc0000');
 $mark->rectangle(90, 40, 110, 60);
+$white = new Imagick();
+$white->newImage(200, 100, new ImagickPixel('#ffffff'));
 $white->drawImage($mark);
 $white->setImageFormat('png');
 $white->writeImage("$dir/white.png");
-$r = MG_Image_Utils::to_palette_png("$dir/white.png", 255);
-check(array($r['width'], $r['height']) === array(200, 100), 'opaque white margins are kept (no color trim)');
-
-// Artwork touching the top-left corner, transparent on the right and bottom.
-$corner = new Imagick();
-$corner->newImage(100, 80, new ImagickPixel('transparent'));
-$block = new ImagickDraw();
-$block->setFillColor('#00aa00');
-$block->rectangle(0, 0, 59, 39);
-$corner->drawImage($block);
-$corner->setImageFormat('png');
-$corner->writeImage("$dir/corner.png");
-$r = MG_Image_Utils::to_palette_png("$dir/corner.png", 255);
-check(array($r['width'], $r['height']) === array(60, 40), 'cropped to the alpha bounds: ' . $r['width'] . 'x' . $r['height']);
-
-// Fully transparent input is refused instead of producing an empty print.
-$empty = new Imagick();
-$empty->newImage(10, 10, new ImagickPixel('transparent'));
-$empty->setImageFormat('png');
-$empty->writeImage("$dir/empty.png");
-try {
-    MG_Image_Utils::to_palette_png("$dir/empty.png", 255);
-    check(false, 'fully transparent input refused');
-} catch (RuntimeException $e) {
-    check(strpos($e->getMessage(), 'teljesen átlátszó') !== false, 'fully transparent input refused');
-}
+$indexed = clone $white;
+$indexed->setImageFormat('png8');
+$indexed->writeImage("$dir/indexed.png");
+check(ord(chunks("$dir/indexed.png")['IHDR'][9]) === 3, 'fixture: an indexed PNG');
+check(MG_Image_Utils::png_palette_size("$dir/indexed.png") === strlen(chunks("$dir/indexed.png")['PLTE']) / 3, 'palette size from PLTE: ' . MG_Image_Utils::png_palette_size("$dir/indexed.png"));
+$truecolor = clone $white;
+$truecolor->setImageFormat('png');
+$truecolor->setOption('png:color-type', '6');
+$truecolor->writeImage("$dir/truecolor.png");
+check(ord(chunks("$dir/truecolor.png")['IHDR'][9]) === 6 && MG_Image_Utils::png_palette_size("$dir/truecolor.png") === 0, 'a truecolor PNG has no palette');
+file_put_contents("$dir/not.png", 'GIF89a');
+check(MG_Image_Utils::png_palette_size("$dir/not.png") === 0 && MG_Image_Utils::png_palette_size("$dir/missing.png") === 0, 'not a PNG, or missing: 0');
 
 // Upscale input preparation (Design-flow): edge cleanup, binary alpha (optional), alpha crop.
 function px_at($path, $x, $y) {
@@ -221,28 +126,24 @@ $r = MG_Image_Utils::prepare_upscale_input("$dir/white.png", true);
 check(!$r['changed'] && file_get_contents("$dir/white.png") === $before, 'opaque image untouched');
 
 // The color guard (ImageMagick 7.1.2 Q16-HDRI blackened designs): what a
-// quantize or crop does passes, a blackened design throws COLOR_LOSS.
+// crop does passes, a blackened design throws COLOR_LOSS.
 $design = new Imagick();
 $design->newImage(60, 40, new ImagickPixel('transparent'));
 $draw = new ImagickDraw();
 $draw->setFillColor('#e8b020');
 $draw->rectangle(10, 5, 49, 34);
 $design->drawImage($draw);
-$design->setImageFormat('rgba');
-$design->setImageDepth(8);
-$raw = $design->getImageBlob();
-$mean = MG_Image_Utils::visible_color_mean($design);
-check($mean !== null && abs($mean[0] - 232) < 1 && abs($mean[1] - 176) < 1 && abs($mean[2] - 32) < 1, 'visible mean of the Imagick image: ' . implode(',', array_map('round', $mean ?: array())));
-check(MG_Image_Utils::visible_color_mean($raw, 60, 40) == $mean, 'raw RGBA bytes give the same mean');
+$probe = MG_Image_Utils::opaque_probe($design);
+$mean = MG_Image_Utils::probe_mean(null, $probe);
+check($mean !== null && abs($mean[0] - 232) < 1 && abs($mean[1] - 176) < 1 && abs($mean[2] - 32) < 1, 'probe mean of the opaque pixels: ' . implode(',', array_map('round', $mean ?: array())));
 MG_Image_Utils::assert_colors_kept($mean, array($mean[0] - 6, $mean[1] + 4, $mean[2]), 'test');
-check(true, 'a few levels of quantize shift pass');
+check(true, 'a shift of a few levels passes');
 try {
-    MG_Image_Utils::assert_colors_kept($mean, array(0, 0, 0), 'a 255 színes palettás átalakítás');
+    MG_Image_Utils::assert_colors_kept($mean, array(0, 0, 0), 'a felskálázás előtti előkészítés');
     check(false, 'a blackened design throws');
 } catch (RuntimeException $e) {
-    check($e->getCode() === MG_Image_Utils::COLOR_LOSS && strpos($e->getMessage(), 'ImageMagick') !== false && strpos($e->getMessage(), 'palettás') !== false, 'a blackened design throws COLOR_LOSS: ' . $e->getMessage());
+    check($e->getCode() === MG_Image_Utils::COLOR_LOSS && strpos($e->getMessage(), 'ImageMagick') !== false && strpos($e->getMessage(), 'előkészítés') !== false, 'a blackened design throws COLOR_LOSS: ' . $e->getMessage());
 }
-$probe = MG_Image_Utils::opaque_probe($design);
 $cropped = clone $design;
 $cropped->cropImage(40, 30, 10, 5);
 $cropped->setImagePage(0, 0, 0, 0);

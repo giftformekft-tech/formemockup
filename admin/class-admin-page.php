@@ -76,11 +76,19 @@ class MG_Admin_Page {
 
         // AI redesign: in-browser Real-CUGAN upscaling; TensorFlow.js and the
         // model load only when an upscale actually starts.
+        $palette_path = plugin_dir_path(__FILE__) . '../assets/js/palette-png.js';
+        wp_enqueue_script(
+            'mg-palette-png',
+            plugins_url('../assets/js/palette-png.js', __FILE__),
+            array(),
+            file_exists($palette_path) ? filemtime($palette_path) : '1.0.0',
+            true
+        );
         $upscale_path = plugin_dir_path(__FILE__) . '../assets/js/ai-upscale.js';
         wp_enqueue_script(
             'mg-ai-upscale',
             plugins_url('../assets/js/ai-upscale.js', __FILE__),
-            array(),
+            array('mg-palette-png'),
             file_exists($upscale_path) ? filemtime($upscale_path) : '1.0.0',
             true
         );
