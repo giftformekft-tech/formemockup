@@ -1261,7 +1261,7 @@
                 $status().text('AI felskálázás indul (első alkalommal a modell betöltése is pár másodperc)…');
                 return window.MGAIUpscale.upscale(prepared.data.full, function (p) {
                     if (pid === productId) {
-                        $status().text('AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
+                        $status().text('AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be a lapot (másik fülre átválthatsz).');
                     }
                 }, factor, prepared.data.upscale_engine, prepared.data.palette_finish);
             }).then(function (blob) {

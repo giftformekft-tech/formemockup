@@ -469,7 +469,7 @@
                         item.fin = 0.1;
                         render(item);
                         const blob = await window.MGAIUpscale.upscale(item.candidate.full, function (p) {
-                            item.note = 'AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
+                            item.note = 'AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot (másik fülre átválthatsz).';
                             item.fin = 0.1 + 0.7 * p;
                             render(item);
                         }, factor, item.candidate.upscale_engine, item.candidate.palette_finish);

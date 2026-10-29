@@ -179,6 +179,14 @@ színkorrekció (a modell egymagában ~5%-kal sötétíti a sötét tónusokat) 
 átlagát teszi vissza, így a generált kép pixelszemcséjét nem hozza vissza foltokként (a teszt
 szemcsés fehérjén 1,5 helyett 0,26 szórás; a Real-CUGAN-é 0,12, a fehér felületen így is simább).
 
+**Háttérben is fut (2.44.10):** a felskálázás akkor is halad, ha másik fülre váltasz (a lapot
+bezárni vagy frissíteni nem szabad). Korábban minden csempe után egy képkockára várt
+(`tf.nextFrame`, `requestAnimationFrame`), ami háttérbe tett fülön nem jön, így a felskálázás
+megállt; most `MessageChannel`-üzenettel ad szünetet, és az eredményt szinkron olvassa vissza
+(`dataSync`), mert az aszinkron olvasás időzítői háttérben másodpercenként, öt perc után
+percenként futnak. Teszt: a böngészős teszt egy háttérfület szimulál (nincs képkocka, az időzítők
+legalább 1 mp-esek). A minimalizált ablak ugyanígy viselkedik.
+
 **Videomemória és hibás eredmény (2.44.5):** a TensorFlow.js minden felszabadított textúrát
 megtartott (egy futás után ~2,6 GB), laptop-GPU-n a böngésző ilyenkor elveszíti a WebGL-t, és
 hibaüzenet nélkül nullákat (fekete mintát) ad vissza. Most a textúrák azonnal felszabadulnak, és

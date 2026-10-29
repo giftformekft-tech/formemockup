@@ -214,7 +214,37 @@ async function main() {
         assert.ok(result.gpuMB < 100, 'GPU textures are freed: ' + result.gpuMB.toFixed(0) + ' MB allocated');
         assert.notEqual(result.lost, 'resolved', 'a lost WebGL context fails the upscale');
         assert.deepEqual(errors, []);
-        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, Real-ESRGAN 4× and 2×, colors, alpha, grain std ' + gr.std.toFixed(2) + ' / ' + eg.std.toFixed(2) + ', GPU ' + result.gpuMB.toFixed(0) + ' MB, lost context: ' + result.lost + ').');
+
+        // A background tab: no animation frames at all, timers at most once a
+        // second. The upscale used to wait for a frame after every tile and stopped.
+        const hidden = await browser.newPage();
+        await hidden.addInitScript(() => {
+            window.requestAnimationFrame = () => 0;
+            const timeout = window.setTimeout;
+            window.setTimeout = (fn, delay, ...args) => timeout(fn, Math.max(1000, delay || 0), ...args);
+        });
+        await hidden.goto(`http://localhost:${server.address().port}/`);
+        await hidden.evaluate(() => {
+            window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', models: { 2: '/assets/models/realcugan-up2x-conservative/', 3: '/assets/models/realcugan-up3x-conservative/', esrgan: '/assets/models/realesr-general-x4v3/' } };
+        });
+        await hidden.addScriptTag({ url: '/assets/js/palette-png.js' });
+        await hidden.addScriptTag({ url: '/assets/js/ai-upscale.js' });
+        const background = await hidden.evaluate(async () => {
+            const c = document.createElement('canvas');
+            c.width = c.height = 160;
+            const g = c.getContext('2d');
+            g.fillStyle = '#e8562a';
+            g.fillRect(10, 10, 140, 140);
+            g.fillStyle = '#1d3557';
+            g.fillRect(40, 40, 80, 30);
+            const run = (factor, upscaler) => Promise.race([
+                MGAIUpscale.upscale(c.toDataURL('image/png'), null, factor, upscaler).then(b => b.size),
+                new Promise(resolve => setTimeout(() => resolve('stalled'), 240000)),
+            ]);
+            return { esrgan: await run(4, 'esrgan'), cugan: await run(3, 'cugan') };
+        });
+        assert.ok(typeof background.esrgan === 'number' && typeof background.cugan === 'number', 'a background tab finishes both models: ' + JSON.stringify(background));
+        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, Real-ESRGAN 4× and 2×, colors, alpha, grain std ' + gr.std.toFixed(2) + ' / ' + eg.std.toFixed(2) + ', GPU ' + result.gpuMB.toFixed(0) + ' MB, lost context: ' + result.lost + ', background tab: finished).');
     } finally {
         await browser.close();
         server.close();

@@ -335,7 +335,7 @@
                     return out;
                 });
                 for (const name of Object.keys(totals)) {
-                    const v = await gpu.read(totals[name]);
+                    const v = gpu.read(totals[name]);
                     totals[name].dispose();
                     const acc = sums[name] = sums[name] || new Float64Array(v.length);
                     for (let c = 0; c < v.length; c++) {
@@ -344,7 +344,7 @@
                 }
                 count += batch.length;
                 onStep(batch.length);
-                await tf.nextFrame();
+                await yieldTask();
             }
         }
         const gaps = {};
@@ -408,41 +408,40 @@
     const GPU_FAILED = 'A videokártya menet közben hibás eredményt adott, ezért a felskálázás nem menthető.';
 
     /**
-     * Reads tensors while watching the WebGL context: a lost context reads back
-     * zeros without an error, or never finishes a read.
+     * Reads tensors synchronously (readPixels): an asynchronous read polls its
+     * fence with timers, which a background tab slows to one a second, after
+     * five minutes to one a minute. A lost WebGL context reads back zeros
+     * without an error, so it is checked around every read.
      */
     function gpuReader(tf) {
         const backend = tf.backend();
         const gl = backend && backend.gpgpu && backend.gpgpu.gl;
-        const error = function () {
-            return new Error(GPU_FAILED + ' (a böngésző elvesztette a WebGL-t – frissítsd az oldalt)');
-        };
-        let onLost = null;
-        const lost = new Promise(function (resolve, reject) {
-            onLost = function () { reject(error()); };
-        });
-        lost.catch(function () {});
-        if (gl && gl.canvas) {
-            gl.canvas.addEventListener('webglcontextlost', onLost);
-        }
         const check = function () {
             if (gl && gl.isContextLost()) {
-                throw error();
+                throw new Error(GPU_FAILED + ' (a böngésző elvesztette a WebGL-t – frissítsd az oldalt)');
             }
         };
         return {
-            read: async function (tensor) {
+            read: function (tensor) {
                 check();
-                const data = await Promise.race([tensor.data(), lost]);
+                const data = tensor.dataSync();
                 check();
                 return data;
             },
-            close: function () {
-                if (gl && gl.canvas) {
-                    gl.canvas.removeEventListener('webglcontextlost', onLost);
-                }
-            },
         };
+    }
+
+    /**
+     * Lets the page breathe between tiles. tf.nextFrame() waits for an
+     * animation frame, which a background tab never gets (the upscale stopped
+     * while another tab was open); a message is delivered there too.
+     */
+    function yieldTask() {
+        return new Promise(function (resolve) {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = function () { resolve(); };
+            channel.port2.postMessage(null);
+        });
     }
 
     /** Share of the visible pixels that are not black (RGBA bytes). */
@@ -552,7 +551,7 @@
                         return model.esrgan ? runEsrgan(tf, model, input, th, tw) : runGraph(tf, model, input, gaps, null).mul(255);
                     });
                     rowLen = result.shape[2];
-                    d = await gpu.read(result);
+                    d = gpu.read(result);
                     result.dispose();
                     for (let i = 0; i < d.length; i++) {
                         if (d[i] !== d[i]) {
@@ -577,11 +576,10 @@
                 }
                 if (!fill) {
                     step(1);
-                    await tf.nextFrame();
+                    await yieldTask();
                 }
             }
         } finally {
-            gpu.close();
             if (gaps) {
                 Object.keys(gaps).forEach(function (name) { gaps[name].dispose(); });
             }
