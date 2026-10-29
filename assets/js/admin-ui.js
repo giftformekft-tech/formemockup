@@ -1263,7 +1263,7 @@
                     if (pid === productId) {
                         $status().text('AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be az ablakot.');
                     }
-                }, factor);
+                }, factor, prepared.data.upscale_engine, prepared.data.palette_finish);
             }).then(function (blob) {
                 if (!blob) {
                     return { success: true, native: true };

@@ -1154,8 +1154,8 @@ class MG_AI_Redesign {
         // With the palette setting on, the browser sent the Design-flow palette PNG.
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array_merge(array(
             'upscale' => 'ai' . $scale . 'x',
-            // The setting's model (the browser ran the one its page was opened with).
-            'upscale_model' => self::get_settings()['upscaler'],
+            // 3× is only Real-CUGAN, 4× only Real-ESRGAN; 2× was the setting's.
+            'upscale_model' => $scale === 3 ? 'cugan' : ($scale === 4 ? 'esrgan' : self::get_settings()['upscaler']),
         ), self::file_fields($path))));
     }
 
@@ -1195,8 +1195,12 @@ class MG_AI_Redesign {
         $version = is_string($file) && is_file($file) ? (string) filemtime($file) : '';
         $candidate['preview'] = self::versioned_url((string) wp_get_attachment_image_url($candidate['attachment_id'], 'medium'), $version);
         $candidate['full'] = self::versioned_url((string) wp_get_attachment_url($candidate['attachment_id']), $version);
-        // What the browser's upscale will do with it (1: nothing, it is large enough).
+        // What the browser's upscale will do with it (1: nothing, it is large enough),
+        // with which model and finish: from the settings now, not when its page was opened.
         $candidate['upscale_factor'] = $candidate['upscale'] === 'none' ? self::upscale_factor($candidate['width'] ?? 0, $candidate['height'] ?? 0) : 0;
+        $settings = self::get_settings();
+        $candidate['upscale_engine'] = $settings['upscaler'];
+        $candidate['palette_finish'] = !empty($settings['palette']);
         return $candidate;
     }
 

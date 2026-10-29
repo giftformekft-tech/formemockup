@@ -2,9 +2,12 @@
  * AI upscaling in the admin's browser, run by TensorFlow.js on WebGL. The
  * models and the library ship with the plugin, so no external service is called.
  *
- * window.MGAIUpscale.upscale(imageUrl, onProgress, factor, upscaler) -> Promise<Blob> (PNG)
+ * window.MGAIUpscale.upscale(imageUrl, onProgress, factor, upscaler, palette) -> Promise<Blob> (PNG)
  *
- * upscaler (default: the admin setting) picks the model:
+ * upscaler and palette come with the candidate from the server (upscale_engine,
+ * palette_finish), so a page opened before the settings changed still runs the
+ * model the server's factor is for; without them, the page's settings apply.
+ * upscaler picks the model:
  * - 'cugan', factor 3 or 2: Real-CUGAN up3x/up2x-conservative (the models-se
  *   weights of realcugan-ncnn-vulkan, MIT), the same models and tiling as the
  *   Design-flow app. Made for drawn art: flat areas stay flat, colors are kept
@@ -456,9 +459,10 @@
         return visible ? lit / visible : 0;
     }
 
-    async function upscale(url, onProgress, factor, upscaler) {
+    async function upscale(url, onProgress, factor, upscaler, palette) {
         const tf = await ensureTf();
-        const model = (upscaler || config().upscaler) === 'esrgan'
+        // 4× exists only as Real-ESRGAN.
+        const model = factor === 4 || (upscaler || config().upscaler) === 'esrgan'
             ? await ensureEsrgan(tf, factor)
             : await ensureModel(tf, factor || 3);
         const tileSize = model.esrgan ? ESRGAN_TILE : TILE;
@@ -596,7 +600,7 @@
         if (onProgress) {
             onProgress(1);
         }
-        if (config().palette && window.MGPalettePng) {
+        if ((palette === undefined ? config().palette : palette) && window.MGPalettePng) {
             // The Design-flow palette finish (assets/js/palette-png.js): Pillow's FASTOCTREE, 255 colors.
             const finished = await window.MGPalettePng.finish(out, ow, oh, 255);
             return new Blob([finished.png], { type: 'image/png' });

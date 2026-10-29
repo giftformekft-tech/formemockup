@@ -472,7 +472,7 @@
                             item.note = 'AI felskálázás ' + factor + '×: ' + Math.round(p * 100) + '% – ne zárd be és ne frissítsd a lapot.';
                             item.fin = 0.1 + 0.7 * p;
                             render(item);
-                        }, factor);
+                        }, factor, item.candidate.upscale_engine, item.candidate.palette_finish);
                         item.note = 'A felskálázott PNG feltöltése…';
                         item.fin = 0.85;
                         render(item);
