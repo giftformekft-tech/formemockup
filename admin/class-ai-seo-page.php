@@ -66,11 +66,15 @@ class MG_AI_SEO_Page {
         echo '<p class="description">' . esc_html__('A GPT Image ebben a méretben rajzolja a mintát, a minta képarányával (mindkét oldal 16-tal osztható, legfeljebb 3:1, 0,66–8,3 MP, legfeljebb 3840×2160). 2560×1440 képpont fölött az OpenAI kísérletinek jelöli. Nagyobb felbontás drágább és lassabb (2 MP fölött 5 perc az időkorlát). Az AI felskálázás ehhez igazodik: 3×, ha a hosszabbik oldal így legfeljebb 5120 px, különben 2×, 2560 px fölött nincs felskálázás. Az egyedi ablakban a minta pontos méretei közül, a tömegesben a hosszabbik oldal szerint lehet választani.', 'mockup-generator') . '</p></td></tr>';
         echo '<tr><th scope="row"><label for="mg_ai_redesign_upscaler">' . esc_html__('AI felskálázó', 'mockup-generator') . '</label></th><td>';
         echo '<select id="mg_ai_redesign_upscaler" name="mg_ai_redesign_settings[upscaler]">';
-        foreach (array('cugan' => __('Real-CUGAN 3× – simább felületek, lassabb (mint a Design-flow)', 'mockup-generator'), 'esrgan' => __('Real-ESRGAN 4× – gyors', 'mockup-generator')) as $value => $label) {
+        foreach (array(
+            'cugan' => __('Real-CUGAN 3× – simább felületek, lassabb (a Design-flow-ban is választható)', 'mockup-generator'),
+            'waifu2x' => __('waifu2x 4× – mint a Design-flow alapbeállítása (upconv_7 anime, zajszűrés nélkül)', 'mockup-generator'),
+            'esrgan' => __('Real-ESRGAN 4× – gyors', 'mockup-generator'),
+        ) as $value => $label) {
             echo '<option value="' . esc_attr($value) . '"' . selected($settings['upscaler'], $value, false) . '>' . esc_html($label) . '</option>';
         }
         echo '</select>';
-        echo '<p class="description">' . esc_html__('Mindkettő a böngészőben fut, a videokártyán. A Real-ESRGAN egyszerűbb hálózat: mérésünkben kb. 1,6× gyorsabb volt, és közben 4×-esre nagyít (a Real-CUGAN 3×-osra); átlátszó hátterű mintán a régi Real-ESRGAN-nál kb. kétszer gyorsabb. A generált kép finom szemcséjét nem teszi vissza, de a fehér felületeken a Real-CUGAN simább. Ha a 4× (vagy a Real-CUGAN 3×) a hosszabbik oldalt 5120 px fölé vinné, 2× lesz, 2560 px fölött nincs felskálázás.', 'mockup-generator') . '</p></td></tr>';
+        echo '<p class="description">' . esc_html__('Mindhárom a böngészőben fut, a videokártyán. A waifu2x ugyanaz a modell és ugyanaz a 4× (két 2×-es menet), mint a Design-flow alapbeállítása; rajzolt mintákhoz készült. Mérésünkben (96 px-es kép) a waifu2x 4× 14 mp, a Real-ESRGAN 4× 16 mp, a Real-CUGAN 3× 26 mp volt; a fehér felületeken a Real-CUGAN a legsimább. Ha a 4× (vagy a Real-CUGAN 3×) a hosszabbik oldalt 5120 px fölé vinné, 2× lesz, 2560 px fölött nincs felskálázás.', 'mockup-generator') . '</p></td></tr>';
         echo '<tr><th scope="row">' . esc_html__('255 színes palettás PNG', 'mockup-generator') . '</th><td>';
         echo '<input type="hidden" name="mg_ai_redesign_settings[palette]" value="0" />';
         echo '<label><input type="checkbox" name="mg_ai_redesign_settings[palette]" value="1"' . checked(!empty($settings['palette']), true, false) . ' /> ' . esc_html__('A felskálázott minta 255 színes palettát kap, mint a Design-flow-ban', 'mockup-generator') . '</label>';

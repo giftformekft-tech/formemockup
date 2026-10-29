@@ -24,6 +24,7 @@ class MG_AI_Redesign {
     const MAX_CANDIDATES = 6;
     // Real-CUGAN 3× or 2× in the browser; 4× came from the Real-ESRGAN pages before 2.43.9.
     const AI_SCALES = array(2, 3, 4);
+    const UPSCALERS = array('cugan', 'waifu2x', 'esrgan');
     // Longest side of the finished design: prints need about 3500–4700 px at 300 DPI.
     const MAX_UPSCALED_EDGE = 5120;
     const MAX_UPSCALED_BYTES = 83886080;
@@ -75,13 +76,14 @@ class MG_AI_Redesign {
             'edge_cleanup' => true,
             'alpha_binary' => true,
             'alpha_threshold' => 50,
-            // 'cugan' (Real-CUGAN 3×, smoother, slower) or 'esrgan' (Real-ESRGAN 4×, fast).
+            // 'cugan' (Real-CUGAN 3×, smoother, slower), 'waifu2x' (4×, Design-flow's
+            // default) or 'esrgan' (Real-ESRGAN 4×, fast).
             'upscaler' => 'cugan',
             // The Design-flow 255-color palette finish, made in the browser
             // (assets/js/palette-png.js; ImageMagick 7.1.2 HDRI broke the server's).
             'palette' => true,
         ), is_array($stored) ? $stored : array());
-        if (!in_array($settings['upscaler'], array('cugan', 'esrgan'), true)) {
+        if (!in_array($settings['upscaler'], self::UPSCALERS, true)) {
             $settings['upscaler'] = 'cugan';
         }
         if (trim((string) $settings['describe_prompt']) === '') {
@@ -110,7 +112,7 @@ class MG_AI_Redesign {
             'alpha_threshold' => array_key_exists('alpha_threshold', $input) && is_numeric($input['alpha_threshold'])
                 ? max(1, min(99, (int) round((float) $input['alpha_threshold'])))
                 : (int) $current['alpha_threshold'],
-            'upscaler' => isset($input['upscaler']) && in_array($input['upscaler'], array('cugan', 'esrgan'), true) ? $input['upscaler'] : $current['upscaler'],
+            'upscaler' => isset($input['upscaler']) && in_array($input['upscaler'], self::UPSCALERS, true) ? $input['upscaler'] : $current['upscaler'],
             'palette' => array_key_exists('palette', $input) ? !empty($input['palette']) : !empty($current['palette']),
         );
         $describe = isset($input['describe_prompt']) ? trim(sanitize_textarea_field($input['describe_prompt'])) : '';
@@ -1088,6 +1090,19 @@ class MG_AI_Redesign {
         }
     }
 
+    /**
+     * The model of a browser upload: 3× is only Real-CUGAN; 4× and 2× follow
+     * the setting, but a 4× under the Real-CUGAN setting came from Real-ESRGAN
+     * (a page from before 2.44.9).
+     */
+    protected static function upload_model($scale) {
+        $upscaler = self::get_settings()['upscaler'];
+        if ($scale === 3) {
+            return 'cugan';
+        }
+        return $scale === 4 && $upscaler === 'cugan' ? 'esrgan' : $upscaler;
+    }
+
     /** Size and palette (0: a truecolor PNG) of a finished candidate file. */
     private static function file_fields($path) {
         $info = getimagesize($path);
@@ -1154,20 +1169,19 @@ class MG_AI_Redesign {
         // With the palette setting on, the browser sent the Design-flow palette PNG.
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array_merge(array(
             'upscale' => 'ai' . $scale . 'x',
-            // 3× is only Real-CUGAN, 4× only Real-ESRGAN; 2× was the setting's.
-            'upscale_model' => $scale === 3 ? 'cugan' : ($scale === 4 ? 'esrgan' : self::get_settings()['upscaler']),
+            'upscale_model' => self::upload_model($scale),
         ), self::file_fields($path))));
     }
 
     /**
      * The AI upscale for a design of this size: 3× with Real-CUGAN (4× with
-     * Real-ESRGAN), or 2× if that would make the long side longer than
+     * waifu2x or Real-ESRGAN), or 2× if that would make the long side longer than
      * MAX_UPSCALED_EDGE, or none (1) for a large one (2K and 4K generations
      * are print-sized already).
      */
     public static function upscale_factor($width, $height) {
         $long = max((int) $width, (int) $height);
-        $factors = self::get_settings()['upscaler'] === 'esrgan' ? array(4, 2) : array(3, 2);
+        $factors = self::get_settings()['upscaler'] === 'cugan' ? array(3, 2) : array(4, 2);
         foreach ($factors as $factor) {
             if ($long > 0 && $long * $factor <= self::MAX_UPSCALED_EDGE) {
                 return $factor;

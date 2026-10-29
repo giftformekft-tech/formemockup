@@ -12,8 +12,11 @@
  *   weights of realcugan-ncnn-vulkan, MIT), the same models and tiling as the
  *   Design-flow app. Made for drawn art: flat areas stay flat, colors are kept
  *   without correction. Slower.
+ * - 'waifu2x', factor 4 or 2: waifu2x upconv_7_anime_style_art_rgb without
+ *   denoise (waifu2x-ncnn-vulkan's model, MIT), the Design-flow app's default
+ *   upscaler: its 2× model, run twice for 4× as waifu2x-ncnn-vulkan -s 4 does.
  * - 'esrgan', factor 4 or 2: Real-ESRGAN realesr-general-x4v3 (SRVGGNetCompact,
- *   BSD-3-Clause), a small plain network, several times less work per pixel;
+ *   BSD-3-Clause), a small plain network, faster than Real-CUGAN;
  *   2× is its 4× averaged down. Its color correction is low-passed, so it does
  *   not put back the pixel grain of the generated image.
  *
@@ -72,13 +75,14 @@
     }
 
     // model.json: the layer graph from tools/convert-realcugan.py; weights.bin: float32.
-    function ensureModel(tf, factor) {
-        const base = (config().models || {})[factor];
+    // key: 2 or 3 (Real-CUGAN) or 'waifu2x' (its 2× model).
+    function ensureModel(tf, key) {
+        const base = (config().models || {})[key];
         if (!base) {
-            return Promise.reject(new Error('Nincs ' + factor + '×-os felskálázó modell.'));
+            return Promise.reject(new Error('Nincs ' + (typeof key === 'number' ? key + '×-os' : key) + ' felskálázó modell.'));
         }
-        if (!modelPromises[factor]) {
-            const promise = modelPromises[factor] = Promise.all([
+        if (!modelPromises[key]) {
+            const promise = modelPromises[key] = Promise.all([
                 fetch(base + 'model.json').then(function (r) { if (!r.ok) { throw new Error('A modell leírója nem tölthető be.'); } return r.json(); }),
                 fetch(base + 'weights.bin').then(function (r) { if (!r.ok) { throw new Error('A modell súlyai nem tölthetők be.'); } return r.arrayBuffer(); }),
             ]).then(function (res) {
@@ -96,11 +100,13 @@
                         l.b = tensor(l.b);
                     }
                 });
+                // Squeeze-excitation inputs (Real-CUGAN only) need the shared statistics.
+                model.pools = model.layers.filter(function (l) { return l.type === 'Pooling'; }).length;
                 return model;
             });
-            promise.catch(function () { delete modelPromises[factor]; });
+            promise.catch(function () { delete modelPromises[key]; });
         }
-        return modelPromises[factor];
+        return modelPromises[key];
     }
 
     // Real-ESRGAN layer list: conv kernels [kh, kw, in, out], biases, PReLU alphas.
@@ -458,23 +464,14 @@
         return visible ? lit / visible : 0;
     }
 
-    async function upscale(url, onProgress, factor, upscaler, palette) {
-        const tf = await ensureTf();
-        // 4× exists only as Real-ESRGAN.
-        const model = factor === 4 || (upscaler || config().upscaler) === 'esrgan'
-            ? await ensureEsrgan(tf, factor)
-            : await ensureModel(tf, factor || 3);
+    /**
+     * One model pass over RGBA bytes px (w × h): the colors of the transparent
+     * area bled in place, the RGB enlarged by the model tile by tile, the alpha
+     * bicubically. onProgress gets 0–1 for this pass.
+     */
+    async function upscalePass(tf, model, px, w, h, onProgress) {
         const tileSize = model.esrgan ? ESRGAN_TILE : TILE;
         const SCALE = model.scale;
-        const img = await loadImage(url);
-        const w = img.naturalWidth, h = img.naturalHeight;
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        ctx.drawImage(img, 0, 0);
-        const px = ctx.getImageData(0, 0, w, h).data;
-        const inputColored = colored(px);
         let transparent = false;
         for (let i = 3; i < px.length; i += 4) {
             if (px[i] < 255) {
@@ -493,7 +490,6 @@
         }
         const ow = w * SCALE, oh = h * SCALE;
         const out = new Uint8ClampedArray(ow * oh * 4);
-
         const pad = model.prepadding;
         // Constant when every pixel of the tile and its context is the same
         // (the model keeps a flat area flat), or when all of it is invisible.
@@ -525,7 +521,7 @@
         }
         const work = tiles.filter(function (t) { return !constant(t[0], t[1], t[0] + t[2], t[1] + t[3]); });
         // One tile: its own statistics are exact. A gap sample costs about a fifth of a tile.
-        const gapSamples = !model.esrgan && work.length > 1 ? Math.ceil(h / GAP_TILE / 3) * Math.ceil(w / GAP_TILE / 3) : 0;
+        const gapSamples = model.pools && work.length > 1 ? Math.ceil(h / GAP_TILE / 3) * Math.ceil(w / GAP_TILE / 3) : 0;
         const total = work.length + gapSamples / 5 || 1;
         let done = 0;
         const step = function (units) {
@@ -591,7 +587,39 @@
                 out[i] = 255;
             }
         }
-        // Real-CUGAN keeps the colors; a black result is a failed GPU, not the design.
+        return { px: out, w: ow, h: oh };
+    }
+
+    async function upscale(url, onProgress, factor, upscaler, palette) {
+        const tf = await ensureTf();
+        let engine = upscaler || config().upscaler || 'cugan';
+        if (engine === 'cugan' && factor === 4) {
+            engine = 'esrgan'; // Real-CUGAN has no 4× here; a page from before 2.44.9 asked so.
+        }
+        const model = engine === 'esrgan'
+            ? await ensureEsrgan(tf, factor)
+            : await ensureModel(tf, engine === 'waifu2x' ? 'waifu2x' : (factor || 3));
+        // waifu2x 4×: its 2× model twice, as waifu2x-ncnn-vulkan -s 4 (Design-flow's default).
+        const passes = engine === 'waifu2x' && factor === 4 ? 2 : 1;
+        const img = await loadImage(url);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        let image = { px: ctx.getImageData(0, 0, canvas.width, canvas.height).data, w: canvas.width, h: canvas.height };
+        const inputColored = colored(image.px);
+        for (let pass = 0; pass < passes; pass++) {
+            // The second pass has four times the pixels: a fifth and four fifths of the bar.
+            const from = pass === 0 ? 0 : 0.2, span = passes === 1 ? 1 : (pass === 0 ? 0.2 : 0.8);
+            image = await upscalePass(tf, model, image.px, image.w, image.h, function (p) {
+                if (onProgress) {
+                    onProgress(Math.min(1, from + span * p));
+                }
+            });
+        }
+        const out = image.px, ow = image.w, oh = image.h;
+        // The models keep the colors; a black result is a failed GPU, not the design.
         if (inputColored > 0.05 && colored(out) < inputColored * 0.2) {
             throw new Error(GPU_FAILED + ' (fekete lett)');
         }

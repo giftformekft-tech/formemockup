@@ -367,6 +367,9 @@ check(MG_AI_Redesign::upscale_factor(2576, 1440) === 1 && MG_AI_Redesign::upscal
 MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan'));
 check(MG_AI_Redesign::upscale_factor(912, 736) === 4 && MG_AI_Redesign::upscale_factor(1280, 900) === 4, 'Real-ESRGAN up to 1280 px: 4×');
 check(MG_AI_Redesign::upscale_factor(1281, 900) === 2 && MG_AI_Redesign::upscale_factor(2576, 1440) === 1, 'Real-ESRGAN above: 2×, then none');
+// waifu2x (Design-flow's default): 4× like Real-ESRGAN.
+MG_AI_Redesign::save_settings(array('upscaler' => 'waifu2x'));
+check(MG_AI_Redesign::get_settings()['upscaler'] === 'waifu2x' && MG_AI_Redesign::upscale_factor(912, 736) === 4 && MG_AI_Redesign::upscale_factor(2000, 900) === 2, 'waifu2x: 4×, 2× above 1280 px');
 MG_AI_Redesign::save_settings(array('upscaler' => 'cugan'));
 
 
@@ -502,6 +505,18 @@ file_put_contents(get_attached_file(63), make_png(10, 10));
 file_put_contents($test_dir . '/up63.png', make_png(40, 40));
 $stored = MG_AI_Redesign::store_upscaled(11, 63, $test_dir . '/up63.png');
 check($stored['upscale'] === 'ai4x' && $stored['upscale_model'] === 'esrgan', 'Real-ESRGAN 4× upload accepted and labeled');
+MG_AI_Redesign::save_settings(array('upscaler' => 'waifu2x'));
+$meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 64, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(64), make_png(10, 10));
+check(MG_AI_Redesign::prepare_candidate(11, 64)['upscale_engine'] === 'waifu2x', 'the page is told to run waifu2x');
+file_put_contents($test_dir . '/up64.png', make_png(40, 40));
+check(MG_AI_Redesign::store_upscaled(11, 64, $test_dir . '/up64.png')['upscale_model'] === 'waifu2x', 'a waifu2x 4× upload is labeled waifu2x');
+MG_AI_Redesign::save_settings(array('upscaler' => 'cugan'));
+$meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 65, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(65), make_png(10, 10));
+file_put_contents($test_dir . '/up65.png', make_png(40, 40));
+check(MG_AI_Redesign::store_upscaled(11, 65, $test_dir . '/up65.png')['upscale_model'] === 'esrgan', 'a 4× upload under the Real-CUGAN setting came from Real-ESRGAN');
+MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan'));
 MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '1'));
 
 // ImageMagick 7.1.2 Q16-HDRI blackened the designs: a preparation that loses

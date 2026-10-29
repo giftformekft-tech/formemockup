@@ -78,8 +78,17 @@ def activation(p):
     raise ValueError('unsupported activation %d' % kind)
 
 
-def convert(src, dst):
+def convert(src, dst, meta=None):
+    """meta: model.json fields for another ncnn family (tools/convert-waifu2x.py);
+    the graph's input blob becomes in0 and its last output out0, as in Real-CUGAN."""
     layers = parse_param(src + '.param')
+    rename = {}
+    if layers[0]['type'] == 'Input':
+        rename[layers[0]['outs'][0]] = 'in0'
+    rename[layers[-1]['outs'][0]] = 'out0'
+    for layer in layers:
+        layer['ins'] = [rename.get(b, b) for b in layer['ins']]
+        layer['outs'] = [rename.get(b, b) for b in layer['outs']]
     reader = Reader(open(src + '.bin', 'rb').read())
     blobs = []
     offset = 0
@@ -132,14 +141,15 @@ def convert(src, dst):
         raise ValueError('weights left over: %d of %d bytes read' % (reader.off, len(reader.data)))
     os.makedirs(dst, exist_ok=True)
     np.concatenate(blobs).astype('<f4').tofile(os.path.join(dst, 'weights.bin'))
-    name = os.path.basename(src)
-    scale = int(name[2])  # up3x-...
-    meta = {
-        'name': 'realcugan-' + name, 'scale': scale,
-        # realcugan-ncnn-vulkan: context on each side and the size alignment the U-Nets need.
-        'prepadding': {2: 18, 3: 14, 4: 19}[scale], 'align': 4 if scale == 3 else 2,
-        'layers': out_layers,
-    }
+    if meta is None:
+        name = os.path.basename(src)
+        scale = int(name[2])  # up3x-...
+        meta = {
+            'name': 'realcugan-' + name, 'scale': scale,
+            # realcugan-ncnn-vulkan: context on each side and the size alignment the U-Nets need.
+            'prepadding': {2: 18, 3: 14, 4: 19}[scale], 'align': 4 if scale == 3 else 2,
+        }
+    meta = dict(meta, layers=out_layers)
     with open(os.path.join(dst, 'model.json'), 'w', encoding='ascii') as fh:
         json.dump(meta, fh, separators=(',', ':'))
     print('%s: %d layers, %d weights' % (dst, len(out_layers), offset))

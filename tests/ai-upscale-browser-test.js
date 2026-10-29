@@ -38,7 +38,7 @@ async function main() {
         page.on('pageerror', error => errors.push(error.message));
         await page.goto(`http://localhost:${server.address().port}/`);
         await page.evaluate(() => {
-            window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', models: { 2: '/assets/models/realcugan-up2x-conservative/', 3: '/assets/models/realcugan-up3x-conservative/', esrgan: '/assets/models/realesr-general-x4v3/' } };
+            window.MG_AI_UPSCALE = { tfUrl: '/assets/vendor/tfjs/tf.min.js?ver=4.22.0', models: { 2: '/assets/models/realcugan-up2x-conservative/', 3: '/assets/models/realcugan-up3x-conservative/', esrgan: '/assets/models/realesr-general-x4v3/', waifu2x: '/assets/models/waifu2x-upconv7-anime-2x/' } };
         });
         await page.addScriptTag({ url: '/assets/js/palette-png.js' });
         await page.addScriptTag({ url: '/assets/js/ai-upscale.js' });
@@ -143,6 +143,8 @@ async function main() {
                 g.fillStyle = '#e8562a';
                 g.fillRect(12, 12, 40, 40);
             }, 64, 2, 'esrgan');
+            // waifu2x upconv_7 (Design-flow's default): 4× as two 2× passes.
+            const waifu = await run(drawLogo, 96, 4, 'waifu2x');
             // The Design-flow palette finish (palette setting on): an indexed PNG, colors kept.
             window.MG_AI_UPSCALE.palette = true;
             const palette = await run(drawLogo, 96, 3);
@@ -170,7 +172,7 @@ async function main() {
             } catch (e) {
                 lost = e.message;
             }
-            return { transparent, opaque, grain, twice, esrgan, esrganGrain, esrgan2, palette, gpuMB, lost };
+            return { transparent, opaque, grain, twice, esrgan, esrganGrain, esrgan2, waifu, palette, gpuMB, lost };
         });
         const t = result.transparent;
         assert.equal(t.type, 'image/png');
@@ -205,6 +207,14 @@ async function main() {
         assert.deepEqual([e2.w, e2.h], [128, 128], 'Real-ESRGAN 2× size');
         assert.ok(e2.at.corner.every((v, k) => k === 3 ? v === 255 : v >= 250), 'Real-ESRGAN 2×: white kept: ' + e2.at.corner);
         [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(e2.at.center[k] - v) <= 6, 'Real-ESRGAN 2×: fill color kept: ' + e2.at.center));
+        const wf = result.waifu;
+        assert.deepEqual([wf.w, wf.h], [384, 384], 'waifu2x 4× size (two 2× passes)');
+        assert.equal(wf.at.corner[3], 0, 'waifu2x: transparent area stays transparent');
+        assert.equal(wf.at.center[3], 255, 'waifu2x: opaque fill stays opaque');
+        [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(wf.at.center[k] - v) <= 6, 'waifu2x: fill color kept: ' + wf.at.center));
+        assert.ok(wf.dark / Math.max(1, wf.edge) < 0.02, 'waifu2x: no dark fringe');
+        assert.equal(wf.progress[wf.progress.length - 1], 1, 'waifu2x: progress reaches 100% over both passes');
+        assert.ok(wf.progress.every((p, i) => i === 0 || p >= wf.progress[i - 1]), 'waifu2x: progress never goes back between the passes');
         const pl = result.palette;
         assert.equal(t.colorType, 6, 'palette off: an RGBA PNG');
         assert.equal(pl.colorType, 3, 'palette on: an indexed PNG');
@@ -244,7 +254,7 @@ async function main() {
             return { esrgan: await run(4, 'esrgan'), cugan: await run(3, 'cugan') };
         });
         assert.ok(typeof background.esrgan === 'number' && typeof background.cugan === 'number', 'a background tab finishes both models: ' + JSON.stringify(background));
-        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, Real-ESRGAN 4× and 2×, colors, alpha, grain std ' + gr.std.toFixed(2) + ' / ' + eg.std.toFixed(2) + ', GPU ' + result.gpuMB.toFixed(0) + ' MB, lost context: ' + result.lost + ', background tab: finished).');
+        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, Real-ESRGAN 4× and 2×, waifu2x 4×, colors, alpha, grain std ' + gr.std.toFixed(2) + ' / ' + eg.std.toFixed(2) + ', GPU ' + result.gpuMB.toFixed(0) + ' MB, lost context: ' + result.lost + ', background tab: finished).');
     } finally {
         await browser.close();
         server.close();

@@ -108,6 +108,7 @@ class MG_Admin_Page {
                 2 => plugins_url('../assets/models/realcugan-up2x-conservative/', __FILE__),
                 3 => plugins_url('../assets/models/realcugan-up3x-conservative/', __FILE__),
                 'esrgan' => plugins_url('../assets/models/realesr-general-x4v3/', __FILE__),
+                'waifu2x' => plugins_url('../assets/models/waifu2x-upconv7-anime-2x/', __FILE__),
             ),
             'upscaler' => $redesign['upscaler'] ?? 'cugan',
             'palette' => !empty($redesign['palette']),

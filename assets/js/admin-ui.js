@@ -1012,13 +1012,14 @@
             native: 'Eredeti felbontás (elég nagy, nem kellett felskálázni)',
             none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás lesz (ha kell), paletta nélkül',
         };
-        // ai3x was always Real-CUGAN, ai4x Real-ESRGAN; 2× tells by upscale_model.
+        // By upscale_model; before it, ai4x was Real-ESRGAN and the others Real-CUGAN.
         const upscaleLabel = function (c) {
             const label = upscaleLabels[c.upscale];
             if (!label || c.upscale.indexOf('ai') !== 0) {
                 return label || '';
             }
-            return label + (c.upscale === 'ai4x' || c.upscale_model === 'esrgan' ? ' (Real-ESRGAN)' : ' (Real-CUGAN)');
+            const models = { cugan: 'Real-CUGAN', waifu2x: 'waifu2x', esrgan: 'Real-ESRGAN' };
+            return label + ' (' + (models[c.upscale_model] || (c.upscale === 'ai4x' ? 'Real-ESRGAN' : 'Real-CUGAN')) + ')';
         };
         const megapixels = function (w, h) { return (w * h / 1e6).toFixed(2).replace('.', ','); };
         let upscaling = false;

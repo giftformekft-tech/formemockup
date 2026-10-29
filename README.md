@@ -170,6 +170,18 @@ lapot nyitva kell hagyni. Ha a böngésző nem tudja (nincs WebGL), jóváhagyá
 Lanczos-nagyítást alkalmazza. A modell átalakítása: `tools/convert-realcugan.py`. Teszt:
 `node tests/ai-upscale-browser-test.js`.
 
+**waifu2x 4×, mint a Design-flow alapbeállítása (2.44.11):** **AI Minta SEO és tagelés → AI
+újratervezés → AI felskálázó → waifu2x 4×**. A Design-flow alapértelmezett felskálázója:
+waifu2x-ncnn-vulkan `models-upconv_7_anime_style_art_rgb`, zajszűrés nélkül (`scale2.0x_model`),
+4× két 2×-es menettel, ahogy a `waifu2x-ncnn-vulkan -s 4` (MIT; ugyanazok a fájlok, mint a
+Design-flow-ban, `assets/models/waifu2x-upconv7-anime-2x/`, átalakítás: `tools/convert-waifu2x.py`,
+amely a `tools/convert-realcugan.py` átalakítóját használja). Hat 3×3-as konvolúció és egy 4×4-es
+transzponált konvolúció, 7 px kontextussal csempénként. Ellenőrzés: a 2×-es kimenet 2×2-es
+átlaga az eredetitől átlagosan 0,55 szinttel tér el (4×: 0,98; Real-CUGAN 3×: 1,33; Real-ESRGAN
+4×: 1,77), kockásodás nincs. Sebesség ugyanazon a 96 px-es képen (SwiftShader): waifu2x 4× 14 mp,
+Real-ESRGAN 4× 16 mp, Real-CUGAN 3× 26 mp. A 2×-es menetek között a kép 8 bites, mint a
+waifu2x-ncnn-vulkanban; az átlátszóság menetenként bikubikusan nő.
+
 **Gyors mód: Real-ESRGAN 4× (2.44.7):** **AI Minta SEO és tagelés → AI újratervezés → AI
 felskálázó**. A `realesr-general-x4v3` (BSD-3-Clause, `assets/models/realesr-general-x4v3/`,
 átalakítás: `tools/convert-realesrgan.py`) kis, egyszerű hálózat: ugyanazon a képen (192 px, SwiftShader)
