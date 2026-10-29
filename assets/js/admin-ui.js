@@ -1057,7 +1057,7 @@
                 const meta = [c.analyzer_label, modeLabels[c.prompt_mode] || '', intensityLabels[c.intensity] || c.intensity, 'minőség: ' + c.quality, c.generated_size ? 'generálva ' + c.generated_size + ' px' : ''].filter(Boolean).join(' · ');
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
-                const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : '';
+                const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : (c.palette_error ? ' · ' + c.palette_error : '');
                 $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaleLabels[c.upscale] ? upscaleLabels[c.upscale] + palette + size : ''));
                 if (c.text_lines && c.text_lines.length) {
                     $card.append($('<p></p>').append($('<strong>Szöveg: </strong>')).append(document.createTextNode(c.text_lines.join(' / '))));

@@ -84,15 +84,26 @@ class MG_Design_Replace {
 // The real palette encoder runs on real Imagick in tests/palette-png-test.php.
 $palette_calls = array();
 $prepare_calls = array();
+$color_loss = array();
 class MG_Image_Utils {
+    const COLOR_LOSS = 4201;
     public static function prepare_upscale_input($path, $clean_edges, $alpha_threshold) {
         $GLOBALS['prepare_calls'][] = array(basename($path), $clean_edges, $alpha_threshold);
+        if (in_array('prepare', $GLOBALS['color_loss'], true)) {
+            throw new RuntimeException('A szerver ImageMagickje (ImageMagick 7.1.2-34 Q16-HDRI) elrontotta a minta színeit: a felskálázás előtti előkészítés.', self::COLOR_LOSS);
+        }
         // The crop: a 10×10 test PNG becomes 8×6.
         file_put_contents($path, make_png(8, 6));
         return array('width' => 8, 'height' => 6, 'changed' => true);
     }
     public static function to_palette_png($path, $colors) {
         $GLOBALS['palette_calls'][] = array(basename($path), $colors);
+        if (in_array('palette', $GLOBALS['color_loss'], true)) {
+            throw new RuntimeException('A szerver ImageMagickje (ImageMagick 7.1.2-34 Q16-HDRI) elrontotta a minta színeit: a 255 színes palettás átalakítás.', self::COLOR_LOSS);
+        }
+        if (in_array('broken', $GLOBALS['color_loss'], true)) {
+            throw new RuntimeException('A kép teljesen átlátszó, nincs mit palettásra alakítani.');
+        }
         $info = getimagesize($path);
         return array('width' => $info[0], 'height' => $info[1], 'colors' => 42);
     }
@@ -453,6 +464,28 @@ foreach (array(array(44, 2000, 'lanczos2x', 4000), array(45, 3000, 'native', 300
     $result = MG_AI_Redesign::apply(9, $att);
     check($result['candidate']['upscale'] === $label && getimagesize(get_attached_file($att))[0] === $final, "fallback for $width px: $label");
 }
+
+// ImageMagick 7.1.2 Q16-HDRI blackened the designs: a step that loses the
+// colors is dropped, the colored file goes on (prepare: uncropped; palette: RGBA).
+$color_loss = array('prepare');
+$meta[10][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 51, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(51), make_png(10, 10));
+$prepared = MG_AI_Redesign::prepare_candidate(10, 51);
+check($prepared['prepared'] === true && $prepared['width'] === 10 && getimagesize(get_attached_file(51))[0] === 10, 'prepare color loss: the GPT image goes to the upscale as it is');
+$color_loss = array('palette');
+file_put_contents($test_dir . '/up51.png', make_png(30, 30));
+$stored = MG_AI_Redesign::store_upscaled(10, 51, $test_dir . '/up51.png');
+check($stored['upscale'] === 'ai3x' && $stored['palette'] === 0 && $stored['width'] === 30 && getimagesize(get_attached_file(51))[0] === 30, 'palette color loss: the AI upscale is kept unpaletted');
+check(strpos($stored['palette_error'], '7.1.2-34') !== false && strpos($stored['palette_error'], 'palettázás nélkül') !== false, 'palette color loss: the card says why');
+$enqueued = array();
+$applied = MG_AI_Redesign::apply(10, 51);
+check($applied['candidate']['palette'] === 0 && $enqueued[0][1] === get_attached_file(51) && end($meta[10][MG_AI_Redesign::META_HISTORY])['palette'] === 0, 'palette color loss: approval goes on with the RGBA PNG');
+$color_loss = array('broken');
+$meta[10][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 52, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'analyzer' => 'openai', 'intensity' => 'subtle', 'prepared' => true));
+file_put_contents(get_attached_file(52), make_png(10, 10));
+file_put_contents($test_dir . '/up52.png', make_png(30, 30));
+throws(function () use ($test_dir) { MG_AI_Redesign::store_upscaled(10, 52, $test_dir . '/up52.png'); }, 'teljesen átlátszó', 'other palette errors still stop the upload');
+$color_loss = array();
 
 // Discarding candidates: one, then all; the PNGs leave the media library.
 $deleted = array();

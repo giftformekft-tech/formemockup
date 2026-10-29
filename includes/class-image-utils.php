@@ -9,6 +9,97 @@ if (!defined('ABSPATH')) {
  */
 class MG_Image_Utils {
 
+    /** Exception code: an Imagick step lost the colors (seen on ImageMagick 7.1.2 Q16-HDRI). */
+    const COLOR_LOSS = 4201;
+
+    /**
+     * Mean RGB (0-255) of the mostly opaque pixels of an image, from at most
+     * about 256 evenly spaced rows; null when nothing is visible.
+     *
+     * @param Imagick|string $image Imagick image, or raw 8-bit RGBA bytes with $width/$height.
+     * @return float[]|null
+     */
+    public static function visible_color_mean($image, $width = 0, $height = 0) {
+        $raw = is_string($image);
+        $width = $raw ? (int) $width : $image->getImageWidth();
+        $height = $raw ? (int) $height : $image->getImageHeight();
+        $step = max(1, (int) floor($height / 256));
+        $sum = array(0, 0, 0);
+        $count = 0;
+        for ($y = 0; $y < $height; $y += $step) {
+            $row = $raw
+                ? array_values(unpack('C*', substr($image, $y * $width * 4, $width * 4)))
+                : $image->exportImagePixels(0, $y, $width, 1, 'RGBA', Imagick::PIXEL_CHAR);
+            for ($i = 0, $n = count($row); $i + 3 < $n; $i += 4) {
+                if ($row[$i + 3] >= 128) {
+                    $sum[0] += $row[$i];
+                    $sum[1] += $row[$i + 1];
+                    $sum[2] += $row[$i + 2];
+                    $count++;
+                }
+            }
+        }
+        return $count ? array($sum[0] / $count, $sum[1] / $count, $sum[2] / $count) : null;
+    }
+
+    /**
+     * Opaque pixels (alpha >= 250), every 4th on about 64 evenly spaced rows:
+     * no step of the upscale preparation may change their color.
+     *
+     * @return array<int, array<int, int[]>> y => x => RGB
+     */
+    public static function opaque_probe($image) {
+        $width = $image->getImageWidth();
+        $height = $image->getImageHeight();
+        $probe = array();
+        for ($y = 0; $y < $height; $y += max(1, (int) floor($height / 64))) {
+            $row = $image->exportImagePixels(0, $y, $width, 1, 'RGBA', Imagick::PIXEL_CHAR);
+            for ($x = 0; $x < $width; $x += 4) {
+                if ($row[$x * 4 + 3] >= 250) {
+                    $probe[$y][$x] = array($row[$x * 4], $row[$x * 4 + 1], $row[$x * 4 + 2]);
+                }
+            }
+        }
+        return $probe;
+    }
+
+    /** Mean RGB of the probe in $image, which may be cropped at ($dx, $dy); null if empty. */
+    public static function probe_mean($image, array $probe, $dx = 0, $dy = 0) {
+        $sum = array(0, 0, 0);
+        $count = 0;
+        $width = $image ? $image->getImageWidth() : 0;
+        foreach ($probe as $y => $pixels) {
+            $row = $image ? $image->exportImagePixels(0, $y - $dy, $width, 1, 'RGB', Imagick::PIXEL_CHAR) : null;
+            foreach ($pixels as $x => $rgb) {
+                $color = $row ? array_slice($row, ($x - $dx) * 3, 3) : $rgb;
+                $sum[0] += $color[0];
+                $sum[1] += $color[1];
+                $sum[2] += $color[2];
+                $count++;
+            }
+        }
+        return $count ? array($sum[0] / $count, $sum[1] / $count, $sum[2] / $count) : null;
+    }
+
+    /**
+     * Throws COLOR_LOSS when the visible colors moved far: a quantize or a crop
+     * shifts the mean by a few levels, a step that blackens the design by far more.
+     */
+    public static function assert_colors_kept($before, $after, $step) {
+        if ($before === null || $after === null) {
+            return;
+        }
+        $shift = max(abs($before[0] - $after[0]), abs($before[1] - $after[1]), abs($before[2] - $after[2]));
+        if ($shift > 40) {
+            $version = Imagick::getVersion();
+            throw new RuntimeException(sprintf(
+                'A szerver ImageMagickje (%s) elrontotta a minta színeit: %s.',
+                preg_replace('/ https?:.*$/', '', (string) ($version['versionString'] ?? '?')),
+                $step
+            ), self::COLOR_LOSS);
+        }
+    }
+
     /**
      * Trims fully transparent margins from every side of an Imagick image,
      * in place. Idempotent (marks the image so repeated calls are no-ops).
@@ -266,6 +357,8 @@ class MG_Image_Utils {
             if ($range === null || $range['minima'] >= $quantum['quantumRangeLong']) {
                 return array('width' => $image->getImageWidth(), 'height' => $image->getImageHeight(), 'changed' => false);
             }
+            // Opaque pixels only: the edge cleanup and the binary alpha change the others on purpose.
+            $probe = self::opaque_probe($image);
             if ($clean_edges) {
                 self::clean_transparent_edges($image);
             }
@@ -287,7 +380,20 @@ class MG_Image_Utils {
             $image->setOption('png:color-type', '6');
             $image->setOption('png:bit-depth', '8');
             $tmp = $path . '.prepared-tmp';
-            if (!$image->writeImage($tmp) || !@rename($tmp, $path)) {
+            if (!$image->writeImage($tmp)) {
+                @unlink($tmp);
+                throw new RuntimeException('Az előkészített PNG nem menthető.');
+            }
+            $written = new Imagick($tmp);
+            try {
+                self::assert_colors_kept(self::probe_mean(null, $probe), self::probe_mean($written, $probe, $x, $y), 'a felskálázás előtti előkészítés');
+            } catch (RuntimeException $e) {
+                @unlink($tmp);
+                throw $e;
+            } finally {
+                $written->clear();
+            }
+            if (!@rename($tmp, $path)) {
                 @unlink($tmp);
                 throw new RuntimeException('Az előkészített PNG nem menthető.');
             }
@@ -358,6 +464,7 @@ class MG_Image_Utils {
         try {
             $image = new Imagick($path);
             try {
+                $before = self::visible_color_mean($image);
                 $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_ACTIVATE);
                 $image->setImageBackgroundColor(new ImagickPixel('rgba(0,0,0,0)'));
                 $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_BACKGROUND);
@@ -377,6 +484,8 @@ class MG_Image_Utils {
         if ($width < 1 || $height < 1 || strlen($raw) !== $stride * $height) {
             throw new RuntimeException('A palettás átalakítás hibás képadatot adott.');
         }
+        // Checked before anything is written: on a color loss the file stays as it was.
+        self::assert_colors_kept($before, self::visible_color_mean($raw, $width, $height), 'a 255 színes palettás átalakítás');
 
         // Palette index per RGBA value; near-invisible pixels share one fully
         // transparent black entry (Design-flow's smooth alpha cutoff).

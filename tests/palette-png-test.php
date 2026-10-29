@@ -220,6 +220,37 @@ $before = file_get_contents("$dir/white.png");
 $r = MG_Image_Utils::prepare_upscale_input("$dir/white.png", true);
 check(!$r['changed'] && file_get_contents("$dir/white.png") === $before, 'opaque image untouched');
 
+// The color guard (ImageMagick 7.1.2 Q16-HDRI blackened designs): what a
+// quantize or crop does passes, a blackened design throws COLOR_LOSS.
+$design = new Imagick();
+$design->newImage(60, 40, new ImagickPixel('transparent'));
+$draw = new ImagickDraw();
+$draw->setFillColor('#e8b020');
+$draw->rectangle(10, 5, 49, 34);
+$design->drawImage($draw);
+$design->setImageFormat('rgba');
+$design->setImageDepth(8);
+$raw = $design->getImageBlob();
+$mean = MG_Image_Utils::visible_color_mean($design);
+check($mean !== null && abs($mean[0] - 232) < 1 && abs($mean[1] - 176) < 1 && abs($mean[2] - 32) < 1, 'visible mean of the Imagick image: ' . implode(',', array_map('round', $mean ?: array())));
+check(MG_Image_Utils::visible_color_mean($raw, 60, 40) == $mean, 'raw RGBA bytes give the same mean');
+MG_Image_Utils::assert_colors_kept($mean, array($mean[0] - 6, $mean[1] + 4, $mean[2]), 'test');
+check(true, 'a few levels of quantize shift pass');
+try {
+    MG_Image_Utils::assert_colors_kept($mean, array(0, 0, 0), 'a 255 színes palettás átalakítás');
+    check(false, 'a blackened design throws');
+} catch (RuntimeException $e) {
+    check($e->getCode() === MG_Image_Utils::COLOR_LOSS && strpos($e->getMessage(), 'ImageMagick') !== false && strpos($e->getMessage(), 'palettás') !== false, 'a blackened design throws COLOR_LOSS: ' . $e->getMessage());
+}
+$probe = MG_Image_Utils::opaque_probe($design);
+$cropped = clone $design;
+$cropped->cropImage(40, 30, 10, 5);
+$cropped->setImagePage(0, 0, 0, 0);
+check(MG_Image_Utils::probe_mean($cropped, $probe, 10, 5) == MG_Image_Utils::probe_mean(null, $probe), 'the probe finds its pixels after the crop');
+$black = clone $cropped;
+$black->evaluateImage(Imagick::EVALUATE_SET, 0, Imagick::CHANNEL_RED | Imagick::CHANNEL_GREEN | Imagick::CHANNEL_BLUE);
+check(MG_Image_Utils::probe_mean($black, $probe, 10, 5)[0] < 40, 'and sees a blackened crop');
+
 array_map('unlink', glob("$dir/*"));
 rmdir($dir);
 echo "Palette PNG: $passed checks passed on real Imagick.\n";

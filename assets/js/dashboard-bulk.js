@@ -237,12 +237,14 @@
 
     // "Végleges: 3× AI · 255 színes paletta · 2352×2544 px – " once the file is finished.
     function finishLabel(c) {
-        if (!c.palette) {
+        if (!c.palette && !c.palette_error) {
             return '';
         }
         const how = { ai2x: '2× AI felskálázás', ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos2x: '2× sima nagyítás', lanczos3x: '3× sima nagyítás', native: 'eredeti felbontás' }[c.upscale] || '';
         const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
-        return 'Végleges: ' + [how, c.palette + ' színes paletta', size].filter(Boolean).join(' · ') + ' – ';
+        // palette_error: this server's ImageMagick lost the colors, the PNG stayed unpaletted.
+        return 'Végleges: ' + [how, c.palette ? c.palette + ' színes paletta' : 'paletta nélkül', size].filter(Boolean).join(' · ') + ' – '
+            + (c.palette_error ? c.palette_error + ' ' : '');
     }
 
     // item.note overrides the status text until the next status change clears it.

@@ -1063,6 +1063,42 @@ class MG_AI_Redesign {
     }
 
     /**
+     * prepare_upscale_file(), or the file as it is when this server's
+     * ImageMagick loses the colors on the way (the upscale then gets the
+     * uncropped GPT image, which only costs time).
+     */
+    private static function prepare_or_keep($path) {
+        try {
+            return self::prepare_upscale_file($path);
+        } catch (RuntimeException $e) {
+            if ($e->getCode() !== MG_Image_Utils::COLOR_LOSS) {
+                throw $e;
+            }
+            error_log('MG AI redesign: ' . $e->getMessage());
+            $info = getimagesize($path);
+            return array('width' => (int) $info[0], 'height' => (int) $info[1], 'changed' => false);
+        }
+    }
+
+    /**
+     * Candidate fields after the 255-color palette finish, or, when this
+     * server's ImageMagick loses the colors in it, the RGBA PNG kept as it is.
+     */
+    private static function palette_or_keep($path) {
+        try {
+            $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
+            return array('palette' => $palette['colors'], 'palette_error' => '', 'width' => $palette['width'], 'height' => $palette['height']);
+        } catch (RuntimeException $e) {
+            if ($e->getCode() !== MG_Image_Utils::COLOR_LOSS) {
+                throw $e;
+            }
+            error_log('MG AI redesign: ' . $e->getMessage());
+            $info = getimagesize($path);
+            return array('palette' => 0, 'palette_error' => $e->getMessage() . ' Ezért a minta palettázás nélkül, színhelyes PNG-ként marad.', 'width' => (int) $info[0], 'height' => (int) $info[1]);
+        }
+    }
+
+    /**
      * Design-flow upscale input, right before the upscale (not at generation,
      * so the preview keeps the antialiased GPT image): edge cleanup and binary
      * alpha (each if on, 50% by default), alpha crop. Runs once per candidate.
@@ -1076,7 +1112,7 @@ class MG_AI_Redesign {
             throw new RuntimeException(__('A felskálázandó AI minta nem található.', 'mockup-generator'));
         }
         if (($candidate['upscale'] ?? '') === 'none' && empty($candidate['prepared'])) {
-            $prepared = self::prepare_upscale_file($path);
+            $prepared = self::prepare_or_keep($path);
             self::refresh_attachment_metadata($candidate['attachment_id'], $path);
             $candidate = self::update_candidate($product_id, $attachment_id, array(
                 'prepared' => true,
@@ -1117,14 +1153,11 @@ class MG_AI_Redesign {
         if (!@copy($tmp_path, $path)) {
             throw new RuntimeException(__('A felskálázott PNG nem menthető.', 'mockup-generator'));
         }
-        $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
+        $palette = self::palette_or_keep($path);
         self::refresh_attachment_metadata($candidate['attachment_id'], $path);
-        return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array(
+        return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array_merge(array(
             'upscale' => 'ai' . $scale . 'x',
-            'palette' => $palette['colors'],
-            'width' => $palette['width'],
-            'height' => $palette['height'],
-        )));
+        ), $palette)));
     }
 
     /**
@@ -1188,7 +1221,7 @@ class MG_AI_Redesign {
             // Not AI-upscaled in the browser: the export's Lanczos enlargement by the
             // same factor, from the same prepared input; a large one stays as it is.
             if (empty($chosen['prepared'])) {
-                self::prepare_upscale_file($path);
+                self::prepare_or_keep($path);
             }
             $info = getimagesize($path);
             $factor = self::upscale_factor($info[0], $info[1]);
@@ -1199,8 +1232,7 @@ class MG_AI_Redesign {
         }
         if (empty($chosen['palette'])) {
             // Candidates from before 2.42.12 and the 3× fallback still need the palette finish.
-            $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
-            $chosen = array_merge($chosen, array('palette' => $palette['colors'], 'width' => $palette['width'], 'height' => $palette['height']));
+            $chosen = array_merge($chosen, self::palette_or_keep($path));
             self::refresh_attachment_metadata($chosen['attachment_id'], $path);
         }
         $previous = array(
