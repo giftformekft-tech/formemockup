@@ -1163,6 +1163,33 @@ body.wp-admin[data-theme="dark"] .mg-ai-bulk__item {
     margin: 6px 0;
 }
 
+/* AI duplikátum: a kept variant stands out, the name field spans the card. */
+.mg-ai-duplicate__slot.is-approved {
+    border-color: #00a32a;
+    box-shadow: 0 0 0 1px #00a32a;
+}
+
+.mg-ai-duplicate__name {
+    display: block;
+    margin: 6px 0;
+    font-weight: 600;
+}
+
+.mg-ai-duplicate__name input {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    font-weight: normal;
+}
+
+.mg-ai-duplicate__error {
+    color: #b32d2e;
+}
+
+.mg-ai-duplicate__made {
+    border-color: #00a32a;
+}
+
 .mg-quick-add-form .form-table th {
     width: 200px;
 }

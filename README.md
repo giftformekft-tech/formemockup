@@ -39,6 +39,36 @@ mintája látszik. Kezelés: **Mockupok › Grafikusok**.
   kikapcsolva a programoldal a sitemapből és az llms.txt-ből is kimarad.
 - Teszt: `php tests/designer-profiles-test.php`.
 
+## AI duplikátum (2.45.0)
+
+Egy jól fogyó mintából 1–4 új változat, mindegyik **új termék**; az eredeti termék nem változik.
+A Dashboard sorában az **AI duplikátum** gomb nyitja (`MG_AI_Duplicate`, `assets/js/ai-duplicate.js`).
+
+1. **Tervezés:** egyetlen elemzés (OpenAI vagy Claude, mint az újratervezésnél) kiolvassa a
+   szöveget, és **mindegyik változathoz külön briefet** ír: saját irányt (`direction`, ez kerül a
+   prompt „Style direction” sorába a stílusötlet mellé), saját cseréket a jellegzetes elemekre,
+   saját betű- és rajzstílust, és egy **javasolt magyar terméknevet**. Az eltérés mértéke ugyanaz a
+   négy fokozat, mint az újratervezésnél (a prompt ugyanúgy, `build_image_prompt()`-tal áll össze).
+2. **Rajzolás:** a GPT Image változatonként külön kérésben rajzol, egyszerre kettőt. Minden változat
+   (slot) saját opcióban él (`mg_ai_dup_{termék}_{slot}`), így a párhuzamos kérések nem írják felül
+   egymást; ha egy proxy elvágja a kérést, a lap az állapotot kérdezi le.
+3. **Válogatás:** kártyánként **Jóváhagyom**, a név átírható, **Újragenerálás** (ugyanazzal a
+   prompttal), **Prompt javítása** (szerkesztett prompttal, a fekete körvonal szabálya megmarad),
+   **Törlés**. Egyszerre legfeljebb 8 nyitott változat lehet.
+4. **Létrehozás:** a jóváhagyottak egyenként: felskálázás előtti előkészítés, AI felskálázás a
+   böngészőben a beállított modellel és palettával (ha nem sikerül, a szerver sima nagyítást ad),
+   majd egy termékkészítő feladat (`MG_Bulk_Queue`), ugyanúgy, mint egy új minta feltöltésekor
+   (publikálva, saját SKU-val és mockupokkal). Az eredetitől átveszi a **kategóriákat, címkéket,
+   terméktípusokat**, az **alapértelmezett típust és színt** (a kiemelt mockup nevéből,
+   `{SKU}_{típus}_{szín}_front`), és **egyedi mezős** terméknél a mezőket és az előbeállítások
+   termékeit (`mg_bulk_queue_product_created` → `MG_AI_Duplicate::finish_new_product`). A tervező a
+   szokásos automatikus kiosztással kerül alá. Az SEO-szöveget nem másolja (új minta: az AI Minta
+   SEO oldalon generálható). Az új termék `_mg_ai_duplicate_of` metában tudja, miből készült; az
+   eredetin `_mg_ai_duplicate_history` gyűjti a létrehozottakat.
+
+Tesztek: `php tests/ai-duplicate-test.php` (valódi Imagick kell), `node tests/ai-duplicate-ui-test.js`
+(Playwright, PHP, jQuery).
+
 ## Dashboard: kategóriaszűrő, kijelölés, tömeges AI újratervezés (2.43.0)
 
 - **Fő- és alkategória szűrő:** a főkategória az összes alkategóriáját is hozza; az

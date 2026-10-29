@@ -130,7 +130,7 @@ class MG_Design_Replace {
      * @param string[] $catalog_keys
      * @return string[]
      */
-    private static function detect_product_type_keys($product_id, $sku, $catalog_keys) {
+    public static function detect_product_type_keys($product_id, $sku, $catalog_keys) {
         $found = array();
 
         $uploads = function_exists('wp_get_upload_dir') ? wp_get_upload_dir() : wp_upload_dir();

@@ -180,6 +180,29 @@ class MG_Custom_Fields_Manager {
         return self::$cached_presets;
     }
 
+    /**
+     * Put $to_id on every preset's product list that has $from_id (an AI
+     * duplicate shows up where its original does).
+     */
+    public static function copy_preset_membership($from_id, $to_id) {
+        $from_id = intval($from_id);
+        $to_id = intval($to_id);
+        $presets = self::get_all_presets();
+        $changed = false;
+        foreach ($presets as $preset_id => $preset) {
+            $ids = isset($preset['product_ids']) && is_array($preset['product_ids']) ? array_map('intval', $preset['product_ids']) : array();
+            if (in_array($from_id, $ids, true) && !in_array($to_id, $ids, true)) {
+                $ids[] = $to_id;
+                $presets[$preset_id]['product_ids'] = $ids;
+                $presets[$preset_id]['updated'] = current_time('mysql');
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            self::save_all_presets($presets);
+        }
+    }
+
     protected static function save_all_presets($presets) {
         if (!is_array($presets)) {
             $presets = array();

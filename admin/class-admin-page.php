@@ -101,6 +101,15 @@ class MG_Admin_Page {
             file_exists($bulk_path) ? filemtime($bulk_path) : '1.0.0',
             true
         );
+        // Dashboard: AI duplikátum (variants of a design as new products).
+        $duplicate_path = plugin_dir_path(__FILE__) . '../assets/js/ai-duplicate.js';
+        wp_enqueue_script(
+            'mg-ai-duplicate',
+            plugins_url('../assets/js/ai-duplicate.js', __FILE__),
+            array('jquery', 'mg-ai-upscale'),
+            file_exists($duplicate_path) ? filemtime($duplicate_path) : '1.0.0',
+            true
+        );
         $redesign = class_exists('MG_AI_Redesign') ? MG_AI_Redesign::get_settings() : array();
         wp_localize_script('mg-ai-upscale', 'MG_AI_UPSCALE', array(
             'tfUrl' => plugins_url('../assets/vendor/tfjs/tf.min.js', __FILE__) . '?ver=4.22.0',

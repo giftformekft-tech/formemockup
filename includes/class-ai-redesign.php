@@ -1064,7 +1064,7 @@ class MG_AI_Redesign {
     }
 
     /** Design-flow upscale input with the saved edge cleanup and binary alpha settings. */
-    private static function prepare_upscale_file($path) {
+    protected static function prepare_upscale_file($path) {
         $settings = self::get_settings();
         $threshold = !empty($settings['alpha_binary'])
             ? (int) round(max(1, min(99, (int) $settings['alpha_threshold'])) * 255 / 100)
@@ -1077,7 +1077,7 @@ class MG_AI_Redesign {
      * ImageMagick loses the colors on the way (the upscale then gets the
      * uncropped GPT image, which only costs time).
      */
-    private static function prepare_or_keep($path) {
+    protected static function prepare_or_keep($path) {
         try {
             return self::prepare_upscale_file($path);
         } catch (RuntimeException $e) {
@@ -1104,7 +1104,7 @@ class MG_AI_Redesign {
     }
 
     /** Size and palette (0: a truecolor PNG) of a finished candidate file. */
-    private static function file_fields($path) {
+    protected static function file_fields($path) {
         $info = getimagesize($path);
         return array('palette' => MG_Image_Utils::png_palette_size($path), 'width' => (int) $info[0], 'height' => (int) $info[1]);
     }

@@ -283,7 +283,11 @@ class MG_Dashboard_Page {
                 echo '<td><a class="button button-small" href="'.esc_url($edit).'">Szerkesztés</a> ';
                 echo '<a class="button button-small" target="_blank" href="'.esc_url($view).'">Megnyitás</a> ';
                 echo '<button type="button" class="button button-small mg-replace-design-trigger" data-mg-open-modal="replace-design" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">Minta cseréje</button> ';
-                echo '<button type="button" class="button button-small mg-ai-redesign-trigger" data-mg-open-modal="ai-redesign" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">AI újratervezés</button></td>';
+                echo '<button type="button" class="button button-small mg-ai-redesign-trigger" data-mg-open-modal="ai-redesign" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">AI újratervezés</button>';
+                if (class_exists('MG_AI_Duplicate')) {
+                    echo ' <button type="button" class="button button-small mg-ai-duplicate-trigger" data-mg-open-modal="ai-duplicate" data-product-id="'.esc_attr($id).'" data-product-title="'.esc_attr($r['post_title']).'">AI duplikátum</button>';
+                }
+                echo '</td>';
                 echo '</tr>';
             }
         } else {
@@ -305,6 +309,7 @@ class MG_Dashboard_Page {
         self::render_replace_design_modal();
         self::render_ai_redesign_modal();
         self::render_ai_redesign_bulk_modal();
+        self::render_ai_duplicate_modal();
 
         echo '</div>';
     }
@@ -436,6 +441,45 @@ class MG_Dashboard_Page {
         echo '<p class="description" id="mg-ai-redesign-status" aria-live="polite"></p>';
         echo '<p class="mg-ai-redesign__bulk" hidden><button type="button" class="button button-link-delete" id="mg-ai-redesign-discard-all">Összes jelölt törlése</button></p>';
         echo '<div class="mg-ai-redesign__candidates" id="mg-ai-redesign-candidates"></div>';
+        echo '</div>';
+        echo '</div>';
+    }
+
+    /**
+     * "AI duplikátum" modal (assets/js/ai-duplicate.js): 1–4 variants of a good
+     * design, each kept one a new product; the original stays (MG_AI_Duplicate).
+     */
+    protected static function render_ai_duplicate_modal(){
+        if (!class_exists('MG_AI_Duplicate')) {
+            return;
+        }
+        echo '<div class="mg-modal" id="mg-ai-duplicate-modal" aria-hidden="true">';
+        echo '<div class="mg-modal__backdrop" data-mg-close-modal></div>';
+        echo '<div class="mg-modal__dialog mg-ai-redesign mg-ai-duplicate" role="dialog" aria-modal="true" aria-labelledby="mg-ai-duplicate-title">';
+        echo '<button type="button" class="mg-modal__close" aria-label="Bezárás" data-mg-close-modal>&times;</button>';
+        echo '<h2 id="mg-ai-duplicate-title">AI duplikátum</h2>';
+        echo '<p class="description">Termék: <strong id="mg-ai-duplicate-product-name"></strong></p>';
+        echo '<p class="description">Az AI 1–4 új változatot tervez ebből a mintából, ugyanazzal a szöveggel. Mindegyik külön irányt kap, és javasol hozzá egy terméknevet. A jóváhagyott változatokból új termékek lesznek: az eredeti kategóriáival, címkéivel, terméktípusaival, színeivel és egyedi mezőivel. Az eredeti termék nem változik.</p>';
+        echo '<div class="mg-ai-redesign__original"><span>Eredeti minta</span><img id="mg-ai-duplicate-original" alt="" /><p class="description" id="mg-ai-duplicate-original-error"></p></div>';
+        echo '<table class="form-table mg-ai-redesign__form">';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-intensity">Eltérés mértéke</label></th><td><select id="mg-ai-duplicate-intensity">';
+        foreach (MG_AI_Redesign::get_intensities() as $value => $label) {
+            echo '<option value="'.esc_attr($value).'">'.esc_html($label).'</option>';
+        }
+        echo '</select><p class="description">Ugyanazok a fokozatok, mint az AI újratervezésnél. Extra finomnál a változatok csak a jellegzetes elemek újrarajzolásában és a betűtípusban térnek el, új stílusnál és teljesen újnál egészen más stílusúak.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-count">Változatok száma</label></th><td><select id="mg-ai-duplicate-count"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select><p class="description">Egy elemzés írja meg mindegyik tervét, a képek egyszerre kettesével készülnek.</p></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-analyzer">Elemző modell</label></th><td><select id="mg-ai-duplicate-analyzer"></select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-quality">Képminőség</label></th><td><select id="mg-ai-duplicate-quality"><option value="low">Alacsony (olcsó, gyors)</option><option value="medium">Közepes</option><option value="high">Magas (drágább, lassabb)</option></select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-resolution">Felbontás</label></th><td><select id="mg-ai-duplicate-resolution"><option value="economy">Gazdaságos</option></select></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-text">Pontos szöveg</label></th><td><textarea id="mg-ai-duplicate-text" rows="3" class="large-text" placeholder="Üresen az AI olvassa ki a képről"></textarea></td></tr>';
+        echo '<tr><th scope="row"><label for="mg-ai-duplicate-hint">Stílusötlet</label></th><td><input type="text" id="mg-ai-duplicate-hint" class="large-text" placeholder="Nem kötelező; mindegyik változatra vonatkozik" /></td></tr>';
+        echo '</table>';
+        echo '<p><button type="button" class="button button-primary" id="mg-ai-duplicate-submit">Változatok generálása</button></p>';
+        echo '<p class="description" id="mg-ai-duplicate-status" aria-live="polite"></p>';
+        echo '<div class="mg-ai-redesign__candidates" id="mg-ai-duplicate-slots"></div>';
+        echo '<p class="mg-ai-duplicate__footer" hidden><button type="button" class="button button-primary" id="mg-ai-duplicate-create" disabled>Jóváhagyottak létrehozása új termékként</button> ';
+        echo '<button type="button" class="button button-link-delete" id="mg-ai-duplicate-discard-all">Összes változat törlése</button></p>';
+        echo '<p class="description">Létrehozáskor a jóváhagyott változatok egyenként AI felskálázást kapnak a böngészőben (a beállított modellel és palettával), majd sorba állnak új termékként. A lapot addig hagyd nyitva; másik fülre átválthatsz. Az új termékek SEO-szövegét az AI Minta SEO oldalon generálhatod.</p>';
         echo '</div>';
         echo '</div>';
     }

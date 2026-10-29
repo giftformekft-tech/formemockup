@@ -656,6 +656,11 @@ class MG_Bulk_Queue {
                 MG_Custom_Fields_Manager::set_custom_product($result_product_id, false);
             }
 
+            if ($created_new_product && $result_product_id > 0) {
+                /** A new product is ready, with its mockups: e.g. an AI duplicate takes its original's custom fields. */
+                do_action('mg_bulk_queue_product_created', $result_product_id, $payload);
+            }
+
             if ($result_product_id > 0 && $batch_id !== '' && class_exists('MG_Bulk_Batch')) {
                 MG_Bulk_Batch::register_product($result_product_id, $batch_id);
             }
@@ -934,6 +939,8 @@ class MG_Bulk_Queue {
         $clean['tags'] = array_values(array_filter(array_unique($tags)));
         $clean['sample_seo'] = isset($payload['sample_seo']) ? wp_kses_post($payload['sample_seo']) : '';
         $clean['replace_design'] = !empty($payload['replace_design']) ? 1 : 0;
+        // AI duplikátum: the product a new one is made from (MG_AI_Duplicate::finish_new_product).
+        $clean['duplicate_of'] = isset($payload['duplicate_of']) ? absint($payload['duplicate_of']) : 0;
         return $clean;
     }
 
