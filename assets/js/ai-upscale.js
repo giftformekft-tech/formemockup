@@ -43,6 +43,10 @@
         if (!tfPromise) {
             tfPromise = (window.tf ? Promise.resolve() : loadScript(config().tfUrl)).then(async function () {
                 const tf = window.tf;
+                // Free each texture on dispose: TF.js otherwise pools every one it
+                // used (about 2.6 GB for Real-CUGAN), the browser loses the WebGL
+                // context on a laptop GPU, and every later read comes back zero.
+                tf.env().set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0);
                 if (!(await tf.setBackend('webgl'))) {
                     throw new Error('A böngésző nem támogatja a WebGL-t, ezért az AI felskálázás itt nem futtatható.');
                 }
@@ -228,7 +232,7 @@
         return Math.ceil(n / model.align) * model.align + 2 * model.prepadding;
     }
 
-    async function syncGaps(tf, model, src, w, h, onStep) {
+    async function syncGaps(tf, gpu, model, src, w, h, onStep) {
         const pick = function (n) {
             const out = [];
             for (let i = 0; n >= 3 ? i + 2 < n : i < n; i += n >= 3 ? 3 : 1) {
@@ -262,7 +266,7 @@
                     return out;
                 });
                 for (const name of Object.keys(totals)) {
-                    const v = await totals[name].data();
+                    const v = await gpu.read(totals[name]);
                     totals[name].dispose();
                     const acc = sums[name] = sums[name] || new Float64Array(v.length);
                     for (let c = 0; c < v.length; c++) {
@@ -332,6 +336,60 @@
         });
     }
 
+    const GPU_FAILED = 'A videokártya menet közben hibás eredményt adott, ezért a felskálázás nem menthető.';
+
+    /**
+     * Reads tensors while watching the WebGL context: a lost context reads back
+     * zeros without an error, or never finishes a read.
+     */
+    function gpuReader(tf) {
+        const backend = tf.backend();
+        const gl = backend && backend.gpgpu && backend.gpgpu.gl;
+        const error = function () {
+            return new Error(GPU_FAILED + ' (a böngésző elvesztette a WebGL-t – frissítsd az oldalt)');
+        };
+        let onLost = null;
+        const lost = new Promise(function (resolve, reject) {
+            onLost = function () { reject(error()); };
+        });
+        lost.catch(function () {});
+        if (gl && gl.canvas) {
+            gl.canvas.addEventListener('webglcontextlost', onLost);
+        }
+        const check = function () {
+            if (gl && gl.isContextLost()) {
+                throw error();
+            }
+        };
+        return {
+            read: async function (tensor) {
+                check();
+                const data = await Promise.race([tensor.data(), lost]);
+                check();
+                return data;
+            },
+            close: function () {
+                if (gl && gl.canvas) {
+                    gl.canvas.removeEventListener('webglcontextlost', onLost);
+                }
+            },
+        };
+    }
+
+    /** Share of the visible pixels that are not black (RGBA bytes). */
+    function colored(data) {
+        let visible = 0, lit = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] > 127) {
+                visible++;
+                if (data[i] > 16 || data[i + 1] > 16 || data[i + 2] > 16) {
+                    lit++;
+                }
+            }
+        }
+        return visible ? lit / visible : 0;
+    }
+
     async function upscale(url, onProgress, factor) {
         const tf = await ensureTf();
         const model = await ensureModel(tf, factor || 3);
@@ -344,6 +402,7 @@
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
         const px = ctx.getImageData(0, 0, w, h).data;
+        const inputColored = colored(px);
         let transparent = false;
         for (let i = 3; i < px.length; i += 4) {
             if (px[i] < 255) {
@@ -403,8 +462,10 @@
                 onProgress(Math.min(1, done / total));
             }
         };
-        const gaps = gapSamples ? await syncGaps(tf, model, src, w, h, function (n) { step(n / 5); }) : null;
+        const gpu = gpuReader(tf);
+        let gaps = null;
         try {
+            gaps = gapSamples ? await syncGaps(tf, gpu, model, src, w, h, function (n) { step(n / 5); }) : null;
             for (const t of tiles) {
                 const x = t[0], y = t[1], tw = t[2], th = t[3];
                 const fill = constant(x, y, x + tw, y + th);
@@ -417,8 +478,13 @@
                         return runGraph(tf, model, tf.tensor4d(data, [1, ih, iw, 3]), gaps, null).mul(255);
                     });
                     rowLen = result.shape[2];
-                    d = await result.data();
+                    d = await gpu.read(result);
                     result.dispose();
+                    for (let i = 0; i < d.length; i++) {
+                        if (d[i] !== d[i]) {
+                            throw new Error(GPU_FAILED + ' (NaN)');
+                        }
+                    }
                 }
                 for (let yy = 0; yy < th * SCALE; yy++) {
                     let di = ((y * SCALE + yy) * ow + x * SCALE) * 4;
@@ -441,6 +507,7 @@
                 }
             }
         } finally {
+            gpu.close();
             if (gaps) {
                 Object.keys(gaps).forEach(function (name) { gaps[name].dispose(); });
             }
@@ -451,6 +518,10 @@
             for (let i = 3; i < out.length; i += 4) {
                 out[i] = 255;
             }
+        }
+        // Real-CUGAN keeps the colors; a black result is a failed GPU, not the design.
+        if (inputColored > 0.05 && colored(out) < inputColored * 0.2) {
+            throw new Error(GPU_FAILED + ' (fekete lett)');
         }
         if (onProgress) {
             onProgress(1);

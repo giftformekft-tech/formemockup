@@ -108,7 +108,30 @@ async function main() {
                 g.fillStyle = '#e8562a';
                 g.fillRect(12, 12, 40, 40);
             }, 64, 2);
-            return { transparent, opaque, grain, twice };
+            // Freed textures go back to the GPU instead of a pool that grew to 2.6 GB.
+            const gpuMB = tf.memory().numBytesInGPUAllocated / 1e6;
+            // A lost WebGL context reads back zeros: the upscale fails instead of saving a black design.
+            let lost = '';
+            try {
+                const c = document.createElement('canvas');
+                c.width = c.height = 160;
+                const g = c.getContext('2d');
+                g.fillStyle = '#e8562a';
+                g.fillRect(10, 10, 140, 140);
+                g.fillStyle = '#1d3557';
+                g.fillRect(40, 40, 80, 30);
+                let once = false;
+                await MGAIUpscale.upscale(c.toDataURL('image/png'), () => {
+                    if (!once) {
+                        once = true;
+                        tf.backend().gpgpu.gl.getExtension('WEBGL_lose_context').loseContext();
+                    }
+                }, 3);
+                lost = 'resolved';
+            } catch (e) {
+                lost = e.message;
+            }
+            return { transparent, opaque, grain, twice, gpuMB, lost };
         });
         const t = result.transparent;
         assert.equal(t.type, 'image/png');
@@ -129,8 +152,10 @@ async function main() {
         assert.deepEqual([tw.w, tw.h], [128, 128], '2× size');
         assert.ok(tw.at.corner.every((v, k) => k === 3 ? v === 255 : v >= 253), '2×: white kept (the model may give 254): ' + tw.at.corner);
         [0xe8, 0x56, 0x2a].forEach((v, k) => assert.ok(Math.abs(tw.at.center[k] - v) <= 6, '2×: fill color kept: ' + tw.at.center));
+        assert.ok(result.gpuMB < 100, 'GPU textures are freed: ' + result.gpuMB.toFixed(0) + ' MB allocated');
+        assert.notEqual(result.lost, 'resolved', 'a lost WebGL context fails the upscale');
         assert.deepEqual(errors, []);
-        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, colors, alpha, grain, std ' + gr.std.toFixed(2) + ').');
+        console.log('AI upscale browser test passed (Real-CUGAN 3× and 2×, colors, alpha, grain, std ' + gr.std.toFixed(2) + ', GPU ' + result.gpuMB.toFixed(0) + ' MB, lost context: ' + result.lost + ').');
     } finally {
         await browser.close();
         server.close();
