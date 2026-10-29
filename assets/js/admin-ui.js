@@ -1002,14 +1002,24 @@
         };
         const intensityLabels = { strong: 'új stílus', medium: 'finom átdolgozás', subtle: 'extra finom', full: 'teljesen új' };
         const modeLabels = { brief: 'brief', free: 'szabad leírás', describe: 'részletes leírás' };
+        const withPalette = !!(window.MG_AI_UPSCALE || {}).palette;
         const upscaleLabels = {
-            ai2x: 'AI felskálázva 2× (Real-CUGAN)',
-            ai3x: 'AI felskálázva 3× (Real-CUGAN)',
-            ai4x: 'AI felskálázva 4× (Real-ESRGAN)',
+            ai2x: 'AI felskálázva 2×',
+            ai3x: 'AI felskálázva 3×',
+            ai4x: 'AI felskálázva 4×',
             lanczos2x: '2× sima nagyítás',
             lanczos3x: '3× sima nagyítás',
+            lanczos4x: '4× sima nagyítás',
             native: 'Eredeti felbontás (elég nagy, nem kellett felskálázni)',
-            none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás (ha kell) és 255 színes paletta lesz',
+            none: 'Még nincs felskálázva – jóváhagyáskor sima nagyítás lesz (ha kell)' + (withPalette ? ' és 255 színes paletta' : ''),
+        };
+        // ai3x was always Real-CUGAN, ai4x Real-ESRGAN; 2× tells by upscale_model.
+        const upscaleLabel = function (c) {
+            const label = upscaleLabels[c.upscale];
+            if (!label || c.upscale.indexOf('ai') !== 0) {
+                return label || '';
+            }
+            return label + (c.upscale === 'ai4x' || c.upscale_model === 'esrgan' ? ' (Real-ESRGAN)' : ' (Real-CUGAN)');
         };
         const megapixels = function (w, h) { return (w * h / 1e6).toFixed(2).replace('.', ','); };
         let upscaling = false;
@@ -1058,7 +1068,8 @@
                 $card.append($('<p class="description"></p>').text(meta));
                 const size = c.width && c.height ? ' (' + c.width + '×' + c.height + ' px)' : '';
                 const palette = c.palette ? ' · palettás PNG, ' + c.palette + ' szín' : (c.palette_error ? ' · ' + c.palette_error : '');
-                $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaleLabels[c.upscale] ? upscaleLabels[c.upscale] + palette + size : ''));
+                const upscaled = upscaleLabel(c);
+                $card.append($('<p class="description mg-ai-redesign__upscale"></p>').text(upscaled ? upscaled + palette + size : ''));
                 if (c.text_lines && c.text_lines.length) {
                     $card.append($('<p></p>').append($('<strong>Szöveg: </strong>')).append(document.createTextNode(c.text_lines.join(' / '))));
                 }
@@ -1229,7 +1240,7 @@
             poll();
         });
 
-        // Real-CUGAN 3× a böngészőben (assets/js/ai-upscale.js), majd feltöltés.
+        // AI felskálázás a böngészőben (assets/js/ai-upscale.js, a beállított modellel), majd feltöltés.
         function runUpscale(attachmentId, url) {
             if (upscaling || !window.MGAIUpscale || !url) {
                 return;
@@ -1243,7 +1254,7 @@
                 if (!prepared || !prepared.success || !prepared.data || !prepared.data.full) {
                     throw new Error((prepared && prepared.data && prepared.data.message) || 'az előkészítés nem sikerült.');
                 }
-                // 3× or 2× by its size; a large one (above 2560 px) needs none.
+                // 3× (Real-ESRGAN: 4×) or 2× by its size; a large one (above 2560 px) needs none.
                 const factor = prepared.data.upscale_factor || 0;
                 if (factor < 2) {
                     return null;
@@ -1272,7 +1283,7 @@
                     return;
                 }
                 if (resp && resp.native) {
-                    $status().text('A minta elég nagy, nem kell felskálázni. Nézd meg teljes méretben, és ha jó, hagyd jóvá: 255 színes palettát kap.');
+                    $status().text('A minta elég nagy, nem kell felskálázni. Nézd meg teljes méretben, és ha jó, hagyd jóvá' + (withPalette ? ': 255 színes palettát kap.' : '.'));
                 } else if (resp && resp.success) {
                     $status().text('AI felskálázás kész. Nézd meg teljes méretben, és ha jó, hagyd jóvá.');
                 } else {

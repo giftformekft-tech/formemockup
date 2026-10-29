@@ -57,11 +57,11 @@ mintája látszik. Kezelés: **Mockupok › Grafikusok**.
   (a kártyán megnyílik a jelölt pontos promptja; egy elírt szöveg kijavítása után az
   **Újragenerálás ezzel a prompttal** elemzés nélkül, pontosan ezzel a prompttal generál újra,
   2.43.3). **Mindet jóváhagyom**, **Hátralévők leállítása**.
-- **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként 3×-os AI felskálázást
-  (böngésző, Real-CUGAN) és 255 színes palettát kapnak, majd sorba áll a mockupjaik
-  újragenerálása (mint az egyedi jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver
-  3×-os nagyítással folytatja. A kész kártya a véglegesített fájlt mutatja („Végleges: 3× AI
-  felskálázás · 255 színes paletta · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
+- **Jóváhagyottak véglegesítése:** a jóváhagyott minták egyenként AI felskálázást kapnak
+  (böngésző, a beállított modellel: Real-CUGAN 3× vagy Real-ESRGAN 4×; ha be van kapcsolva,
+  255 színes palettát is), majd sorba áll a mockupjaik újragenerálása (mint az egyedi
+  jóváhagyásnál). Ha a felskálázás nem sikerül, a szerver ugyanekkora sima nagyítással folytatja.
+  A kész kártya a véglegesített fájlt mutatja („Végleges: 3× AI felskálázás · méret”, 2.43.4). A nem jóváhagyott új minták a termék AI
   újratervezés ablakában megmaradnak.
 - Futás közben a lap bezárása előtt figyelmeztetés jön; az ablak bezárható és újranyitható.
 - **Folyamatcsík (2.43.8):** az ablak tetején (bezárt ablaknál a lap alján lebegve, **Megnyitás**
@@ -149,10 +149,10 @@ oldal (832–3840 px, 16 px-enként; a másik oldal mintánként a képaránybó
 megengedett méret készül, ami belefér). Alapból **Gazdaságos** (a legkisebb méret, mint eddig).
 Nagyobb felbontás drágább és lassabb; 2 MP fölött a képkérés időkorlátja 5 perc. A kártya mutatja,
 milyen méretben készült. Az AI felskálázás a mérethez igazodik (`MG_AI_Redesign::upscale_factor`):
-**3×**, ha a hosszabbik oldal így legfeljebb 5120 px (1706 px-ig), különben **2×** (a Real-CUGAN
-`up2x-conservative` modellel, 2560 px-ig), afölött nincs felskálázás (a 2K–4K kép már
-nyomtatható méretű), csak a 255 színes paletta. A WebGL nélküli tartalék Lanczos-nagyítás ugyanígy
-3×, 2× vagy semmi. A rendelések AI nyomatánál továbbra is a gazdaságos méret marad.
+**3×** (Real-ESRGAN: **4×**), ha a hosszabbik oldal így legfeljebb 5120 px (1706, ill. 1280 px-ig),
+különben **2×** (Real-CUGAN `up2x-conservative`, ill. a Real-ESRGAN 4×-ese 2×-re átlagolva,
+2560 px-ig), afölött nincs felskálázás (a 2K–4K kép már nyomtatható méretű). A WebGL nélküli
+tartalék Lanczos-nagyítás ugyanígy 4×/3×, 2× vagy semmi. A rendelések AI nyomatánál továbbra is a gazdaságos méret marad.
 
 **AI felskálázás (2.42.0, 2.43.9 óta Real-CUGAN 3×):** a kész PNG-t az admin böngészője a
 **Real-CUGAN** `up3x-conservative` modellel (MIT, a realcugan-ncnn-vulkan `models-se` súlyai)
@@ -170,6 +170,21 @@ lapot nyitva kell hagyni. Ha a böngésző nem tudja (nincs WebGL), jóváhagyá
 Lanczos-nagyítást alkalmazza. A modell átalakítása: `tools/convert-realcugan.py`. Teszt:
 `node tests/ai-upscale-browser-test.js`.
 
+**Gyors mód: Real-ESRGAN 4× (2.44.7):** **AI Minta SEO és tagelés → AI újratervezés → AI
+felskálázó**. A `realesr-general-x4v3` (BSD-3-Clause, `assets/models/realesr-general-x4v3/`,
+átalakítás: `tools/convert-realesrgan.py`) kis, egyszerű hálózat: ugyanazon a képen (192 px, SwiftShader)
+82 mp a Real-CUGAN 3× 133 mp-ével szemben, kb. 1,6× gyorsabb, és közben 4×-esre nagyít. A régi (2.42–2.43.8) változathoz képest: az átlátszóság nem fut át
+még egyszer a modellen, hanem bikubikusan nagyobbodik (átlátszó mintán fele annyi munka), és a
+színkorrekció (a modell egymagában ~5%-kal sötétíti a sötét tónusokat) csak a különbség 5×5-ös
+átlagát teszi vissza, így a generált kép pixelszemcséjét nem hozza vissza foltokként (a teszt
+szemcsés fehérjén 1,5 helyett 0,26 szórás; a Real-CUGAN-é 0,12, a fehér felületen így is simább).
+
+**Videomemória és hibás eredmény (2.44.5):** a TensorFlow.js minden felszabadított textúrát
+megtartott (egy futás után ~2,6 GB), laptop-GPU-n a böngésző ilyenkor elveszíti a WebGL-t, és
+hibaüzenet nélkül nullákat (fekete mintát) ad vissza. Most a textúrák azonnal felszabadulnak, és
+ha a WebGL elveszik, NaN jön, vagy a színes mintából fekete lesz, a felskálázás hibát ad (nem menti
+el), és jóváhagyáskor a sima nagyítás fut.
+
 **Felskálázás előtti előkészítés (2.42.13, 2.43.5 óta közvetlenül a felskálázás előtt):** a
 GPT Image képe a felskálázás előtt (és a 3×-os tartalék nagyítás előtt) a Design-flow
 upscale-bemenetével azonos kezelést kap; az előnézet addig az eredeti, élsimított GPT-kép (`MG_Image_Utils::prepare_upscale_input`): peremjavítás
@@ -183,15 +198,21 @@ a felskálázás előtt**, alapból be, 50%): kikapcsolva a GPT-kép élsimítot
 a felskálázóba (simább szél, de a félig átlátszó szegély is felnagyítódik; ezt a peremjavítás
 tompítja), kisebb küszöb vastagabb, nagyobb vékonyabb szélt hagy.
 
-**Palettás PNG (2.42.12):** a felskálázott AI minta a Design-flow app upscale-jével azonos
-módon **255 színes palettás PNG** lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó
+**Palettás PNG (2.42.12, 2.44.7 óta kapcsolható, alapból ki):** a **255 színes
+palettás PNG** kapcsolóval a felskálázott AI minta a Design-flow app upscale-jével azonos
+módon 255 színes palettás PNG lesz (`MG_Image_Utils::to_palette_png`): a teljesen átlátszó
 pixelek RGB-je 0, kvantálás dithering nélkül, az élsimított szélek megtartják az átlátszóságukat
 (teljes tRNS tábla, 6 alatti alfa teljesen átlátszó), és az átlátszó margó levágódik (csak az
 átlátszóság szerint, színre nem). Ez a böngészős AI felskálázás feltöltésekor fut, a 3×-os
 tartalék nagyítás és a korábbi jelöltek esetén jóváhagyáskor. Az Imagick kvantál, a palettás
 PNG-t a plugin írja soronként (3136×3392 px kb. 2 mp, ~60 MB). A rendelés-export ettől
 függetlenül, változatlanul 8 bites RGBA-t ír a nyomdának. Teszt: `php tests/palette-png-test.php`
-(valódi Imagick kell).
+(valódi Imagick kell). Alapból ki van kapcsolva: dithering nélkül az árnyalt, rajzolt minták (bőr,
+átmenetek) foltosak, lépcsősek lesznek, és az ImageMagick 7.1.2 Q16-HDRI a mintákat be is
+feketítette. **2.44.6 óta** az előkészítés és a palettázás is ellenőrzi a színeket (a fedő pixelek
+ugyanott, ill. a látható átlag): ha egy lépés elveszíti őket, az eredménye eldobódik (az
+előkészítés nélkül a GPT-kép megy tovább, a paletta nélkül az RGBA PNG marad), és a kártya kiírja,
+miért.
 
 A **Pontos szöveg** mezőt érdemes kitölteni (soronként egy sor): így biztosan ugyanaz a
 szöveg kerül az új mintára. A **Saját képprompt** mezővel egy korábbi jelölt promptja

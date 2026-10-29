@@ -77,7 +77,15 @@ class MG_AI_Redesign {
             'edge_cleanup' => true,
             'alpha_binary' => true,
             'alpha_threshold' => 50,
+            // 'cugan' (Real-CUGAN 3×, smoother, slower) or 'esrgan' (Real-ESRGAN 4×, fast).
+            'upscaler' => 'cugan',
+            // The 255-color palette finish: off, a no-dither palette bands shaded
+            // art into blotches, and ImageMagick 7.1.2 HDRI blackened designs in it.
+            'palette' => false,
         ), is_array($stored) ? $stored : array());
+        if (!in_array($settings['upscaler'], array('cugan', 'esrgan'), true)) {
+            $settings['upscaler'] = 'cugan';
+        }
         if (trim((string) $settings['describe_prompt']) === '') {
             $settings['describe_prompt'] = self::default_describe_prompt();
         }
@@ -104,6 +112,8 @@ class MG_AI_Redesign {
             'alpha_threshold' => array_key_exists('alpha_threshold', $input) && is_numeric($input['alpha_threshold'])
                 ? max(1, min(99, (int) round((float) $input['alpha_threshold'])))
                 : (int) $current['alpha_threshold'],
+            'upscaler' => isset($input['upscaler']) && in_array($input['upscaler'], array('cugan', 'esrgan'), true) ? $input['upscaler'] : $current['upscaler'],
+            'palette' => array_key_exists('palette', $input) ? !empty($input['palette']) : !empty($current['palette']),
         );
         $describe = isset($input['describe_prompt']) ? trim(sanitize_textarea_field($input['describe_prompt'])) : '';
         if (empty($input['describe_prompt_reset']) && $describe !== '' && $describe !== self::default_describe_prompt()) {
@@ -1081,10 +1091,15 @@ class MG_AI_Redesign {
     }
 
     /**
-     * Candidate fields after the 255-color palette finish, or, when this
-     * server's ImageMagick loses the colors in it, the RGBA PNG kept as it is.
+     * Candidate fields after the 255-color palette finish (when it is on), or
+     * the RGBA PNG kept as it is: palette off, or this server's ImageMagick
+     * loses the colors in it.
      */
     private static function palette_or_keep($path) {
+        if (empty(self::get_settings()['palette'])) {
+            $info = getimagesize($path);
+            return array('palette' => 0, 'palette_error' => '', 'width' => (int) $info[0], 'height' => (int) $info[1]);
+        }
         try {
             $palette = MG_Image_Utils::to_palette_png($path, self::PALETTE_COLORS);
             return array('palette' => $palette['colors'], 'palette_error' => '', 'width' => $palette['width'], 'height' => $palette['height']);
@@ -1157,17 +1172,21 @@ class MG_AI_Redesign {
         self::refresh_attachment_metadata($candidate['attachment_id'], $path);
         return self::candidate_for_ui(self::update_candidate($product_id, $attachment_id, array_merge(array(
             'upscale' => 'ai' . $scale . 'x',
+            // The setting's model (the browser ran the one its page was opened with).
+            'upscale_model' => self::get_settings()['upscaler'],
         ), $palette)));
     }
 
     /**
-     * The AI upscale for a design of this size: 3×, or 2× if 3× would make the
-     * long side longer than MAX_UPSCALED_EDGE, or none (1) for a large one
-     * (2K and 4K generations are print-sized already).
+     * The AI upscale for a design of this size: 3× with Real-CUGAN (4× with
+     * Real-ESRGAN), or 2× if that would make the long side longer than
+     * MAX_UPSCALED_EDGE, or none (1) for a large one (2K and 4K generations
+     * are print-sized already).
      */
     public static function upscale_factor($width, $height) {
         $long = max((int) $width, (int) $height);
-        foreach (array(3, 2) as $factor) {
+        $factors = self::get_settings()['upscaler'] === 'esrgan' ? array(4, 2) : array(3, 2);
+        foreach ($factors as $factor) {
             if ($long > 0 && $long * $factor <= self::MAX_UPSCALED_EDGE) {
                 return $factor;
             }
@@ -1217,7 +1236,8 @@ class MG_AI_Redesign {
         if (!$chosen || !is_string($path) || !is_file($path)) {
             throw new RuntimeException(__('A kiválasztott AI minta nem található. Generálj újat.', 'mockup-generator'));
         }
-        if (($chosen['upscale'] ?? '') === 'none') {
+        $fallback = ($chosen['upscale'] ?? '') === 'none';
+        if ($fallback) {
             // Not AI-upscaled in the browser: the export's Lanczos enlargement by the
             // same factor, from the same prepared input; a large one stays as it is.
             if (empty($chosen['prepared'])) {
@@ -1230,8 +1250,9 @@ class MG_AI_Redesign {
             }
             $chosen['upscale'] = $factor > 1 ? 'lanczos' . $factor . 'x' : 'native';
         }
-        if (empty($chosen['palette'])) {
-            // Candidates from before 2.42.12 and the 3× fallback still need the palette finish.
+        if ($fallback || (empty($chosen['palette']) && !empty(self::get_settings()['palette']))) {
+            // The palette finish (when on) for the fallback and for candidates from before
+            // 2.42.12; with it off, the fallback's new size.
             $chosen = array_merge($chosen, self::palette_or_keep($path));
             self::refresh_attachment_metadata($chosen['attachment_id'], $path);
         }
@@ -1258,7 +1279,8 @@ class MG_AI_Redesign {
             'analyzer' => $chosen['analyzer'],
             'intensity' => $chosen['intensity'],
             'upscale' => $chosen['upscale'] ?? 'lanczos3x',
-            'palette' => (int) $chosen['palette'],
+            'upscale_model' => $chosen['upscale_model'] ?? '',
+            'palette' => (int) ($chosen['palette'] ?? 0),
         );
         update_post_meta($product_id, self::META_HISTORY, array_slice($history, -20));
         // The finished file, so the page can show what goes on the product.

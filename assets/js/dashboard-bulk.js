@@ -4,9 +4,10 @@
  * The bulk run reuses the single redesign endpoints per product: generation
  * runs two at a time from this tab (with status polling if a proxy cuts the
  * request), every card shows the original and the new design side by side,
- * and only the approved cards are upscaled in the browser (3×, 2× or, when
- * large enough, not at all), finished as a
- * palette PNG and queued for mockup regeneration at the end.
+ * and only the approved cards are upscaled in the browser (3× with
+ * Real-CUGAN or 4× with Real-ESRGAN, 2× or, when large enough, not at all),
+ * finished (a palette PNG when that is on) and queued for mockup
+ * regeneration at the end.
  */
 (function ($) {
     'use strict';
@@ -235,15 +236,15 @@
         document.title = bulk.dismissed ? baseTitle : (m.complete ? '✓ Kész – ' : '[' + m.percent + '%] ') + baseTitle;
     }
 
-    // "Végleges: 3× AI · 255 színes paletta · 2352×2544 px – " once the file is finished.
+    // "Végleges: 3× AI felskálázás · 255 színes paletta · 2352×2544 px – " once the file is finished.
     function finishLabel(c) {
-        if (!c.palette && !c.palette_error) {
+        const how = { ai2x: '2× AI felskálázás', ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos2x: '2× sima nagyítás', lanczos3x: '3× sima nagyítás', lanczos4x: '4× sima nagyítás', native: 'eredeti felbontás' }[c.upscale] || '';
+        if (!how) {
             return '';
         }
-        const how = { ai2x: '2× AI felskálázás', ai3x: '3× AI felskálázás', ai4x: '4× AI felskálázás', lanczos2x: '2× sima nagyítás', lanczos3x: '3× sima nagyítás', native: 'eredeti felbontás' }[c.upscale] || '';
         const size = c.width && c.height ? c.width + '×' + c.height + ' px' : '';
         // palette_error: this server's ImageMagick lost the colors, the PNG stayed unpaletted.
-        return 'Végleges: ' + [how, c.palette ? c.palette + ' színes paletta' : 'paletta nélkül', size].filter(Boolean).join(' · ') + ' – '
+        return 'Végleges: ' + [how, c.palette ? c.palette + ' színes paletta' : '', size].filter(Boolean).join(' · ') + ' – '
             + (c.palette_error ? c.palette_error + ' ' : '');
     }
 
@@ -441,7 +442,7 @@
 
     async function finalize() {
         const queue = active().filter(function (item) { return item.approved && item.status === 'done' && item.candidate; });
-        if (!queue.length || !window.confirm(queue.length + ' jóváhagyott minta kerül a termékére: felskálázás, palettás PNG, majd az összes mockupjuk újragenerálása. A termékek többi AI jelöltje törlődik. Folytatod?')) {
+        if (!queue.length || !window.confirm(queue.length + ' jóváhagyott minta kerül a termékére: felskálázás' + ((window.MG_AI_UPSCALE || {}).palette ? ', palettás PNG' : '') + ', majd az összes mockupjuk újragenerálása. A termékek többi AI jelöltje törlődik. Folytatod?')) {
             return;
         }
         bulk.finalizing = true;
@@ -463,7 +464,7 @@
                         throw new Error(message(prepared) || 'az előkészítés nem sikerült');
                     }
                     item.candidate = prepared.data;
-                    // 3× or 2× by its size; a large one (above 2560 px) needs none.
+                    // 3× (Real-ESRGAN: 4×) or 2× by its size; a large one (above 2560 px) needs none.
                     const factor = item.candidate.upscale_factor || 0;
                     if (factor >= 2) {
                         item.note = 'AI felskálázás indul…';
@@ -474,7 +475,7 @@
                             item.fin = 0.1 + 0.7 * p;
                             render(item);
                         }, factor);
-                        item.note = 'A felskálázott PNG feltöltése és palettázása…';
+                        item.note = 'A felskálázott PNG feltöltése' + ((window.MG_AI_UPSCALE || {}).palette ? ' és palettázása' : '') + '…';
                         item.fin = 0.85;
                         render(item);
                         const resp = await upload(item, blob);

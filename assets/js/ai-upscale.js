@@ -1,22 +1,31 @@
 /**
- * 3× (or 2×) AI upscaling in the admin's browser with Real-CUGAN
- * (up3x/up2x-conservative, the models-se weights of realcugan-ncnn-vulkan,
- * MIT), run by TensorFlow.js on WebGL: the same models and tiling as the
- * Design-flow app. The models and the library ship with the plugin, so no
- * external service is called.
+ * AI upscaling in the admin's browser, run by TensorFlow.js on WebGL. The
+ * models and the library ship with the plugin, so no external service is called.
  *
- * window.MGAIUpscale.upscale(imageUrl, onProgress, factor = 3) -> Promise<Blob> (PNG)
+ * window.MGAIUpscale.upscale(imageUrl, onProgress, factor, upscaler) -> Promise<Blob> (PNG)
  *
- * Real-CUGAN is made for drawn art: flat areas stay flat (the faint grain of a
- * generated image would turn into blotches in the 255-color palette) and the
- * colors are kept without correction. Transparent designs: colors are bled
- * into the fully transparent area first (no dark fringes), the alpha channel
- * is enlarged bicubically, as realcugan-ncnn-vulkan does.
+ * upscaler (default: the admin setting) picks the model:
+ * - 'cugan', factor 3 or 2: Real-CUGAN up3x/up2x-conservative (the models-se
+ *   weights of realcugan-ncnn-vulkan, MIT), the same models and tiling as the
+ *   Design-flow app. Made for drawn art: flat areas stay flat, colors are kept
+ *   without correction. Slower.
+ * - 'esrgan', factor 4 or 2: Real-ESRGAN realesr-general-x4v3 (SRVGGNetCompact,
+ *   BSD-3-Clause), a small plain network, several times less work per pixel;
+ *   2× is its 4× averaged down. Its color correction is low-passed, so it does
+ *   not put back the pixel grain of the generated image.
+ *
+ * Transparent designs: colors are bled into the fully transparent area first
+ * (no dark fringes), the alpha channel is enlarged bicubically, as
+ * realcugan-ncnn-vulkan does.
  */
 (function () {
     'use strict';
 
     const TILE = 96;
+    const ESRGAN_TILE = 128;
+    // Context around a Real-ESRGAN tile (32 3×3 convolutions see 16 px; 10 px was seamless).
+    const ESRGAN_PAD = 10;
+    let esrganPromise = null;
     // Squeeze-excitation statistics for the whole image: every third 32 px
     // tile with its own means, averaged (realcugan-ncnn-vulkan's default
     // "very rough" sync), so the tiles do not differ in tone.
@@ -88,6 +97,62 @@
             promise.catch(function () { delete modelPromises[factor]; });
         }
         return modelPromises[factor];
+    }
+
+    // Real-ESRGAN layer list: conv kernels [kh, kw, in, out], biases, PReLU alphas.
+    function ensureEsrgan(tf, factor) {
+        const base = (config().models || {}).esrgan;
+        if (!base) {
+            return Promise.reject(new Error('Nincs Real-ESRGAN felskálázó modell.'));
+        }
+        if (!esrganPromise) {
+            esrganPromise = Promise.all([
+                fetch(base + 'model.json').then(function (r) { if (!r.ok) { throw new Error('A modell leírója nem tölthető be.'); } return r.json(); }),
+                fetch(base + 'weights.bin').then(function (r) { if (!r.ok) { throw new Error('A modell súlyai nem tölthetők be.'); } return r.arrayBuffer(); }),
+            ]).then(function (res) {
+                const floats = new Float32Array(res[1]);
+                return res[0].layers.map(function (l) {
+                    const size = l.shape.reduce(function (a, b) { return a * b; }, 1);
+                    return tf.tensor(floats.subarray(l.offset, l.offset + size), l.shape);
+                });
+            });
+            esrganPromise.catch(function () { esrganPromise = null; });
+        }
+        return esrganPromise.then(function (weights) {
+            return { esrgan: weights, scale: factor === 2 ? 2 : 4, prepadding: ESRGAN_PAD, align: 1 };
+        });
+    }
+
+    /**
+     * Real-ESRGAN on a padded tile x [1, th + 2 pad, tw + 2 pad, 3]: the tile's
+     * pixels, model.scale times, 0-255.
+     */
+    function runEsrgan(tf, model, x, th, tw) {
+        const W = model.esrgan;
+        let h = x;
+        let i = 0;
+        while (i < W.length) {
+            h = tf.add(tf.conv2d(h, W[i], 1, 'same'), W[i + 1]);
+            i += 2;
+            if (i < W.length && W[i].rank === 1) {
+                h = tf.prelu(h, W[i]);
+                i += 1;
+            }
+        }
+        h = tf.depthToSpace(h, 4, 'NHWC');
+        const size = [x.shape[1] * 4, x.shape[2] * 4];
+        let out = tf.add(h, tf.image.resizeNearestNeighbor(x, size));
+        // Color correction: the model alone darkens dark tones by ~5%, which shows in
+        // print. Only the 5×5 average of the difference goes back, so the generated
+        // image's pixel grain, which the model removed, does not return as blobs.
+        const diff = tf.avgPool(tf.sub(x, tf.avgPool(out, 4, 4, 'valid')), 5, 1, 'same');
+        out = tf.add(out, tf.image.resizeBilinear(diff, size, true));
+        const pad = model.prepadding * 4;
+        out = out.slice([0, pad, pad, 0], [1, th * 4, tw * 4, 3]);
+        if (model.scale === 2) {
+            out = tf.avgPool(out, 2, 2, 'valid');
+        }
+        return out.clipByValue(0, 1).mul(255);
     }
 
     function activate(tf, x, act) {
@@ -390,9 +455,12 @@
         return visible ? lit / visible : 0;
     }
 
-    async function upscale(url, onProgress, factor) {
+    async function upscale(url, onProgress, factor, upscaler) {
         const tf = await ensureTf();
-        const model = await ensureModel(tf, factor || 3);
+        const model = (upscaler || config().upscaler) === 'esrgan'
+            ? await ensureEsrgan(tf, factor)
+            : await ensureModel(tf, factor || 3);
+        const tileSize = model.esrgan ? ESRGAN_TILE : TILE;
         const SCALE = model.scale;
         const img = await loadImage(url);
         const w = img.naturalWidth, h = img.naturalHeight;
@@ -446,14 +514,14 @@
         }
 
         const tiles = [];
-        for (let y = 0; y < h; y += TILE) {
-            for (let x = 0; x < w; x += TILE) {
-                tiles.push([x, y, Math.min(TILE, w - x), Math.min(TILE, h - y)]);
+        for (let y = 0; y < h; y += tileSize) {
+            for (let x = 0; x < w; x += tileSize) {
+                tiles.push([x, y, Math.min(tileSize, w - x), Math.min(tileSize, h - y)]);
             }
         }
         const work = tiles.filter(function (t) { return !constant(t[0], t[1], t[0] + t[2], t[1] + t[3]); });
         // One tile: its own statistics are exact. A gap sample costs about a fifth of a tile.
-        const gapSamples = work.length > 1 ? Math.ceil(h / GAP_TILE / 3) * Math.ceil(w / GAP_TILE / 3) : 0;
+        const gapSamples = !model.esrgan && work.length > 1 ? Math.ceil(h / GAP_TILE / 3) * Math.ceil(w / GAP_TILE / 3) : 0;
         const total = work.length + gapSamples / 5 || 1;
         let done = 0;
         const step = function (units) {
@@ -475,7 +543,8 @@
                     const data = new Float32Array(ih * iw * 3);
                     tileInput(src, w, h, model, x, y, tw, th, data, 0);
                     const result = tf.tidy(function () {
-                        return runGraph(tf, model, tf.tensor4d(data, [1, ih, iw, 3]), gaps, null).mul(255);
+                        const input = tf.tensor4d(data, [1, ih, iw, 3]);
+                        return model.esrgan ? runEsrgan(tf, model, input, th, tw) : runGraph(tf, model, input, gaps, null).mul(255);
                     });
                     rowLen = result.shape[2];
                     d = await gpu.read(result);
@@ -541,5 +610,5 @@
         });
     }
 
-    window.MGAIUpscale = { upscale: upscale, factors: [2, 3] };
+    window.MGAIUpscale = { upscale: upscale, factors: [2, 3, 4] };
 })();

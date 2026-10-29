@@ -172,6 +172,15 @@ check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'not a multipl
 MG_AI_Redesign::save_settings(array('resolution' => '4000'));
 check(MG_AI_Redesign::get_settings()['resolution'] === 'economy', 'over 3840 px: economical');
 MG_AI_Redesign::save_settings(array('resolution' => 'economy', 'quality' => 'medium'));
+$s = MG_AI_Redesign::get_settings();
+check($s['upscaler'] === 'cugan' && $s['palette'] === false, 'Real-CUGAN, no palette finish by default');
+MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan', 'palette' => '1'));
+$s = MG_AI_Redesign::get_settings();
+check($s['upscaler'] === 'esrgan' && $s['palette'] === true, 'Real-ESRGAN and the palette can be chosen');
+MG_AI_Redesign::save_settings(array('upscaler' => 'bogus', 'quality' => 'medium'));
+$s = MG_AI_Redesign::get_settings();
+check($s['upscaler'] === 'esrgan' && $s['palette'] === true, 'an unknown upscaler or a save without the fields keeps them');
+MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '0'));
 
 // Every allowed image size at the design's aspect ratio (GPT Image 2 / 2.5 rules).
 foreach (array(array(1000, 1000, 130, '816x816', '2880x2880'), array(1920, 1080, 172, '1088x608', '3840x2160'), array(3000, 1000, 112, '1440x480', '3840x1280')) as $case) {
@@ -361,6 +370,14 @@ throws(function () use ($source) { MG_AI_Print_Generator::redesign_image($source
 check(MG_AI_Redesign::upscale_factor(816, 816) === 3 && MG_AI_Redesign::upscale_factor(1706, 900) === 3, 'up to 1706 px: 3×');
 check(MG_AI_Redesign::upscale_factor(1707, 900) === 2 && MG_AI_Redesign::upscale_factor(2560, 1440) === 2, 'up to 2560 px: 2×');
 check(MG_AI_Redesign::upscale_factor(2576, 1440) === 1 && MG_AI_Redesign::upscale_factor(0, 0) === 1, 'larger: none');
+// Real-ESRGAN: 4×, 2× when 4× would pass 5120 px.
+MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan'));
+check(MG_AI_Redesign::upscale_factor(912, 736) === 4 && MG_AI_Redesign::upscale_factor(1280, 900) === 4, 'Real-ESRGAN up to 1280 px: 4×');
+check(MG_AI_Redesign::upscale_factor(1281, 900) === 2 && MG_AI_Redesign::upscale_factor(2576, 1440) === 1, 'Real-ESRGAN above: 2×, then none');
+MG_AI_Redesign::save_settings(array('upscaler' => 'cugan'));
+
+// The palette finish (an option since 2.44.7) for the approval and upload checks below.
+MG_AI_Redesign::save_settings(array('palette' => '1'));
 
 // Approval: queues the replacement, deletes the other candidates, keeps history.
 file_put_contents(get_attached_file(11), make_png(10, 10));
@@ -464,6 +481,33 @@ foreach (array(array(44, 2000, 'lanczos2x', 4000), array(45, 3000, 'native', 300
     $result = MG_AI_Redesign::apply(9, $att);
     check($result['candidate']['upscale'] === $label && getimagesize(get_attached_file($att))[0] === $final, "fallback for $width px: $label");
 }
+
+// Palette finish off (the default): neither the upload nor the approval
+// quantizes; the AI upscale stays the browser's RGBA PNG.
+MG_AI_Redesign::save_settings(array('palette' => '0'));
+$palette_calls = array();
+$meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 61, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(61), make_png(10, 10));
+file_put_contents($test_dir . '/up61.png', make_png(30, 30));
+$stored = MG_AI_Redesign::store_upscaled(11, 61, $test_dir . '/up61.png');
+check($stored['upscale'] === 'ai3x' && $stored['upscale_model'] === 'cugan' && $stored['palette'] === 0 && $stored['palette_error'] === '' && $stored['width'] === 30, 'palette off: the upload stays RGBA');
+$enqueued = array();
+$applied = MG_AI_Redesign::apply(11, 61);
+check($palette_calls === array() && $applied['candidate']['palette'] === 0 && $enqueued[0][1] === get_attached_file(61), 'palette off: approval queues it as it is');
+check(end($meta[11][MG_AI_Redesign::META_HISTORY])['upscale_model'] === 'cugan', 'history records the model');
+// The sharp-enlargement fallback without a palette: its new size is recorded.
+MG_AI_Redesign::save_settings(array('upscaler' => 'esrgan'));
+$meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 62, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(62), make_png(10, 10));
+$applied = MG_AI_Redesign::apply(11, 62);
+check($palette_calls === array() && $applied['candidate']['upscale'] === 'lanczos4x' && $applied['candidate']['width'] === 40, 'palette off, Real-ESRGAN setting: 4× fallback, size recorded');
+// A Real-ESRGAN upload: 4× of the candidate, labeled with its model.
+$meta[11][MG_AI_Redesign::META_CANDIDATES] = array(array('attachment_id' => 63, 'upscale' => 'none', 'width' => 10, 'height' => 10, 'prepared' => true, 'analyzer' => 'openai', 'intensity' => 'subtle'));
+file_put_contents(get_attached_file(63), make_png(10, 10));
+file_put_contents($test_dir . '/up63.png', make_png(40, 40));
+$stored = MG_AI_Redesign::store_upscaled(11, 63, $test_dir . '/up63.png');
+check($stored['upscale'] === 'ai4x' && $stored['upscale_model'] === 'esrgan', 'Real-ESRGAN 4× upload accepted and labeled');
+MG_AI_Redesign::save_settings(array('upscaler' => 'cugan', 'palette' => '1'));
 
 // ImageMagick 7.1.2 Q16-HDRI blackened the designs: a step that loses the
 // colors is dropped, the colored file goes on (prepare: uncropped; palette: RGBA).

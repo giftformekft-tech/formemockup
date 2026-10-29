@@ -524,7 +524,10 @@ class MG_Dashboard_Page {
         echo '<button type="button" class="button" id="mg-ai-bulk-approve-all">Mindet jóváhagyom</button> ';
         echo '<button type="button" class="button button-primary" id="mg-ai-bulk-finalize" disabled>Jóváhagyottak véglegesítése</button>';
         echo ' <button type="button" class="button" id="mg-ai-bulk-new">Új futás a mostani kijelöléssel</button>';
-        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként AI felskálázást (a böngészőben, Real-CUGAN, mint a Design-flow-ban; a mérettől függően 3× vagy 2×, 2560 px fölött nincs) és 255 színes palettát kapnak, majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
+        $redesign = MG_AI_Redesign::get_settings();
+        echo '<p class="description">Véglegesítéskor a jóváhagyott minták egyenként AI felskálázást kapnak (a böngészőben, '
+            . ($redesign['upscaler'] === 'esrgan' ? 'Real-ESRGAN; a mérettől függően 4× vagy 2×' : 'Real-CUGAN, mint a Design-flow-ban; a mérettől függően 3× vagy 2×')
+            . ', 2560 px fölött nincs)' . (!empty($redesign['palette']) ? ' és 255 színes palettát' : '') . ', majd sorba áll a mockupjaik újragenerálása. A böngészőlapot csak addig hagyd nyitva (és ne frissítsd), amíg a folyamatcsík „Kész”-t mutat; ez az ablak közben bezárható, a csík a lap alján követi a folyamatot. A mockupok ezután a szerveren, a háttérben készülnek, azt már nem kell megvárni.</p>';
         echo '</div>';
         echo '</div>';
         echo '</div>';

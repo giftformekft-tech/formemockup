@@ -93,12 +93,16 @@ class MG_Admin_Page {
             file_exists($bulk_path) ? filemtime($bulk_path) : '1.0.0',
             true
         );
+        $redesign = class_exists('MG_AI_Redesign') ? MG_AI_Redesign::get_settings() : array();
         wp_localize_script('mg-ai-upscale', 'MG_AI_UPSCALE', array(
             'tfUrl' => plugins_url('../assets/vendor/tfjs/tf.min.js', __FILE__) . '?ver=4.22.0',
             'models' => array(
                 2 => plugins_url('../assets/models/realcugan-up2x-conservative/', __FILE__),
                 3 => plugins_url('../assets/models/realcugan-up3x-conservative/', __FILE__),
+                'esrgan' => plugins_url('../assets/models/realesr-general-x4v3/', __FILE__),
             ),
+            'upscaler' => $redesign['upscaler'] ?? 'cugan',
+            'palette' => !empty($redesign['palette']),
         ));
 
         $tabs = self::get_accessible_tabs();
