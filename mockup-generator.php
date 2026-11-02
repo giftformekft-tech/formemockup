@@ -31,6 +31,7 @@ add_action('plugins_loaded', function(){
         'includes/class-outlet.php',
         'includes/class-bulk-batch.php',
         'includes/class-bulk-queue.php',
+        'includes/class-design-flow-rest.php',
         'includes/class-cart-name-cleaner.php',
         'includes/class-cart-pricing.php',
         'includes/class-bundle-discount.php',
@@ -292,6 +293,9 @@ add_action('plugins_loaded', function(){
     }
     if (class_exists('MG_Bulk_Queue')) {
         MG_Bulk_Queue::init();
+    }
+    if (class_exists('MG_Design_Flow_Rest')) {
+        MG_Design_Flow_Rest::init();
     }
     if (class_exists('MG_Migration_Admin_Page')) {
         MG_Migration_Admin_Page::init_auto_migration();
