@@ -20,9 +20,10 @@ if (!defined('ABSPATH')) {
  * order is already in production; in that case the admin is warned that the new
  * item still has to be sent to the supplier separately.
  *
- * The same rules apply to the "🗑️ Tétel törlése" button rendered on each line:
- * a customer who changed their mind can have an item taken off the order as long
- * as it is paid on delivery.
+ * The same rules apply to the "🗑️ Tétel törlése" and "🔢 Darabszám" buttons
+ * rendered on each line: a customer who changed their mind can have an item
+ * taken off the order, or order more / fewer pieces of it, as long as it is paid
+ * on delivery.
  */
 class MG_Order_Add_Item {
 
@@ -38,8 +39,9 @@ class MG_Order_Add_Item {
         add_action('wp_ajax_mg_order_add_item_search', array(__CLASS__, 'ajax_search_products'));
         add_action('wp_ajax_mg_order_add_item_options', array(__CLASS__, 'ajax_get_options'));
         add_action('wp_ajax_mg_order_add_item_save', array(__CLASS__, 'ajax_add_item'));
-        add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_remove_button'), 20, 3);
+        add_action('woocommerce_after_order_itemmeta', array(__CLASS__, 'render_item_buttons'), 20, 3);
         add_action('wp_ajax_mg_order_remove_item', array(__CLASS__, 'ajax_remove_item'));
+        add_action('wp_ajax_mg_order_update_item_qty', array(__CLASS__, 'ajax_update_item_qty'));
     }
 
     /**
@@ -186,6 +188,10 @@ class MG_Order_Add_Item {
                 'adding'         => __('Hozzáadás…', 'mgdtp'),
                 'remove'         => __('Tétel törlése', 'mgdtp'),
                 'removing'       => __('Törlés…', 'mgdtp'),
+                'qty_save'       => __('Darabszám mentése', 'mgdtp'),
+                'qty_saving'     => __('Mentés…', 'mgdtp'),
+                'qty_unchanged'  => __('A darabszám nem változott.', 'mgdtp'),
+                'qty_invalid'    => __('A darabszám legalább 1 legyen.', 'mgdtp'),
                 'cancel'         => __('Mégse', 'mgdtp'),
                 'loading'        => __('Betöltés…', 'mgdtp'),
                 'error'          => __('Hiba történt, próbáld újra.', 'mgdtp'),
@@ -221,9 +227,9 @@ class MG_Order_Add_Item {
     }
 
     /**
-     * Render the per-line "remove" button under the item meta.
+     * Render the per-line "quantity" and "remove" buttons under the item meta.
      */
-    public static function render_remove_button($item_id, $item, $product) {
+    public static function render_item_buttons($item_id, $item, $product) {
         if (!$item_id || !($item instanceof WC_Order_Item_Product)) {
             return;
         }
@@ -233,24 +239,68 @@ class MG_Order_Add_Item {
             return;
         }
 
-        // Nothing to remove when this is the only line left — that is a
-        // cancellation, not an order change.
-        if (count($order->get_items()) <= 1) {
-            return;
-        }
+        $in_production = self::is_in_production($order) ? 1 : 0;
+        $quantity      = (int) $item->get_quantity();
+
+        echo '<div class="mg-remove-item-wrap" style="margin-top:6px;">';
 
         printf(
-            '<div class="mg-remove-item-wrap" style="margin-top:6px;">
-                <button type="button"
+            '<button type="button"
+                class="button button-small mg-qty-item-btn"
+                data-item-id="%d"
+                data-item-name="%s"
+                data-qty="%d"
+                data-unit-price="%s"
+                data-in-production="%d">🔢 %s</button> ',
+            esc_attr($item_id),
+            esc_attr($item->get_name()),
+            $quantity,
+            esc_attr(wp_strip_all_tags(wc_price(self::get_gross_unit_price($item)))),
+            $in_production,
+            esc_html__('Darabszám módosítása', 'mgdtp')
+        );
+
+        // Nothing to remove when this is the only line left — that is a
+        // cancellation, not an order change.
+        if (count($order->get_items()) > 1) {
+            printf(
+                '<button type="button"
                     class="button button-small mg-remove-item-btn"
                     data-item-id="%d"
                     data-item-name="%s"
-                    data-in-production="%d">🗑️ %s</button>
-            </div>',
-            esc_attr($item_id),
-            esc_attr($item->get_name()),
-            self::is_in_production($order) ? 1 : 0,
-            esc_html__('Tétel törlése', 'mgdtp')
+                    data-in-production="%d">🗑️ %s</button>',
+                esc_attr($item_id),
+                esc_attr($item->get_name()),
+                $in_production,
+                esc_html__('Tétel törlése', 'mgdtp')
+            );
+        }
+
+        echo '</div>';
+    }
+
+    /**
+     * Gross price of one piece on this line, as the customer paid it.
+     */
+    protected static function get_gross_unit_price($item) {
+        $quantity = max(1, (int) $item->get_quantity());
+        return ((float) $item->get_total() + (float) $item->get_total_tax()) / $quantity;
+    }
+
+    /**
+     * Scale a line's net subtotal and total to a new quantity, keeping the unit
+     * price (and any per-piece discount) the line was sold at.
+     *
+     * @return array{subtotal: float, total: float}
+     */
+    public static function scale_line_amounts($subtotal, $total, $old_qty, $new_qty) {
+        $old_qty = max(1, (int) $old_qty);
+        $new_qty = max(1, (int) $new_qty);
+        $decimals = function_exists('wc_get_rounding_precision') ? wc_get_rounding_precision() : 6;
+
+        return array(
+            'subtotal' => round((float) $subtotal / $old_qty * $new_qty, $decimals),
+            'total'    => round((float) $total / $old_qty * $new_qty, $decimals),
         );
     }
 
@@ -396,6 +446,57 @@ class MG_Order_Add_Item {
                         <?php esc_html_e('Tétel törlése', 'mgdtp'); ?>
                     </button>
                     <button type="button" class="button mg-remove-item-close"><?php esc_html_e('Mégse', 'mgdtp'); ?></button>
+                </div>
+            </div>
+        </div>
+
+        <div id="mg-qty-item-overlay" class="mg-add-item-overlay" style="display:none;">
+            <div class="mg-add-item-modal">
+                <div class="mg-add-item-header">
+                    <h3><?php esc_html_e('Darabszám módosítása', 'mgdtp'); ?></h3>
+                    <button type="button" class="mg-qty-item-close" aria-label="<?php esc_attr_e('Bezárás', 'mgdtp'); ?>">&times;</button>
+                </div>
+                <div class="mg-add-item-body">
+                    <div id="mg-qty-item-production-warning" class="mg-add-item-warning" style="display:none;">
+                        <?php esc_html_e('Ez a rendelés már gyártás alatt van. A darabszám a rendelésben és az utánvét összegében változik, de a nagykernek a különbséget külön kell jelezni.', 'mgdtp'); ?>
+                    </div>
+
+                    <p><strong id="mg-qty-item-name"></strong></p>
+
+                    <table class="mg-add-item-table form-table">
+                        <tbody>
+                            <tr>
+                                <th><?php esc_html_e('Jelenlegi darabszám:', 'mgdtp'); ?></th>
+                                <td><strong id="mg-qty-item-current"></strong></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Egységár (bruttó):', 'mgdtp'); ?></th>
+                                <td><span id="mg-qty-item-unit-price"></span></td>
+                            </tr>
+                            <tr>
+                                <th><label for="mg-qty-item-input"><?php esc_html_e('Új darabszám:', 'mgdtp'); ?></label></th>
+                                <td>
+                                    <input type="number" id="mg-qty-item-input" min="1" step="1" value="1" />
+                                    <span class="description"><?php esc_html_e('Az egységár marad, a sor és a végösszeg újraszámolódik.', 'mgdtp'); ?></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <p>
+                        <label>
+                            <input type="checkbox" id="mg-qty-item-notify" checked="checked" />
+                            <?php esc_html_e('Vevő értesítése e-mailben a módosításról', 'mgdtp'); ?>
+                        </label>
+                    </p>
+
+                    <div id="mg-qty-item-message" class="notice" style="display:none;"><p></p></div>
+                </div>
+                <div class="mg-add-item-footer">
+                    <button type="button" id="mg-qty-item-save" class="button button-primary">
+                        <?php esc_html_e('Darabszám mentése', 'mgdtp'); ?>
+                    </button>
+                    <button type="button" class="button mg-qty-item-close"><?php esc_html_e('Mégse', 'mgdtp'); ?></button>
                 </div>
             </div>
         </div>
@@ -776,6 +877,132 @@ class MG_Order_Add_Item {
 
         wp_send_json_success(array(
             'message'   => __('Tétel törölve a rendelésből.', 'mgdtp'),
+            'new_total' => wp_strip_all_tags(wc_price($new_total)),
+        ));
+    }
+
+    /**
+     * AJAX: change the quantity of a line in an existing order. The line keeps
+     * the unit price it was sold at; taxes and the order total are recalculated.
+     */
+    public static function ajax_update_item_qty() {
+        self::verify_request();
+
+        $item_id = absint($_POST['item_id'] ?? 0);
+        $new_qty = absint($_POST['qty'] ?? 0);
+        $notify  = !empty($_POST['notify']) && $_POST['notify'] !== 'false';
+
+        if (!$item_id) {
+            wp_send_json_error(array('message' => __('Hiányzó tétel azonosító.', 'mgdtp')));
+        }
+
+        if ($new_qty < 1) {
+            wp_send_json_error(array(
+                'message' => __('A darabszám legalább 1 legyen. A tétel teljes eltávolításához használd a „Tétel törlése” gombot.', 'mgdtp'),
+            ));
+        }
+
+        $found = WC_Order_Factory::get_order_item($item_id);
+        if (!$found instanceof WC_Order_Item_Product) {
+            wp_send_json_error(array('message' => __('A rendelési tétel nem található.', 'mgdtp')));
+        }
+
+        $order = wc_get_order($found->get_order_id());
+        $eligible = self::check_eligibility($order);
+        if (is_wp_error($eligible)) {
+            wp_send_json_error(array('message' => $eligible->get_error_message()));
+        }
+
+        // Work on the order's own copy of the line, so calculate_totals() sees
+        // the new amounts without reloading the items.
+        $item = $order->get_item($item_id);
+        if (!$item instanceof WC_Order_Item_Product) {
+            wp_send_json_error(array('message' => __('A rendelési tétel nem található.', 'mgdtp')));
+        }
+
+        if ((float) $order->get_total_refunded() > 0) {
+            wp_send_json_error(array(
+                'message' => __('Ehhez a rendeléshez már tartozik visszatérítés, a tételt kézzel kell rendezni.', 'mgdtp'),
+            ));
+        }
+
+        $old_qty = (int) $item->get_quantity();
+        if ($new_qty === $old_qty) {
+            wp_send_json_error(array('message' => __('A darabszám nem változott.', 'mgdtp')));
+        }
+
+        $was_in_production = self::is_in_production($order);
+        $item_name   = $item->get_name();
+        $type_label  = $item->get_meta('Terméktípus');
+        $color_label = $item->get_meta('Szín');
+        $size_value  = $item->get_meta('Méret');
+        $variant = trim(implode(' / ', array_filter(array($type_label, $color_label, $size_value))));
+
+        $old_total = (float) $order->get_total();
+
+        $amounts = self::scale_line_amounts($item->get_subtotal(), $item->get_total(), $old_qty, $new_qty);
+        $item->set_quantity($new_qty);
+        $item->set_subtotal($amounts['subtotal']);
+        $item->set_total($amounts['total']);
+        $item->update_meta_data('_mg_qty_changed_after_order', current_time('mysql'));
+        $item->update_meta_data('_mg_qty_changed_by', get_current_user_id());
+        $item->save();
+
+        $order->calculate_taxes();
+        $order->calculate_totals(false);
+
+        if ($was_in_production) {
+            $order->update_meta_data('_mg_items_qty_changed_after_export', 'yes');
+        }
+
+        $order->save();
+
+        $new_total = (float) $order->get_total();
+        $variant_text = $variant !== '' ? ' (' . $variant . ')' : '';
+
+        $note = sprintf(
+            /* translators: 1: product name, 2: variant, 3: old quantity, 4: new quantity, 5: old total, 6: new total */
+            __('Darabszám módosítva: %1$s%2$s – %3$d db → %4$d db. Végösszeg: %5$s → %6$s (utánvéttel fizetendő).', 'mgdtp'),
+            $item_name,
+            $variant_text,
+            $old_qty,
+            $new_qty,
+            wp_strip_all_tags(wc_price($old_total)),
+            wp_strip_all_tags(wc_price($new_total))
+        );
+
+        if ($was_in_production) {
+            $note .= ' ' . __('FIGYELEM: a rendelés már gyártás alatt volt, a darabszám-változást külön kell a nagykernek jelezni.', 'mgdtp');
+        }
+
+        $order->add_order_note($note);
+
+        if ($notify) {
+            $order->add_order_note(
+                sprintf(
+                    /* translators: 1: product name, 2: variant, 3: new quantity, 4: new total */
+                    __('Kérésedre módosítottuk a rendelésedet: %1$s%2$s – új darabszám: %3$d db. Az utánvétnél fizetendő új végösszeg: %4$s.', 'mgdtp'),
+                    $item_name,
+                    $variant_text,
+                    $new_qty,
+                    wp_strip_all_tags(wc_price($new_total))
+                ),
+                true
+            );
+        }
+
+        /**
+         * Fires after the quantity of a line was changed in an existing order.
+         *
+         * @param WC_Order_Item_Product $item    The changed line item.
+         * @param WC_Order              $order   The order it belongs to.
+         * @param int                   $old_qty The quantity before the change.
+         * @param int                   $new_qty The quantity after the change.
+         */
+        do_action('mg_order_item_qty_changed_after_purchase', $item, $order, $old_qty, $new_qty);
+
+        wp_send_json_success(array(
+            'message'   => __('Darabszám módosítva.', 'mgdtp'),
             'new_total' => wp_strip_all_tags(wc_price($new_total)),
         ));
     }

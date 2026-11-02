@@ -9,13 +9,17 @@
 
     var $removeOverlay, $removeName, $removeNotify, $removeConfirm, $removeMessage, $removeWarning;
 
+    var $qtyOverlay, $qtyName, $qtyCurrent, $qtyUnitPrice, $qtyInput, $qtyNotify, $qtySave, $qtyMessage, $qtyWarning;
+
     var state = {
         orderId: 0,
         productId: 0,
         types: [],
         searchTimer: null,
         priceTouched: false,
-        removeItemId: 0
+        removeItemId: 0,
+        qtyItemId: 0,
+        qtyCurrent: 0
     };
 
     function init() {
@@ -41,9 +45,19 @@
         $removeMessage = $('#mg-remove-item-message');
         $removeWarning = $('#mg-remove-item-production-warning');
 
+        $qtyOverlay   = $('#mg-qty-item-overlay');
+        $qtyName      = $('#mg-qty-item-name');
+        $qtyCurrent   = $('#mg-qty-item-current');
+        $qtyUnitPrice = $('#mg-qty-item-unit-price');
+        $qtyInput     = $('#mg-qty-item-input');
+        $qtyNotify    = $('#mg-qty-item-notify');
+        $qtySave      = $('#mg-qty-item-save');
+        $qtyMessage   = $('#mg-qty-item-message');
+        $qtyWarning   = $('#mg-qty-item-production-warning');
+
         // Keep the overlays direct children of <body>, so no ancestor's transform
         // or overflow can trap the fixed positioning.
-        $overlay.add($removeOverlay).each(function () {
+        $overlay.add($removeOverlay).add($qtyOverlay).each(function () {
             var $el = $(this);
             if ($el.length && !$el.parent().is('body')) {
                 $el.appendTo('body');
@@ -59,6 +73,20 @@
             }
         });
         $(document).on('click', '#mg-remove-item-confirm', removeItem);
+        $(document).on('click', '.mg-qty-item-btn', openQtyModal);
+        $(document).on('click', '.mg-qty-item-close', closeQtyModal);
+        $(document).on('click', '#mg-qty-item-overlay', function (e) {
+            if ($(e.target).is('#mg-qty-item-overlay')) {
+                closeQtyModal();
+            }
+        });
+        $(document).on('click', '#mg-qty-item-save', saveQty);
+        $(document).on('keydown', '#mg-qty-item-input', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveQty();
+            }
+        });
         $(document).on('click', '.mg-add-item-close', closeModal);
         $(document).on('click', '#mg-add-item-overlay', function (e) {
             if ($(e.target).is('#mg-add-item-overlay')) {
@@ -74,6 +102,9 @@
             }
             if ($removeOverlay.is(':visible')) {
                 closeRemoveModal();
+            }
+            if ($qtyOverlay.is(':visible')) {
+                closeQtyModal();
             }
         });
 
@@ -168,6 +199,71 @@
         }).fail(function () {
             showMessage(i18n.error, 'error', $removeMessage);
             $removeConfirm.prop('disabled', false).text(i18n.remove || '');
+        });
+    }
+
+    function openQtyModal(e) {
+        // The items table sits inside the order <form>; never let the button submit it.
+        if (e) {
+            e.preventDefault();
+        }
+        var $btn = $(this);
+        state.qtyItemId = parseInt($btn.data('item-id'), 10) || 0;
+        state.qtyCurrent = parseInt($btn.data('qty'), 10) || 1;
+
+        $qtyName.text($btn.data('item-name') || '');
+        $qtyCurrent.text(state.qtyCurrent);
+        $qtyUnitPrice.text($btn.data('unit-price') || '');
+        $qtyInput.val(state.qtyCurrent);
+        $qtyWarning.toggle(parseInt($btn.data('in-production'), 10) === 1);
+        $qtyNotify.prop('checked', true);
+        $qtyMessage.hide();
+        $qtySave.prop('disabled', false).text(i18n.qty_save || 'Darabszám mentése');
+        $qtyOverlay.stop(true, true).css('display', 'flex').hide().fadeIn(150);
+        $qtyInput.trigger('focus').trigger('select');
+    }
+
+    function closeQtyModal() {
+        $qtyOverlay.fadeOut(120);
+    }
+
+    function saveQty() {
+        if (!state.qtyItemId || $qtySave.prop('disabled')) {
+            return;
+        }
+
+        var qty = parseInt($qtyInput.val(), 10);
+        if (!qty || qty < 1) {
+            showMessage(i18n.qty_invalid || i18n.error, 'error', $qtyMessage);
+            return;
+        }
+        if (qty === state.qtyCurrent) {
+            showMessage(i18n.qty_unchanged || i18n.error, 'error', $qtyMessage);
+            return;
+        }
+
+        $qtySave.prop('disabled', true).text(i18n.qty_saving || '');
+        $qtyMessage.hide();
+
+        $.post(cfg.ajax_url, {
+            action: 'mg_order_update_item_qty',
+            nonce: cfg.nonce,
+            item_id: state.qtyItemId,
+            qty: qty,
+            notify: $qtyNotify.is(':checked') ? 1 : 0
+        }, function (response) {
+            if (!response.success) {
+                showMessage((response.data && response.data.message) || i18n.error, 'error', $qtyMessage);
+                $qtySave.prop('disabled', false).text(i18n.qty_save || '');
+                return;
+            }
+
+            showMessage(response.data.message, 'success', $qtyMessage);
+            // Reload so WooCommerce re-renders the items table and the totals.
+            window.location.reload();
+        }).fail(function () {
+            showMessage(i18n.error, 'error', $qtyMessage);
+            $qtySave.prop('disabled', false).text(i18n.qty_save || '');
         });
     }
 

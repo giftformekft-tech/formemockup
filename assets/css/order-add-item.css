@@ -251,3 +251,9 @@
     margin: 14px 0 0;
     padding: 8px 12px;
 }
+
+#mg-qty-item-message,
+#mg-remove-item-message {
+    margin: 14px 0 0;
+    padding: 8px 12px;
+}
