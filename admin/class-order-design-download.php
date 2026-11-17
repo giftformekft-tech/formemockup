@@ -251,7 +251,10 @@ class MG_Order_Design_Download {
 
                 $context          = self::resolve_item_context($item);
                 $large_size       = self::item_has_large_size_png_option($item);
-                $is_black_garment = ($context['color'] === 'fekete');
+                // Types flagged "kizárás a fekete kivételből" never get their
+                // black parts stripped (dark colors like sötétzöld would be
+                // caught by the fuzz tolerance too).
+                $is_black_garment = ($context['color'] === 'fekete') && !self::type_excluded_from_black_strip($context['type']);
 
                 $product_name = sanitize_file_name(get_the_title($product_id));
                 if ($product_name === '') {
@@ -1143,6 +1146,30 @@ class MG_Order_Design_Download {
             'size'  => sanitize_text_field((string) $size_label),
             'color' => sanitize_title((string) $color_slug),
         );
+    }
+
+    /* ------------------------------------------------------------------ */
+
+    /**
+     * Whether the product type is configured (Terméktípus beállítások →
+     * "Kizárás a fekete szín kivételből") to keep its prints untouched even
+     * when the admin chooses the black-removal export.
+     */
+    protected static function type_excluded_from_black_strip($type_slug) {
+        $type_slug = sanitize_title((string) $type_slug);
+        if ($type_slug === '') {
+            return false;
+        }
+        $products = get_option('mg_products', array());
+        if (!is_array($products)) {
+            return false;
+        }
+        foreach ($products as $product) {
+            if (is_array($product) && isset($product['key']) && sanitize_title($product['key']) === $type_slug) {
+                return !empty($product['exclude_black_strip']);
+            }
+        }
+        return false;
     }
 
     /* ------------------------------------------------------------------ */

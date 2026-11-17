@@ -330,6 +330,11 @@ try {
     check($tasks[0]['ai_model'] === 'gpt-image-2' && $tasks[1]['ai_model'] === 'gpt-image-2' && $tasks[3]['ai_model'] === '', 'task list pins the model for AI quantity copies only');
     check(!$tasks[0]['ai_defringe'] && !$tasks[1]['ai_defringe'] && !$tasks[3]['ai_defringe'], 'all new tasks disable fringe correction');
     check(!$actions && !$http_calls, 'building export plan does not generate');
+    check($tasks[0]['is_black_garment'] && !$tasks[3]['is_black_garment'], 'black garments are flagged for optional black removal');
+    $options['mg_products'] = array(array('key' => 'polo', 'exclude_black_strip' => 1));
+    $excluded_tasks = call_hidden('MG_Order_Design_Download', 'build_export_tasks', array(90));
+    check(!$excluded_tasks[0]['is_black_garment'] && !$excluded_tasks[1]['is_black_garment'], 'product type excluded from black removal keeps black-garment prints intact');
+    unset($options['mg_products']);
     $job = make_job('job1', $tasks);
     $progress = step('job1');
     check($progress['waiting'] && $progress['completed'] === 0 && count($actions) === 1, 'first step dispatches once and returns promptly');

@@ -527,6 +527,7 @@ foreach ($products as $p) if ($p['key']===$key) return $p;
                 $chosen_size = $size_values[0];
             }
             $prod['is_primary'] = $is_primary;
+            $prod['exclude_black_strip'] = !empty($_POST['exclude_black_strip']) ? 1 : 0;
             $prod['primary_color'] = $chosen_color;
             $prod['primary_size'] = $chosen_size;
 
@@ -878,6 +879,10 @@ if (isset($_POST['utt_skus']) && is_array($_POST['utt_skus'])) {
 
                 <h2>SKU prefix</h2>
                 <p><input type="text" name="sku_prefix" class="regular-text" value="<?php echo esc_attr($sku_prefix); ?>" /></p>
+
+                <h2>Nyomat export</h2>
+                <p><label><input type="checkbox" name="exclude_black_strip" value="1" <?php checked(!empty($prod['exclude_black_strip'])); ?> /> Kizárás a fekete szín kivételből</label></p>
+                <p class="description">Ha be van kapcsolva, a rendelés nyomat exportnál ennek a terméktípusnak a mintáiból akkor sem vesszük ki a fekete részeket, ha a „fekete szín kivételével” opciót választod (pl. ha a sötét színeket – sötétzöld – is kiszedné).</p>
 
                 <h2>Elsődleges beállítások</h2>
                 <p><label><input type="checkbox" name="is_primary" value="1" <?php checked($is_primary); ?> /> Ez legyen az alapértelmezett terméktípus</label></p>
