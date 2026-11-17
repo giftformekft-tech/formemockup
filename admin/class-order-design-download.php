@@ -1261,7 +1261,7 @@ class MG_Order_Design_Download {
                 $image->stripImage();
             }
             if ($strip_black) {
-                MG_Image_Utils::strip_color_to_transparent($image, 'black');
+                MG_Image_Utils::strip_neutral_black_to_transparent($image);
             }
             // stripImage() above removes the original upload's resolution tag
             // (often 96 DPI), which RIP software like CADlink can rely on to
@@ -1281,7 +1281,7 @@ class MG_Order_Design_Download {
 
             if ($strip_black) {
                 // Clear dark remnants revealed by binary alpha.
-                MG_Image_Utils::strip_color_to_transparent($image, 'black', 25.0, true);
+                MG_Image_Utils::strip_neutral_black_to_transparent($image, 25.0, 10.0, true);
                 MG_Image_Utils::threshold_alpha_binary($image, 128);
             }
 

@@ -152,23 +152,49 @@ class MG_Image_Utils {
     }
 
     /**
-     * Makes pixels matching the given color transparent, with a fuzz
-     * tolerance so anti-aliased edges (slightly off-target shades at the
-     * border of a shape) are caught too. Used by the optional "fekete
-     * kivétel" export choice, so black design elements don't get printed
-     * on black garments.
+     * "Fekete kivétel" export: makes only neutral (grayish) dark pixels
+     * transparent. A plain fuzz match against black is purely a distance
+     * test, so it also swallowed saturated dark colors (dark green #013220,
+     * navy, burgundy, brown). Here a pixel is removed only when it is both
+     * close to black (same RMS distance as the old fuzz match, so neutral
+     * grays behave as before) AND its chroma (max - min channel) is at most
+     * $max_chroma_percent, i.e. it carries no real hue.
      */
-    public static function strip_color_to_transparent($image, $color = 'black', $fuzz_percent = 25.0, $throw_on_error = false) {
-        if (!($image instanceof Imagick) || !method_exists($image, 'transparentPaintImage')) {
-            if ($throw_on_error) throw new RuntimeException('Az Imagick nem támogatja a nyomat fekete részeinek eltávolítását.');
-            return;
-        }
+    public static function strip_neutral_black_to_transparent($image, $fuzz_percent = 25.0, $max_chroma_percent = 10.0, $throw_on_error = false) {
         try {
-            $range         = Imagick::getQuantumRange();
-            $quantum_range = isset($range['quantumRangeLong']) ? $range['quantumRangeLong'] : 255;
-            $fuzz          = ($fuzz_percent / 100) * $quantum_range;
-            if ($image->transparentPaintImage(new ImagickPixel($color), 0, $fuzz, false) === false && $throw_on_error) {
-                throw new RuntimeException('Sikertelen színeltávolítás.');
+            if (!($image instanceof Imagick) || !$image->getNumberImages()) {
+                throw new RuntimeException('Üres kép.');
+            }
+            $width  = $image->getImageWidth();
+            $height = $image->getImageHeight();
+            if (!$image->getImageAlphaChannel()) {
+                $image->setImageAlphaChannel(Imagick::ALPHACHANNEL_SET);
+            }
+            $max_distance_sq = pow($fuzz_percent / 100, 2) * 3;
+            $max_chroma      = $max_chroma_percent / 100;
+            for ($y = 0; $y < $height; $y++) {
+                $row = $image->exportImagePixels(0, $y, $width, 1, 'RGBA', Imagick::PIXEL_FLOAT);
+                if (!is_array($row) || count($row) !== $width * 4) {
+                    throw new RuntimeException('Nem olvashatók a nyomat pixelei.');
+                }
+                $alpha   = array();
+                $changed = false;
+                for ($i = 0, $n = $width * 4; $i < $n; $i += 4) {
+                    $a = $row[$i + 3];
+                    if ($a > 0) {
+                        $r = $row[$i]; $g = $row[$i + 1]; $b = $row[$i + 2];
+                        if ($r * $r + $g * $g + $b * $b <= $max_distance_sq
+                            && max($r, $g, $b) - min($r, $g, $b) <= $max_chroma) {
+                            $a = 0.0;
+                            $changed = true;
+                        }
+                    }
+                    $alpha[] = $a;
+                }
+                // Alpha-only import keeps RGB values untouched.
+                if ($changed && !$image->importImagePixels(0, $y, $width, 1, 'A', Imagick::PIXEL_FLOAT, $alpha)) {
+                    throw new RuntimeException('Nem írható a nyomat átlátszósága.');
+                }
             }
         } catch (Throwable $e) {
             if ($throw_on_error) throw new RuntimeException('Nem sikerült a nyomat fekete részeinek eltávolítása.', 0, $e);

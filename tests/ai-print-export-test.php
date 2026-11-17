@@ -130,7 +130,7 @@ class MG_Image_Utils {
         self::$defringed++;
         self::$defringe_resize_positions[] = Imagick::$resize_calls;
     }
-    public static function strip_color_to_transparent($image, $color) { self::$stripped++; }
+    public static function strip_neutral_black_to_transparent($image, ...$args) { self::$stripped++; }
     public static function trim_transparent_bounds($image) {}
     public static function rotate_portrait_to_landscape($image) {}
     public static function rotate_landscape_to_portrait($image) {}

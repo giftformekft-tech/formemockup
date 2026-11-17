@@ -94,7 +94,7 @@ try {
     MG_Image_Utils::clean_transparent_edges($sample);
     $sample->resizeImage(27,27,Imagick::FILTER_LANCZOS,1.0);
     MG_Image_Utils::threshold_alpha_binary($sample);
-    MG_Image_Utils::strip_color_to_transparent($sample, 'black', 25.0, true);
+    MG_Image_Utils::strip_neutral_black_to_transparent($sample, 25.0, 10.0, true);
     MG_Image_Utils::threshold_alpha_binary($sample);
     $sp = $sample->exportImagePixels(0,0,27,27,'RGBA',Imagick::PIXEL_FLOAT);
     verify($sp[(6*27+12)*4+3] === 0.0, 'original pale outer edge disappears with black after enlargement');

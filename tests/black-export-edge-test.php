@@ -100,8 +100,35 @@ try {
         $roundtrip->exportImagePixels(0,0,2,2,'RGBA',Imagick::PIXEL_CHAR) ===
         $mono->exportImagePixels(0,0,2,2,'RGBA',Imagick::PIXEL_CHAR), 'format conversion preserves every decoded pixel and transparency');
     $roundtrip->clear(); $mono->clear();
+    // Saturated dark colors (dark green, navy, burgundy, brown) are not
+    // black and must survive; neutral near-blacks and dark grays still go.
+    $palette = array(
+        'keep' => array(array(1,50,32), array(0,77,0), array(0,86,63), array(11,61,11), array(27,77,27), array(47,79,47), array(0,51,0), array(0,64,0), array(25,25,112), array(0,0,128), array(75,0,0), array(61,43,31)),
+        'drop' => array(array(0,0,0), array(10,10,10), array(26,26,26), array(35,31,32), array(51,51,51), array(63,63,63), array(20,28,22)),
+    );
+    $swatch = new Imagick();
+    $count = count($palette['keep']) + count($palette['drop']);
+    $swatch->newImage($count, 1, new ImagickPixel('transparent'), 'png');
+    $bytes = array();
+    foreach (array_merge($palette['keep'], $palette['drop']) as $rgb) array_push($bytes, $rgb[0], $rgb[1], $rgb[2], 255);
+    $swatch->importImagePixels(0, 0, $count, 1, 'RGBA', Imagick::PIXEL_CHAR, $bytes);
+    MG_Image_Utils::strip_neutral_black_to_transparent($swatch, 25.0, 10.0, true);
+    $after = $swatch->exportImagePixels(0, 0, $count, 1, 'RGBA', Imagick::PIXEL_CHAR);
+    $kept = count($palette['keep']);
+    for ($i = 0; $i < $count; $i++) {
+        $rgb = sprintf('#%02x%02x%02x', $bytes[$i * 4], $bytes[$i * 4 + 1], $bytes[$i * 4 + 2]);
+        verify(array_slice($after, $i * 4, 3) === array_slice($bytes, $i * 4, 3), 'black removal never alters RGB of ' . $rgb);
+        verify($i < $kept ? $after[$i * 4 + 3] === 255 : $after[$i * 4 + 3] === 0, ($i < $kept ? 'dark color kept: ' : 'near-black removed: ') . $rgb);
+    }
+    $swatch->clear();
+    $rgb_only = new Imagick();
+    $rgb_only->newImage(2, 1, new ImagickPixel('black'), 'png');
+    $rgb_only->setImageAlphaChannel(Imagick::ALPHACHANNEL_DEACTIVATE);
+    MG_Image_Utils::strip_neutral_black_to_transparent($rgb_only, 25.0, 10.0, true);
+    verify(max($rgb_only->exportImagePixels(0, 0, 2, 1, 'A', Imagick::PIXEL_CHAR)) === 0, 'images without alpha channel get black removed too');
+    $rgb_only->clear();
     try {
-        MG_Image_Utils::strip_color_to_transparent(new Imagick(), 'black', 25.0, true);
+        MG_Image_Utils::strip_neutral_black_to_transparent(new Imagick(), 25.0, 10.0, true);
         throw new Exception('Empty image should fail the strict final color pass');
     } catch (RuntimeException $e) {
         verify(str_contains($e->getMessage(), 'Nem sikerült'), 'final color pass reports native failures instead of silently exporting');
@@ -112,7 +139,7 @@ try {
         $before_signature = $actual->getImageSignature();
         $original = clone $actual;
         MG_Image_Utils::threshold_alpha_binary($actual);
-        MG_Image_Utils::strip_color_to_transparent($actual, 'black', 25.0, true);
+        MG_Image_Utils::strip_neutral_black_to_transparent($actual, 25.0, 10.0, true);
         MG_Image_Utils::threshold_alpha_binary($actual);
         verify($before_dark > 0 && dark_pixels($actual) === 0, 'attached export: all ' . $before_dark . ' near-black opaque pixels removed in memory');
         $preserved = true;
