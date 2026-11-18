@@ -50,6 +50,7 @@ $metaPixel = Read-RepoFile 'includes/class-facebook-pixel.php'
 $metaReliability = Read-RepoFile 'includes/class-facebook-pixel-reliability.php'
 $metaSettings = Read-RepoFile 'includes/class-facebook-pixel-settings.php'
 $virtualVariantDisplay = Read-RepoFile 'assets/js/virtual-variant-display.js'
+$purchaseRecovery = Read-RepoFile 'includes/class-purchase-recovery.php'
 
 $headerVersion = [regex]::Match($plugin, '(?m)^Version:\s*([^\r\n]+)').Groups[1].Value.Trim()
 $constantVersion = [regex]::Match($plugin, 'define\(''MG_VERSION'',\s*''([^'']+)''\)').Groups[1].Value
@@ -71,6 +72,14 @@ Assert-Contains $metaPixel '_mgFbColorSurcharges' 'Meta AddToCart color surcharg
 Assert-Contains $metaReliability "'st' => self::normalize_text" 'Meta CAPI region match field'
 Assert-Contains $metaReliability "'wc_guest_' . `$email" 'Meta CAPI stable guest external_id'
 Assert-Contains $metaSettings '_mg_fb_browser_rendered' 'Meta browser diagnostics'
+
+# The classic form hooks do not run on block cart/checkout pages.
+Assert-NotContains $googleTracking "add_action('woocommerce_before_checkout_form'" 'Google begin_checkout tied to the classic form'
+Assert-NotContains $googleTracking "add_action('woocommerce_before_cart'" 'Google view_cart tied to the classic cart'
+Assert-NotContains $metaPixel "add_action('woocommerce_before_checkout_form'" 'Meta InitiateCheckout tied to the classic form'
+Assert-Contains $metaPixel 'browser_purchase_allowed(' 'Meta duplicate Purchase guard'
+Assert-Contains $purchaseRecovery 'self::resolve_order($order_id, $order_key)' 'order key check before remembering an order'
+Assert-Contains $purchaseRecovery 'FLAG_COOKIE' 'flag-gated recovery lookup'
 
 $previousErrorPreference = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'

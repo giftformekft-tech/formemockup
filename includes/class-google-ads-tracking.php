@@ -31,14 +31,15 @@ class MG_Google_Ads_Tracking {
         // 3. Purchase (Conversion) - Köszönöm oldalon (klasszikus + block checkout)
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
 
-        // 4. Begin Checkout - Pénztár oldalon
-        add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_begin_checkout_event'), 5);
+        // 4. Begin Checkout - Pénztár oldalon. Oldalszintű hook, mert a klasszikus
+        // űrlap `woocommerce_before_checkout_form` hookja blokkos pénztárnál nem fut le.
+        add_action('wp_footer', array(__CLASS__, 'output_begin_checkout_event'), 20);
 
         // 5. Add to Cart - JS esemény a termékoldalakon
         add_action('woocommerce_after_add_to_cart_button', array(__CLASS__, 'output_add_to_cart_script'), 10);
 
-        // 6. View Cart - Kosár oldalon
-        add_action('woocommerce_before_cart', array(__CLASS__, 'output_view_cart_event'), 5);
+        // 6. View Cart - Kosár oldalon (klasszikus és blokkos kosárnál egyaránt)
+        add_action('wp_footer', array(__CLASS__, 'output_view_cart_event'), 20);
     }
 
     private static function get_conversion_id() {
@@ -344,22 +345,11 @@ class MG_Google_Ads_Tracking {
 
         // Enhanced Conversions: vásárló adatai (Google normalizálja és hash-eli a plaintext-et)
         $customer_email = strtolower(trim($order->get_billing_email()));
-        $customer_phone = $order->get_billing_phone();
-        // E.164 format: csak számok + előtag
-        $phone_e164 = '';
-        if (!empty($customer_phone)) {
-            $phone_digits = preg_replace('/[^0-9]/', '', $customer_phone);
-            // Magyar mobil- és vezetékes számok egységes E.164 formátumban.
-            if (substr($phone_digits, 0, 2) === '06') {
-                $phone_e164 = '+36' . substr($phone_digits, 2);
-            } elseif (substr($phone_digits, 0, 2) === '36') {
-                $phone_e164 = '+' . $phone_digits;
-            } elseif ($order->get_billing_country() === 'HU') {
-                $phone_e164 = '+36' . ltrim($phone_digits, '0');
-            } elseif (strlen($phone_digits) >= 8) {
-                $phone_e164 = '+' . $phone_digits;
-            }
-        }
+        // Egyetlen közös E.164 normalizálás a szerveroldali küldéssel: a korábbi
+        // helyi változat a 00 előtagú számokból (0036…) hibás számot képzett.
+        $phone_e164 = class_exists('MG_Google_Ads_Reliability')
+            ? MG_Google_Ads_Reliability::normalize_phone($order->get_billing_phone(), $order->get_billing_country())
+            : '';
         $first_name   = $order->get_billing_first_name();
         $last_name    = $order->get_billing_last_name();
         $street       = $order->get_billing_address_1();
@@ -452,6 +442,10 @@ class MG_Google_Ads_Tracking {
         ?>
         <script>
         (function() {
+            // A pótló szkript ebből tudja, hogy ezt a rendelést ez a tag méri.
+            window.mgConvRendered = window.mgConvRendered || {};
+            window.mgConvRendered[<?php echo wp_json_encode('google:' . (int) $order->get_id()); ?>] = true;
+
             var _mgPurchaseData = <?php echo wp_json_encode($payload['event'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgPurchaseUserData = <?php echo wp_json_encode((object) $payload['user_data'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgSent = false;
@@ -483,7 +477,13 @@ class MG_Google_Ads_Tracking {
                     setTimeout(mg_fire_purchase, 1200);
                 }
             };
-            if (document.readyState === 'loading') {
+            // A consent híd a fejlécben már lefutott: korábban eldöntött
+            // hozzájárulásnál nem várunk a DOM elkészültére, a konverzió rögtön
+            // kimegy (a gtag sorba állítja, amíg a könyvtár betölt), így a lapot
+            // gyorsan bezáró vevő vásárlása sem vész el.
+            if (window.mgGadsConsentDecided === true || window.mgFbConsentDecided === true) {
+                mg_fire_purchase();
+            } else if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', start);
             } else {
                 start();
@@ -497,7 +497,15 @@ class MG_Google_Ads_Tracking {
      * Begin Checkout esemény a pénztár oldalon.
      */
     public static function output_begin_checkout_event() {
-        if (!WC()->cart) {
+        if (!function_exists('is_checkout') || !is_checkout()) {
+            return;
+        }
+        // A köszönőoldal és a „rendelés kifizetése” végpont is a pénztároldalon él.
+        if ((function_exists('is_order_received_page') && is_order_received_page())
+            || (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-pay'))) {
+            return;
+        }
+        if (!function_exists('WC') || !WC()->cart) {
             return;
         }
 
@@ -511,8 +519,9 @@ class MG_Google_Ads_Tracking {
             $product = $cart_item['data'];
             if (!$product) continue;
 
-            $type_slug = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
-            $item_id = self::get_virtual_item_id($product, $type_slug);
+            // sanitize_title: ugyanígy készül a katalógus kulcsa és a feed azonosítója.
+            $type_slug = isset($cart_item['mg_product_type']) ? sanitize_title($cart_item['mg_product_type']) : '';
+            $item_id = self::get_virtual_item_id($product, $type_slug, false);
             $qty = max(1, (int) $cart_item['quantity']);
             $line_total = isset($cart_item['line_total'])
                 ? (float) $cart_item['line_total']
@@ -659,7 +668,10 @@ class MG_Google_Ads_Tracking {
      * View Cart esemény a kosár oldalon.
      */
     public static function output_view_cart_event() {
-        if (!WC()->cart) {
+        if (!function_exists('is_cart') || !is_cart()) {
+            return;
+        }
+        if (!function_exists('WC') || !WC()->cart) {
             return;
         }
 
@@ -673,8 +685,9 @@ class MG_Google_Ads_Tracking {
             $product = $cart_item['data'];
             if (!$product) continue;
 
-            $type_slug = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
-            $item_id = self::get_virtual_item_id($product, $type_slug);
+            // sanitize_title: ugyanígy készül a katalógus kulcsa és a feed azonosítója.
+            $type_slug = isset($cart_item['mg_product_type']) ? sanitize_title($cart_item['mg_product_type']) : '';
+            $item_id = self::get_virtual_item_id($product, $type_slug, false);
             $qty = max(1, (int) $cart_item['quantity']);
             $line_total = isset($cart_item['line_total'])
                 ? (float) $cart_item['line_total']

@@ -12,6 +12,9 @@ if (!defined('ABSPATH')) {
  */
 class MG_Facebook_Pixel {
 
+    /** A Meta 48 órás deduplikációs ablakánál szándékosan rövidebb biztonsági határ. */
+    const DEDUP_SAFE_SECONDS = 144000; // 40 óra
+
     public static function init() {
         if (is_admin() && !defined('DOING_AJAX')) {
             return;
@@ -25,7 +28,9 @@ class MG_Facebook_Pixel {
         add_action('wp_head', array(__CLASS__, 'output_pixel_base'), 2);
         add_action('woocommerce_after_single_product', array(__CLASS__, 'output_view_content_event'), 20);
         add_action('woocommerce_thankyou', array(__CLASS__, 'output_purchase_event'), 10, 1);
-        add_action('woocommerce_before_checkout_form', array(__CLASS__, 'output_initiate_checkout_event'), 5);
+        // Oldalszintű hook: a klasszikus űrlap `woocommerce_before_checkout_form`
+        // hookja a blokkos pénztárnál nem fut le, így ott az esemény kimaradna.
+        add_action('wp_footer', array(__CLASS__, 'output_initiate_checkout_event'), 20);
         add_action('woocommerce_after_add_to_cart_button', array(__CLASS__, 'output_add_to_cart_script'), 10);
     }
 
@@ -258,6 +263,32 @@ class MG_Facebook_Pixel {
     }
 
     /**
+     * Mehet-e még böngészős Purchase ehhez a rendeléshez?
+     *
+     * A Meta az azonos `event_id`-jú eseményeket csak az első beérkezésétől
+     * számított 48 órán belül vonja össze. Egy napokkal később újra megnyitott
+     * (pl. a mobilböngésző által visszatöltött) köszönőoldal ezért második
+     * vásárlásként számítana. Ha a böngészős esemény már igazoltan kiment, vagy
+     * a CAPI régebben kézbesítette a rendelést, nem küldjük újra.
+     */
+    public static function browser_purchase_allowed($order) {
+        if (!$order instanceof WC_Order) {
+            return false;
+        }
+        if ($order->get_meta('_mg_fb_browser_fired')) {
+            return false;
+        }
+        if (class_exists('MG_Facebook_Pixel_Reliability')
+            && (string) $order->get_meta(MG_Facebook_Pixel_Reliability::META_STATUS) === 'processed') {
+            $delivered_at = (int) $order->get_meta(MG_Facebook_Pixel_Reliability::META_LAST_UPDATE);
+            if ($delivered_at > 0 && $delivered_at < time() - self::DEDUP_SAFE_SECONDS) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * Összeállítja a Purchase esemény adatcsomagját.
      *
      * A köszönőoldali Pixel és a késleltetett (recovery) mérés is ezt használja,
@@ -356,6 +387,10 @@ class MG_Facebook_Pixel {
             return;
         }
 
+        if (!self::browser_purchase_allowed($order)) {
+            return;
+        }
+
         $payload = self::build_purchase_payload($order);
         if (!$payload) {
             return;
@@ -374,6 +409,10 @@ class MG_Facebook_Pixel {
         ?>
         <script>
         (function() {
+            // A pótló szkript ebből tudja, hogy ezt a rendelést ez a tag méri.
+            window.mgConvRendered = window.mgConvRendered || {};
+            window.mgConvRendered[<?php echo wp_json_encode('meta:' . (int) $order->get_id()); ?>] = true;
+
             var _mgFbPurchaseData = <?php echo wp_json_encode($payload['data'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgFbPurchaseEventId = <?php echo wp_json_encode($payload['event_id'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
             var _mgFbPurchaseSent = false;
@@ -394,6 +433,11 @@ class MG_Facebook_Pixel {
                 if (event.detail && event.detail.acceptedAll) setTimeout(mg_fb_fire_purchase, 300);
             });
 
+            // Már megadott hozzájárulásnál azonnal küldünk: az fbq sorba állítja
+            // az eseményt, amíg a könyvtár betölt. A korábbi fix várakozás alatt
+            // a lapot rögtön bezáró vevők vásárlása elveszett.
+            mg_fb_fire_purchase();
+
             var fallback = function() { setTimeout(mg_fb_fire_purchase, 1200); };
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', fallback);
@@ -409,7 +453,15 @@ class MG_Facebook_Pixel {
      * InitiateCheckout esemény a pénztár oldalon.
      */
     public static function output_initiate_checkout_event() {
-        if (!WC()->cart) {
+        if (!function_exists('is_checkout') || !is_checkout()) {
+            return;
+        }
+        // A köszönőoldal és a „rendelés kifizetése” végpont is a pénztároldalon él.
+        if ((function_exists('is_order_received_page') && is_order_received_page())
+            || (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-pay'))) {
+            return;
+        }
+        if (!function_exists('WC') || !WC()->cart) {
             return;
         }
 
@@ -424,8 +476,9 @@ class MG_Facebook_Pixel {
                 continue;
             }
 
-            $type_slug   = isset($cart_item['mg_product_type']) ? sanitize_key($cart_item['mg_product_type']) : '';
-            $item_id     = self::get_virtual_item_id($product, $type_slug);
+            // sanitize_title: ugyanígy készül a katalógus kulcsa és a feed azonosítója.
+            $type_slug   = isset($cart_item['mg_product_type']) ? sanitize_title($cart_item['mg_product_type']) : '';
+            $item_id     = self::get_virtual_item_id($product, $type_slug, false);
             $qty         = (int) $cart_item['quantity'];
             $line_total  = isset($cart_item['line_total']) ? (float) $cart_item['line_total'] : ((float) $product->get_price() * $qty);
             $unit_price  = $qty > 0 ? $line_total / $qty : 0;
@@ -469,6 +522,7 @@ class MG_Facebook_Pixel {
             document.addEventListener('rcb:consent', function(event) {
                 if (event.detail && event.detail.acceptedAll) setTimeout(mg_fb_fire_checkout, 200);
             });
+            mg_fb_fire_checkout();
 
             var fallback = function() { setTimeout(mg_fb_fire_checkout, 800); };
             if (document.readyState === 'loading') {

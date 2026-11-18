@@ -20,6 +20,12 @@ if (!defined('ABSPATH')) {
  */
 class MG_Purchase_Recovery {
     const COOKIE = 'mg_pending_conv';
+    /**
+     * JS-ből olvasható jelző a HttpOnly rendeléscookie mellé. Rendeléskulcsot
+     * nem tartalmaz; csak azt mondja meg a gyorsítótárazott oldal szkriptjének,
+     * hogy érdemes-e egyáltalán lekérdezni a pótolandó konverziókat.
+     */
+    const FLAG_COOKIE = 'mg_pending_conv_f';
     const MAX_ENTRIES = 5;
     const MAX_AGE_DAYS = 7;
 
@@ -27,6 +33,7 @@ class MG_Purchase_Recovery {
         add_action('woocommerce_checkout_order_processed', array(__CLASS__, 'remember_order'), 20, 1);
         add_action('woocommerce_store_api_checkout_order_processed', array(__CLASS__, 'remember_order'), 20, 1);
         add_action('template_redirect', array(__CLASS__, 'handle_order_received_page'));
+        add_action('init', array(__CLASS__, 'sync_flag_cookie'), 5);
 
         add_action('wp_head', array(__CLASS__, 'output_confirm_helper'), 0);
         add_action('wp_footer', array(__CLASS__, 'output_recovery_script'), 99);
@@ -78,10 +85,31 @@ class MG_Purchase_Recovery {
         }
         nocache_headers();
 
+        // Csak a rendelés titkos kulcsával együtt jegyezzük meg a rendelést. A
+        // kulcs nélküli (vagy hibás kulcsú) köszönőoldal-URL bárki számára
+        // megnyitható: ha itt eltárolnánk a rendelést, a pótló végpont a
+        // vevő adataival együtt adná vissza egy idegennek.
         $order_id = absint(get_query_var('order-received'));
-        if ($order_id) {
-            self::remember_order($order_id);
+        $order_key = isset($_GET['key']) ? preg_replace('/[^A-Za-z0-9_-]/', '', (string) wp_unslash($_GET['key'])) : '';
+        $order = self::resolve_order($order_id, $order_key);
+        if ($order) {
+            self::remember_order($order);
         }
+    }
+
+    /**
+     * A jelző pótlása olyan böngészőben, amely még a jelző bevezetése előtt
+     * kapta meg a rendeléscookie-t.
+     */
+    public static function sync_flag_cookie() {
+        if (empty($_COOKIE[self::COOKIE]) || !empty($_COOKIE[self::FLAG_COOKIE])) {
+            return;
+        }
+        if (headers_sent() || !function_exists('wc_setcookie') || !self::measurement_active()) {
+            return;
+        }
+        wc_setcookie(self::FLAG_COOKIE, '1', time() + (self::MAX_AGE_DAYS * DAY_IN_SECONDS), is_ssl(), false);
+        $_COOKIE[self::FLAG_COOKIE] = '1';
     }
 
     private static function read_entries() {
@@ -117,11 +145,13 @@ class MG_Purchase_Recovery {
                 ? time() - DAY_IN_SECONDS
                 : time() + (self::MAX_AGE_DAYS * DAY_IN_SECONDS);
             wc_setcookie(self::COOKIE, $value, $expiry, is_ssl(), true);
+            wc_setcookie(self::FLAG_COOKIE, $value === '' ? '' : '1', $expiry, is_ssl(), false);
         }
         if ($value === '') {
-            unset($_COOKIE[self::COOKIE]);
+            unset($_COOKIE[self::COOKIE], $_COOKIE[self::FLAG_COOKIE]);
         } else {
             $_COOKIE[self::COOKIE] = $value;
+            $_COOKIE[self::FLAG_COOKIE] = '1';
         }
     }
 
@@ -158,29 +188,53 @@ class MG_Purchase_Recovery {
         <?php
     }
 
-    /** A függőben maradt konverziók pótlása a következő oldalletöltéskor. */
+    /**
+     * A függőben maradt konverziók pótlása.
+     *
+     * Két helyzetet kezel:
+     *  - bármely későbbi oldalletöltést (a vevő visszatér a boltba);
+     *  - magát a köszönőoldalt, ha a rendelés a betöltésekor még nem volt
+     *    mérhető állapotú. Kártyás fizetésnél a szolgáltató visszaigazolása
+     *    (IPN/callback) gyakran másodpercekkel a vevő visszaérkezése után fut
+     *    be: ilyenkor a köszönőoldali tag ki sem íródik, a vevő pedig jellemzően
+     *    már nem tölt le újabb oldalt. Ezért a köszönőoldal rövid ideig
+     *    újrakérdezi a rendelés állapotát.
+     */
     public static function output_recovery_script() {
         if (is_admin() || !self::measurement_active()) {
             return;
         }
-        // A köszönőoldalon a saját tag felel a mérésért, itt ne duplikáljunk.
-        if (function_exists('is_order_received_page') && is_order_received_page()) {
-            return;
-        }
-        // A közös, cache-elhető HTML ne függjön a látogató cookie-jától.
-        // A HttpOnly rendeléscookie-t az AJAX végpont olvassa az aktuális kérésből.
+        // A közös, cache-elhető HTML ne függjön a látogató cookie-jától: a
+        // HttpOnly rendeléscookie-t az AJAX végpont olvassa az aktuális kérésből.
+        // A köszönőoldal sosem gyorsítótárazott, ott megengedett az eltérő kimenet.
+        $thank_you = function_exists('is_order_received_page') && is_order_received_page();
         ?>
         <script>
         (function() {
             if (!window.fetch) return;
             var ajaxUrl = window.mgConvAjaxUrl;
             if (!ajaxUrl) return;
+            // Jelző nélkül nincs megjegyzett rendelés: a látogatók túlnyomó
+            // többségénél így egyetlen fölösleges szerverkérés sem indul.
+            if (!/(?:^|;\s*)<?php echo esc_js(self::FLAG_COOKIE); ?>=1(?:;|$)/.test(document.cookie)) return;
+
+            var thankYou = <?php echo $thank_you ? 'true' : 'false'; ?>;
+            var pollDelays = [3000, 5000, 5000, 7000, 10000, 15000, 20000, 30000, 30000];
+            var polls = 0;
+            var started = {};
 
             function deliver(entry) {
-                var attempts = 0;
-                var googleDone = !entry.google;
-                var metaDone = !entry.meta;
+                // A köszönőoldal saját tagje által már kiírt csatornát nem duplikáljuk.
+                var rendered = window.mgConvRendered || {};
+                var googleKey = 'google:' + entry.order_id;
+                var metaKey = 'meta:' + entry.order_id;
+                var googleDone = !entry.google || rendered[googleKey] === true || started[googleKey] === true;
+                var metaDone = !entry.meta || rendered[metaKey] === true || started[metaKey] === true;
+                if (googleDone && metaDone) return;
+                if (!googleDone) started[googleKey] = true;
+                if (!metaDone) started[metaKey] = true;
 
+                var attempts = 0;
                 var timer = setInterval(function() {
                     attempts++;
 
@@ -211,19 +265,28 @@ class MG_Purchase_Recovery {
                 }, 500);
             }
 
-            fetch(ajaxUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                cache: 'no-store',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: 'action=mg_pending_conversions'
-            })
-                .then(function(response) { return response.json(); })
-                .then(function(result) {
-                    if (!result || !result.success || !result.data || !result.data.pending) return;
-                    result.data.pending.forEach(deliver);
+            function check() {
+                fetch(ajaxUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                    body: 'action=mg_pending_conversions'
                 })
-                .catch(function() {});
+                    .then(function(response) { return response.json(); })
+                    .then(function(result) {
+                        if (!result || !result.success || !result.data) return;
+                        (result.data.pending || []).forEach(deliver);
+                        // Csak a köszönőoldalon, és csak amíg a fizetés
+                        // visszaigazolására várunk (összesen kb. két percig).
+                        if (thankYou && result.data.waiting === true && polls < pollDelays.length) {
+                            setTimeout(check, pollDelays[polls++]);
+                        }
+                    })
+                    .catch(function() {});
+            }
+
+            check();
         })();
         </script>
         <?php
@@ -250,11 +313,33 @@ class MG_Purchase_Recovery {
         return $created && $created->getTimestamp() < time() - (self::MAX_AGE_DAYS * DAY_IN_SECONDS);
     }
 
+    /**
+     * Várható-e perceken belül automatikus fizetési visszaigazolás?
+     *
+     * Átutalásnál, csekknél és utánvétnél nem: ott a boltos állítja át a
+     * rendelést, ezért fölösleges a köszönőoldalról újrakérdezni.
+     */
+    private static function is_awaiting_payment($order) {
+        if (!in_array($order->get_status(), array('pending', 'on-hold', 'failed'), true)) {
+            return false;
+        }
+        return !in_array((string) $order->get_payment_method(), array('bacs', 'cheque', 'cod'), true);
+    }
+
+    /** Lezárt rendelés: ebből már nem lesz mérhető vásárlás. */
+    private static function is_closed($order) {
+        return in_array($order->get_status(), array('cancelled', 'refunded', 'trash'), true);
+    }
+
     public static function ajax_pending_conversions() {
         nocache_headers();
         $entries = self::read_entries();
         if (!$entries) {
-            wp_send_json_success(array('pending' => array()));
+            // Árva jelző (lejárt vagy törölt rendeléscookie) eltakarítása.
+            if (!empty($_COOKIE[self::FLAG_COOKIE])) {
+                self::write_entries(array());
+            }
+            wp_send_json_success(array('pending' => array(), 'waiting' => false));
         }
 
         $gads_ready = class_exists('MG_Google_Ads_Tracking') && !empty(get_option('mg_gads_settings', array())['conversion_id']);
@@ -262,24 +347,29 @@ class MG_Purchase_Recovery {
 
         $pending = array();
         $remaining = array();
+        $waiting = false;
 
         foreach ($entries as $order_id => $order_key) {
             $order = self::resolve_order($order_id, $order_key);
-            if (!$order || self::is_expired($order)) {
+            if (!$order || self::is_expired($order) || self::is_closed($order)) {
                 continue;
             }
 
-            $needs_google = $gads_ready
-                && !$order->get_meta('_mg_gads_browser_fired')
+            // "Nyitott" csatorna: innen még nem ment ki böngészős vásárlás.
+            $google_open = $gads_ready && !$order->get_meta('_mg_gads_browser_fired');
+            $meta_open = $meta_ready && MG_Facebook_Pixel::browser_purchase_allowed($order);
+            if (!$google_open && !$meta_open) {
+                continue;
+            }
+            $remaining[$order_id] = $order_key;
+
+            $needs_google = $google_open
                 && (!class_exists('MG_Google_Ads_Reliability') || MG_Google_Ads_Reliability::is_order_eligible($order));
-            $needs_meta = $meta_ready
-                && !$order->get_meta('_mg_fb_browser_fired')
+            $needs_meta = $meta_open
                 && (!class_exists('MG_Facebook_Pixel_Reliability') || MG_Facebook_Pixel_Reliability::is_order_eligible($order));
 
-            $still_waiting = ($gads_ready && !$order->get_meta('_mg_gads_browser_fired'))
-                || ($meta_ready && !$order->get_meta('_mg_fb_browser_fired'));
-            if ($still_waiting) {
-                $remaining[$order_id] = $order_key;
+            if ((($google_open && !$needs_google) || ($meta_open && !$needs_meta)) && self::is_awaiting_payment($order)) {
+                $waiting = true;
             }
 
             if (!$needs_google && !$needs_meta) {
@@ -311,7 +401,7 @@ class MG_Purchase_Recovery {
         }
 
         self::write_entries($remaining);
-        wp_send_json_success(array('pending' => $pending));
+        wp_send_json_success(array('pending' => $pending, 'waiting' => $waiting));
     }
 
     public static function ajax_conversion_fired() {

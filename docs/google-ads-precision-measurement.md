@@ -20,9 +20,18 @@ A **Purchase Label kitöltése kötelező**: címke nélkül a `send_to` csak a 
 - A consent híd (`MG_Consent_Bridge`) automatikusan felismeri a WP Consent API-t, a Complianzot, a CookieYes-t, a Cookiebotot, a Borlabs Cookie-t, az Iubendát, a Moove GDPR-t, a Cookie Notice-t és a Real Cookie Bannert, valamint bármely `dataLayer`-be írt Consent Mode frissítést. Enélkül a bővített konverziók és a szerveroldali küldés hozzájárulás híján kimaradnának.
 - A köszönőoldali `purchase` megvárja a hozzájárulási döntést (legfeljebb 3 másodpercig), mert a `denied` állapotban kiküldött eseményt a Consent Mode cookie nélküli pingként továbbítja, és a később megérkező `granted` frissítéskor **nem küldi újra** – az a konverzió véglegesen modellezett maradna, bővített konverziók nélkül. Ha a látogató közben elnavigál vagy háttérbe teszi a lapot, az esemény azonnal kimegy. Korábban eldöntött hozzájárulásnál a mérés az eddiginél gyorsabb.
 - Ha a rendelés a köszönőoldalon még nem mérhető állapotú (átutalás, késve visszaigazolt fizetés), a böngészős Purchase kimarad. A plugin ilyenkor first-party cookie-ba jegyzi a rendelést, és a vásárló következő oldalletöltésekor pótolja a konverziót ugyanazzal a `transaction_id`-val – a Google duplikációvédelme miatt dupla mérés nem keletkezhet. Ez API nélküli üzemmódban is működik.
+- Online fizetésnél a köszönőoldal maga is kb. két percig újrakérdezi a rendelés állapotát, és a szolgáltató visszaigazolása (IPN/callback) után helyben elküldi a konverziót. Enélkül a kártyás vásárlások konverziója csak akkor érkezne meg, ha a vevő a fizetés után még egy oldalt letölt. Átutalásnál, csekknél és utánvétnél nincs újrakérdezés.
+- Korábban eldöntött hozzájárulásnál a köszönőoldali `purchase` nem vár a lap betöltésére, azonnal sorba kerül.
+- A rendelést csak a titkos rendeléskulccsal együtt jegyezzük meg; kulcs nélküli köszönőoldal-URL-re a pótló végpont semmit nem ad vissza.
+- A pótló lekérdezés csak a `mg_pending_conv_f` jelző-cookie mellett indul, így megjegyzett rendelés nélkül a látogató oldalletöltései nem terhelik az `admin-ajax.php`-t.
+- A `begin_checkout` és a `view_cart` a pénztár-, illetve kosároldal betöltésekor megy ki, klasszikus és blokkos oldalon egyaránt (a 2.45.1 előtt blokkos kosárnál és pénztárnál kimaradtak).
 - A köszönőoldal soha nem kerül statikus gyorsítótárba.
 - Teljes oldalgyorsítótár mellett a saját landing-cookie-nk elmaradhat; ilyenkor a kattintásazonosítót a gtag.js `_gcl_aw` / `_gcl_gb` / `_gcl_gs` cookie-jából pótoljuk.
 - Bekapcsolt szerveroldali küldésnél óránkénti önjavító futás állítja újra sorba a beragadt rendeléseket.
+
+## 1/c. Egyezési adatok
+
+A telefonszám a böngészős és a szerveroldali úton is ugyanazzal a szabállyal lesz E.164 formátumú (`06…`, `0036…`, `+36…` → `+36…`). Országhívó nélküli külföldi számot nem küldünk, mert hibás számmal a Google más emberhez párosíthatná a vásárlást. A szerveroldali feltöltésnél a `gmail.com` és `googlemail.com` címekből a hash-elés előtt kikerülnek a @ előtti pontok, ahogy a Google előírja – enélkül a pontot tartalmazó Gmail-címek nem egyeznének.
 
 ## 2. Opcionális Data Manager API
 
@@ -59,5 +68,7 @@ Végezz legalább három külön próbát:
 3. sikeres rendelés, majd részleges és teljes refund.
 
 API nélküli módban az admin diagnosztikában a `browser_only` állapot és a `renderelve` köszönőoldali tag a várt eredmény. A tényleges hálózati küldést Google Tag Assistanttal ellenőrizd: a Purchase eseményben egyezzen a `send_to`, legyen egyedi `transaction_id`, valós `value`/`currency`, és a termékazonosítók egyezzenek a Merchant Center feed azonosítóival.
+
+Helyi ellenőrzések: `php tests/measurement-test.php`, `node tests/purchase-recovery-script-test.js`, `node tests/measurement-browser-test.js` (Playwright), `tools/check-tracking.ps1` és PHP lint.
 
 Szerveroldali küldésnél az elvárt végállapot `processed`. A `skipped_no_consent` nem technikai hiba: azt jelenti, hogy a szerveroldali felhasználóiadat-küldéshez nem volt eltárolt hozzájárulás. A böngészős Consent Mode mérés ettől még működhet modellezett, cookie nélküli módban.

@@ -184,12 +184,21 @@ class MG_Facebook_Pixel_Settings {
         ));
         $counts = array();
         $unmeasured = 0;
+        $no_consent = 0;
         $consent_unknown = 0;
         foreach ($orders as $order) {
             $status = $order->get_meta(MG_Facebook_Pixel_Reliability::META_STATUS) ?: 'not_queued';
             $counts[$status] = ($counts[$status] ?? 0) + 1;
-            if (!$order->get_meta('_mg_fb_browser_fired') && !in_array($status, array('processed', 'test_processed'), true)) {
-                $unmeasured++;
+            // Törölt, sikertelen vagy még ki nem fizetett rendelés nem hiányzó mérés.
+            if (MG_Facebook_Pixel_Reliability::is_order_eligible($order)
+                && !$order->get_meta('_mg_fb_browser_fired')
+                && !in_array($status, array('processed', 'test_processed'), true)) {
+                // Hozzájárulás nélkül a Meta felé szándékosan nem megy adat.
+                if ((string) ($order->get_meta('_mg_meta_consent') ?: $order->get_meta('_mg_gads_consent')) === 'granted') {
+                    $unmeasured++;
+                } else {
+                    $no_consent++;
+                }
             }
             if (!in_array((string) $order->get_meta('_mg_meta_consent'), array('granted', 'denied'), true)) {
                 $consent_unknown++;
@@ -199,7 +208,10 @@ class MG_Facebook_Pixel_Settings {
         <hr>
         <h2>Utolsó 30 rendelés Meta diagnosztikája</h2>
         <?php if ($unmeasured > 0): ?>
-            <div class="notice notice-warning inline"><p><strong><?php echo absint($unmeasured); ?> rendelésnél nincs igazolt Purchase mérés.</strong> Sem a böngészős Pixel, sem a CAPI nem juttatta el az eseményt a Metához.</p></div>
+            <div class="notice notice-warning inline"><p><strong><?php echo absint($unmeasured); ?> hozzájárulással leadott, mérhető állapotú rendelésnél nincs igazolt Purchase mérés.</strong> Sem a böngészős Pixel, sem a CAPI nem juttatta el az eseményt a Metához.</p></div>
+        <?php endif; ?>
+        <?php if ($no_consent > 0): ?>
+            <p class="description"><?php echo absint($no_consent); ?> mérhető állapotú rendelésnél a vevő nem adott marketing-hozzájárulást – ezeket a Meta felé szándékosan nem mérjük.</p>
         <?php endif; ?>
         <?php if ($consent_unknown === count($orders) && count($orders) > 0): ?>
             <div class="notice notice-error inline"><p><strong>Egyetlen rendelésnél sincs eltárolt hozzájárulási állapot.</strong> Hozzájárulás nélkül a Pixel egyetlen eseményt sem küld, a CAPI pedig <code>skipped_no_consent</code> állapotban áll meg – vagyis gyakorlatilag minden vásárlás hiányzik. Ellenőrizd, hogy a sütikezelőd felismert-e (WP Consent API, Complianz, CookieYes, Cookiebot, Borlabs, Iubenda, Moove, Cookie Notice), vagy küldj <code>mg_gads_consent</code> eseményt elfogadáskor.</p></div>

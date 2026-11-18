@@ -238,7 +238,7 @@ class MG_Google_Ads_Settings {
     }
 
     private static function render_diagnostics() {
-        if (!function_exists('wc_get_orders')) {
+        if (!function_exists('wc_get_orders') || !class_exists('MG_Google_Ads_Reliability')) {
             return;
         }
         $orders = wc_get_orders(array(
@@ -253,7 +253,10 @@ class MG_Google_Ads_Settings {
         foreach ($orders as $order) {
             $status = $order->get_meta(MG_Google_Ads_Reliability::META_STATUS) ?: 'not_queued';
             $counts[$status] = ($counts[$status] ?? 0) + 1;
-            if (!$order->get_meta('_mg_gads_browser_fired') && !in_array($status, array('accepted', 'processing', 'processed', 'validated'), true)) {
+            // Törölt, sikertelen vagy még ki nem fizetett rendelés nem hiányzó mérés.
+            if (MG_Google_Ads_Reliability::is_order_eligible($order)
+                && !$order->get_meta('_mg_gads_browser_fired')
+                && !in_array($status, array('accepted', 'processing', 'processed', 'validated'), true)) {
                 $unmeasured++;
             }
             if (!in_array((string) $order->get_meta('_mg_gads_consent'), array('granted', 'denied'), true)) {
@@ -265,7 +268,7 @@ class MG_Google_Ads_Settings {
         <hr>
         <h2>Utolsó 30 rendelés mérési diagnosztikája</h2>
         <?php if ($unmeasured > 0): ?>
-            <div class="notice notice-warning inline"><p><strong><?php echo absint($unmeasured); ?> rendelésnél nincs igazolt vásárlásmérés.</strong> Se böngészős elküldés, se elfogadott szerveroldali feltöltés nem történt – ezek a konverziók hiányoznak a Google Adsből.</p></div>
+            <div class="notice notice-warning inline"><p><strong><?php echo absint($unmeasured); ?> mérhető állapotú rendelésnél nincs igazolt vásárlásmérés.</strong> Se böngészős elküldés, se elfogadott szerveroldali feltöltés nem történt – ezek a konverziók hiányoznak a Google Adsből.</p></div>
         <?php endif; ?>
         <?php if ($consent_unknown === count($orders) && count($orders) > 0): ?>
             <div class="notice notice-error inline"><p><strong>Egyetlen rendelésnél sincs eltárolt hozzájárulási állapot.</strong> Ez általában azt jelenti, hogy a sütikezelő nem jut el a mérőmodulokhoz. A consent híd a bevett sütikezelőket (WP Consent API, Complianz, CookieYes, Cookiebot, Borlabs, Iubenda, Moove, Cookie Notice) automatikusan felismeri; ha egyedi bannert használsz, az elfogadáskor küldjön <code>mg_gads_consent</code> eseményt.</p></div>

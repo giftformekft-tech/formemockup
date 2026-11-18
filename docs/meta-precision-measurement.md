@@ -27,9 +27,18 @@ A Pixel minden eseménye és a CAPI-küldés is megadott marketing-hozzájárul�
 
 Ha a diagnosztikában minden rendelésnél „ismeretlen” a consent, akkor a sütikezelő nem jut el a mérőmodulokhoz – ilyenkor gyakorlatilag egyetlen Meta-esemény sem megy ki.
 
+## Pénztár esemény
+
+Az `InitiateCheckout` a pénztároldal betöltésekor megy ki, a klasszikus és a blokkos WooCommerce pénztárnál egyaránt. A 2.45.1 előtt a klasszikus űrlap hookjához volt kötve, ezért blokkos pénztárnál teljesen kimaradt. A köszönőoldalon és a „rendelés kifizetése” oldalon nem küldjük.
+
 ## Kimaradt Purchase pótlása
 
+- Korábban megadott hozzájárulásnál a köszönőoldali Purchase azonnal sorba kerül, nem vár a lap betöltésére – a lapot rögtön bezáró vevő vásárlása sem vész el.
 - Ha a rendelés a köszönőoldal betöltésekor még nem mérhető állapotú (átutalás, késve érkező fizetési visszaigazolás), a Pixel Purchase kimarad. A plugin ilyenkor first-party cookie-ba jegyzi a rendelést, és a vásárló következő oldalletöltésekor pótolja az eseményt – ugyanazzal az `eventID`-val, így duplikáció nem keletkezik.
+- Online fizetésnél a köszönőoldal maga is kb. két percig újrakérdezi a rendelés állapotát, és a szolgáltató visszaigazolása (IPN/callback) után helyben elküldi a Purchase-t. Átutalásnál, csekknél és utánvétnél nincs újrakérdezés.
+- A Meta az azonos `event_id`-jú eseményeket csak 48 órán belül vonja össze. Ezért a már igazoltan elküldött böngészős Purchase nem megy ki újra (pl. napokkal később visszatöltött köszönőoldal), és 40 óránál régebben CAPI-val kézbesített rendeléshez sem küldünk böngészős eseményt.
+- A rendelést csak a titkos rendeléskulccsal együtt jegyezzük meg; kulcs nélküli köszönőoldal-URL-re a pótló végpont semmit nem ad vissza.
+- A pótló lekérdezés csak akkor indul, ha a böngészőben ott a `mg_pending_conv_f` jelző-cookie (rendeléskulcsot nem tartalmaz). Megjegyzett rendelés nélkül a látogató oldalletöltései nem terhelik az `admin-ajax.php`-t.
 - A köszönőoldal soha nem kerül statikus gyorsítótárba.
 - A CAPI-sor óránként önjavító futással ellenőrzi a beragadt rendeléseket (a Meta 7 napos eseményablakán belül), így egy kimaradt cron vagy egy átmeneti Meta-hiba nem jelent végleges veszteséget.
 - Reklámblokkoló mellett az `_fbp` böngészőazonosítót – hozzájárulás esetén – a szerver írja meg first-party cookie-ként, hogy a CAPI-esemény egyezési minősége ne essen vissza.
@@ -46,3 +55,9 @@ Ha a diagnosztikában minden rendelésnél „ismeretlen” a consent, akkor a s
 7. Töröld a Test Event Code-ot, majd ellenőrizd, hogy az új rendelések `processed` állapotba kerülnek.
 
 Más Meta Pixel vagy CAPI integráció ugyanahhoz a Pixelhez ne küldjön külön Purchase eseményt.
+
+## Helyi ellenőrzések
+
+`php tests/measurement-test.php`, `node tests/purchase-recovery-script-test.js`,
+`node tests/measurement-browser-test.js` (Playwright), `tools/check-tracking.ps1` és PHP lint.
+Ezek nem helyettesítik az Events Manager Test Events nézetében végzett éles próbát.

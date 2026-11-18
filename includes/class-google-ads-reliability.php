@@ -394,7 +394,7 @@ class MG_Google_Ads_Reliability {
 
     private static function build_user_identifiers($order) {
         $identifiers = array();
-        $email = strtolower(trim((string) $order->get_billing_email()));
+        $email = self::normalize_email($order->get_billing_email());
         if (is_email($email)) {
             $identifiers[] = array('emailAddress' => strtoupper(hash('sha256', $email)));
         }
@@ -417,22 +417,55 @@ class MG_Google_Ads_Reliability {
         return array_slice($identifiers, 0, 5);
     }
 
+    /**
+     * E-mail-cím a Google hash-elés előtti szabálya szerint: szóközök nélkül,
+     * kisbetűvel, gmail.com / googlemail.com címnél a @ előtti pontok nélkül.
+     * Enélkül a pontot tartalmazó Gmail-címek hash-e nem egyezik a Googléval.
+     */
+    public static function normalize_email($email) {
+        $email = strtolower(preg_replace('/\s+/', '', (string) $email));
+        $at = strrpos($email, '@');
+        if ($at === false) {
+            return $email;
+        }
+        $local = substr($email, 0, $at);
+        $domain = substr($email, $at + 1);
+        if (in_array($domain, array('gmail.com', 'googlemail.com'), true)) {
+            $local = str_replace('.', '', $local);
+        }
+        return $local . '@' . $domain;
+    }
+
     private static function normalize_name($value) {
         $value = trim(preg_replace('/\s+/', ' ', (string) $value));
         return function_exists('mb_strtolower') ? mb_strtolower($value, 'UTF-8') : strtolower($value);
     }
 
-    private static function normalize_phone($phone, $country) {
-        $digits = preg_replace('/[^0-9]/', '', (string) $phone);
+    /**
+     * E.164 telefonszám (`+36301234567`), vagy üres, ha nem képezhető érvényes szám.
+     *
+     * Hibás számot nem küldünk: az rosszabb, mint a hiányzó, mert a Google
+     * egy másik emberhez is párosíthatná a vásárlást.
+     */
+    public static function normalize_phone($phone, $country) {
+        $phone = trim((string) $phone);
+        $digits = preg_replace('/[^0-9]/', '', $phone);
         if ($digits === '') {
             return '';
         }
+        // Hiányzó országnál a bolt hazai formátumát feltételezzük.
+        $is_hu = in_array(strtoupper((string) $country), array('HU', ''), true);
         if (strpos($digits, '00') === 0) {
             $digits = substr($digits, 2);
-        } elseif (strtoupper((string) $country) === 'HU' && strpos($digits, '06') === 0) {
+        } elseif (strpos($phone, '+') === 0) {
+            // Már nemzetközi formátum, bármely országé.
+        } elseif ($is_hu && strpos($digits, '06') === 0) {
             $digits = '36' . substr($digits, 2);
-        } elseif (strtoupper((string) $country) === 'HU' && strpos($digits, '36') !== 0) {
+        } elseif ($is_hu && strpos($digits, '36') !== 0) {
             $digits = '36' . ltrim($digits, '0');
+        } elseif (!$is_hu && strpos($digits, '0') === 0) {
+            // Külföldi belföldi formátum: országhívó nélkül nem egészíthető ki.
+            return '';
         }
         return strlen($digits) >= 8 && strlen($digits) <= 15 ? '+' . $digits : '';
     }
